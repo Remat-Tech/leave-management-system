@@ -80,7 +80,8 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 
 | Key | Purpose |
 |---|---|
-| `DATABASE_URL` | Postgres connection string |
+| `DATABASE_URL` | Connection for the running application, as the restricted `lms_app` role |
+| `DATABASE_MIGRATION_URL` | Connection for migrations only, as the owner role. Never used by the application |
 | `PORT` | API port, defaults to 3000 |
 | `SESSION_SECRET` | Signing key for sessions |
 | `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01 |
@@ -154,6 +155,35 @@ Which migrations have been applied is recorded in the `pgmigrations` table. That
 **Write the down section, and prove it runs.** Do `up`, then `down`, then `up` again before you open the pull request. A down section that has never been executed is not a rollback, it is a guess.
 
 Once a migration is merged it is never edited. Fix a mistake with a new migration.
+
+---
+
+## Database roles
+
+There are two connections and they are not interchangeable.
+
+| Role | Used by | Holds |
+|---|---|---|
+| owner (`neondb_owner` on Neon) | migrations, nothing else | ownership of every object |
+| `lms_app` | the running application | `CONNECT`, `USAGE` on the schema, and `SELECT`/`INSERT` on tables |
+
+**The application never runs as the owner.** An application connected as the owner can `UPDATE` or `DELETE` rows in `audit_log` and `leave_ledger_entry`, which is precisely the thing an audit trail exists to make impossible. NFR AUD 02.
+
+**`lms_app` gets `SELECT` and `INSERT` on new tables and nothing else.** This is set once, as a default privilege, so it applies to every table a future migration creates. A table that genuinely needs `UPDATE` or `DELETE` must be granted it explicitly in the migration that creates it:
+
+```sql
+GRANT UPDATE, DELETE ON leave_request TO lms_app;
+```
+
+That is the right way round. The ledger and the audit log are append only because nobody ever granted them more, rather than because somebody remembered to take it away. Forget the explicit grant on an ordinary table and you get a loud permission error the first time you run it. Arrange it the other way, granting everything and revoking on those two, and forgetting is silent and leaves the ledger writable.
+
+**The role's password is not in a migration, and cannot be.** The migration creates `lms_app` without one, so it exists but cannot authenticate. Set the password out of band and record it only in `.env`:
+
+```sql
+ALTER ROLE lms_app WITH PASSWORD '...';
+```
+
+Rolling that migration back drops the role and its password together, so after a `down` you set the password again before the application can connect.
 
 ---
 
