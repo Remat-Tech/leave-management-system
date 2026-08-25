@@ -187,6 +187,25 @@ Rolling that migration back drops the role and its password together, so after a
 
 ---
 
+## Formatting and linting
+
+Prettier decides layout, ESLint finds problems, and a pre commit hook runs both over staged files. The point is that review attention goes on whether the logic is right rather than on where the brackets are.
+
+```bash
+npm run lint            # report problems
+npm run lint:fix        # fix the ones that can be fixed
+npm run format          # rewrite files
+npm run format:check    # report without rewriting
+```
+
+The hook installs itself during `npm install`, which runs husky through the `prepare` script. It runs `lint-staged`, so only what you actually staged is touched. Formatting is corrected and restaged silently; a problem ESLint cannot fix stops the commit and tells you why.
+
+**Migrations and prose are excluded.** Nothing rewrites `server/migrations`, because a merged migration is never edited. Markdown is excluded too: reflowing a hand laid out table produces a large diff that says nothing about the content.
+
+**Line endings are LF everywhere**, fixed by `.gitattributes` rather than left to each person's `core.autocrlf`. Without that, a Windows checkout arrives as CRLF, every file fails `prettier --check`, and the hook spends its time fighting the person instead of helping them.
+
+---
+
 ## Testing
 
 ```bash

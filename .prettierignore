@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+coverage
+package-lock.json
+
+# A merged migration is never edited, by a person or by a tool.
+server/migrations
+
+# The specification documents and the README are written prose with hand laid
+# out tables. Reflowing them produces large diffs that say nothing.
+*.md
+docs

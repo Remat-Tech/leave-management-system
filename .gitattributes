@@ -1,0 +1,18 @@
+# Git already stores text as LF. Check it out as LF too, on Windows included,
+# so that Prettier's "endOfLine": "lf" is true of the working tree and not only
+# of the repository.
+#
+# Without this, core.autocrlf=true hands a Windows checkout CRLF files and every
+# one of them fails prettier --check on a fresh clone, which makes the pre commit
+# hook fight the person rather than help them.
+* text=auto eol=lf
+
+# Binary, never converted or diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
