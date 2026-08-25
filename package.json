@@ -7,13 +7,35 @@
     "node": ">=22"
   },
   "scripts": {
-    "migrate": "node-pg-migrate --envPath .env --database-url-var DATABASE_MIGRATION_URL --migrations-dir server/migrations --migration-file-language sql --migration-filename-format utc"
+    "migrate": "node-pg-migrate --envPath .env --database-url-var DATABASE_MIGRATION_URL --migrations-dir server/migrations --migration-file-language sql --migration-filename-format utc",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "dotenv": "^17.4.2",
-    "node-pg-migrate": "^9.0.0"
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "node-pg-migrate": "^9.0.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0"
   },
   "dependencies": {
     "pg": "^8.23.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,css,scss,html,yml,yaml}": [
+      "prettier --write"
+    ]
   }
 }
