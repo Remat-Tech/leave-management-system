@@ -49,8 +49,8 @@ Most ORMs cannot express any of that, so adopting one means either fighting it o
 ### Prerequisites
 
 * Node.js 22 or later
-* PostgreSQL 17 running locally
-* A Neon account, for the shared development branch
+* A Neon account. Development runs against a Neon branch, not a database on your machine
+* Optionally, PostgreSQL 17 locally, if you would rather not depend on the network
 
 ### Getting started
 
@@ -63,11 +63,16 @@ npm install
 cp .env.example .env
 # fill in DATABASE_URL and the other values, see below
 
-createdb lms_dev        # once, and empty. Migrations do the rest
 npm run migrate up      # create the schema
 npm run seed            # load fixture data
 npm run dev             # api on :3000, web on :5173
 ```
+
+**The database comes from Neon, not from `createdb`.** Create a branch in the Neon console, or with `neonctl branches create`, and copy its connection string into `DATABASE_URL`. Take your own branch rather than sharing one: a migration you are still working on then never lands on somebody else's schema.
+
+**Use the direct connection string, not the pooled one.** The pooled host has `-pooler` in it. Migrations take a session level advisory lock so that two runs cannot collide, and a session lock does not survive a transaction pooler, so migrations run through `-pooler` fail intermittently and for reasons that are hard to see. Pooled is for the application. Direct is for migrations.
+
+Neon requires TLS. With `sslmode=require` the driver prints a warning saying it is treating that as `verify-full`; that is the stricter behaviour, the connection is verified against the system certificate store, and nothing is wrong.
 
 ### Environment variables
 
