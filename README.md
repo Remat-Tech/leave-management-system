@@ -49,8 +49,8 @@ Most ORMs cannot express any of that, so adopting one means either fighting it o
 ### Prerequisites
 
 * Node.js 22 or later
-* PostgreSQL 17 running locally
-* A Neon account, for the shared development branch
+* A Neon account. Development runs against a Neon branch, not a database on your machine
+* Optionally, PostgreSQL 17 locally, if you would rather not depend on the network
 
 ### Getting started
 
@@ -63,11 +63,16 @@ npm install
 cp .env.example .env
 # fill in DATABASE_URL and the other values, see below
 
-createdb lms_dev        # once, and empty. Migrations do the rest
 npm run migrate up      # create the schema
 npm run seed            # load fixture data
 npm run dev             # api on :3000, web on :5173
 ```
+
+**The database comes from Neon, not from `createdb`.** Create a branch in the Neon console, or with `neonctl branches create`, and copy its connection string into `DATABASE_URL`. Take your own branch rather than sharing one: a migration you are still working on then never lands on somebody else's schema.
+
+**Use the direct connection string, not the pooled one.** The pooled host has `-pooler` in it. Migrations take a session level advisory lock so that two runs cannot collide, and a session lock does not survive a transaction pooler, so migrations run through `-pooler` fail intermittently and for reasons that are hard to see. Pooled is for the application. Direct is for migrations.
+
+Neon requires TLS. With `sslmode=require` the driver prints a warning saying it is treating that as `verify-full`; that is the stricter behaviour, the connection is verified against the system certificate store, and nothing is wrong.
 
 ### Environment variables
 
@@ -75,7 +80,8 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 
 | Key | Purpose |
 |---|---|
-| `DATABASE_URL` | Postgres connection string |
+| `DATABASE_URL` | Connection for the running application, as the restricted `lms_app` role |
+| `DATABASE_MIGRATION_URL` | Connection for migrations only, as the owner role. Never used by the application |
 | `PORT` | API port, defaults to 3000 |
 | `SESSION_SECRET` | Signing key for sessions |
 | `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01 |
@@ -149,6 +155,35 @@ Which migrations have been applied is recorded in the `pgmigrations` table. That
 **Write the down section, and prove it runs.** Do `up`, then `down`, then `up` again before you open the pull request. A down section that has never been executed is not a rollback, it is a guess.
 
 Once a migration is merged it is never edited. Fix a mistake with a new migration.
+
+---
+
+## Database roles
+
+There are two connections and they are not interchangeable.
+
+| Role | Used by | Holds |
+|---|---|---|
+| owner (`neondb_owner` on Neon) | migrations, nothing else | ownership of every object |
+| `lms_app` | the running application | `CONNECT`, `USAGE` on the schema, and `SELECT`/`INSERT` on tables |
+
+**The application never runs as the owner.** An application connected as the owner can `UPDATE` or `DELETE` rows in `audit_log` and `leave_ledger_entry`, which is precisely the thing an audit trail exists to make impossible. NFR AUD 02.
+
+**`lms_app` gets `SELECT` and `INSERT` on new tables and nothing else.** This is set once, as a default privilege, so it applies to every table a future migration creates. A table that genuinely needs `UPDATE` or `DELETE` must be granted it explicitly in the migration that creates it:
+
+```sql
+GRANT UPDATE, DELETE ON leave_request TO lms_app;
+```
+
+That is the right way round. The ledger and the audit log are append only because nobody ever granted them more, rather than because somebody remembered to take it away. Forget the explicit grant on an ordinary table and you get a loud permission error the first time you run it. Arrange it the other way, granting everything and revoking on those two, and forgetting is silent and leaves the ledger writable.
+
+**The role's password is not in a migration, and cannot be.** The migration creates `lms_app` without one, so it exists but cannot authenticate. Set the password out of band and record it only in `.env`:
+
+```sql
+ALTER ROLE lms_app WITH PASSWORD '...';
+```
+
+Rolling that migration back drops the role and its password together, so after a `down` you set the password again before the application can connect.
 
 ---
 
