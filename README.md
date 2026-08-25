@@ -210,9 +210,24 @@ The hook installs itself during `npm install`, which runs husky through the `pre
 
 ```bash
 npm test              # unit
-npm run test:int      # integration, against a disposable database branch
-npm run test:all
+npm run test:watch    # unit, re-running as you edit
+npm run test:int      # integration, against a disposable database
+npm run test:all      # both
 ```
+
+Unit tests live in `server/tests/unit` and touch no database, no network and no
+fixtures. Anything that needs one of those is an integration test and belongs in
+`server/tests/integration`.
+
+**Integration tests build their own database and throw it away.** Each run creates
+`lms_test_<random>`, applies the migrations to it, runs the suite, and drops it
+again, including when the suite fails. Nothing is left behind and no test run can
+see another one's rows.
+
+That means integration tests need `DATABASE_MIGRATION_URL`, the owner connection,
+since creating a database is not something the application role may do. They apply
+the real migrations rather than loading a dumped schema, so every integration run
+is also a check that the migrations still apply cleanly to an empty database.
 
 The fixture set deliberately includes the awkward cases: a five level hierarchy, a manager who is also somebody's report, an employee with no manager, a part timer, a leaver, and a lone HR officer with no colleague to approve their leave. Most defects in this system live at those edges rather than in the happy path.
 

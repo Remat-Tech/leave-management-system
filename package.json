@@ -12,7 +12,11 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test": "vitest run --config vitest.config.mts",
+    "test:watch": "vitest --config vitest.config.mts",
+    "test:int": "vitest run --config vitest.integration.config.mts",
+    "test:all": "npm run test && npm run test:int"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -24,7 +28,8 @@
     "node-pg-migrate": "^9.0.0",
     "prettier": "^3.9.6",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.68.0"
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "pg": "^8.23.0"
