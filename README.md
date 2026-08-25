@@ -63,6 +63,7 @@ npm install
 cp .env.example .env
 # fill in DATABASE_URL and the other values, see below
 
+createdb lms_dev        # once, and empty. Migrations do the rest
 npm run migrate up      # create the schema
 npm run seed            # load fixture data
 npm run dev             # api on :3000, web on :5173
@@ -131,13 +132,21 @@ These are the load bearing decisions. The reasoning is in the Technical Design D
 
 ## Database migrations
 
-Every schema change is a migration. No exceptions, no running SQL by hand in a client.
+**No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.
+
+This is not bureaucracy. A change that is not a migration does not exist on anybody else's machine. Local and production drift apart within a fortnight, and by the time somebody notices, nobody knows what the correct state was.
+
+Migrations are plain SQL, applied by [node-pg-migrate](https://github.com/salsita/node-pg-migrate), and live in `server/migrations`. Every file has an `-- Up Migration` section and a `-- Down Migration` section that reverses it.
 
 ```bash
 npm run migrate create add-something    # new migration file
-npm run migrate up                      # apply
+npm run migrate up                      # apply everything pending
 npm run migrate down                    # roll back one
 ```
+
+Which migrations have been applied is recorded in the `pgmigrations` table. That table is how a database knows what state it is in, so do not edit it by hand either.
+
+**Write the down section, and prove it runs.** Do `up`, then `down`, then `up` again before you open the pull request. A down section that has never been executed is not a rollback, it is a guess.
 
 Once a migration is merged it is never edited. Fix a mistake with a new migration.
 
