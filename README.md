@@ -84,11 +84,34 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 | `DATABASE_MIGRATION_URL` | Connection for migrations only, as the owner role. Never used by the application |
 | `PORT` | API port, defaults to 3000 |
 | `SESSION_SECRET` | Signing key for sessions |
-| `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01 |
+| `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01. Settled at `rematholdings.com` |
 | `SMTP_*` | Mail settings. Points at Mailpit in development |
 | `STORAGE_*` | Object storage for attachments. Local directory in development |
 
 **Never commit a real `.env`.** A credential committed once stays in git history after it is deleted.
+
+### Who may sign in
+
+**`rematholdings.com`, and nothing else.** Sign in is by company address only, so
+a personal address is refused when an employee record is created and again at
+login. Those are two doors into the same building and both are locked. NFR SEC
+01.
+
+The list is configuration rather than code, so adding a subsidiary's domain is
+an environment change, not a release. Two things about it are not negotiable in
+passing:
+
+**Matching is exact.** `hr.rematholdings.com` is a different domain and is
+refused unless somebody adds it deliberately. Otherwise anyone able to create a
+subdomain could mint themselves a company identity.
+
+**An empty list is not "no restriction".** The application refuses to start.
+An allow list that has been emptied by accident must lock everybody out, never
+let everybody in.
+
+The check lives in `server/src/auth/company-email.ts`. Use it at provisioning
+and at login both; NFR SEC 01 asks for both, and only one of them is the door an
+attacker knocks on.
 
 ---
 
