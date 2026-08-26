@@ -119,6 +119,37 @@ real recipient, and the intended recipient is preserved in an
 pointed at a copy of real staff data, so that testing notifications cannot mail
 actual colleagues. Leave it blank in production.
 
+### Attachment storage
+
+Attachments go through the `Storage` interface in `server/src/storage`. In
+development `STORAGE_DRIVER=local` writes them to `.storage`, which is git
+ignored. Production will set a different driver and change nothing else.
+
+```ts
+const storage = createStorage(); // the only place that knows which driver runs
+
+const { key, size, checksumSha256 } = await storage.put(bytes);
+const bytes = await storage.get(key);
+await storage.delete(key); // succeeds whether or not it was there
+```
+
+**Nothing above the interface may know where a file lives.** `put` issues the
+key; callers never choose one, never build a path, and never learn whether the
+bytes went to a disk or a bucket. Store the key on the attachment row and pass
+it back. If a path, a bucket name or a directory ever appears outside
+`server/src/storage`, that is the bug.
+
+This is a security property, not housekeeping. Keys are 32 random bytes, so an
+attachment cannot be found by guessing, and it is never addressable except to
+code that has already checked the caller's authorisation. Keys arrive back from
+the database, so the local driver validates every one before touching the
+filesystem: a key shaped like `../../etc/passwd` is refused rather than
+resolved. NFR SEC 04.
+
+**The storage directory must never sit under anything the web server serves.**
+These files are medical certificates. A directory reachable by URL makes every
+one of them public.
+
 ---
 
 ## Project structure
