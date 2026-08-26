@@ -144,3 +144,7 @@ vite.config.ts.timestamp-*
 
 # Local development tooling, fetched on demand. See scripts/mailpit.mjs
 .tools/
+
+# Attachments written by the local storage driver. These are real uploads,
+# medical certificates among them, and must never be committed. NFR SEC 06.
+.storage/
