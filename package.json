@@ -16,13 +16,16 @@
     "test": "vitest run --config vitest.config.mts",
     "test:watch": "vitest --config vitest.config.mts",
     "test:int": "vitest run --config vitest.integration.config.mts",
-    "test:all": "npm run test && npm run test:int"
+    "test:all": "npm run test && npm run test:int",
+    "mail": "node scripts/mailpit.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/nodemailer": "^8.0.1",
     "dotenv": "^17.4.2",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.11.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.3.0",
     "node-pg-migrate": "^9.0.0",
@@ -32,6 +35,7 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
+    "nodemailer": "^9.0.5",
     "pg": "^8.23.0"
   },
   "lint-staged": {

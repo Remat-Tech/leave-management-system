@@ -92,6 +92,35 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 
 ---
 
+## Local development services
+
+### Mail
+
+Nothing this system sends in development reaches a real mailbox. Outbound mail
+goes to [Mailpit](https://mailpit.axllent.org), which accepts every message and
+delivers none of them.
+
+```bash
+npm run mail            # SMTP on 1025, read what was sent at http://localhost:8025
+```
+
+The first run downloads a single Mailpit binary into `.tools/`, which is git
+ignored. There is nothing to install and nothing to uninstall; delete the
+directory and it is gone. The version is pinned in `scripts/mailpit.mjs` so
+everybody runs the same build.
+
+Leave it running while you work on anything that notifies. `SMTP_HOST` and
+`SMTP_PORT` in `.env.example` already point at it.
+
+**`MAIL_OVERRIDE_RECIPIENT` is the safety net, and it matters most where Mailpit
+is not.** When it is set, every message goes to that one address instead of the
+real recipient, and the intended recipient is preserved in an
+`X-Intended-Recipient` header rather than thrown away. Set it in any environment
+pointed at a copy of real staff data, so that testing notifications cannot mail
+actual colleagues. Leave it blank in production.
+
+---
+
 ## Project structure
 
 ```
