@@ -17,7 +17,8 @@
     "test:watch": "vitest --config vitest.config.mts",
     "test:int": "vitest run --config vitest.integration.config.mts",
     "test:all": "npm run test && npm run test:int",
-    "mail": "node scripts/mailpit.mjs"
+    "mail": "node scripts/mailpit.mjs",
+    "seed": "node server/seeds/seed.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
