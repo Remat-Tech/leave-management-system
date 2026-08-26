@@ -28,7 +28,7 @@ Work is tracked in GitHub Issues, grouped by Phase and Epic on the project board
 | Runtime | Node.js 22 LTS | Long term support, matches the deployment target |
 | API | Express 5 | Mature, unopinionated, well understood. This is a conventional REST API and needs nothing clever |
 | Database | PostgreSQL 17 | Transactional integrity on the balance ledger, recursive queries for the org tree, range exclusion constraints for overlapping leave, JSONB for audit snapshots. See the Technical Design Document, section 4 |
-| Database host | Neon | Managed Postgres. Branching gives a disposable database per feature, which makes integration testing cheap |
+| Database host | Neon, London (`eu-west-2`) | Managed Postgres, for production as well as development. Branching gives a disposable database per feature, which makes integration testing cheap. London is the nearest region to Accra; that puts staff data outside Ghana, which is dealt with in the Technical Design Document, section 4 |
 | Migrations | node-pg-migrate | Plain SQL migrations. The schema is the source of truth |
 | Query layer | Kysely | Type safe queries without an ORM that wants to own the schema |
 | Front end | React 19 with Vite | Standard, fast to build with, easy to hire for |
@@ -49,8 +49,29 @@ Most ORMs cannot express any of that, so adopting one means either fighting it o
 ### Prerequisites
 
 * Node.js 22 or later
-* A Neon account. Development runs against a Neon branch, not a database on your machine
-* Optionally, PostgreSQL 17 locally, if you would rather not depend on the network
+* A Neon account, for the shared development branch and for anything that has to
+  look exactly like production
+* PostgreSQL **17** locally, for fast test runs
+
+### Why the Postgres version is pinned
+
+**Every environment runs PostgreSQL 17.** Neon for development and production,
+a `postgres:17` container in continuous integration, and 17 on your machine.
+Install 17 specifically, not whatever is current: on Windows it sits happily
+alongside a newer version on a different port.
+
+The point is that the versions match, not that they are recent. Nothing here
+needs anything newer. The load bearing features are recursive CTEs for the org
+tree, `daterange` with a GiST exclusion constraint for overlapping leave, `jsonb`
+for audit snapshots and `CREATE RULE` for the append only ledger, and all of them
+have worked for several major versions. Building against a version the host does
+not offer is an avoidable way to lose a day, and a managed host is always a
+release or so behind.
+
+Keep a local database even though development can run entirely on Neon. Every
+integration run creates and drops a real database, and doing that across a
+network costs seconds per test and real money per developer. Local is for the
+fast loop; Neon is for sharing, for staging, and for looking like production.
 
 ### Getting started
 
@@ -68,7 +89,15 @@ npm run seed            # load fixture data
 npm run dev             # api on :3000, web on :5173
 ```
 
-**The database comes from Neon, not from `createdb`.** Create a branch in the Neon console, or with `neonctl branches create`, and copy its connection string into `DATABASE_URL`. Take your own branch rather than sharing one: a migration you are still working on then never lands on somebody else's schema.
+**An empty database is all you need to start.** The schema is the migrations and
+the fixtures are the seed, so nothing is ever imported or copied between
+environments.
+
+Locally that is `createdb lms_dev` against your Postgres 17. On Neon it is a
+branch, made in the console or with `neonctl branches create`; take your own
+rather than sharing one, so a migration you are still working on never lands on
+somebody else's schema. Either way, put the connection string in `DATABASE_URL`
+and run `npm run migrate up`.
 
 **Use the direct connection string, not the pooled one.** The pooled host has `-pooler` in it. Migrations take a session level advisory lock so that two runs cannot collide, and a session lock does not survive a transaction pooler, so migrations run through `-pooler` fail intermittently and for reasons that are hard to see. Pooled is for the application. Direct is for migrations.
 
