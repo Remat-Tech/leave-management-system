@@ -39,10 +39,28 @@ jobs:
           --health-timeout 5s
           --health-retries 20
 
+      # Catches the mail the notification tests send, exactly as it does on a
+      # developer's machine. Nothing here can reach a real mailbox.
+      mailpit:
+        image: axllent/mailpit:v1.31.0
+        ports:
+          - 1025:1025
+          - 8025:8025
+
     env:
       # The password is a throwaway inside a container that is destroyed with
       # the run. It is not a secret and does not belong in one.
       DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/lms_ci
+
+      # There is no .env in CI, so the mail settings are given directly. They
+      # mirror the development values in .env.example. SMTP_USER is deliberately
+      # unset: Mailpit wants no credentials.
+      SMTP_HOST: localhost
+      SMTP_PORT: '1025'
+      SMTP_SECURE: 'false'
+      MAIL_FROM_NAME: Remat Holdings Leave
+      MAIL_FROM_ADDRESS: leave@rematholdings.com
+
       # Git hooks are for a developer's machine. CI runs the checks directly.
       HUSKY: 0
 
@@ -82,6 +100,23 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      # Builds and drops its own database inside the service container above.
+      # Postgres has a health check above and Actions waits for it. The Mailpit
+      # image has no shell tools to health check with, so it is polled here
+      # instead. Without this the mail tests can start before it is listening
+      # and fail for a reason that has nothing to do with the code.
+      - name: Wait for Mailpit
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -sf http://localhost:8025/api/v1/info > /dev/null; then
+              echo "Mailpit is up after ${attempt}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Mailpit did not start within 30s"
+          exit 1
+
+      # Builds and drops its own database inside the service container above,
+      # and sends its mail to the Mailpit container.
       - name: Integration tests
         run: npm run test:int
