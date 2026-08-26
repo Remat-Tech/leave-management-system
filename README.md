@@ -291,6 +291,32 @@ is also a check that the migrations still apply cleanly to an empty database.
 
 The fixture set deliberately includes the awkward cases: a five level hierarchy, a manager who is also somebody's report, an employee with no manager, a part timer, a leaver, and a lone HR officer with no colleague to approve their leave. Most defects in this system live at those edges rather than in the happy path.
 
+```bash
+npm run seed                        # the organisation, thirteen people
+npm run seed -- --scenario lone-hr  # the same, with one person as all of HR
+```
+
+Seeding clears what it owns first, so running it twice gives you the same
+organisation rather than a second copy. It connects as the owner, not as
+`lms_app`, because it truncates and the application role deliberately holds
+neither `TRUNCATE` nor `DELETE` on `employee`.
+
+| Who | Why they are in there |
+|---|---|
+| Kwame Asante, CEO | The only employee with no manager. Every upward walk has to stop somewhere |
+| Akosua Darko, Kofi Boateng | Managers who are also somebody's report. Breaks anything assuming approvers and requesters are different people |
+| Abena Sarpong | Part time, Wednesdays off. A pattern of merely "weekends off" would let a hard coded weekend pass every test |
+| Kojo Antwi | Left in July, still on the books. FR 06 keeps the record; FR 37a needs exactly this shape to calculate a leaver figure |
+| Ama Mensah, Efua Owusu | HR, so an HR person's own request has a colleague to decide it |
+
+**The `lone-hr` scenario is the one worth remembering.** Ama is then the whole
+HR function, so her own leave has nobody in HR left to approve it and must fall
+to the CEO. That is the reciprocal routing of FR 48b. Get it wrong and an HR
+officer approves their own leave, which is the defect the rule exists to stop.
+
+`server/tests/integration/seed.test.ts` asserts each of these edges, so removing
+one has to be a decision rather than an accident.
+
 Concurrency tests matter more than they look. Two approvers deciding one request, and two requests submitted against a thin balance, are the defects that never appear in manual testing and only surface as a balance that is quietly wrong.
 
 ---
