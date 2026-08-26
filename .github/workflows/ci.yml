@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  # Also on main itself, so a merge that breaks the build is visible immediately
+  # rather than at the next pull request.
+  push:
+    branches: [main]
+
+# A second push to the same pull request makes the first run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Migrations, lint and tests
+    runs-on: ubuntu-latest
+
+    services:
+      # Integration tests create and drop their own database, so this needs to
+      # be a server the test user owns rather than a shared one. A throwaway
+      # container per run also means no test run can see another one's rows.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # The password is a throwaway inside a container that is destroyed with
+      # the run. It is not a secret and does not belong in one.
+      DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/lms_ci
+      # Git hooks are for a developer's machine. CI runs the checks directly.
+      HUSKY: 0
+
+    steps:
+      - name: Check out the branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # The version the README commits to and the deployment target runs.
+          node-version: 22
+          cache: npm
+
+      - name: Install exactly what the lockfile says
+        run: npm ci
+
+      - name: Create the database
+        run: psql "postgresql://postgres:postgres@localhost:5432/postgres" -c 'CREATE DATABASE lms_ci'
+
+      - name: Apply migrations
+        run: npm run migrate up
+
+      # The README requires a down section that has actually been executed.
+      # Checking it here means nobody has to remember to.
+      - name: Roll the last migration back and forward again
+        run: |
+          npm run migrate down
+          npm run migrate up
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Unit tests
+        run: npm test
+
+      # Builds and drops its own database inside the service container above.
+      - name: Integration tests
+        run: npm run test:int
