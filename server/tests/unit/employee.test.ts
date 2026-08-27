@@ -1,17 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AlreadyTerminated,
   EMPLOYMENT_STATUSES,
   EMPLOYMENT_TYPES,
   GENDERS,
   InvalidEmployee,
   type Employee,
   type NewEmployee,
+  planTermination,
   validateEmployeeChanges,
   validateNewEmployee,
 } from '../../src/domain/employee.js';
 
 /**
- * The rules for an employee record, FR 01 and FR 05, checked without a database.
+ * The rules for an employee record, FR 01, FR 05 and FR 06, checked without a
+ * database.
  *
  * The database holds the same rules as constraints and refuses the same records;
  * that is asserted in the integration suite. What is asserted here is that the
@@ -329,5 +332,85 @@ describe('maintaining a record', () => {
     expect(() => validateEmployeeChanges({ workEmail: 'esi@gmail.com' }, STORED, DOMAINS)).toThrow(
       /not a company address/,
     );
+  });
+});
+
+describe('deactivating a record, FR 06', () => {
+  const LEAVER: Employee = {
+    ...STORED,
+    employmentStatus: 'TERMINATED',
+    exitDate: '2026-11-30',
+  };
+
+  it('is a status and a date, and nothing else', () => {
+    // The whole of what "deactivated" means. Every other field is left as it is,
+    // because keeping the record is the point of not deleting it.
+    expect(planTermination(STORED, { exitDate: '2026-11-30' })).toEqual({
+      employmentStatus: 'TERMINATED',
+      exitDate: '2026-11-30',
+    });
+  });
+
+  it('cannot record the status without the date', () => {
+    // Not a rule that is checked so much as a shape that cannot express it: the
+    // two arrive together or not at all. A TERMINATED record with no exit date
+    // is one FR 37a cannot settle a final figure from.
+    const error = refusal(() =>
+      planTermination(STORED, { exitDate: undefined as unknown as string }),
+    );
+
+    expect(error.field).toBe('exitDate');
+  });
+
+  it('refuses an exit date before the day they started', () => {
+    const error = refusal(() => planTermination(STORED, { exitDate: '2026-08-31' }));
+
+    expect(error.field).toBe('exitDate');
+    expect(error.message).toMatch(/before the start date/);
+  });
+
+  it('refuses an exit date that never happened', () => {
+    expect(() => planTermination(STORED, { exitDate: '2026-02-31' })).toThrow(/not a real date/);
+  });
+
+  it('refuses to terminate somebody who has already left, and says when they did', () => {
+    // Through a general update this would be a silent overwrite of the first
+    // exit date, which is how a leaver's final figure changes months after it
+    // was agreed.
+    let thrown: unknown;
+    try {
+      planTermination(LEAVER, { exitDate: '2026-12-31' });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(AlreadyTerminated);
+    expect((thrown as AlreadyTerminated).exitDate).toBe('2026-11-30');
+  });
+
+  it('ends a suspended employment as readily as an active one', () => {
+    // Being suspended is not being gone. People do leave from it, and refusing
+    // would leave the record stuck in a status nothing can move it out of.
+    const suspended: Employee = { ...STORED, employmentStatus: 'SUSPENDED' };
+
+    expect(planTermination(suspended, { exitDate: '2026-11-30' }).employmentStatus).toBe(
+      'TERMINATED',
+    );
+  });
+
+  it('accepts an exit date still to come, for paperwork done in advance', () => {
+    // HR does the Friday paperwork for a Sunday exit. Refusing would push them
+    // to wait or to enter a date that is not the real one, and the exit date is
+    // what the final figure is calculated from.
+    expect(planTermination(STORED, { exitDate: '2099-01-01' }).exitDate).toBe('2099-01-01');
+  });
+
+  it('leaves correcting a termination to an ordinary edit', () => {
+    // The record was never deleted, so somebody terminated by mistake goes back
+    // to ACTIVE with the exit date cleared. There is no re-creation, no new id,
+    // and no history left pointing at a row that is gone.
+    expect(
+      validateEmployeeChanges({ employmentStatus: 'ACTIVE', exitDate: null }, LEAVER, DOMAINS),
+    ).toEqual({ employmentStatus: 'ACTIVE', exitDate: null });
   });
 });
