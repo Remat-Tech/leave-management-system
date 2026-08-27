@@ -485,6 +485,90 @@ self-referencing parent has exactly the same two failure modes; the
 department-rules migration says so, and `refuse_manager_cycle()` reads as a
 worked example even though it names `employee` and cannot be reused as it stands.
 
+**Staff are loaded from a spreadsheet with a dry run first, and nothing is
+written until it is confirmed.** `StaffImportService.dryRun()` reads the file,
+judges every row against the rules that would judge it on the way in, and hands
+back a plan: what would be created, what would be changed and to what, what is
+already correct, and what would be refused and why, each with the line number the
+HR officer's editor shows. `confirm()` takes that plan's fingerprint and applies
+exactly it. FR 08.
+
+The whole thing runs through `EmployeeService`, one row at a time, inside one
+transaction — that is what `Transactions.allOrNothing()` in `/repositories` is
+for, and it is the only transaction any service has needed so far. **The import
+therefore cannot drift away from the form.** A rule added to `/domain/employee.ts`
+is a rule the import gained the same afternoon, and there is no second opinion
+about whether a personal address is acceptable in bulk. The cost is a round trip
+per row, which for a few hundred rows once at go live is the right side of that
+trade by a long way.
+
+Five decisions in there are worth knowing before you meet them.
+
+**The file is a CSV, not an `.xlsx`.** Comma, semicolon — which is what Excel
+writes in most of Europe — or tab, sniffed from the heading row, with RFC 4180
+quoting and the byte order mark Excel puts on the front stripped. Reading a real
+workbook means a dependency and a serial date epoch that is wrong on purpose;
+"Save as CSV" is one menu item for HR and no attack surface for us. A story that
+must have the workbook brings a parser and hands `Sheet` to the rest unchanged.
+
+**Dates are `YYYY-MM-DD` and nothing else is accepted.** `31/07/2026` and
+`07/31/2026` are the same eleven characters meaning two different days, and no
+row tells you which convention the file uses. `start_date` is what a first
+entitlement is calculated from and `exit_date` is what FR 37a settles a leaver's
+final figure from, so guessing wrong is a wrong number in somebody's pay.
+Formatting one column costs a minute; unpicking it costs a fortnight.
+
+**A blank cell says nothing; it does not say "clear this".** An empty cell in a
+mapped column leaves the field alone on an existing record and at its default on
+a new one. Read the other way, a partial spreadsheet of new starters becomes an
+instruction that wipes the job title of everybody it touches. Clearing a field is
+an ordinary `update()`, one person at a time, by somebody who meant it.
+
+**A file is not a statement about who does *not* work here.** Somebody in the
+database and not in the file is left exactly as they are. Half these files are
+one team or one intake; reading absence as departure would terminate the company
+the first time HR imported the graduate scheme.
+
+**Rejected rows stop the whole import unless you ask otherwise.** An import that
+quietly skips the eleven rows it could not read is how a company goes live
+believing everybody is in the system. `withoutTheRejectedRows` exists and has to
+be said out loud.
+
+**Cycle detection runs in the planner, and the trigger stays where it is.**
+
+| | Covers | Does not cover |
+|---|---|---|
+| `findManagerCycles()` over the organisation *as it would be* | every loop in the file, named in order with the line numbers, before anything is written | anything that does not go through the import |
+| the `employee_no_manager_cycle` constraint trigger | the same loops on every connection, including a bulk `INSERT` | naming them — being deferred, it fires at `COMMIT` with the transaction already rolled back |
+
+That is the division the trigger's own note asks for. Both halves are needed
+because the file's loops are the ones nothing else can see: one closed entirely
+among rows that are not in the database yet, or closed by a single line through
+five records the file never mentions.
+
+**Rows are written nearest the top of the organisation first**, ordered by their
+depth in the reporting lines the plan ends with. That one rule satisfies two
+constraints that each refuse the obvious answer to the other: `manager_id` is an
+ordinary foreign key, so a manager has to exist before the row naming them, and
+`EmployeeService.checkManager()` refuses an intermediate loop, so a manager and
+their report swapping over has to be written upper first. Writing in final-depth
+order gives every row a manager that already exists and a line above it that is
+already final, and the plan has proved that final tree acyclic.
+
+**What it cannot do is succeed the head of the organisation**, and nor can
+anything else built so far — for exactly the reason `succeedHead()` is wanted
+above and not written. Promoting first leaves two rootless records, which
+`employee_one_root` refuses immediately, being an index rather than a deferred
+trigger; demoting first points the outgoing head at somebody still below them,
+which is the loop. So the dry run refuses that one shape of file outright, before
+anything is written, and says what to do instead.
+
+**The fingerprint is what makes "confirmed" mean something.** `confirm()` plans
+the file again inside the transaction that will do the writing and refuses if the
+plan has moved. There is a person reading a report in the middle of that window,
+so it is minutes rather than milliseconds — far more likely to be raced than
+anything the repositories guard against, not less.
+
 ---
 
 ## Database migrations
