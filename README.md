@@ -111,6 +111,7 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 |---|---|
 | `DATABASE_URL` | Connection for the running application, as the restricted `lms_app` role |
 | `DATABASE_MIGRATION_URL` | Connection for migrations only, as the owner role. Never used by the application |
+| `TEST_DATABASE_URL` | Where integration tests build their disposable database. Point it at local Postgres 17; falls back to `DATABASE_MIGRATION_URL` |
 | `PORT` | API port, defaults to 3000 |
 | `SESSION_SECRET` | Signing key for sessions |
 | `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01. Settled at `rematholdings.com` |
@@ -574,10 +575,27 @@ fixtures. Anything that needs one of those is an integration test and belongs in
 again, including when the suite fails. Nothing is left behind and no test run can
 see another one's rows.
 
-That means integration tests need `DATABASE_MIGRATION_URL`, the owner connection,
-since creating a database is not something the application role may do. They apply
-the real migrations rather than loading a dumped schema, so every integration run
-is also a check that the migrations still apply cleanly to an empty database.
+That means integration tests need an owner connection, since creating a database
+is not something the application role may do. They apply the real migrations
+rather than loading a dumped schema, so every integration run is also a check
+that the migrations still apply cleanly to an empty database.
+
+**Point `TEST_DATABASE_URL` at your local Postgres 17, and mind the difference it
+makes.** Every test reloads the fixture organisation, which is two dozen
+statements, so the suite is several thousand round trips end to end. Against a
+Neon branch in London that is **about eleven minutes**; against a local server it
+is **under one**. The database does identical work either way — the network is the
+whole of the difference, and it is paid once per statement.
+
+It is a key of its own rather than a change to `DATABASE_MIGRATION_URL` so that
+migrations still go to Neon while tests stay local, and it falls back to
+`DATABASE_MIGRATION_URL` when unset, so continuous integration and anybody
+without a local server are unaffected.
+
+On Windows, 17 installed beside a newer version usually sits on **5433** — check
+`C:\Program Files\PostgreSQL\17\data\postgresql.conf`. Use 17 rather than
+whatever is current: a suite that passes on a version production does not run has
+proved less than it appears to.
 
 The fixture set deliberately includes the awkward cases: a five level hierarchy, a manager who is also somebody's report, an employee with no manager, a part timer, a leaver, and a lone HR officer with no colleague to approve their leave. Most defects in this system live at those edges rather than in the happy path.
 
