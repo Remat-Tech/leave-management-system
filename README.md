@@ -209,11 +209,17 @@ one of them public.
 ```
 /server
   /migrations        numbered SQL migrations, never edited after merge
+  /seeds             the fixture organisation
   /src
     /routes          HTTP only. No business rules live here
     /services        business rules. LeaveRequestService, BalanceService, ...
     /repositories    database access
+    /domain          the types and rules a record obeys, with no dependencies
+    /db              the connection and the table types Kysely reads
     /jobs            scheduled work: reminders, rollover, reconciliation
+    /auth            company email, sessions, MFA
+    /mail            outbound notification transport
+    /storage         attachment bytes, behind one interface
   /tests
 /client
   /src
@@ -227,6 +233,15 @@ one of them public.
 Routes do HTTP. Services do business rules. Repositories do database access.
 
 A route never contains a leave rule. A service never touches an HTTP request object. This matters most for `LeaveRequestService`, which is otherwise where every special case will accumulate.
+
+`/domain` sits under all three. It holds what a record is and what makes one
+valid, as plain types and pure functions that import nothing and touch nothing,
+so the rules can be read in one place and tested without a database. A service
+decides *when* to apply a rule; the domain says what the rule *is*.
+
+**Only `/db` and `/repositories` import Kysely or `pg`.** Above that line nothing
+knows what the query layer is, which is the same arrangement as `/storage` and
+for the same reason.
 
 ---
 
@@ -245,6 +260,20 @@ These are the load bearing decisions. The reasoning is in the Technical Design D
 **Counting basis and approval chain vary by leave type.** Annual, sick and compassionate count working days; maternity and paternity count calendar days. Most types go manager then HR; unpaid leave goes HR then CEO. Both are configuration. If either appears as an `if` on a type code, that is a bug.
 
 **Dates are dates.** Leave dates are calendar dates with no time and no timezone. Everything else is UTC. Mixing these up is the most common source of off by one day bugs in leave systems.
+
+The driver is set up to help rather than hinder that. `server/src/db` registers a
+type parser so a Postgres `date` arrives as the string `'2026-07-31'` instead of
+being turned into a `Date` at midnight UTC and then read back in whatever
+timezone the process happens to run in. Compare them as strings; for `YYYY-MM-DD`
+that is the same comparison. `timestamptz` is left alone, because those really
+are instants.
+
+**`updated_at` is maintained by a trigger, not by the writer.** The
+`set_updated_at()` function is deliberately named for the job rather than for the
+table that first needed it. A new table with an `updated_at` column attaches a
+`BEFORE UPDATE` trigger to that same function rather than declaring its own copy.
+There is more than one writer — the application, the seed, and a migration
+correcting data — and only one of them would have remembered to set the column.
 
 ---
 
