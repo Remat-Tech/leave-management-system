@@ -1,7 +1,6 @@
 /**
  * Creating, maintaining and deactivating employee records, and recording who
- * each of them reports to. FR 01, FR 02, FR 04, FR 05 and FR 06. LMS 101 to
- * LMS 103.
+ * each of them reports to. FR 01 to FR 06. LMS 101 to LMS 104.
  *
  * The business rules for an employee record, in the layer that owns them. A
  * route will sit in front of this when Phase 1 has an authorisation layer to put
@@ -16,13 +15,6 @@
  *   trigger refuses the statement even on the owner connection. An employee who
  *   leaves is {@link terminate}: a status of TERMINATED and an exit date, so
  *   that their leave history survives them. FR 06.
- *
- *   No cycle detection. A -> B -> A with somebody else as the head of the
- *   organisation satisfies every rule here and every constraint in the database.
- *   That is FR 03 and LMS 104, walked upward from the proposed manager. Until it
- *   exists, {@link reportingLineWarnings} will report the symptom — a table with
- *   no root at all is a table with a cycle in it — without being able to name
- *   which line caused it.
  *
  *   No re-parenting when a manager leaves. {@link terminate} does not move the
  *   leaver's reports onto somebody else, because who they should go to is a
@@ -44,6 +36,7 @@
 
 import { allowedDomains } from '../auth/company-email.js';
 import {
+  assertNoManagerCycle,
   EmployeeNotFound,
   ManagerHasLeft,
   ManagerNotFound,
@@ -98,8 +91,10 @@ export class EmployeeService {
   async create(input: NewEmployee): Promise<Employee> {
     const record = validateNewEmployee(input, this.domains);
 
-    // No id of its own yet, so nothing to exclude: a record being created cannot
-    // be the root that already exists, and cannot be its own manager.
+    // No record of its own yet, and both of the rules that compare one against
+    // the rest of the tree fall away with it: a row that does not exist cannot
+    // be the root that already exists, and is above nobody, so no walk upward
+    // can reach it.
     await this.checkManager(record.managerId, null);
 
     return this.employees.create(record);
@@ -176,7 +171,7 @@ export class EmployeeService {
        move a line goes through it — today update(), tomorrow whatever LMS 104
        adds. planTermination() never produces one, so terminating skips it. */
     if ('managerId' in changes) {
-      await this.checkManager(changes.managerId ?? null, current.id);
+      await this.checkManager(changes.managerId ?? null, current);
     }
 
     const updated = await this.employees.update(id, changes);
@@ -192,8 +187,8 @@ export class EmployeeService {
   }
 
   /**
-   * The rules about a reporting line that need another record to answer. FR 02
-   * and FR 04.
+   * The rules about a reporting line that need other records to answer. FR 02,
+   * FR 03 and FR 04.
    *
    * The domain has already decided that a line was named at all and that it is
    * not the employee's own id. What is left needs the table:
@@ -208,33 +203,52 @@ export class EmployeeService {
    *   touches the reports' records when it happens. That is
    *   {@link reportingLineWarnings}.
    *
-   *   At most one employee with none. FR 04. `excludeId` is what makes editing
-   *   the existing head of the organisation work: they are already the root, and
+   *   A line that does not loop. FR 03. Walking up from the proposed manager, if
+   *   the employee turns up above them, then the proposed manager already reports
+   *   to the employee and making them their manager joins the two ends.
+   *
+   *   At most one employee with none. FR 04. `employee` is what makes editing the
+   *   existing head of the organisation work: they are already the root, and
    *   leaving them as it is not making a second one.
    *
+   * `employee` is null when a record is being created, and both of the last two
+   * fall away with it. A record that does not exist yet is above nobody, so no
+   * walk can find it, and it cannot be the root that already exists.
+   *
+   * One read answers three of the four questions, because the walk starts at the
+   * proposed manager: its first element is that manager, so whether they are
+   * anybody and whether they have left come out of the same statement as the
+   * loop.
+   *
    * The check is not the enforcement. Between this and the write, another
-   * transaction can commit a root of its own; the employee_one_root index is
-   * what actually decides, and the repository turns its refusal back into
-   * {@link SecondRootEmployee}. Asking first is for the message, not for the
-   * guarantee.
+   * transaction can commit a root, or the other half of a loop; the
+   * employee_one_root index and the employee_no_manager_cycle trigger are what
+   * actually decide, and the repository turns their refusals back into
+   * {@link SecondRootEmployee} and `ManagerCycle`. Asking first is for the
+   * message, not for the guarantee.
    */
-  private async checkManager(managerId: string | null, excludeId: string | null): Promise<void> {
+  private async checkManager(managerId: string | null, employee: Employee | null): Promise<void> {
     if (managerId === null) {
       const root = await this.employees.findRoot();
 
-      if (root !== undefined && root.id !== excludeId) {
+      if (root !== undefined && root.id !== employee?.id) {
         throw new SecondRootEmployee(root);
       }
       return;
     }
 
-    const manager = await this.employees.findById(managerId);
+    const chain = await this.employees.chainFrom(managerId);
+    const manager = chain[0];
 
     if (manager === undefined) {
       throw new ManagerNotFound(managerId);
     }
     if (manager.employmentStatus === 'TERMINATED') {
       throw new ManagerHasLeft(manager);
+    }
+
+    if (employee !== null) {
+      assertNoManagerCycle(employee, chain);
     }
   }
 

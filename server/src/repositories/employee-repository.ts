@@ -13,7 +13,7 @@
  * it, which means the answer is right even under concurrency.
  */
 
-import type { Kysely, Selectable } from 'kysely';
+import { sql, type Kysely, type Selectable } from 'kysely';
 import type { Database } from '../db/index.js';
 import type { EmployeeTable } from '../db/schema.js';
 import {
@@ -23,6 +23,7 @@ import {
   type EmploymentStatus,
   type EmploymentType,
   type Gender,
+  ManagerCycle,
   type ReportingLines,
   SecondRootEmployee,
   type ValidatedEmployee,
@@ -31,12 +32,21 @@ import {
 /** Postgres `unique_violation`. */
 const UNIQUE_VIOLATION = '23505';
 
+/** Postgres `check_violation`, which is what the cycle trigger raises. */
+const CHECK_VIOLATION = '23514';
+
 /** The indexes created by the employee-record-rules migration. */
 const NUMBER_INDEX = 'employee_number_unique';
 const EMAIL_INDEX = 'employee_work_email_unique';
 
 /** The index created by the line-manager-rules migration. FR 04. */
 const ROOT_INDEX = 'employee_one_root';
+
+/**
+ * The deferred constraint trigger from the reject-circular-reporting-lines
+ * migration, which names itself in the error it raises. FR 03.
+ */
+const CYCLE_TRIGGER = 'employee_no_manager_cycle';
 
 /** A row as it comes back from a SELECT, with the Generated wrappers resolved. */
 type EmployeeRow = Selectable<EmployeeTable>;
@@ -51,7 +61,7 @@ export class EmployeeRepository {
        enough of it to be able to create an employee at all. */
     const workPatternId = record.workPatternId ?? (await this.defaultWorkPatternId());
 
-    const row = await this.catchCollisions(record, () =>
+    const row = await this.catchRefusals(record, () =>
       this.db
         .insertInto('employee')
         .values({
@@ -93,7 +103,7 @@ export class EmployeeRepository {
       return this.findById(id);
     }
 
-    const row = await this.catchCollisions(changes, () =>
+    const row = await this.catchRefusals(changes, () =>
       this.db
         .updateTable('employee')
         .set(values)
@@ -181,6 +191,46 @@ export class EmployeeRepository {
   }
 
   /**
+   * The reporting line above somebody, nearest first, starting with them. FR 03.
+   *
+   * `chainFrom(x)` is `[x, x's manager, their manager, ..., the root]`. An id
+   * that is nobody gives an empty array, which is how the service tells
+   * "no such manager" from "a manager with a short line" without a second read.
+   *
+   * One statement rather than one round trip per level, because the database is
+   * usually a Neon branch at the end of a network and a five level walk done a
+   * level at a time is five of them.
+   *
+   * Raw SQL rather than the query builder for one reason: the CYCLE clause. If
+   * the table already contains a loop — restored from a dump taken before the
+   * cycle trigger existed, or written while it was dropped — a plain recursive
+   * walk follows that loop for ever, and the thing that hangs is the check for
+   * cycles. CYCLE stops the recursion the moment a row repeats, and the repeated
+   * row is dropped on the way out so that callers see a line, not a lasso.
+   */
+  async chainFrom(id: string): Promise<Employee[]> {
+    const { rows } = await sql<EmployeeRow>`
+      WITH RECURSIVE chain AS (
+              SELECT e.*, 1 AS depth
+                FROM employee e
+               WHERE e.id = ${id}
+          UNION ALL
+              SELECT m.*, c.depth + 1
+                FROM employee m
+                JOIN chain c ON m.id = c.manager_id
+      ) CYCLE id SET looped USING walked
+      SELECT id, employee_number, first_name, last_name, work_email, job_title,
+             department_id, manager_id, work_pattern_id, start_date, exit_date,
+             employment_type, employment_status, gender, created_at, updated_at
+        FROM chain
+       WHERE NOT looped
+       ORDER BY depth
+    `.execute(this.db);
+
+    return rows.map(toEmployee);
+  }
+
+  /**
    * The facts the standing reporting line check is judged from. FR 02 and FR 04.
    *
    * Facts only. What counts as a warning is
@@ -260,37 +310,55 @@ export class EmployeeRepository {
   }
 
   /**
-   * Runs a write and turns a unique violation into the domain error for whatever
-   * collided.
+   * Runs a write and turns whatever the database refused it for into the domain
+   * error for that refusal.
    *
-   * The index name is read from the driver's error rather than guessed from the
-   * message text, so the cases are told apart reliably and a violation of some
-   * future constraint is re-thrown rather than reported as a duplicate email.
+   * The constraint name is read from the driver's error rather than guessed from
+   * the message text, so the cases are told apart reliably and a violation of
+   * some future constraint is re-thrown rather than reported as a duplicate
+   * email.
+   *
+   * Every case here is a race the service already asked about and lost. That is
+   * not wasted work on either side: the service's read gives the good message
+   * for the answer that is right almost every time, and the constraint is what
+   * makes the answer right when two HR officers are typing at once.
    */
-  private async catchCollisions<T>(
+  private async catchRefusals<T>(
     attempted: { employeeNumber?: string; workEmail?: string },
     write: () => Promise<T>,
   ): Promise<T> {
     try {
       return await write();
     } catch (error) {
-      const constraint = uniqueViolationOn(error);
+      const violation = violationOf(error);
 
-      if (constraint === NUMBER_INDEX) {
-        throw new DuplicateEmployeeNumber(attempted.employeeNumber ?? '');
+      if (violation?.code === UNIQUE_VIOLATION) {
+        if (violation.constraint === NUMBER_INDEX) {
+          throw new DuplicateEmployeeNumber(attempted.employeeNumber ?? '');
+        }
+        if (violation.constraint === EMAIL_INDEX) {
+          throw new DuplicateWorkEmail(attempted.workEmail ?? '');
+        }
+        if (violation.constraint === ROOT_INDEX) {
+          // Who won is read back so the message can name them, which is the
+          // answer the service's check would have given a moment earlier.
+          throw new SecondRootEmployee(await this.findRoot());
+        }
       }
-      if (constraint === EMAIL_INDEX) {
-        throw new DuplicateWorkEmail(attempted.workEmail ?? '');
-      }
-      if (constraint === ROOT_INDEX) {
-        /* The service asks before writing, so getting here means two HR officers
-           were making a head of the organisation at the same moment and this one
-           lost. That is the same race as the two identifiers, answered the same
-           way: the index decides, which is what makes the service's earlier check
-           safe rather than wishful. Who won is read back so the message can name
-           them, which is the answer that check would have given a moment
-           earlier. */
-        throw new SecondRootEmployee(await this.findRoot());
+
+      if (violation?.code === CHECK_VIOLATION && violation.constraint === CYCLE_TRIGGER) {
+        /* Two moves, each harmless alone, committed at once: A is given B as a
+           manager while B is given A. Both services walked and both saw a clear
+           line, because neither had committed yet.
+
+           Thrown without a loop to name, deliberately. The trigger is deferred,
+           so this arrives at COMMIT with the transaction already rolled back, and
+           the state that would have to be walked to describe the loop is the
+           state that no longer exists. A second walk now would describe the
+           table as it is, which does not contain the loop it would be claiming
+           to explain — a wrong answer confidently phrased, which is worse than
+           the general one. ManagerCycle says so plainly when it has no names. */
+        throw new ManagerCycle();
       }
 
       throw error;
@@ -298,14 +366,23 @@ export class EmployeeRepository {
   }
 }
 
-function uniqueViolationOn(error: unknown): string | undefined {
+/**
+ * The SQLSTATE and constraint name of a refusal, when the error carries both.
+ *
+ * Deliberately not narrowed to one class of violation: the caller decides which
+ * pairs it recognises, so a new constraint is a new branch there rather than a
+ * new reader here.
+ */
+function violationOf(error: unknown): { code: string; constraint: string } | undefined {
   if (typeof error !== 'object' || error === null) {
     return undefined;
   }
 
   const { code, constraint } = error as { code?: unknown; constraint?: unknown };
 
-  return code === UNIQUE_VIOLATION && typeof constraint === 'string' ? constraint : undefined;
+  return typeof code === 'string' && typeof constraint === 'string'
+    ? { code, constraint }
+    : undefined;
 }
 
 /** Only the fields actually being changed, so an absent one is left alone. */
