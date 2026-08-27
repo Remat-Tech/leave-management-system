@@ -35,7 +35,9 @@ export interface EmployeeTable {
   last_name: string;
   work_email: string;
   job_title: string | null;
-  department_id: string | null;
+  /* NOT NULL since the department-rules migration: leave is reported and planned
+     by team, and somebody in no team appears in no team's figures. */
+  department_id: string;
   /* FR 02. Nullable because exactly one employee — the head of the organisation
      — has nobody to report to. The employee_one_root index is what makes that
      "exactly one" rather than "as many as anybody types". FR 04. */
@@ -52,6 +54,20 @@ export interface EmployeeTable {
   updated_at: Timestamp;
 }
 
+export interface DepartmentTable {
+  id: Generated<string>;
+  name: string;
+  /* Present because the column is. Nothing writes it, so a department hierarchy
+     does not exist rather than half existing; see the department-rules
+     migration for what a story that wants one has to bring. */
+  parent_id: string | null;
+  is_active: Generated<boolean>;
+  created_at: Timestamp;
+  /* Maintained by the department_set_updated_at trigger, which attaches to the
+     same set_updated_at() the employee table uses. Never supplied by a writer. */
+  updated_at: Timestamp;
+}
+
 export interface WorkPatternTable {
   id: Generated<string>;
   name: string;
@@ -59,6 +75,7 @@ export interface WorkPatternTable {
 }
 
 export interface Database {
+  department: DepartmentTable;
   employee: EmployeeTable;
   work_pattern: WorkPatternTable;
 }

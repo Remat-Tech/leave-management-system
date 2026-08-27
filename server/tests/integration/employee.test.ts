@@ -17,22 +17,33 @@ import {
   type NewEmployee,
   SecondRootEmployee,
 } from '../../src/domain/employee.js';
+import {
+  type Department,
+  DepartmentDeactivated,
+  DepartmentNotFound,
+} from '../../src/domain/department.js';
+import { DepartmentRepository } from '../../src/repositories/department-repository.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
+import { DepartmentService } from '../../src/services/department-service.js';
 import { EmployeeService } from '../../src/services/employee-service.js';
 import { seed } from '../../seeds/seed.mjs';
 import type { Kysely } from 'kysely';
 
 /**
  * The employee record against a real database. FR 01 to FR 06, LMS 101 to
- * LMS 104.
+ * LMS 105.
  *
  * The unit suite covers the rules. What needs a database is everything the
  * database itself decides: that the two identifiers really are unique and really
  * are compared without regard to case, that a value outside a permitted list
  * cannot be stored whatever wrote it, that a record cannot be deleted by the
  * role the application connects as, that exactly one employee can be recorded
- * without a line manager, and that no reporting line loops — including when the
- * change arrives as a bulk import that no service ever saw.
+ * without a line manager, that no reporting line loops — including when the
+ * change arrives as a bulk import that no service ever saw — and that everybody
+ * is in a department.
+ *
+ * Departments themselves are ../integration/department.test.ts. What is here is
+ * the employee's end of them.
  */
 
 const testDatabaseUrl = inject('testDatabaseUrl');
@@ -44,12 +55,16 @@ const DOMAINS = ['rematholdings.com'];
 let db: Kysely<Database>;
 let admin: Client;
 let employees: EmployeeService;
+let departments: DepartmentService;
 
 /** Reached directly only for chainFrom(), which nothing above it exposes. */
 let repository: EmployeeRepository;
 
 /** The ids the seed created, keyed by the names it uses for them. */
 let people: Record<string, string>;
+
+/** Operations, which most of the fixture organisation is in. */
+let operations: Department;
 
 const JOINER_FIELDS = {
   employeeNumber: 'RH-0100',
@@ -61,13 +76,13 @@ const JOINER_FIELDS = {
 };
 
 /**
- * A joiner, reporting to Kofi Boateng.
+ * A joiner in Operations, reporting to Kofi Boateng.
  *
- * Rebuilt each test rather than declared once, because a line manager is part of
- * what a record is now and the id has to belong to somebody the seed actually
- * created. The seed truncates with RESTART IDENTITY, so it is read back from
- * what the seed returns rather than written down as a number that would be
- * correct only until somebody adds a person above Kofi in the fixture.
+ * Rebuilt each test rather than declared once, because a line manager and a
+ * department are both part of what a record is now and both ids have to belong
+ * to rows the seed actually created. The seed truncates with RESTART IDENTITY,
+ * so they are read back rather than written down as numbers that would be
+ * correct only until somebody adds a row above them in the fixture.
  */
 let JOINER: NewEmployee;
 
@@ -80,7 +95,8 @@ beforeAll(async () => {
   await admin.connect();
 
   repository = new EmployeeRepository(db);
-  employees = new EmployeeService(repository, { domains: DOMAINS });
+  departments = new DepartmentService(new DepartmentRepository(db));
+  employees = new EmployeeService(repository, new DepartmentRepository(db), { domains: DOMAINS });
 });
 
 beforeEach(async () => {
@@ -88,7 +104,11 @@ beforeEach(async () => {
   // and a test that adds somebody cannot affect the next one.
   people = (await seed(admin)) as Record<string, string>;
 
-  JOINER = { ...JOINER_FIELDS, managerId: people.teamLead };
+  const found = await departments.byName('Operations');
+  expect(found).toBeDefined();
+  operations = found!;
+
+  JOINER = { ...JOINER_FIELDS, managerId: people.teamLead, departmentId: operations.id };
 });
 
 afterAll(async () => {
@@ -205,11 +225,12 @@ describe('the two identifiers are unique', () => {
       admin.query(
         `INSERT INTO employee (
            employee_number, first_name, last_name, work_email,
-           work_pattern_id, start_date
+           department_id, manager_id, work_pattern_id, start_date
          )
          SELECT 'rh-0100', 'Someone', 'Else', 'someone.else@rematholdings.com',
-                id, DATE '2026-09-01'
+                $1, $2, id, DATE '2026-09-01'
            FROM work_pattern WHERE is_default`,
+        [operations.id, people.teamLead],
       ),
     ).rejects.toThrow(/employee_number_unique/);
   });
@@ -256,11 +277,12 @@ describe('the values a record may hold', () => {
       admin.query(
         `INSERT INTO employee (
            employee_number, first_name, last_name, work_email,
-           work_pattern_id, start_date, employment_status
+           department_id, manager_id, work_pattern_id, start_date, employment_status
          )
          SELECT 'RH-0200', 'Wrong', 'Status', 'wrong.status@rematholdings.com',
-                id, DATE '2026-09-01', 'Active'
+                $1, $2, id, DATE '2026-09-01', 'Active'
            FROM work_pattern WHERE is_default`,
+        [operations.id, people.teamLead],
       ),
     ).rejects.toThrow(/employee_employment_status_known/);
   });
@@ -273,11 +295,12 @@ describe('the values a record may hold', () => {
       admin.query(
         `INSERT INTO employee (
            employee_number, first_name, last_name, work_email,
-           work_pattern_id, start_date
+           department_id, manager_id, work_pattern_id, start_date
          )
          SELECT 'RH-0201', '  ', 'Blank', 'blank.name@rematholdings.com',
-                id, DATE '2026-09-01'
+                $1, $2, id, DATE '2026-09-01'
            FROM work_pattern WHERE is_default`,
+        [operations.id, people.teamLead],
       ),
     ).rejects.toThrow(/employee_first_name_not_blank/);
   });
@@ -450,11 +473,12 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
         admin.query(
           `INSERT INTO employee (
              employee_number, first_name, last_name, work_email,
-             work_pattern_id, start_date, manager_id
+             department_id, work_pattern_id, start_date, manager_id
            )
            SELECT 'RH-0400', 'Second', 'Root', 'second.root@rematholdings.com',
-                  id, DATE '2026-09-01', NULL
+                  $1, id, DATE '2026-09-01', NULL
              FROM work_pattern WHERE is_default`,
+          [operations.id],
         ),
       ).rejects.toThrow(/employee_one_root/);
     });
@@ -550,6 +574,144 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
       }
 
       expect(await employees.reportingLineWarnings()).toEqual([]);
+    });
+  });
+});
+
+describe('every employee is in one department, LMS 105', () => {
+  /** A department with nobody in it, for the cases that need one. */
+  async function emptyDepartment(name = 'Internal Audit'): Promise<Department> {
+    return departments.create({ name });
+  }
+
+  it('stores the team and reads it back', async () => {
+    const created = await employees.create(JOINER);
+
+    expect((await employees.byId(created.id)).departmentId).toBe(operations.id);
+  });
+
+  it('refuses a team that is nobody', async () => {
+    // The foreign key would refuse this too, with a message about
+    // employee_department_id_fkey. This is the refusal an HR officer can read.
+    await expect(employees.create({ ...JOINER, departmentId: '999999' })).rejects.toBeInstanceOf(
+      DepartmentNotFound,
+    );
+  });
+
+  it('refuses a record with no team at the database as well', async () => {
+    await expect(
+      admin.query(
+        `INSERT INTO employee (
+           employee_number, first_name, last_name, work_email,
+           work_pattern_id, start_date, manager_id
+         )
+         SELECT 'RH-0500', 'No', 'Team', 'no.team@rematholdings.com',
+                id, DATE '2026-09-01', $1
+           FROM work_pattern WHERE is_default`,
+        [people.teamLead],
+      ),
+    ).rejects.toThrow(/department_id/);
+  });
+
+  it('moves somebody between teams as an ordinary edit', async () => {
+    const audit = await emptyDepartment();
+    const created = await employees.create(JOINER);
+
+    const moved = await employees.update(created.id, { departmentId: audit.id });
+
+    expect(moved.departmentId).toBe(audit.id);
+    // The move is the only thing that moved. Their line manager is unchanged,
+    // because reporting to somebody and sitting in a team are different facts.
+    expect(moved.managerId).toBe(people.teamLead);
+  });
+
+  it('gives every one of the fixture organisation a team', async () => {
+    // The assertion the story is about: a headcount by department adds up to the
+    // whole company, with nobody quietly missing from every team's figures.
+    const all = await employees.list();
+    const byTeam = await Promise.all(
+      (await departments.list()).map(async (team) => ({
+        team: team.name,
+        headcount: await departments.headcount(team.id),
+      })),
+    );
+
+    const counted = byTeam.reduce((total, team) => total + team.headcount, 0);
+    const stillEmployed = all.filter((one) => one.employmentStatus !== 'TERMINATED').length;
+
+    expect(counted).toBe(stillEmployed);
+    expect(all.every((one) => one.departmentId !== null)).toBe(true);
+  });
+
+  describe('a team that has been closed', () => {
+    it('takes nobody new', async () => {
+      const audit = await emptyDepartment();
+      await departments.deactivate(audit.id);
+
+      await expect(employees.create({ ...JOINER, departmentId: audit.id })).rejects.toBeInstanceOf(
+        DepartmentDeactivated,
+      );
+    });
+
+    it('takes nobody by transfer either', async () => {
+      const audit = await emptyDepartment();
+      await departments.deactivate(audit.id);
+      const created = await employees.create(JOINER);
+
+      await expect(employees.update(created.id, { departmentId: audit.id })).rejects.toBeInstanceOf(
+        DepartmentDeactivated,
+      );
+
+      expect((await employees.byId(created.id)).departmentId).toBe(operations.id);
+    });
+
+    it('still takes a leaver, so history can be imported', async () => {
+      // Somebody who left in 2024, in a team that was wound up in 2025. Refusing
+      // this would make the history unimportable, and a leaver raises nothing
+      // that has to appear under a team heading.
+      const audit = await emptyDepartment();
+      await departments.deactivate(audit.id);
+
+      const imported = await employees.create({
+        ...JOINER,
+        departmentId: audit.id,
+        employmentStatus: 'TERMINATED',
+        startDate: '2024-01-08',
+        exitDate: '2025-06-30',
+      });
+
+      expect(imported.departmentId).toBe(audit.id);
+    });
+
+    it('refuses to take that leaver back if they are reinstated', async () => {
+      /* The one path into an employed person sitting in a closed team, and the
+         only one nothing else covers: nobody edits their department when the
+         team closes, so no write-time check ever runs on their record. */
+      const audit = await emptyDepartment();
+      const created = await employees.create({ ...JOINER, departmentId: audit.id });
+      await employees.terminate(created.id, { exitDate: '2026-12-31' });
+      await departments.deactivate(audit.id);
+
+      await expect(
+        employees.update(created.id, { employmentStatus: 'ACTIVE', exitDate: null }),
+      ).rejects.toBeInstanceOf(DepartmentDeactivated);
+    });
+
+    it('lets that reinstatement through once they are given an open team', async () => {
+      // Both halves in one edit, which is what an HR officer would actually do.
+      const audit = await emptyDepartment();
+      const created = await employees.create({ ...JOINER, departmentId: audit.id });
+      await employees.terminate(created.id, { exitDate: '2026-12-31' });
+      await departments.deactivate(audit.id);
+
+      const back = await employees.update(created.id, {
+        employmentStatus: 'ACTIVE',
+        exitDate: null,
+        departmentId: operations.id,
+      });
+
+      expect(back.employmentStatus).toBe('ACTIVE');
+      expect(back.departmentId).toBe(operations.id);
     });
   });
 });
@@ -690,12 +852,13 @@ describe('a reporting line never loops, FR 03', () => {
         admin.query(
           `INSERT INTO employee (
              id, employee_number, first_name, last_name, work_email,
-             work_pattern_id, start_date, manager_id
+             department_id, work_pattern_id, start_date, manager_id
            ) VALUES
              (900001, 'RH-0900', 'Loop', 'One', 'loop.one@rematholdings.com',
-              (SELECT id FROM work_pattern WHERE is_default), DATE '2026-09-01', 900002),
+              $1, (SELECT id FROM work_pattern WHERE is_default), DATE '2026-09-01', 900002),
              (900002, 'RH-0901', 'Loop', 'Two', 'loop.two@rematholdings.com',
-              (SELECT id FROM work_pattern WHERE is_default), DATE '2026-09-01', 900001)`,
+              $1, (SELECT id FROM work_pattern WHERE is_default), DATE '2026-09-01', 900001)`,
+          [operations.id],
         ),
       ).rejects.toMatchObject({ constraint: 'employee_no_manager_cycle' });
     });
