@@ -275,6 +275,31 @@ table that first needed it. A new table with an `updated_at` column attaches a
 There is more than one writer — the application, the seed, and a migration
 correcting data — and only one of them would have remembered to set the column.
 
+**Employees are deactivated, never deleted.** Somebody who leaves is
+`employment_status = 'TERMINATED'` with an `exit_date`, set through
+`EmployeeService.terminate()`. The row stays, keeping the id that all of their
+leave history points at, because a dispute about a balance settled two years ago
+is answered by rows that reference them. FR 06.
+
+Three things enforce that, and it is worth knowing which covers what:
+
+| | Covers | Does not cover |
+|---|---|---|
+| `lms_app` holds no `DELETE` on `employee` | the running application | anything on the owner connection |
+| the `employee_never_deleted` trigger | every connection, owner included | `TRUNCATE`, which the seed needs and which `lms_app` was never granted |
+| `server/tests/unit/employee-never-deleted.test.ts` | the delete being *written* — a repository call, raw SQL, a `DELETE /employees/:id` route | anything that reaches the database by a route it does not recognise |
+
+The trigger calls `refuse_delete()`, which like `set_updated_at()` is named for
+the job rather than the table and reads `TG_TABLE_NAME` for its message. The
+Phase 2 ledger and audit tables are append only for the same reason and should
+attach to it rather than each declaring their own `RAISE`. It raises
+`restrict_violation` (SQLSTATE `23001`), so a caller can tell a refused delete
+from a genuine fault without reading the message text.
+
+If a hard delete is ever genuinely needed, drop the trigger in a migration,
+delete the row, and restore the trigger in the same migration. That makes it a
+deliberate act with a written reason, which is the entire point.
+
 ---
 
 ## Database migrations

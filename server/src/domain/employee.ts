@@ -13,11 +13,10 @@
  * impossible, including when something other than this code is writing; the
  * functions here are what make the refusal say which field was wrong and why.
  *
- * Two things about the record belong to other stories and are deliberately
- * absent. The line manager is FR 02 and LMS 103, and deactivation is FR 06 and
- * LMS 102: this module will record a status of TERMINATED with an exit date, but
- * the rules about who may end an employment and what else happens when they do
- * are not here.
+ * The line manager is FR 02 and belongs to LMS 103, so it is deliberately absent
+ * here. Deactivation, FR 06, is not: {@link planTermination} is that rule, added
+ * by LMS 102. What is still absent from it is who may end an employment, which
+ * is authorisation and belongs to LMS 112.
  */
 
 import { assertCompanyEmail } from '../auth/company-email.js';
@@ -74,6 +73,18 @@ export type EmployeeChanges = Partial<Omit<NewEmployee, 'workPatternId'>> & {
   workPatternId?: string | null;
 };
 
+/**
+ * What ending an employment needs to know. FR 06.
+ *
+ * One field, and it is still an object rather than a bare string, because the
+ * reason for terminating and who authorised it are both coming — the first with
+ * the audit trail, the second with LMS 112 — and adding them to an object is a
+ * change nobody has to visit every caller for.
+ */
+export interface Termination {
+  exitDate: CalendarDate;
+}
+
 /** A record as it comes back out. */
 export interface Employee {
   id: string;
@@ -129,6 +140,24 @@ export class EmployeeNotFound extends Error {
   constructor(id: string) {
     super(`No employee with id ${id}.`);
     this.name = 'EmployeeNotFound';
+  }
+}
+
+/**
+ * Somebody already recorded as having left.
+ *
+ * Separate from {@link InvalidEmployee} because it is not a bad field, it is a
+ * request that has already happened, and the two want different answers in front
+ * of an HR officer: one is "fix this box", the other is "this is already done,
+ * and here is the date it was done with".
+ */
+export class AlreadyTerminated extends Error {
+  readonly exitDate: CalendarDate;
+
+  constructor(exitDate: CalendarDate) {
+    super(`This employee is already recorded as having left on ${exitDate}.`);
+    this.name = 'AlreadyTerminated';
+    this.exitDate = exitDate;
   }
 }
 
@@ -266,6 +295,58 @@ export function validateEmployeeChanges(
 }
 
 /**
+ * Ending an employment. FR 06, and the whole of what "deactivated" means.
+ *
+ * Returns the change to apply, which is a status and a date and nothing else.
+ * Everything that made the record what it is — the number, the work address, the
+ * start date, the department, the working pattern, the id every leave row points
+ * at — is untouched, because keeping all of it is the point. A leaver is a record
+ * with an ending, not a record with holes in it.
+ *
+ * This exists as its own operation rather than as a `update({ employmentStatus,
+ * exitDate })` for three reasons:
+ *
+ *   The two fields cannot come apart. Passing them separately is an invitation to
+ *   pass one, and a status of TERMINATED with no date is a record FR 37a cannot
+ *   settle a final figure from. Here there is no way to say the first without the
+ *   second.
+ *
+ *   Terminating twice is a mistake worth naming. Through the general update it is
+ *   a silent overwrite of the first exit date, which is how a leaver's final
+ *   figure quietly changes months after it was agreed.
+ *
+ *   It is the thing a route, a screen and an audit entry all want to name. "HR
+ *   terminated this employee" is the event; "HR changed two fields" is not.
+ *
+ * Correcting a termination is deliberately not this function. A wrong exit date,
+ * or somebody marked as leaving who did not, is
+ * {@link validateEmployeeChanges} — an ordinary edit to a record that still
+ * exists, which is exactly the point of never having deleted it.
+ */
+export function planTermination(
+  current: Employee,
+  termination: Termination,
+): Partial<ValidatedEmployee> {
+  if (current.employmentStatus === 'TERMINATED') {
+    /* The exit date is non null on a terminated record: the domain refuses one
+       without it and employee_terminated_has_exit_date refuses it at the
+       database. The fallback is for the type, not for a case that occurs. */
+    throw new AlreadyTerminated(current.exitDate ?? 'a date that was not recorded');
+  }
+
+  const exitDate = requireDate('exitDate', termination.exitDate);
+
+  const changes: Partial<ValidatedEmployee> = { employmentStatus: 'TERMINATED', exitDate };
+
+  /* The same cross field check the create and update paths run, called rather
+     than restated, so there is one description of when a pair of dates is
+     nonsense and terminating cannot drift away from it. */
+  checkDatesAgree(current.startDate, exitDate, 'TERMINATED');
+
+  return changes;
+}
+
+/**
  * The rules that involve more than one field, checked in one place so that
  * creating a record and changing one cannot drift apart.
  */
@@ -286,7 +367,14 @@ function checkDatesAgree(
   /* FR 06 keeps a leaver's record and FR 37a settles their final figure from the
      exit date, so a record marked TERMINATED without one cannot be finished. An
      exit date on an ACTIVE record is allowed and ordinary: it is somebody
-     serving notice. */
+     serving notice.
+
+     An exit date in the future on a TERMINATED record is allowed too, and that
+     is a decision rather than an omission. It is HR doing a leaver's paperwork
+     on the Friday for a Sunday exit, which is how the work actually happens.
+     Refusing it would push them to either wait or lie about the date, and a
+     wrong exit date is far more expensive here than an early one — it is the
+     date the final figure is calculated from. */
   if (employmentStatus === 'TERMINATED' && exitDate === null) {
     throw new InvalidEmployee(
       'exitDate',

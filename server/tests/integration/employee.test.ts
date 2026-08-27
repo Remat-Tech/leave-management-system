@@ -3,12 +3,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'v
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import {
+  AlreadyTerminated,
   DuplicateEmployeeNumber,
   DuplicateWorkEmail,
   EMPLOYMENT_STATUSES,
   EMPLOYMENT_TYPES,
   EmployeeNotFound,
   GENDERS,
+  InvalidEmployee,
 } from '../../src/domain/employee.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
 import { EmployeeService } from '../../src/services/employee-service.js';
@@ -302,18 +304,6 @@ describe('maintaining a record', () => {
     ).rejects.toBeInstanceOf(DuplicateEmployeeNumber);
   });
 
-  it('records a leaver as terminated with the date they left, FR 06', async () => {
-    const created = await employees.create(JOINER);
-
-    const left = await employees.update(created.id, {
-      employmentStatus: 'TERMINATED',
-      exitDate: '2026-12-31',
-    });
-
-    expect(left.employmentStatus).toBe('TERMINATED');
-    expect(left.exitDate).toBe('2026-12-31');
-  });
-
   it('says so plainly when there is no such employee', async () => {
     await expect(employees.update('999999', { jobTitle: 'Nobody' })).rejects.toBeInstanceOf(
       EmployeeNotFound,
@@ -321,31 +311,189 @@ describe('maintaining a record', () => {
   });
 });
 
-describe('a record is deactivated, never deleted', () => {
-  it('gives the application role no way to delete one, FR 06', async () => {
-    // There is no delete method on the service, but a missing method is a
-    // convention. This is the part that is not: the role the application
-    // connects as does not hold the privilege, so a DELETE reaching the
-    // database at all fails there.
-    const { rows } = await admin.query<{ del: boolean; upd: boolean; trunc: boolean }>(
-      `SELECT has_table_privilege('lms_app', 'employee', 'DELETE')   AS del,
-              has_table_privilege('lms_app', 'employee', 'UPDATE')   AS upd,
-              has_table_privilege('lms_app', 'employee', 'TRUNCATE') AS trunc`,
-    );
+describe('a record is deactivated, never deleted, FR 06', () => {
+  /** Kojo Antwi, who left in July and is still on the books. */
+  const LEAVER = 'kojo.antwi@rematholdings.com';
 
-    expect(rows[0]).toEqual({ del: false, upd: true, trunc: false });
+  async function leaverId(): Promise<string> {
+    const employee = await employees.byWorkEmail(LEAVER);
+    expect(employee).toBeDefined();
+    return employee!.id;
+  }
+
+  describe('terminating', () => {
+    it('sets the status and the exit date together', async () => {
+      const created = await employees.create(JOINER);
+
+      const left = await employees.terminate(created.id, { exitDate: '2026-12-31' });
+
+      expect(left.employmentStatus).toBe('TERMINATED');
+      expect(left.exitDate).toBe('2026-12-31');
+    });
+
+    it('changes nothing else about the record', async () => {
+      // This is the assertion the story is actually about. The row that every
+      // leave request, ledger entry and approval of theirs points at is the same
+      // row, with the same id, and everything on it that was true yesterday is
+      // still true.
+      const created = await employees.create({
+        ...JOINER,
+        gender: 'FEMALE',
+        employmentType: 'PART_TIME',
+      });
+
+      const left = await employees.terminate(created.id, { exitDate: '2026-12-31' });
+
+      expect(left).toEqual({
+        ...created,
+        employmentStatus: 'TERMINATED',
+        exitDate: '2026-12-31',
+        updatedAt: left.updatedAt,
+      });
+      expect(left.updatedAt.getTime()).toBeGreaterThan(created.updatedAt.getTime());
+    });
+
+    it('refuses to overwrite the exit date of somebody who has already left', async () => {
+      // Kojo's final figure was settled from the date on his record. Silently
+      // moving it months later is the defect this refusal exists to prevent.
+      await expect(
+        employees.terminate(await leaverId(), { exitDate: '2026-12-31' }),
+      ).rejects.toBeInstanceOf(AlreadyTerminated);
+
+      expect((await employees.byWorkEmail(LEAVER))?.exitDate).toBe('2026-07-31');
+    });
+
+    it('refuses an exit date before the day they started', async () => {
+      const created = await employees.create(JOINER);
+
+      await expect(
+        employees.terminate(created.id, { exitDate: '2026-08-01' }),
+      ).rejects.toBeInstanceOf(InvalidEmployee);
+    });
+
+    it('says so plainly when there is no such employee', async () => {
+      await expect(
+        employees.terminate('999999', { exitDate: '2026-12-31' }),
+      ).rejects.toBeInstanceOf(EmployeeNotFound);
+    });
+
+    it('can be corrected, because the record is still there to correct', async () => {
+      const created = await employees.create(JOINER);
+      await employees.terminate(created.id, { exitDate: '2026-12-31' });
+
+      const back = await employees.update(created.id, {
+        employmentStatus: 'ACTIVE',
+        exitDate: null,
+      });
+
+      expect(back.employmentStatus).toBe('ACTIVE');
+      expect(back.exitDate).toBeNull();
+      // Same person, same id. Nothing of theirs was ever orphaned.
+      expect(back.id).toBe(created.id);
+      expect(back.createdAt.getTime()).toBe(created.createdAt.getTime());
+    });
   });
 
-  it('keeps a leaver in the list, and can leave them out when asked', async () => {
-    const all = await employees.list();
-    const active = await employees.list({ activeOnly: true });
+  describe('deleting', () => {
+    it('gives the application role no way to delete one', async () => {
+      // There is no delete method on the service, but a missing method is a
+      // convention. This is the part that is not: the role the application
+      // connects as does not hold the privilege, so a DELETE reaching the
+      // database at all fails there.
+      const { rows } = await admin.query<{ del: boolean; upd: boolean; trunc: boolean }>(
+        `SELECT has_table_privilege('lms_app', 'employee', 'DELETE')   AS del,
+                has_table_privilege('lms_app', 'employee', 'UPDATE')   AS upd,
+                has_table_privilege('lms_app', 'employee', 'TRUNCATE') AS trunc`,
+      );
 
-    // Kojo Antwi left in July and is still on the books. FR 06, and FR 37a needs
-    // exactly this shape of record.
-    expect(all.map((employee) => employee.workEmail)).toContain('kojo.antwi@rematholdings.com');
-    expect(active.map((employee) => employee.workEmail)).not.toContain(
-      'kojo.antwi@rematholdings.com',
-    );
-    expect(all.length).toBe(active.length + 1);
+      expect(rows[0]).toEqual({ del: false, upd: true, trunc: false });
+    });
+
+    it('refuses a delete on the owner connection too', async () => {
+      // The privilege covers the application. This covers migrations, the seed
+      // and a person in psql, which is where the accident actually happens.
+      await expect(
+        admin.query('DELETE FROM employee WHERE work_email = $1', [LEAVER]),
+      ).rejects.toThrow(/never deleted/);
+
+      expect(await employees.byWorkEmail(LEAVER)).toBeDefined();
+    });
+
+    it('refuses a delete that would take the whole table with it', async () => {
+      // An unqualified DELETE is the shape of the four in the afternoon
+      // accident. A statement level trigger would let this through; the trigger
+      // is per row for exactly that reason.
+      await expect(admin.query('DELETE FROM employee')).rejects.toThrow(/never deleted/);
+
+      const { rows } = await admin.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM employee',
+      );
+      expect(rows[0].count).toBe(13);
+    });
+
+    it('reports the refusal as an integrity violation, not a crash', async () => {
+      // restrict_violation, so a caller can tell this apart from a genuine fault
+      // by SQLSTATE rather than by reading the message text.
+      await expect(admin.query('DELETE FROM employee')).rejects.toMatchObject({ code: '23001' });
+    });
+
+    it('still lets the seed truncate and reload the fixture organisation', async () => {
+      // A row level trigger does not fire on TRUNCATE, which is deliberate.
+      // Emptying the table on purpose is the seed's job; losing one person's
+      // history by accident is what FR 06 is about. beforeEach depends on this,
+      // so it is asserted rather than left to be discovered.
+      await expect(seed(admin)).resolves.toBeDefined();
+
+      expect(await employees.byWorkEmail(LEAVER)).toBeDefined();
+    });
+  });
+
+  describe('the history that survives', () => {
+    it('keeps a leaver in the list, and can leave them out when asked', async () => {
+      const all = await employees.list();
+      const active = await employees.list({ activeOnly: true });
+
+      // FR 06 keeps the record, and FR 37a needs exactly this shape of it.
+      expect(all.map((employee) => employee.workEmail)).toContain(LEAVER);
+      expect(active.map((employee) => employee.workEmail)).not.toContain(LEAVER);
+      expect(all.length).toBe(active.length + 1);
+    });
+
+    it('still answers every question about a leaver by either identifier', async () => {
+      // "Any dispute about it can still be settled" starts with being able to
+      // find the person. A leaver is looked up exactly as anybody else is.
+      const byEmail = await employees.byWorkEmail(LEAVER);
+      const byNumber = await employees.byNumber(byEmail!.employeeNumber);
+
+      expect(byNumber).toEqual(byEmail);
+      expect(byEmail).toMatchObject({
+        employmentStatus: 'TERMINATED',
+        exitDate: '2026-07-31',
+        firstName: 'Kojo',
+        lastName: 'Antwi',
+      });
+      // Still has the start date their entitlement was pro rated from, and the
+      // working pattern their days were counted against.
+      expect(byEmail!.startDate).toBeTruthy();
+      expect(byEmail!.workPatternId).toBeTruthy();
+    });
+
+    it('keeps their identifiers reserved, so nobody inherits their history', async () => {
+      // The other half of not deleting. Were the row gone, the next joiner could
+      // be issued RH-0007 and quietly acquire everything that pointed at it.
+      const leaver = await employees.byWorkEmail(LEAVER);
+
+      await expect(
+        employees.create({
+          ...JOINER,
+          employeeNumber: leaver!.employeeNumber,
+          workEmail: 'someone.else@rematholdings.com',
+        }),
+      ).rejects.toBeInstanceOf(DuplicateEmployeeNumber);
+
+      await expect(
+        employees.create({ ...JOINER, employeeNumber: 'RH-0300', workEmail: LEAVER }),
+      ).rejects.toBeInstanceOf(DuplicateWorkEmail);
+    });
   });
 });
