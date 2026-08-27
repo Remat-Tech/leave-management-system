@@ -113,7 +113,7 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 | `DATABASE_MIGRATION_URL` | Connection for migrations only, as the owner role. Never used by the application |
 | `TEST_DATABASE_URL` | Where integration tests build their disposable database. Point it at local Postgres 17; falls back to `DATABASE_MIGRATION_URL` |
 | `PORT` | API port, defaults to 3000 |
-| `SESSION_SECRET` | Signing key for sessions |
+| `SESSION_SECRET` | Signing key for sessions. Nothing reads it yet; sessions arrive with the request layer, LMS 112 |
 | `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01. Settled at `rematholdings.com` |
 | `SMTP_*` | Mail settings. Points at Mailpit in development |
 | `STORAGE_*` | Object storage for attachments. Local directory in development |
@@ -142,6 +142,62 @@ let everybody in.
 The check lives in `server/src/auth/company-email.ts`. Use it at provisioning
 and at login both; NFR SEC 01 asks for both, and only one of them is the door an
 attacker knocks on.
+
+### Signing in
+
+`SignInService` is the login door. NFR SEC 01, LMS 109.
+
+```ts
+const logins = new SignInService(new SignInAccountRepository(db), new EmployeeRepository(db));
+
+await logins.provision(employeeId, { password }); // HR gives somebody a login
+await logins.setPassword(employeeId, password);   // and sets or resets it
+const { employee, account } = await logins.signIn(email, password);
+```
+
+**A login is the employee's work address.** Not a copy of it — the address is
+never a parameter, `provision` reads it off the employee record, and the
+`sign-in-account-rules` migration carries a corrected work address across to the
+login and refuses any other value in the column. Correct somebody's address
+through `EmployeeService` and their login moves with it. That is the whole of
+"access is tied to the company account".
+
+**Access ends because the employee record says so, not because anything was
+revoked.** `signIn` reads the employee at the moment somebody knocks, so
+`TERMINATED` closes the door by itself and terminating writes nothing to
+`app_user`. A copy of the status on the account would be a second source of truth
+wrong in the worst direction: the termination recorded by a path that forgot to
+revoke the login leaves the leaver's access open, and nobody finds out until it
+is used. `is_active` on the account is a separate, administrative lock — a shared
+password, a lost laptop — and is `close()` and `reopen()`.
+
+**Refusals are vague by default and specific once a password is proved.** No
+login, no password set and a wrong password all give one identical message,
+because three different messages turn the sign in box into a way of finding out
+who works here. A leaver, a suspension and a closed account are only reachable
+*after* a correct password, so those say plainly what happened: the person has
+proved who they are and there is nobody left to keep it from. The real reason is
+on `SignInRefused.reason`, for the log. **Nothing that reaches a screen may read
+it and turn it back into a message.**
+
+**Passwords are scrypt, from `node:crypto`, with the cost recorded in the hash.**
+`server/src/auth/password.ts`, no dependency, per password salt, timing safe
+comparison. Storing the parameters is what makes raising them possible later:
+existing hashes keep verifying and each is quietly rewritten at the owner's next
+sign in, which is the only moment the plain password is legitimately in hand.
+Minimum length is twelve and there are no composition rules — length is the
+property that costs an attacker something, and `Password1!` is what asking for a
+capital and a symbol produces.
+
+What is not built, and is not hidden anywhere else either: no session or cookie
+(LMS 112), no second factor (LMS 110), no roles (LMS 111), **no rate limit or
+lockout**, and no self service password change or reset. The first belongs in
+front of the route with the others; the last needs an email identity flow this
+system does not have yet.
+
+`npm run seed` gives everybody a login and nobody a password, which is the honest
+state of a freshly provisioned account. Set one with `setPassword` when you need
+to sign in as somebody.
 
 ---
 

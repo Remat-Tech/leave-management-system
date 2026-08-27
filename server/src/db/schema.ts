@@ -103,7 +103,41 @@ export interface WorkPatternDayTable {
   is_working_day: Generated<boolean>;
 }
 
+/**
+ * The sign in account. NFR SEC 01, LMS 109.
+ *
+ * One row per employee who may sign in, and the address on it is that employee's
+ * work_email — not a copy that was right when it was written, but a value the
+ * sign-in-account-rules migration keeps in step and refuses to let drift. Nothing
+ * above the repository chooses it.
+ */
+export interface AppUserTable {
+  id: Generated<string>;
+  /* UNIQUE. One person, one login. */
+  employee_id: string;
+  company_email: string;
+  /* NULL until somebody sets one, which is the state a login is provisioned in
+     and the state every seeded login is in. Refused at the door, and told apart
+     from a wrong password only in the log. */
+  password_hash: string | null;
+  /* LMS 110. Written by nothing yet. */
+  mfa_enabled: Generated<boolean>;
+  mfa_code_hash: string | null;
+  mfa_code_expires_at: Date | null;
+  /* An administrative lock, separate from employment. A leaver is refused by
+     their employee record's status, which cannot drift; this is for an account
+     that has to be closed for a reason of its own. */
+  is_active: Generated<boolean>;
+  last_login_at: Date | null;
+  created_at: Timestamp;
+  /* Maintained by the app_user_set_updated_at trigger, which attaches to the same
+     set_updated_at() the employee, department and work_pattern tables use. Never
+     supplied by a writer. */
+  updated_at: Timestamp;
+}
+
 export interface Database {
+  app_user: AppUserTable;
   department: DepartmentTable;
   employee: EmployeeTable;
   work_pattern: WorkPatternTable;

@@ -39,11 +39,16 @@
  *   LMS 112, from this layer, when it exists. Nothing here decides who may call
  *   it, and nothing here should start to.
  *
- *   No sign in. Terminating does not touch the leaver's app_user row, because
- *   nothing reads app_user.is_active yet — there is no login, no session and no
- *   auth middleware in the tree. Revoking a leaver's access is the login story's
- *   to write, next to the code that would honour it; doing it here would be half
- *   a rule with no reader. It needs doing, and it is not done.
+ *   No sign in. Terminating still does not touch the leaver's app_user row, and
+ *   since LMS 109 that is the decision rather than the gap it used to be.
+ *   {@link SignInService.signIn} reads the employee record at the moment somebody
+ *   knocks, so a TERMINATED status closes the door by itself. Writing a copy of
+ *   it onto the account would be a second source of truth that is wrong in the
+ *   worst direction: the termination recorded by some path that forgot to revoke
+ *   the login leaves the leaver's access open, and nobody finds out until it is
+ *   used. What changing a work address here *does* do is move the login with it,
+ *   carried by a trigger rather than by this service — see the
+ *   sign-in-account-rules migration.
  */
 
 import { allowedDomains } from '../auth/company-email.js';
