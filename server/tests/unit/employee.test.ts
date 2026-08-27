@@ -35,8 +35,10 @@ const JOINER: NewEmployee = {
   lastName: 'Nyarko',
   workEmail: 'esi.nyarko@rematholdings.com',
   jobTitle: 'Operations Officer',
-  // Whether id 7 is anybody, and whether they have left, are questions for the
-  // service. Here it is a reference and nothing more.
+  // Whether id 7 is anybody, whether they have left, and whether department 5
+  // is a department still open are all questions for the service. Here they are
+  // references and nothing more.
+  departmentId: '5',
   managerId: '7',
   startDate: '2026-09-01',
 };
@@ -49,7 +51,7 @@ const STORED: Employee = {
   lastName: 'Nyarko',
   workEmail: 'esi.nyarko@rematholdings.com',
   jobTitle: 'Operations Officer',
-  departmentId: null,
+  departmentId: '5',
   managerId: null,
   workPatternId: '1',
   startDate: '2026-09-01',
@@ -272,6 +274,70 @@ describe('the dates', () => {
 
     expect(record.employmentStatus).toBe('ACTIVE');
     expect(record.exitDate).toBe('2026-12-31');
+  });
+});
+
+describe('the department, LMS 105', () => {
+  /**
+   * Only the half that needs nothing but the record in hand. Whether the id is a
+   * department, and whether it is one still open, are questions about another
+   * table and belong to the service.
+   */
+
+  it('keeps the team it was given', () => {
+    expect(validateNewEmployee(JOINER, DOMAINS).departmentId).toBe('5');
+  });
+
+  it('refuses a record that does not say which team', () => {
+    // The type already forbids this. The check is for the callers TypeScript
+    // does not see: a JSON body, a bulk import, anything at the end of a wire.
+    const unsaid: Partial<NewEmployee> = { ...JOINER };
+    delete unsaid.departmentId;
+
+    const error = refusal(() => validateNewEmployee(unsaid as NewEmployee, DOMAINS));
+
+    expect(error.field).toBe('departmentId');
+    expect(error.message).toMatch(/reported and planned by team/);
+  });
+
+  it('has no null to mean anybody is outside the teams', () => {
+    /* Unlike the line manager, where null is the head of the organisation and is
+       a real thing to say. Nobody is outside the departments, including them, so
+       there is no meaning to give null and it is refused with everything else
+       that is not an id. */
+    const error = refusal(() =>
+      validateNewEmployee({ ...JOINER, departmentId: null as unknown as string }, DOMAINS),
+    );
+
+    expect(error.field).toBe('departmentId');
+  });
+
+  it('refuses an empty string rather than reading it as no team', () => {
+    expect(
+      refusal(() => validateNewEmployee({ ...JOINER, departmentId: ' ' }, DOMAINS)).field,
+    ).toBe('departmentId');
+  });
+
+  it('moves somebody between teams as an ordinary edit', () => {
+    expect(validateEmployeeChanges({ departmentId: '9' }, STORED, DOMAINS)).toEqual({
+      departmentId: '9',
+    });
+  });
+
+  it('leaves the team alone when the change does not mention it', () => {
+    expect(validateEmployeeChanges({ jobTitle: 'Operations Manager' }, STORED, DOMAINS)).toEqual({
+      jobTitle: 'Operations Manager',
+    });
+  });
+
+  it('refuses taking somebody out of a team rather than moving them', () => {
+    // The column is NOT NULL because everybody is in some team. Clearing it is a
+    // caller error, not an instruction, exactly as it is for the work pattern.
+    const error = refusal(() =>
+      validateEmployeeChanges({ departmentId: null as unknown as string }, STORED, DOMAINS),
+    );
+
+    expect(error.field).toBe('departmentId');
   });
 });
 

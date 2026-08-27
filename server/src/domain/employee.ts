@@ -64,7 +64,16 @@ export interface NewEmployee {
   lastName: string;
   workEmail: string;
   jobTitle?: string | null;
-  departmentId?: string | null;
+  /**
+   * Which team they are in. LMS 105.
+   *
+   * Required, and required in the type, for the reason the column is NOT NULL:
+   * leave is reported and planned by team, and somebody in no team appears in no
+   * team's figures. There is no `null` here and no exception for anybody — unlike
+   * {@link NewEmployee.managerId}, where the head of the organisation genuinely
+   * has nobody above them, everybody is in some team including them.
+   */
+  departmentId: string;
   /**
    * Who this person reports to. FR 02.
    *
@@ -110,7 +119,7 @@ export interface Employee {
   lastName: string;
   workEmail: string;
   jobTitle: string | null;
-  departmentId: string | null;
+  departmentId: string;
   managerId: string | null;
   workPatternId: string;
   startDate: CalendarDate;
@@ -331,7 +340,7 @@ export interface ValidatedEmployee {
   lastName: string;
   workEmail: string;
   jobTitle: string | null;
-  departmentId: string | null;
+  departmentId: string;
   managerId: string | null;
   workPatternId: string | null;
   startDate: CalendarDate;
@@ -362,7 +371,7 @@ export function validateNewEmployee(input: NewEmployee, domains: string[]): Vali
     lastName: requireText('lastName', input.lastName, 80),
     workEmail: normaliseWorkEmail(input.workEmail, domains),
     jobTitle: optionalText('jobTitle', input.jobTitle, 120),
-    departmentId: input.departmentId ?? null,
+    departmentId: requireDepartmentReference(input.departmentId),
     managerId: requireManagerReference(input.managerId),
     workPatternId: input.workPatternId ?? null,
     startDate: requireDate('startDate', input.startDate),
@@ -411,7 +420,10 @@ export function validateEmployeeChanges(
     validated.jobTitle = optionalText('jobTitle', changes.jobTitle, 120);
   }
   if ('departmentId' in changes) {
-    validated.departmentId = changes.departmentId ?? null;
+    /* Moving somebody between teams, which is an ordinary edit. There is no
+       clearing it: the column is NOT NULL and everybody is in some team, so a
+       null here is a caller error rather than an instruction. */
+    validated.departmentId = requireDepartmentReference(changes.departmentId);
   }
   if ('managerId' in changes) {
     const managerId = requireManagerReference(changes.managerId);
@@ -670,6 +682,29 @@ function normaliseWorkEmail(value: string | undefined, domains: string[]): strin
   const email = requireText('workEmail', value, 160).toLowerCase();
   assertCompanyEmail(email, domains);
   return email;
+}
+
+/**
+ * The team they are in. LMS 105.
+ *
+ * Simpler than the line manager reference below, because there is no exception
+ * to make room for. Nobody is outside the organisation chart the way the head of
+ * it is outside the reporting lines, so there is no meaning to give `null` and it
+ * is refused along with everything else that is not an id.
+ *
+ * Whether that id is a department, and whether it is one still open, are
+ * questions about another table and belong to the service.
+ */
+function requireDepartmentReference(value: string | null | undefined): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new InvalidEmployee(
+      'departmentId',
+      'Every employee belongs to a department, so that their leave can be reported ' +
+        'and planned by team. Choose the team they are in.',
+    );
+  }
+
+  return value.trim();
 }
 
 /**

@@ -1,6 +1,7 @@
 /**
- * Creating, maintaining and deactivating employee records, and recording who
- * each of them reports to. FR 01 to FR 06. LMS 101 to LMS 104.
+ * Creating, maintaining and deactivating employee records, recording who each of
+ * them reports to and which team they are in. FR 01 to FR 06. LMS 101 to
+ * LMS 105.
  *
  * The business rules for an employee record, in the layer that owns them. A
  * route will sit in front of this when Phase 1 has an authorisation layer to put
@@ -15,6 +16,11 @@
  *   trigger refuses the statement even on the owner connection. An employee who
  *   leaves is {@link terminate}: a status of TERMINATED and an exit date, so
  *   that their leave history survives them. FR 06.
+ *
+ *   No departments. Creating, renaming and closing them is
+ *   {@link DepartmentService}. What is here is the employee's end of it: which
+ *   team they are in, and the two checks that keep an employed person out of a
+ *   closed one. Moving somebody between teams is an ordinary {@link update}.
  *
  *   No re-parenting when a manager leaves. {@link terminate} does not move the
  *   leaver's reports onto somebody else, because who they should go to is a
@@ -35,6 +41,7 @@
  */
 
 import { allowedDomains } from '../auth/company-email.js';
+import { assertCanTakeEmployees, DepartmentNotFound } from '../domain/department.js';
 import {
   assertNoManagerCycle,
   EmployeeNotFound,
@@ -52,6 +59,7 @@ import {
   validateNewEmployee,
   warnAboutReportingLines,
 } from '../domain/employee.js';
+import type { DepartmentRepository } from '../repositories/department-repository.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
 
 export interface EmployeeServiceOptions {
@@ -68,6 +76,11 @@ export class EmployeeService {
 
   constructor(
     private readonly employees: EmployeeRepository,
+    /* A second repository rather than the DepartmentService, because what is
+       needed here is one record read, not the department rules. Bringing the
+       service would put "may this department be closed" behind the employee
+       surface, which is not this layer's question. */
+    private readonly departments: DepartmentRepository,
     options: EmployeeServiceOptions = {},
   ) {
     // Resolved once, at construction. allowedDomains() throws on an empty list,
@@ -90,6 +103,12 @@ export class EmployeeService {
    */
   async create(input: NewEmployee): Promise<Employee> {
     const record = validateNewEmployee(input, this.domains);
+
+    /* A leaver being loaded from an old system may belong to a team that has
+       since closed, and refusing that would make the history unimportable. Only
+       somebody who is actually going to work here has to go into a team that is
+       still open. */
+    await this.checkDepartment(record.departmentId, record.employmentStatus !== 'TERMINATED');
 
     // No record of its own yet, and both of the rules that compare one against
     // the rest of the tree fall away with it: a row that does not exist cannot
@@ -164,6 +183,21 @@ export class EmployeeService {
 
     const changes = decide(current);
 
+    /* Whether the record will still be somebody who works here once this change
+       lands, which is what both department rules turn on. */
+    const employed = (changes.employmentStatus ?? current.employmentStatus) !== 'TERMINATED';
+
+    if ('departmentId' in changes) {
+      await this.checkDepartment(changes.departmentId!, employed);
+    } else if (employed && current.employmentStatus === 'TERMINATED') {
+      /* Coming back from terminated, which is how a mistaken termination is
+         corrected. Nobody edited their department while they were gone, so
+         nothing checked it, and it may have been closed in the meantime — which
+         would put an employed person in a team no report offers. This is the one
+         path into that state, so it is the one place to close it. */
+      await this.checkDepartment(current.departmentId, true);
+    }
+
     /* The reporting line is the one field whose rules cannot be settled from
        this record alone: whether a manager exists, whether they are still here,
        and whether anybody else already has none are all questions about other
@@ -184,6 +218,39 @@ export class EmployeeService {
     }
 
     return updated;
+  }
+
+  /**
+   * The rules about a department that need the department itself to answer.
+   * LMS 105.
+   *
+   * The domain has already decided that a team was named at all. What is left
+   * needs the other table:
+   *
+   *   A department that is somebody. An invented id is an employee filed under a
+   *   heading that does not exist, and the foreign key would refuse it with a
+   *   message about `employee_department_id_fkey`.
+   *
+   *   One that is still open, but only for somebody who still works here.
+   *   `employed` is what carries that distinction: a leaver may sit in a team
+   *   that has since closed, which is how history imports and how a leaver's
+   *   record stays untouched when their old team is wound up, but nobody who is
+   *   going to raise a request may.
+   *
+   * Together with the headcount rule that {@link DepartmentService.deactivate}
+   * applies, these leave no way to reach an employed person in a closed team:
+   * one end refuses moving somebody in, the other refuses closing it under them,
+   * and the reinstatement path above covers the gap between the two.
+   */
+  private async checkDepartment(departmentId: string, employed: boolean): Promise<void> {
+    const department = await this.departments.findById(departmentId);
+
+    if (department === undefined) {
+      throw new DepartmentNotFound(departmentId);
+    }
+    if (employed) {
+      assertCanTakeEmployees(department);
+    }
   }
 
   /**

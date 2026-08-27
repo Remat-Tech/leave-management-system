@@ -378,6 +378,61 @@ One thing is deliberately absent: **re-parenting when a manager leaves**.
 should go to is a decision rather than a rule, and guessing it in the termination
 path is how a whole team silently ends up reporting to the CEO.
 
+**Every employee is in exactly one department, and a department is closed rather
+than deleted.** `employee.department_id` is `NOT NULL`, and `departmentId` is
+required on `NewEmployee` in the type rather than only at runtime. There is no
+`null` and no exception for anybody — unlike the line manager, where the head of
+the organisation genuinely has nobody above them, everybody is in some team
+including them. The reason is the story's own: leave is reported and planned by
+team, and somebody in no team appears in no team's figures. They are not visibly
+missing either, which is the worse half — a headcount by department that quietly
+adds up to less than the company.
+
+Which team somebody is in and who they report to are separate facts. Moving
+between teams is an ordinary `EmployeeService.update({ departmentId })` and does
+not touch the reporting line; the two are edited independently and neither
+implies the other.
+
+A department has one ending, `DepartmentService.deactivate()`, and two rules keep
+an employed person out of a closed team from both directions:
+
+| | Refuses |
+|---|---|
+| `assertCanTakeEmployees()`, on create and on transfer | moving somebody into a closed department |
+| `assertCanDeactivate()`, with the headcount | closing a department somebody is still employed in, and says how many to move |
+
+That pair is not belt and braces. `employee.department_id` is `NOT NULL`, so
+closing a team cannot move the people out of it — they would go on being counted
+under a heading no report offers as a choice. Between them the two leave one gap,
+which the service closes explicitly: reinstating a leaver whose team was wound up
+while they were gone re-checks the department, because nobody edited their record
+when it closed and so no write-time check ever ran on it.
+
+**A leaver is not counted, and may sit in a closed team.** They stay in the
+department they left from — FR 06 keeps every other field of their record too —
+and they are no bar to closing it, because they are not going to raise a request
+that has to appear under a team heading. The same latitude is what makes history
+importable: a leaver may be *created* into a closed department, which a stricter
+rule would make impossible.
+
+**`lms_app` lost its `DELETE` on `department`.** The organisation migration
+granted it before anything used the table and never argued for it; the
+department-rules migration takes it back, because leaving a live delete path
+beside `deactivate()` would give the application two endings, one of them
+undocumented. This is deliberately a shade weaker than `employee`, which refuses
+the owner connection too — there the foreign key protects everything that
+matters, since a department anybody is in cannot be deleted by anyone at all, and
+what stays deletable is a department nobody has ever been in. That is the typo
+created on a Tuesday afternoon, and being able to remove it is worth more than
+the symmetry.
+
+**`department.parent_id` exists and nothing writes it.** A hierarchy does not
+exist rather than half existing. A story that exposes sub-departments needs what
+FR 03 and FR 04 gave reporting lines — a cycle check and a root count — because a
+self-referencing parent has exactly the same two failure modes; the
+department-rules migration says so, and `refuse_manager_cycle()` reads as a
+worked example even though it names `employee` and cannot be reused as it stands.
+
 ---
 
 ## Database migrations
