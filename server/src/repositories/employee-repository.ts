@@ -23,6 +23,8 @@ import {
   type EmploymentStatus,
   type EmploymentType,
   type Gender,
+  type ReportingLines,
+  SecondRootEmployee,
   type ValidatedEmployee,
 } from '../domain/employee.js';
 
@@ -32,6 +34,9 @@ const UNIQUE_VIOLATION = '23505';
 /** The indexes created by the employee-record-rules migration. */
 const NUMBER_INDEX = 'employee_number_unique';
 const EMAIL_INDEX = 'employee_work_email_unique';
+
+/** The index created by the line-manager-rules migration. FR 04. */
+const ROOT_INDEX = 'employee_one_root';
 
 /** A row as it comes back from a SELECT, with the Generated wrappers resolved. */
 type EmployeeRow = Selectable<EmployeeTable>;
@@ -46,7 +51,7 @@ export class EmployeeRepository {
        enough of it to be able to create an employee at all. */
     const workPatternId = record.workPatternId ?? (await this.defaultWorkPatternId());
 
-    const row = await this.catchDuplicates(record, () =>
+    const row = await this.catchCollisions(record, () =>
       this.db
         .insertInto('employee')
         .values({
@@ -56,6 +61,7 @@ export class EmployeeRepository {
           work_email: record.workEmail,
           job_title: record.jobTitle,
           department_id: record.departmentId,
+          manager_id: record.managerId,
           work_pattern_id: workPatternId,
           start_date: record.startDate,
           exit_date: record.exitDate,
@@ -87,7 +93,7 @@ export class EmployeeRepository {
       return this.findById(id);
     }
 
-    const row = await this.catchDuplicates(changes, () =>
+    const row = await this.catchCollisions(changes, () =>
       this.db
         .updateTable('employee')
         .set(values)
@@ -155,6 +161,86 @@ export class EmployeeRepository {
     return rows.map(toEmployee);
   }
 
+  /**
+   * The employee with no line manager, if there is one. FR 04.
+   *
+   * Singular because the employee_one_root index makes it so. It is still
+   * written as "the first of them, ordered", rather than assuming: an ordered
+   * read of a table that momentarily holds two is at least deterministic, which
+   * an unordered one is not.
+   */
+  async findRoot(): Promise<Employee | undefined> {
+    const row = await this.db
+      .selectFrom('employee')
+      .selectAll()
+      .where('manager_id', 'is', null)
+      .orderBy('employee_number')
+      .executeTakeFirst();
+
+    return row === undefined ? undefined : toEmployee(row);
+  }
+
+  /**
+   * The facts the standing reporting line check is judged from. FR 02 and FR 04.
+   *
+   * Facts only. What counts as a warning is
+   * {@link warnAboutReportingLines} in the domain, so that the judging can be
+   * read and tested without a database.
+   *
+   * A leaver reporting to a leaver is left out deliberately. The warning is
+   * about requests having nowhere to go, and somebody who has left is not going
+   * to raise one.
+   */
+  async reportingLines(): Promise<ReportingLines> {
+    const [totals, rootless, reports] = await Promise.all([
+      this.db
+        .selectFrom('employee')
+        .select((eb) => eb.fn.countAll<string>().as('total'))
+        .executeTakeFirstOrThrow(),
+
+      this.db
+        .selectFrom('employee')
+        .selectAll()
+        .where('manager_id', 'is', null)
+        .orderBy('employee_number')
+        .execute(),
+
+      this.db
+        .selectFrom('employee as e')
+        .innerJoin('employee as m', 'm.id', 'e.manager_id')
+        .where('m.employment_status', '=', 'TERMINATED')
+        .where('e.employment_status', '<>', 'TERMINATED')
+        .selectAll('e')
+        .orderBy('e.employee_number')
+        .execute(),
+    ]);
+
+    /* The managers themselves, in one further statement rather than as a dozen
+       aliased columns on the join above. The join has already established that
+       every one of these ids is somebody. */
+    const managerIds = [
+      ...new Set(reports.map((row) => row.manager_id).filter((id) => id !== null)),
+    ];
+
+    const managers =
+      managerIds.length === 0
+        ? []
+        : await this.db.selectFrom('employee').selectAll().where('id', 'in', managerIds).execute();
+
+    const byId = new Map(managers.map((row) => [row.id, toEmployee(row)]));
+
+    return {
+      // count() comes back as a string, because a count can exceed 2^53 in
+      // principle. It cannot here, and a length is a number.
+      total: Number(totals.total),
+      rootless: rootless.map(toEmployee),
+      reportingToLeavers: reports.flatMap((row) => {
+        const manager = row.manager_id === null ? undefined : byId.get(row.manager_id);
+        return manager === undefined ? [] : [{ employee: toEmployee(row), manager }];
+      }),
+    };
+  }
+
   private async defaultWorkPatternId(): Promise<string> {
     const pattern = await this.db
       .selectFrom('work_pattern')
@@ -174,15 +260,14 @@ export class EmployeeRepository {
   }
 
   /**
-   * Runs a write and turns a unique violation into the domain error for whichever
-   * identifier collided.
+   * Runs a write and turns a unique violation into the domain error for whatever
+   * collided.
    *
    * The index name is read from the driver's error rather than guessed from the
-   * message text, so the two identifiers are told apart reliably and a violation
-   * of some future constraint is re-thrown rather than reported as a duplicate
-   * email.
+   * message text, so the cases are told apart reliably and a violation of some
+   * future constraint is re-thrown rather than reported as a duplicate email.
    */
-  private async catchDuplicates<T>(
+  private async catchCollisions<T>(
     attempted: { employeeNumber?: string; workEmail?: string },
     write: () => Promise<T>,
   ): Promise<T> {
@@ -196,6 +281,16 @@ export class EmployeeRepository {
       }
       if (constraint === EMAIL_INDEX) {
         throw new DuplicateWorkEmail(attempted.workEmail ?? '');
+      }
+      if (constraint === ROOT_INDEX) {
+        /* The service asks before writing, so getting here means two HR officers
+           were making a head of the organisation at the same moment and this one
+           lost. That is the same race as the two identifiers, answered the same
+           way: the index decides, which is what makes the service's earlier check
+           safe rather than wishful. Who won is read back so the message can name
+           them, which is the answer that check would have given a moment
+           earlier. */
+        throw new SecondRootEmployee(await this.findRoot());
       }
 
       throw error;
@@ -223,6 +318,7 @@ function toColumns(changes: Partial<ValidatedEmployee>) {
   if ('workEmail' in changes) values.work_email = changes.workEmail;
   if ('jobTitle' in changes) values.job_title = changes.jobTitle;
   if ('departmentId' in changes) values.department_id = changes.departmentId;
+  if ('managerId' in changes) values.manager_id = changes.managerId;
   if ('workPatternId' in changes) values.work_pattern_id = changes.workPatternId;
   if ('startDate' in changes) values.start_date = changes.startDate;
   if ('exitDate' in changes) values.exit_date = changes.exitDate;

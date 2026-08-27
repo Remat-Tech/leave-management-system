@@ -8,13 +8,15 @@ import {
   type Employee,
   type NewEmployee,
   planTermination,
+  type ReportingLines,
   validateEmployeeChanges,
   validateNewEmployee,
+  warnAboutReportingLines,
 } from '../../src/domain/employee.js';
 
 /**
- * The rules for an employee record, FR 01, FR 05 and FR 06, checked without a
- * database.
+ * The rules for an employee record, FR 01, FR 02, FR 04, FR 05 and FR 06,
+ * checked without a database.
  *
  * The database holds the same rules as constraints and refuses the same records;
  * that is asserted in the integration suite. What is asserted here is that the
@@ -31,6 +33,9 @@ const JOINER: NewEmployee = {
   lastName: 'Nyarko',
   workEmail: 'esi.nyarko@rematholdings.com',
   jobTitle: 'Operations Officer',
+  // Whether id 7 is anybody, and whether they have left, are questions for the
+  // service. Here it is a reference and nothing more.
+  managerId: '7',
   startDate: '2026-09-01',
 };
 
@@ -265,6 +270,160 @@ describe('the dates', () => {
 
     expect(record.employmentStatus).toBe('ACTIVE');
     expect(record.exitDate).toBe('2026-12-31');
+  });
+});
+
+describe('the line manager, FR 02 and FR 04', () => {
+  /**
+   * Only the half of the rule that needs nothing but the record in hand. Whether
+   * the id is anybody, whether they have left, and whether somebody else is
+   * already the head of the organisation are all questions about other rows, so
+   * they belong to the service and are asserted in the integration suite.
+   */
+
+  it('keeps the line it was given', () => {
+    expect(validateNewEmployee(JOINER, DOMAINS).managerId).toBe('7');
+  });
+
+  it('refuses a record that does not say who it reports to', () => {
+    // The type already forbids this. The check is for the callers TypeScript
+    // does not see: a JSON body, the seed, anything at the end of a wire.
+    const unsaid: Partial<NewEmployee> = { ...JOINER };
+    delete unsaid.managerId;
+
+    const error = refusal(() => validateNewEmployee(unsaid as NewEmployee, DOMAINS));
+
+    expect(error.field).toBe('managerId');
+    expect(error.message).toMatch(/head of the organisation/);
+  });
+
+  it('accepts null, which is the head of the organisation saying so', () => {
+    // Deliberate, and different from having forgotten. How many records may say
+    // it is FR 04 and is the service's question, not this one's.
+    expect(validateNewEmployee({ ...JOINER, managerId: null }, DOMAINS).managerId).toBeNull();
+  });
+
+  it('refuses an empty string rather than reading it as nobody', () => {
+    // An empty select box is a form that has not been filled in. Inferring "no
+    // manager" from it is how a routing black hole gets created by a stray
+    // click, so it is refused and the route layer maps its own blanks knowingly.
+    const error = refusal(() => validateNewEmployee({ ...JOINER, managerId: '  ' }, DOMAINS));
+
+    expect(error.field).toBe('managerId');
+  });
+
+  it('tells leaving a line alone apart from cutting it', () => {
+    // The same distinction the rest of the record keeps, and it matters more
+    // here than anywhere: omitted is "do not touch the manager", null is "this
+    // person now reports to nobody".
+    expect(validateEmployeeChanges({}, STORED, DOMAINS)).toEqual({});
+    expect(validateEmployeeChanges({ managerId: null }, STORED, DOMAINS)).toEqual({
+      managerId: null,
+    });
+  });
+
+  it('moves a reporting line onto somebody else', () => {
+    expect(validateEmployeeChanges({ managerId: '9' }, STORED, DOMAINS)).toEqual({
+      managerId: '9',
+    });
+  });
+
+  it('refuses an employee as their own line manager', () => {
+    // employee_not_own_manager says the same at the database. It is said here so
+    // the refusal names the box rather than the constraint.
+    const error = refusal(() => validateEmployeeChanges({ managerId: STORED.id }, STORED, DOMAINS));
+
+    expect(error.field).toBe('managerId');
+    expect(error.message).toMatch(/their own line manager/);
+  });
+
+  it('lets the head of the organisation go on being it', () => {
+    // STORED already has no manager. Saying so again is not a second one.
+    expect(validateEmployeeChanges({ managerId: null }, STORED, DOMAINS).managerId).toBeNull();
+  });
+});
+
+describe('the standing check on reporting lines, FR 02 and FR 04', () => {
+  /**
+   * The other half of the warning HR gets. The refusals above fire in front of
+   * whoever is drawing a bad line; this fires for a line that was fine when it
+   * was drawn and is not any more, which nothing at write time can see.
+   */
+
+  const CEO: Employee = { ...STORED, id: '1', employeeNumber: 'RH-0001', firstName: 'Kwame' };
+  const LEAVER: Employee = {
+    ...STORED,
+    id: '2',
+    employeeNumber: 'RH-0002',
+    firstName: 'Kojo',
+    lastName: 'Antwi',
+    managerId: '1',
+    employmentStatus: 'TERMINATED',
+    exitDate: '2026-07-31',
+  };
+  const REPORT: Employee = {
+    ...STORED,
+    id: '3',
+    employeeNumber: 'RH-0003',
+    firstName: 'Adwoa',
+    managerId: '2',
+  };
+
+  const SOUND: ReportingLines = { total: 3, rootless: [CEO], reportingToLeavers: [] };
+
+  it('says nothing at all about an organisation whose lines are sound', () => {
+    // The useful shape of a passing check: an empty list, not a list of
+    // reassurances somebody has to read past to find the one that matters.
+    expect(warnAboutReportingLines(SOUND)).toEqual([]);
+  });
+
+  it('warns when a second record has no line manager, and names them both', () => {
+    const warnings = warnAboutReportingLines({ ...SOUND, rootless: [CEO, REPORT] });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe('SECOND_ROOT');
+    expect(warnings[0].employeeIds).toEqual(['1', '3']);
+    // Naming them is the point. "Somebody has no manager" is not something an
+    // HR officer can act on.
+    expect(warnings[0].message).toContain('RH-0001');
+    expect(warnings[0].message).toContain('RH-0003');
+  });
+
+  it('warns when nobody is the head of the organisation', () => {
+    const warnings = warnAboutReportingLines({ ...SOUND, rootless: [] });
+
+    expect(warnings.map((warning) => warning.code)).toEqual(['NO_ROOT']);
+    // Not "somebody forgot the CEO". With manager_id a foreign key to the same
+    // table and no NULL in it, every upward walk is infinite over a finite set.
+    expect(warnings[0].message).toMatch(/loops back on itself/);
+  });
+
+  it('says nothing about an empty table, which is not a broken organisation', () => {
+    expect(warnAboutReportingLines({ total: 0, rootless: [], reportingToLeavers: [] })).toEqual([]);
+  });
+
+  it('warns about somebody whose manager has left, and says when they left', () => {
+    const warnings = warnAboutReportingLines({
+      ...SOUND,
+      reportingToLeavers: [{ employee: REPORT, manager: LEAVER }],
+    });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe('MANAGER_HAS_LEFT');
+    expect(warnings[0].employeeIds).toEqual(['3', '2']);
+    expect(warnings[0].message).toContain('2026-07-31');
+  });
+
+  it('reports every problem it finds rather than the first one', () => {
+    // A list HR works through, not an exception that stops at the earliest
+    // failure and hides the other four.
+    const warnings = warnAboutReportingLines({
+      total: 3,
+      rootless: [CEO, REPORT],
+      reportingToLeavers: [{ employee: REPORT, manager: LEAVER }],
+    });
+
+    expect(warnings.map((warning) => warning.code)).toEqual(['SECOND_ROOT', 'MANAGER_HAS_LEFT']);
   });
 });
 

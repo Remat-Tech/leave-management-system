@@ -36,8 +36,9 @@ export interface EmployeeTable {
   work_email: string;
   job_title: string | null;
   department_id: string | null;
-  /* FR 02 and LMS 103. Present because the column is, not because this story
-     writes it. */
+  /* FR 02. Nullable because exactly one employee — the head of the organisation
+     — has nobody to report to. The employee_one_root index is what makes that
+     "exactly one" rather than "as many as anybody types". FR 04. */
   manager_id: string | null;
   work_pattern_id: string;
   start_date: string;

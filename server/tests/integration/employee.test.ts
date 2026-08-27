@@ -11,6 +11,10 @@ import {
   EmployeeNotFound,
   GENDERS,
   InvalidEmployee,
+  ManagerHasLeft,
+  ManagerNotFound,
+  type NewEmployee,
+  SecondRootEmployee,
 } from '../../src/domain/employee.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
 import { EmployeeService } from '../../src/services/employee-service.js';
@@ -18,13 +22,15 @@ import { seed } from '../../seeds/seed.mjs';
 import type { Kysely } from 'kysely';
 
 /**
- * The employee record against a real database. FR 01 and FR 05, LMS 101.
+ * The employee record against a real database. FR 01, FR 02, FR 04 and FR 05.
+ * LMS 101 to LMS 103.
  *
  * The unit suite covers the rules. What needs a database is everything the
  * database itself decides: that the two identifiers really are unique and really
  * are compared without regard to case, that a value outside a permitted list
- * cannot be stored whatever wrote it, and that a record cannot be deleted by the
- * role the application connects as.
+ * cannot be stored whatever wrote it, that a record cannot be deleted by the
+ * role the application connects as, and that exactly one employee can be
+ * recorded without a line manager.
  */
 
 const testDatabaseUrl = inject('testDatabaseUrl');
@@ -37,7 +43,10 @@ let db: Kysely<Database>;
 let admin: Client;
 let employees: EmployeeService;
 
-const JOINER = {
+/** The ids the seed created, keyed by the names it uses for them. */
+let people: Record<string, string>;
+
+const JOINER_FIELDS = {
   employeeNumber: 'RH-0100',
   firstName: 'Esi',
   lastName: 'Nyarko',
@@ -45,6 +54,17 @@ const JOINER = {
   jobTitle: 'Operations Officer',
   startDate: '2026-09-01',
 };
+
+/**
+ * A joiner, reporting to Kofi Boateng.
+ *
+ * Rebuilt each test rather than declared once, because a line manager is part of
+ * what a record is now and the id has to belong to somebody the seed actually
+ * created. The seed truncates with RESTART IDENTITY, so it is read back from
+ * what the seed returns rather than written down as a number that would be
+ * correct only until somebody adds a person above Kofi in the fixture.
+ */
+let JOINER: NewEmployee;
 
 beforeAll(async () => {
   db = databaseFor(testDatabaseUrl);
@@ -60,7 +80,9 @@ beforeAll(async () => {
 beforeEach(async () => {
   // The organisation, so that each test starts from the same thirteen people
   // and a test that adds somebody cannot affect the next one.
-  await seed(admin);
+  people = (await seed(admin)) as Record<string, string>;
+
+  JOINER = { ...JOINER_FIELDS, managerId: people.teamLead };
 });
 
 afterAll(async () => {
@@ -84,6 +106,7 @@ describe('creating an employee record', () => {
       lastName: 'Nyarko',
       workEmail: 'esi.nyarko@rematholdings.com',
       jobTitle: 'Operations Officer',
+      managerId: people.teamLead,
       startDate: '2026-09-01',
       exitDate: null,
       employmentType: 'PART_TIME',
@@ -308,6 +331,195 @@ describe('maintaining a record', () => {
     await expect(employees.update('999999', { jobTitle: 'Nobody' })).rejects.toBeInstanceOf(
       EmployeeNotFound,
     );
+  });
+});
+
+describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
+  describe('recording the line', () => {
+    it('stores who somebody reports to and reads it back', async () => {
+      const created = await employees.create(JOINER);
+
+      expect((await employees.byId(created.id)).managerId).toBe(people.teamLead);
+    });
+
+    it('refuses a manager who is nobody', async () => {
+      // The foreign key would refuse this too, with a message about
+      // employee_manager_id_fkey. This is the refusal an HR officer can read.
+      await expect(employees.create({ ...JOINER, managerId: '999999' })).rejects.toBeInstanceOf(
+        ManagerNotFound,
+      );
+    });
+
+    it('refuses a manager who is nobody at the database as well', async () => {
+      await expect(
+        admin.query("UPDATE employee SET manager_id = 999999 WHERE employee_number = 'RH-0011'"),
+      ).rejects.toThrow(/employee_manager_id_fkey/);
+    });
+
+    it('refuses a manager who has left', async () => {
+      // Kojo left in July. Routing a request to him is the same black hole as
+      // routing it nowhere, which is the whole of what FR 02 is for.
+      await expect(
+        employees.create({ ...JOINER, managerId: people.leaver }),
+      ).rejects.toBeInstanceOf(ManagerHasLeft);
+    });
+
+    it('moves a reporting line onto somebody else', async () => {
+      const created = await employees.create(JOINER);
+
+      const moved = await employees.update(created.id, { managerId: people.opsManager });
+
+      expect(moved.managerId).toBe(people.opsManager);
+      // The move is the only thing that moved.
+      expect(moved.employeeNumber).toBe('RH-0100');
+      expect(moved.departmentId).toBe(created.departmentId);
+    });
+
+    it('refuses an employee as their own line manager', async () => {
+      const created = await employees.create(JOINER);
+
+      await expect(employees.update(created.id, { managerId: created.id })).rejects.toBeInstanceOf(
+        InvalidEmployee,
+      );
+    });
+
+    it('refuses somebody managing themselves at the database as well', async () => {
+      await expect(
+        admin.query("UPDATE employee SET manager_id = id WHERE employee_number = 'RH-0011'"),
+      ).rejects.toThrow(/employee_not_own_manager/);
+    });
+
+    it('leaves a line alone when the change does not mention it', async () => {
+      const created = await employees.create(JOINER);
+
+      const updated = await employees.update(created.id, { jobTitle: 'Operations Manager' });
+
+      expect(updated.managerId).toBe(people.teamLead);
+    });
+  });
+
+  describe('exactly one employee with none, FR 04', () => {
+    it('is the head of the organisation, and there is one of them', async () => {
+      const head = await employees.head();
+
+      expect(head?.id).toBe(people.ceo);
+      expect(head?.jobTitle).toBe('Chief Executive Officer');
+    });
+
+    it('refuses a second, and names the one who already has none', async () => {
+      // The warning HR is shown. "Somebody has no manager" is not something an
+      // HR officer can act on; "Kwame Asante (RH-0001) does" is.
+      let thrown: unknown;
+      try {
+        await employees.create({ ...JOINER, managerId: null });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(SecondRootEmployee);
+      expect((thrown as SecondRootEmployee).existingRootId).toBe(people.ceo);
+      expect((thrown as Error).message).toContain('RH-0001');
+    });
+
+    it('refuses cutting an existing line for the same reason', async () => {
+      await expect(employees.update(people.officer, { managerId: null })).rejects.toBeInstanceOf(
+        SecondRootEmployee,
+      );
+
+      expect((await employees.byId(people.officer)).managerId).toBe(people.teamLead);
+    });
+
+    it('lets the head of the organisation go on being it', async () => {
+      // Saying null about the record that is already the root is not a second
+      // root, and an edit to that record must not be refused because of a rule
+      // it already satisfies.
+      const updated = await employees.update(people.ceo, {
+        managerId: null,
+        jobTitle: 'Group Chief Executive',
+      });
+
+      expect(updated.managerId).toBeNull();
+      expect(updated.jobTitle).toBe('Group Chief Executive');
+    });
+
+    it('refuses the second at the database, not merely in the code', async () => {
+      // Straight past the service, as the seed or a data fixing migration would
+      // go. The index is what makes this a fact rather than a convention, and it
+      // is also what makes the service's check safe under concurrency.
+      await expect(
+        admin.query(
+          `INSERT INTO employee (
+             employee_number, first_name, last_name, work_email,
+             work_pattern_id, start_date, manager_id
+           )
+           SELECT 'RH-0400', 'Second', 'Root', 'second.root@rematholdings.com',
+                  id, DATE '2026-09-01', NULL
+             FROM work_pattern WHERE is_default`,
+        ),
+      ).rejects.toThrow(/employee_one_root/);
+    });
+
+    it('lets one head succeed another, in the order that keeps the count legal', async () => {
+      // The one operation the index makes order dependent, asserted so that the
+      // order is written down somewhere other than a comment. Zero records
+      // without a manager is permitted and two is not, so the outgoing head is
+      // given one before the incoming one has theirs taken away.
+      const incoming = await employees.create({
+        ...JOINER,
+        jobTitle: 'Chief Executive Officer',
+        managerId: people.ceo,
+      });
+
+      await employees.update(people.ceo, { managerId: incoming.id });
+      await employees.update(incoming.id, { managerId: null });
+
+      expect((await employees.head())?.id).toBe(incoming.id);
+      // The outgoing head keeps a line rather than becoming a second rootless
+      // record, so a walk upward from anybody still terminates in one place.
+      expect((await employees.byId(people.ceo)).managerId).toBe(incoming.id);
+    });
+  });
+
+  describe('the warning HR is shown about the lines as they stand', () => {
+    it('says nothing about the fixture organisation', async () => {
+      // The useful shape of a passing check: an empty list, not a page of
+      // reassurances to read past.
+      expect(await employees.reportingLineWarnings()).toEqual([]);
+    });
+
+    it('warns about the reports of a manager who has since left', async () => {
+      // The case no write-time check can see. Nobody edited Adwoa's or Abena's
+      // record when Kofi left, so nothing was there to refuse.
+      await employees.terminate(people.teamLead, { exitDate: '2026-08-31' });
+
+      const warnings = await employees.reportingLineWarnings();
+
+      expect(warnings.map((warning) => warning.code)).toEqual([
+        'MANAGER_HAS_LEFT',
+        'MANAGER_HAS_LEFT',
+      ]);
+      expect(warnings.every((warning) => warning.employeeIds.includes(people.teamLead))).toBe(true);
+    });
+
+    it('leaves a leaver reporting to a leaver out of it', async () => {
+      // Kojo also reported to Kofi, and is warned about by neither: the warning
+      // is that requests have nowhere to go, and Kojo is not raising any.
+      await employees.terminate(people.teamLead, { exitDate: '2026-08-31' });
+
+      const warnings = await employees.reportingLineWarnings();
+
+      expect(warnings.some((warning) => warning.employeeIds.includes(people.leaver))).toBe(false);
+    });
+
+    it('goes quiet again once the reports are moved', async () => {
+      await employees.terminate(people.teamLead, { exitDate: '2026-08-31' });
+
+      for (const id of [people.officer, people.partTimer]) {
+        await employees.update(id, { managerId: people.opsManager });
+      }
+
+      expect(await employees.reportingLineWarnings()).toEqual([]);
+    });
   });
 });
 
