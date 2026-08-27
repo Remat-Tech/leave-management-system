@@ -11,6 +11,7 @@ import {
 } from '../../src/domain/department.js';
 import { DepartmentRepository } from '../../src/repositories/department-repository.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
+import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
 import { DepartmentService } from '../../src/services/department-service.js';
 import { EmployeeService } from '../../src/services/employee-service.js';
 import { seed } from '../../seeds/seed.mjs';
@@ -42,9 +43,12 @@ beforeAll(async () => {
   await admin.connect();
 
   departments = new DepartmentService(new DepartmentRepository(db));
-  employees = new EmployeeService(new EmployeeRepository(db), new DepartmentRepository(db), {
-    domains: DOMAINS,
-  });
+  employees = new EmployeeService(
+    new EmployeeRepository(db),
+    new DepartmentRepository(db),
+    new WorkPatternRepository(db),
+    { domains: DOMAINS },
+  );
 });
 
 beforeEach(async () => {

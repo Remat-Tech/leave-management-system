@@ -21,13 +21,34 @@ declare module 'vitest' {
  * Using the real migrations rather than a dumped schema is deliberate: it means
  * every integration run is also a test that the migrations still apply cleanly
  * to an empty database.
+ *
+ * TEST_DATABASE_URL is read first, and it exists because of what this suite
+ * costs over a network. Every test reloads the fixture organisation, which is
+ * two dozen statements, and the suite is several thousand round trips end to
+ * end. Against a Neon branch in London each of those costs about a tenth of a
+ * second and the run takes eleven minutes; against a local Postgres it is a
+ * fraction of a millisecond and the same work takes well under one. The
+ * database is doing no more work in either case — the network is the entire
+ * difference.
+ *
+ * It is a key of its own rather than a change to DATABASE_MIGRATION_URL so that
+ * the two can differ, which is the arrangement the README asks for: local is the
+ * fast loop, and Neon stays where migrations are applied and where anything that
+ * has to look like production goes. Falling back keeps every existing setup and
+ * continuous integration working untouched.
+ *
+ * Whichever it is, it must be the owner connection and the same PostgreSQL major
+ * version as production, which is 17. Creating a database is not something the
+ * application role may do, and a suite that passes on a version production does
+ * not run has proved less than it appears to.
  */
 export default async function setup({ provide }: GlobalSetupContext) {
-  const adminUrl = process.env.DATABASE_MIGRATION_URL;
+  const adminUrl = process.env.TEST_DATABASE_URL || process.env.DATABASE_MIGRATION_URL;
   if (!adminUrl) {
     throw new Error(
-      'DATABASE_MIGRATION_URL is not set. Integration tests need the owner ' +
-        'connection so they can create and drop a database. See .env.example.',
+      'Neither TEST_DATABASE_URL nor DATABASE_MIGRATION_URL is set. Integration ' +
+        'tests need an owner connection so they can create and drop a database. ' +
+        'See .env.example.',
     );
   }
 
