@@ -26,6 +26,7 @@ import {
   ManagerCycle,
   type ReportingLines,
   SecondRootEmployee,
+  type StorableEmployee,
   type ValidatedEmployee,
 } from '../domain/employee.js';
 
@@ -54,13 +55,17 @@ type EmployeeRow = Selectable<EmployeeTable>;
 export class EmployeeRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async create(record: ValidatedEmployee): Promise<Employee> {
-    /* The column is NOT NULL, because everybody works some pattern and counting
-       a working day needs to know which. When the caller has not said, the
-       default pattern stands in. LMS 106 owns patterns proper; this is only
-       enough of it to be able to create an employee at all. */
-    const workPatternId = record.workPatternId ?? (await this.defaultWorkPatternId());
-
+  /**
+   * Writes a record.
+   *
+   * Takes a {@link StorableEmployee} rather than a {@link ValidatedEmployee}: by
+   * the time a record reaches here its working pattern has been resolved, because
+   * "the caller did not name one" is a question about which pattern is the
+   * default and that is a decision, not a query. LMS 106 moved it to
+   * {@link EmployeeService.create}, where the rest of the cross table checks
+   * already live.
+   */
+  async create(record: StorableEmployee): Promise<Employee> {
     const row = await this.catchRefusals(record, () =>
       this.db
         .insertInto('employee')
@@ -72,7 +77,7 @@ export class EmployeeRepository {
           job_title: record.jobTitle,
           department_id: record.departmentId,
           manager_id: record.managerId,
-          work_pattern_id: workPatternId,
+          work_pattern_id: record.workPatternId,
           start_date: record.startDate,
           exit_date: record.exitDate,
           employment_type: record.employmentType,
@@ -289,24 +294,6 @@ export class EmployeeRepository {
         return manager === undefined ? [] : [{ employee: toEmployee(row), manager }];
       }),
     };
-  }
-
-  private async defaultWorkPatternId(): Promise<string> {
-    const pattern = await this.db
-      .selectFrom('work_pattern')
-      .select('id')
-      .where('is_default', '=', true)
-      .executeTakeFirst();
-
-    if (pattern === undefined) {
-      throw new Error(
-        'No default working pattern exists, so a new employee has no week to be ' +
-          'measured against. Seed the standard Monday to Friday pattern, or give ' +
-          'the employee a pattern explicitly. FR 23.',
-      );
-    }
-
-    return pattern.id;
   }
 
   /**

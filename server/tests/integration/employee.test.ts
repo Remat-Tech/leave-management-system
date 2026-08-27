@@ -22,8 +22,10 @@ import {
   DepartmentDeactivated,
   DepartmentNotFound,
 } from '../../src/domain/department.js';
+import { WorkPatternNotFound } from '../../src/domain/work-pattern.js';
 import { DepartmentRepository } from '../../src/repositories/department-repository.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
+import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
 import { DepartmentService } from '../../src/services/department-service.js';
 import { EmployeeService } from '../../src/services/employee-service.js';
 import { seed } from '../../seeds/seed.mjs';
@@ -96,7 +98,12 @@ beforeAll(async () => {
 
   repository = new EmployeeRepository(db);
   departments = new DepartmentService(new DepartmentRepository(db));
-  employees = new EmployeeService(repository, new DepartmentRepository(db), { domains: DOMAINS });
+  employees = new EmployeeService(
+    repository,
+    new DepartmentRepository(db),
+    new WorkPatternRepository(db),
+    { domains: DOMAINS },
+  );
 });
 
 beforeEach(async () => {
@@ -713,6 +720,115 @@ describe('every employee is in one department, LMS 105', () => {
       expect(back.employmentStatus).toBe('ACTIVE');
       expect(back.departmentId).toBe(operations.id);
     });
+  });
+});
+
+describe('every employee works some week, FR 23 and LMS 106', () => {
+  /** The patterns themselves are ../integration/work-pattern.test.ts. */
+  async function partTimePattern(): Promise<string> {
+    const { rows } = await admin.query<{ id: string }>(
+      "SELECT id FROM work_pattern WHERE name = 'Part time, Wednesdays off'",
+    );
+    expect(rows).toHaveLength(1);
+    return rows[0].id;
+  }
+
+  it('gives a joiner the standard week when nobody names one', async () => {
+    /* The asymmetry with the line manager, which is required explicitly: there is
+       no right answer to "who does this person report to" and there is one to
+       "which week do they work". */
+    const created = await employees.create(JOINER);
+
+    const { rows } = await admin.query<{ name: string; is_default: boolean }>(
+      'SELECT name, is_default FROM work_pattern WHERE id = $1',
+      [created.workPatternId],
+    );
+
+    expect(rows[0]).toEqual({ name: 'Standard Mon-Fri', is_default: true });
+  });
+
+  it('records the week a part timer actually works', async () => {
+    // The story itself. Abena works Monday, Tuesday, Thursday and Friday, and a
+    // week off costs her four days rather than five.
+    const pattern = await partTimePattern();
+
+    const created = await employees.create({ ...JOINER, workPatternId: pattern });
+
+    expect((await employees.byId(created.id)).workPatternId).toBe(pattern);
+  });
+
+  it('reads an empty choice as "the usual week" rather than as no week', async () => {
+    // A form that submitted its empty select box is saying "no preference". On a
+    // record that does not exist yet there is nothing being cleared.
+    const created = await employees.create({ ...JOINER, workPatternId: null });
+
+    const { rows } = await admin.query<{ is_default: boolean }>(
+      'SELECT is_default FROM work_pattern WHERE id = $1',
+      [created.workPatternId],
+    );
+
+    expect(rows[0].is_default).toBe(true);
+  });
+
+  it('moves somebody onto a different week as an ordinary edit', async () => {
+    const pattern = await partTimePattern();
+    const created = await employees.create(JOINER);
+
+    const moved = await employees.update(created.id, { workPatternId: pattern });
+
+    expect(moved.workPatternId).toBe(pattern);
+    // Nothing else moved with it. Which week somebody works, which team they are
+    // in and who they report to are three separate facts.
+    expect(moved.departmentId).toBe(operations.id);
+    expect(moved.managerId).toBe(people.teamLead);
+  });
+
+  it('refuses a pattern that is nobody', async () => {
+    // The foreign key would refuse this too, with a message about
+    // employee_work_pattern_id_fkey. This is the refusal an HR officer can read.
+    await expect(employees.create({ ...JOINER, workPatternId: '999999' })).rejects.toBeInstanceOf(
+      WorkPatternNotFound,
+    );
+
+    const created = await employees.create(JOINER);
+    await expect(employees.update(created.id, { workPatternId: '999999' })).rejects.toBeInstanceOf(
+      WorkPatternNotFound,
+    );
+  });
+
+  it('refuses taking somebody off every pattern', async () => {
+    /* There is no such thing as an employee who works no week: the column is NOT
+       NULL, and a leaver keeps their pattern because FR 37a settles their final
+       figure against it. Moving them to a different one was what was meant. */
+    const created = await employees.create(JOINER);
+
+    await expect(employees.update(created.id, { workPatternId: null })).rejects.toBeInstanceOf(
+      InvalidEmployee,
+    );
+
+    expect((await employees.byId(created.id)).workPatternId).toBeTruthy();
+  });
+
+  it('refuses a record with no pattern at the database as well', async () => {
+    await expect(
+      admin.query(
+        `INSERT INTO employee (
+           employee_number, first_name, last_name, work_email,
+           department_id, start_date, manager_id
+         ) VALUES ('RH-0600', 'No', 'Week', 'no.week@rematholdings.com',
+                   $1, DATE '2026-09-01', $2)`,
+        [operations.id, people.teamLead],
+      ),
+    ).rejects.toThrow(/work_pattern_id/);
+  });
+
+  it('gives every one of the fixture organisation a week, the leaver included', async () => {
+    const all = await employees.list();
+
+    expect(all.every((one) => one.workPatternId !== null)).toBe(true);
+    // And not all the same week: a fixture set where everybody worked Monday to
+    // Friday would let a day count that assumes it pass every test.
+    expect(new Set(all.map((one) => one.workPatternId)).size).toBeGreaterThan(1);
   });
 });
 

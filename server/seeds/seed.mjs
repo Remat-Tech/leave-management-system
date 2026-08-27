@@ -18,15 +18,18 @@ import { Client } from 'pg';
 
 export const SCENARIOS = ['base', 'lone-hr'];
 
-/** Tables the seed owns. `role` is reference data and belongs to the migration. */
-const SEEDED_TABLES = [
-  'user_role',
-  'app_user',
-  'employee',
-  'work_pattern_day',
-  'work_pattern',
-  'department',
-];
+/**
+ * Tables the seed owns.
+ *
+ * `role` is reference data and belongs to the migration. So, since LMS 106, is
+ * the standard Monday to Friday working pattern: a production database is
+ * migrated and never seeded, and no employee can be created without a default
+ * pattern to stand in when nobody names one. work_pattern is therefore not
+ * truncated here — doing so would delete reference data every time somebody
+ * reloaded the fixtures — and the extra patterns this file does own are cleared
+ * by name in insertWorkPatterns().
+ */
+const SEEDED_TABLES = ['user_role', 'app_user', 'employee', 'department'];
 
 /**
  * Loads the fixture set. Clears what it owns first, so running it twice gives
@@ -78,26 +81,58 @@ async function insertDepartments(db) {
   return Object.fromEntries(rows.map((row) => [row.name, row.id]));
 }
 
+/**
+ * The patterns the fixture organisation works.
+ *
+ * The standard week is not created here and is not deleted here. It is reference
+ * data, inserted by the working-pattern-rules migration next to `role`, and a
+ * database that has been migrated already has it — including the one an HR
+ * officer will use in production, which nothing ever seeds. FR 23.
+ *
+ * What the seed owns is the second pattern, which exists to make the counting
+ * tests honest rather than to make the system work. It is cleared by "everything
+ * that is not the default" rather than truncated, so that reloading the fixtures
+ * twice gives the same two patterns instead of a second copy of one of them.
+ */
 async function insertWorkPatterns(db) {
-  const standard = await insertPattern(db, 'Standard Mon-Fri', true, [1, 2, 3, 4, 5]);
+  const { rows } = await db.query('SELECT id FROM work_pattern WHERE is_default');
+
+  if (rows.length !== 1) {
+    throw new Error(
+      `Expected exactly one default working pattern and found ${rows.length}. The ` +
+        'standard Monday to Friday week is inserted by the working-pattern-rules ' +
+        'migration; run `npm run migrate up` before seeding. FR 23.',
+    );
+  }
+
+  // Everything the seed added last time. The default is left where it is, and
+  // the employee rows that pointed at either are already gone with the truncate.
+  await db.query('DELETE FROM work_pattern WHERE NOT is_default');
 
   // Wednesdays off. The counting tests in Technical Design Document section 7.3
   // need a pattern that is not simply "weekends off", or a bug that assumes
   // Saturday and Sunday are the only non working days passes every test.
-  const partTime = await insertPattern(db, 'Part time, Wednesdays off', false, [1, 2, 4, 5]);
+  const partTime = await insertPattern(db, 'Part time, Wednesdays off', [1, 2, 4, 5]);
 
-  return { standard, partTime };
+  return { standard: rows[0].id, partTime };
 }
 
-async function insertPattern(db, name, isDefault, workingDays) {
-  const { rows } = await db.query(
-    'INSERT INTO work_pattern (name, is_default) VALUES ($1, $2) RETURNING id',
-    [name, isDefault],
-  );
+/**
+ * One pattern and its whole week.
+ *
+ * Never the default: exactly one pattern is, it is the standard week the
+ * migration inserted, and moving that is a decision rather than fixture data.
+ */
+async function insertPattern(db, name, workingDays) {
+  const { rows } = await db.query('INSERT INTO work_pattern (name) VALUES ($1) RETURNING id', [
+    name,
+  ]);
   const id = rows[0].id;
 
-  // All seven days in one statement. The database is usually a Neon branch at
-  // the end of a network, where a round trip costs far more than the work.
+  /* All seven days in one statement. The database is usually a Neon branch at
+     the end of a network, where a round trip costs far more than the work — and
+     seven rows rather than four is what work_pattern_week_complete requires: a
+     day that is not worked is a row saying so, not a missing row. */
   await db.query(
     `INSERT INTO work_pattern_day (work_pattern_id, day_of_week, is_working_day)
      SELECT $1, day, day = ANY($2::int[]) FROM generate_series(1, 7) AS day`,

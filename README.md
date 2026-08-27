@@ -426,6 +426,57 @@ what stays deletable is a department nobody has ever been in. That is the typo
 created on a Tuesday afternoon, and being able to remove it is worth more than
 the symmetry.
 
+**Everybody works a week, and the week is seven rows.** `employee.work_pattern_id`
+is `NOT NULL`, because a day count has to know which days somebody works. Abena
+Sarpong works Monday, Tuesday, Thursday and Friday: a week off costs her four
+days rather than five, and a public holiday on a Wednesday costs her nothing.
+FR 23.
+
+A pattern is stored as **seven `work_pattern_day` rows**, one per ISO weekday
+(1 is Monday), each saying whether it is worked — never as only the days that
+are. A missing row leaves "does this Saturday cost a day" to whichever join the
+counting query happened to use, which is a decision nobody made on purpose. The
+`work_pattern_week_complete` trigger refuses a pattern that names fewer than
+seven, and one that works none of them.
+
+**The standard Monday to Friday week is reference data, not fixture data.** It is
+inserted by the working-pattern-rules migration, next to `role`, because a
+production database is migrated and never seeded and no employee can be created
+without a default to stand in. The seed owns only the *second* pattern, the part
+timer's, which exists to make the counting tests honest rather than to make the
+system work — and it no longer truncates `work_pattern`, because that would
+delete reference data every time somebody reloaded the fixtures.
+
+**Exactly one pattern is the default**, held by the same pair as the one root
+employee and with the same division of labour:
+
+| | Covers | Does not cover |
+|---|---|---|
+| the `work_pattern_one_default` partial unique index | a second default, immediately, on every connection | a table with *no* default |
+| the `work_pattern_always_has_a_default` constraint trigger | the last default being deleted or cleared, at `COMMIT` | `TRUNCATE`, which no row trigger sees and `lms_app` was never granted |
+
+Both deferred triggers exist to **permit a legitimate intermediate state**, which
+is the only reason either can be deferred. Changing the default clears the old
+one and sets the new one, passing through no default for one statement; changing
+a week deletes seven day rows and writes seven more, naming no days in between.
+Checked per statement, both ordinary operations are refused. Checked at commit,
+only the state that will actually be stored is judged. Neither works as two
+autocommitted statements, so `WorkPatternRepository` opens a transaction for
+each.
+
+**A pattern is deleted, not deactivated** — the opposite of a department, and
+deliberately. A department heading outlives the team and appears on last year's
+report, so it is closed; a pattern is a current fact about a week and nothing
+points at an unused one. `lms_app` therefore keeps its `DELETE` here. What stays
+reachable is only the pattern nobody works: `employee.work_pattern_id` has no
+cascade, so a pattern anybody is on cannot be deleted by anyone at all, and the
+trigger above holds the default.
+
+**A leaver counts as somebody on a pattern**, unlike a department's headcount
+where they do not. FR 37a settles a leaver's final figure by counting days
+against the week they worked, so their pattern is still load bearing after they
+have gone.
+
 **`department.parent_id` exists and nothing writes it.** A hierarchy does not
 exist rather than half existing. A story that exposes sub-departments needs what
 FR 03 and FR 04 gave reporting lines — a cycle check and a root count — because a

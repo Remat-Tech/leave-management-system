@@ -20,6 +20,12 @@
  * {@link assertNoManagerCycle} is the shape of that split at its clearest — the
  * walk belongs to the service, the judgement and the message belong here.
  *
+ * The department, LMS 105, and the working pattern, FR 23 and LMS 106, are both
+ * references to another table and are treated alike: this file decides whether
+ * one was named at all, and the service decides whether the thing named exists
+ * and may be used. What each record *is* lives in ./department.ts and
+ * ./work-pattern.ts.
+ *
  * What is still absent is who may end an employment or move a reporting line,
  * which is authorisation and belongs to LMS 112.
  */
@@ -75,6 +81,21 @@ export interface NewEmployee {
    */
   departmentId: string;
   /**
+   * Which week they work. FR 23, LMS 106.
+   *
+   * Optional here and NOT NULL in the column, which is not a contradiction: it
+   * says that everybody works some week and that most people work the ordinary
+   * one. Omitting it is "the usual week", and the service resolves that to
+   * whichever pattern is the default rather than the caller having to look it up.
+   * A part timer's record names one.
+   *
+   * `null` means the same as omitting it, because a form that submitted its empty
+   * select box is saying "no preference" and not "no week"; there is no such
+   * thing as no week. Clearing one on an existing record is refused, which is a
+   * deliberate difference — see {@link validateEmployeeChanges}.
+   */
+  workPatternId?: string | null;
+  /**
    * Who this person reports to. FR 02.
    *
    * Required, and required in the type rather than only at runtime, which is the
@@ -86,7 +107,6 @@ export interface NewEmployee {
    * an omission. FR 04 permits exactly one, and the service refuses a second.
    */
   managerId: string | null;
-  workPatternId?: string | null;
   startDate: CalendarDate;
   exitDate?: CalendarDate | null;
   employmentType?: EmploymentType;
@@ -351,6 +371,25 @@ export interface ValidatedEmployee {
 }
 
 /**
+ * A validated record with its working pattern resolved, which is what the
+ * repository will actually write. FR 23.
+ *
+ * The difference is one field and it is the whole of the distinction between
+ * "the caller did not name a pattern" and "this record has no pattern". The
+ * column is NOT NULL, so the second cannot be stored; something has to turn the
+ * first into the id of the default pattern, and that something is
+ * {@link EmployeeService.create}, because which pattern is the default is a row
+ * in another table and not a fact the domain can read.
+ *
+ * Saying it in the type rather than defaulting again inside the repository is
+ * what stops the resolution happening twice, or in the layer that cannot say
+ * what a good answer would be.
+ */
+export interface StorableEmployee extends ValidatedEmployee {
+  workPatternId: string;
+}
+
+/**
  * Checks and tidies a new record.
  *
  * Returns the record as it should be stored rather than mutating what it was
@@ -373,7 +412,7 @@ export function validateNewEmployee(input: NewEmployee, domains: string[]): Vali
     jobTitle: optionalText('jobTitle', input.jobTitle, 120),
     departmentId: requireDepartmentReference(input.departmentId),
     managerId: requireManagerReference(input.managerId),
-    workPatternId: input.workPatternId ?? null,
+    workPatternId: optionalWorkPatternReference(input.workPatternId),
     startDate: requireDate('startDate', input.startDate),
     exitDate: optionalDate('exitDate', input.exitDate),
     employmentType: requireOneOf('employmentType', employmentType, EMPLOYMENT_TYPES),
@@ -444,16 +483,11 @@ export function validateEmployeeChanges(
     validated.managerId = managerId;
   }
   if ('workPatternId' in changes) {
-    /* Nullable on the way in so the field can be omitted, but the column is NOT
-       NULL: an employee always works some pattern. Clearing it is a caller
-       error, not an instruction. */
-    if (changes.workPatternId == null) {
-      throw new InvalidEmployee(
-        'workPatternId',
-        'An employee always has a working pattern. Assign a different one rather than removing it.',
-      );
-    }
-    validated.workPatternId = changes.workPatternId;
+    /* Moving somebody onto a different week, which is an ordinary edit and the
+       assignable half of FR 23. Nullable on the way in so the field can be
+       omitted, but the column is NOT NULL: an employee always works some week.
+       Clearing it is a caller error, not an instruction. */
+    validated.workPatternId = requireWorkPatternReference(changes.workPatternId);
   }
   if ('startDate' in changes) {
     validated.startDate = requireDate('startDate', changes.startDate);
@@ -701,6 +735,49 @@ function requireDepartmentReference(value: string | null | undefined): string {
       'departmentId',
       'Every employee belongs to a department, so that their leave can be reported ' +
         'and planned by team. Choose the team they are in.',
+    );
+  }
+
+  return value.trim();
+}
+
+/**
+ * The week they work, on a record being created. FR 23, LMS 106.
+ *
+ * Silence is the ordinary case and means "the usual week": most people work the
+ * standard one, and making every caller look up the id of a pattern they did not
+ * choose would be a lookup with one right answer. `null` and `''` say the same
+ * thing as omitting it, because both are a form that submitted its empty select
+ * box, and on a record that does not exist yet there is nothing being cleared.
+ *
+ * Which pattern the usual week is, is a row in another table, so the answer
+ * comes from {@link EmployeeService.create} rather than from here.
+ */
+function optionalWorkPatternReference(value: string | null | undefined): string | null {
+  if (value == null || value.trim() === '') {
+    return null;
+  }
+
+  return value.trim();
+}
+
+/**
+ * The week they work, on a record that already has one.
+ *
+ * Deliberately stricter than the same field on a new record, and the difference
+ * is what the caller is saying rather than what they typed. On a new record an
+ * empty box is "no preference", and there is a right answer to that. On an
+ * existing one it is an instruction to remove the pattern somebody is on, and
+ * there is no such thing as an employee who works no week: the column is NOT
+ * NULL, and a leaver keeps their pattern because FR 37a settles their final
+ * figure against it. Moving somebody to a different week is what was meant.
+ */
+function requireWorkPatternReference(value: string | null | undefined): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new InvalidEmployee(
+      'workPatternId',
+      'An employee always works some week, so a working pattern cannot be removed. ' +
+        'Assign a different one instead.',
     );
   }
 

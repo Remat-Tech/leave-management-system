@@ -42,6 +42,11 @@ export interface EmployeeTable {
      — has nobody to report to. The employee_one_root index is what makes that
      "exactly one" rather than "as many as anybody types". FR 04. */
   manager_id: string | null;
+  /* FR 23. NOT NULL: everybody works some week, and a day count needs to know
+     which. A caller who names none gets the default pattern, resolved by
+     EmployeeService rather than defaulted in the column, because which pattern is
+     the default is a row in another table and not something a DDL default can
+     read. */
   work_pattern_id: string;
   start_date: string;
   exit_date: string | null;
@@ -71,11 +76,36 @@ export interface DepartmentTable {
 export interface WorkPatternTable {
   id: Generated<string>;
   name: string;
+  /* Exactly one row in this table holds true. The work_pattern_one_default index
+     makes that "no more than one" and the work_pattern_always_has_a_default
+     trigger makes it "no fewer"; see the working-pattern-rules migration. */
   is_default: Generated<boolean>;
+  created_at: Timestamp;
+  /* Maintained by the work_pattern_set_updated_at trigger, which attaches to the
+     same set_updated_at() the employee and department tables use. Never supplied
+     by a writer. */
+  updated_at: Timestamp;
+}
+
+/**
+ * Which days of the week a pattern works. FR 23.
+ *
+ * Seven rows per pattern, always: `day_of_week` is ISO, 1 for Monday to 7 for
+ * Sunday, and a day that is not worked is a row with `is_working_day` false
+ * rather than a missing row. The work_pattern_week_complete trigger is what makes
+ * that true, and the reason is that a missing row leaves the answer to "does a
+ * Saturday inside this request cost a day" to whichever join the counting query
+ * happened to use.
+ */
+export interface WorkPatternDayTable {
+  work_pattern_id: string;
+  day_of_week: number;
+  is_working_day: Generated<boolean>;
 }
 
 export interface Database {
   department: DepartmentTable;
   employee: EmployeeTable;
   work_pattern: WorkPatternTable;
+  work_pattern_day: WorkPatternDayTable;
 }

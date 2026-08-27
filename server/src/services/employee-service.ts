@@ -1,7 +1,7 @@
 /**
  * Creating, maintaining and deactivating employee records, recording who each of
- * them reports to and which team they are in. FR 01 to FR 06. LMS 101 to
- * LMS 105.
+ * them reports to, which team they are in and which week they work. FR 01 to
+ * FR 06 and FR 23. LMS 101 to LMS 106.
  *
  * The business rules for an employee record, in the layer that owns them. A
  * route will sit in front of this when Phase 1 has an authorisation layer to put
@@ -21,6 +21,12 @@
  *   {@link DepartmentService}. What is here is the employee's end of it: which
  *   team they are in, and the two checks that keep an employed person out of a
  *   closed one. Moving somebody between teams is an ordinary {@link update}.
+ *
+ *   No working patterns. Creating and editing them is
+ *   {@link WorkPatternService}. What is here is the employee's end of it again:
+ *   which week this person works, the default that stands in when nobody says,
+ *   and the check that the pattern named is a pattern. Moving somebody onto a
+ *   different week is an ordinary {@link update} too.
  *
  *   No re-parenting when a manager leaves. {@link terminate} does not move the
  *   leaver's reports onto somebody else, because who they should go to is a
@@ -59,8 +65,10 @@ import {
   validateNewEmployee,
   warnAboutReportingLines,
 } from '../domain/employee.js';
+import { DefaultWorkPatternRequired, WorkPatternNotFound } from '../domain/work-pattern.js';
 import type { DepartmentRepository } from '../repositories/department-repository.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
+import type { WorkPatternRepository } from '../repositories/work-pattern-repository.js';
 
 export interface EmployeeServiceOptions {
   /**
@@ -81,6 +89,10 @@ export class EmployeeService {
        service would put "may this department be closed" behind the employee
        surface, which is not this layer's question. */
     private readonly departments: DepartmentRepository,
+    /* And a third, for the same reason. What is wanted from working patterns
+       here is two reads — does this pattern exist, and which one is the default
+       — not the rules about what a pattern may contain. */
+    private readonly patterns: WorkPatternRepository,
     options: EmployeeServiceOptions = {},
   ) {
     // Resolved once, at construction. allowedDomains() throws on an empty list,
@@ -100,6 +112,12 @@ export class EmployeeService {
    * A line manager is required, and required explicitly: `managerId: null` says
    * "this is the head of the organisation" and is refused if somebody already
    * is. FR 02 and FR 04. See {@link checkManager}.
+   *
+   * A working pattern is not required, and that asymmetry is deliberate. There
+   * is no right answer to "who does this person report to" but there is one to
+   * "which week do they work": the one most people work. Naming a pattern is for
+   * the part timer, which is the whole of what FR 23 is about; everybody else
+   * gets the default without anybody having to look its id up.
    */
   async create(input: NewEmployee): Promise<Employee> {
     const record = validateNewEmployee(input, this.domains);
@@ -116,7 +134,10 @@ export class EmployeeService {
     // can reach it.
     await this.checkManager(record.managerId, null);
 
-    return this.employees.create(record);
+    return this.employees.create({
+      ...record,
+      workPatternId: await this.resolveWorkPattern(record.workPatternId),
+    });
   }
 
   /**
@@ -208,6 +229,15 @@ export class EmployeeService {
       await this.checkManager(changes.managerId ?? null, current);
     }
 
+    /* Moving somebody onto a different week. The domain has established that a
+       pattern was named; whether it is one is a question about another table.
+       There is no clearing it and so no equivalent of the reinstatement case
+       above: a pattern is never closed, so the one somebody is on cannot become
+       unusable while nobody is looking. */
+    if ('workPatternId' in changes) {
+      await this.checkWorkPattern(changes.workPatternId!);
+    }
+
     const updated = await this.employees.update(id, changes);
     if (updated === undefined) {
       // Gone between the read and the write. Not possible — nothing may delete
@@ -250,6 +280,56 @@ export class EmployeeService {
     }
     if (employed) {
       assertCanTakeEmployees(department);
+    }
+  }
+
+  /**
+   * The week a new record works, resolved to an id. FR 23, LMS 106.
+   *
+   * `null` is the caller not having said, which is the ordinary case and means
+   * the standard week. The default is read here rather than defaulted in the
+   * column, because which pattern is the default is a row in another table and a
+   * DDL default cannot read one — and rather than in the repository, because
+   * "what should stand in" is a decision and this is the layer that makes them.
+   *
+   * {@link DefaultWorkPatternRequired} when there is none. That is not a case
+   * that occurs against a migrated database: the working-pattern-rules migration
+   * inserts the standard week, a deferred trigger refuses its removal, and a
+   * unique index refuses a second. It is reported rather than worked around
+   * because the alternatives are worse — picking some other pattern would put a
+   * joiner on a week nobody chose, and refusing to say why would leave an HR
+   * officer looking at a foreign key violation.
+   */
+  private async resolveWorkPattern(workPatternId: string | null): Promise<string> {
+    if (workPatternId !== null) {
+      await this.checkWorkPattern(workPatternId);
+      return workPatternId;
+    }
+
+    const standard = await this.patterns.findDefault();
+    if (standard === undefined) {
+      throw new DefaultWorkPatternRequired();
+    }
+
+    return standard.id;
+  }
+
+  /**
+   * That a working pattern named on a record is a working pattern.
+   *
+   * The one rule here that needs the other table, and the counterpart of
+   * {@link checkDepartment}'s first half. An invented id is somebody whose leave
+   * is counted against a week that does not exist, and the foreign key would
+   * refuse it with a message about `employee_work_pattern_id_fkey`.
+   *
+   * There is no second half. A department can be closed and so has to be checked
+   * for that; a pattern has no closed state, because it is not a heading on a
+   * report that outlives the team — it is a week, and a week that nobody works is
+   * deleted rather than retired. See {@link WorkPatternService.remove}.
+   */
+  private async checkWorkPattern(workPatternId: string): Promise<void> {
+    if ((await this.patterns.findById(workPatternId)) === undefined) {
+      throw new WorkPatternNotFound(workPatternId);
     }
   }
 
