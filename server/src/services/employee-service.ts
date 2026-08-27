@@ -1,6 +1,7 @@
 /**
- * Creating, maintaining and deactivating employee records. FR 01, FR 05 and
- * FR 06. LMS 101 and LMS 102.
+ * Creating, maintaining and deactivating employee records, and recording who
+ * each of them reports to. FR 01, FR 02, FR 04, FR 05 and FR 06. LMS 101 to
+ * LMS 103.
  *
  * The business rules for an employee record, in the layer that owns them. A
  * route will sit in front of this when Phase 1 has an authorisation layer to put
@@ -16,9 +17,19 @@
  *   leaves is {@link terminate}: a status of TERMINATED and an exit date, so
  *   that their leave history survives them. FR 06.
  *
- *   No manager. The line manager is FR 02 and belongs to LMS 103, along with the
- *   rules about exactly one root and about cycles that LMS 104 adds. Recording
- *   it here would mean writing half of those rules in the wrong place.
+ *   No cycle detection. A -> B -> A with somebody else as the head of the
+ *   organisation satisfies every rule here and every constraint in the database.
+ *   That is FR 03 and LMS 104, walked upward from the proposed manager. Until it
+ *   exists, {@link reportingLineWarnings} will report the symptom — a table with
+ *   no root at all is a table with a cycle in it — without being able to name
+ *   which line caused it.
+ *
+ *   No re-parenting when a manager leaves. {@link terminate} does not move the
+ *   leaver's reports onto somebody else, because who they should go to is a
+ *   decision rather than a rule, and guessing it in the termination path is how
+ *   an entire team silently ends up reporting to the CEO. The condition is
+ *   reported by {@link reportingLineWarnings} instead, for HR to answer. It
+ *   needs doing, and it is not done.
  *
  *   No authorisation. "As an HR Officer" is enforced by the policy layer of
  *   LMS 112, from this layer, when it exists. Nothing here decides who may call
@@ -34,14 +45,19 @@
 import { allowedDomains } from '../auth/company-email.js';
 import {
   EmployeeNotFound,
+  ManagerHasLeft,
+  ManagerNotFound,
   planTermination,
   type Employee,
   type EmployeeChanges,
   type NewEmployee,
+  type ReportingLineWarning,
+  SecondRootEmployee,
   type Termination,
   type ValidatedEmployee,
   validateEmployeeChanges,
   validateNewEmployee,
+  warnAboutReportingLines,
 } from '../domain/employee.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
 
@@ -74,9 +90,19 @@ export class EmployeeService {
    * DuplicateEmployeeNumber or DuplicateWorkEmail when the identifier already
    * belongs to somebody. A personal address is refused here, which is the
    * provisioning half of NFR SEC 01.
+   *
+   * A line manager is required, and required explicitly: `managerId: null` says
+   * "this is the head of the organisation" and is refused if somebody already
+   * is. FR 02 and FR 04. See {@link checkManager}.
    */
   async create(input: NewEmployee): Promise<Employee> {
-    return this.employees.create(validateNewEmployee(input, this.domains));
+    const record = validateNewEmployee(input, this.domains);
+
+    // No id of its own yet, so nothing to exclude: a record being created cannot
+    // be the root that already exists, and cannot be its own manager.
+    await this.checkManager(record.managerId, null);
+
+    return this.employees.create(record);
   }
 
   /**
@@ -87,6 +113,9 @@ export class EmployeeService {
    * marked as having left is brought back — the record was never deleted, so
    * putting the status back to ACTIVE and clearing the exit date is an ordinary
    * edit rather than a re-creation with a new id and no history.
+   *
+   * Moving a reporting line is an ordinary edit too, and goes through the same
+   * checks a new record's does. See {@link checkManager}.
    */
   async update(id: string, changes: EmployeeChanges): Promise<Employee> {
     return this.change(id, (current) => validateEmployeeChanges(changes, current, this.domains));
@@ -138,7 +167,19 @@ export class EmployeeService {
       throw new EmployeeNotFound(id);
     }
 
-    const updated = await this.employees.update(id, decide(current));
+    const changes = decide(current);
+
+    /* The reporting line is the one field whose rules cannot be settled from
+       this record alone: whether a manager exists, whether they are still here,
+       and whether anybody else already has none are all questions about other
+       rows. It sits here rather than in each caller so that every path that can
+       move a line goes through it — today update(), tomorrow whatever LMS 104
+       adds. planTermination() never produces one, so terminating skips it. */
+    if ('managerId' in changes) {
+      await this.checkManager(changes.managerId ?? null, current.id);
+    }
+
+    const updated = await this.employees.update(id, changes);
     if (updated === undefined) {
       // Gone between the read and the write. Not possible — nothing may delete
       // an employee, and the database now refuses the statement outright — but
@@ -148,6 +189,83 @@ export class EmployeeService {
     }
 
     return updated;
+  }
+
+  /**
+   * The rules about a reporting line that need another record to answer. FR 02
+   * and FR 04.
+   *
+   * The domain has already decided that a line was named at all and that it is
+   * not the employee's own id. What is left needs the table:
+   *
+   *   A manager who is somebody. A `managerId` the caller invented is a request
+   *   that routes into nothing, and the foreign key would refuse it with a
+   *   message about `employee_manager_id_fkey`.
+   *
+   *   A manager who is still here. Somebody who left in July is the same black
+   *   hole as no manager at all. This is refused when the line is drawn; a
+   *   manager who leaves afterwards cannot be caught here, because nobody
+   *   touches the reports' records when it happens. That is
+   *   {@link reportingLineWarnings}.
+   *
+   *   At most one employee with none. FR 04. `excludeId` is what makes editing
+   *   the existing head of the organisation work: they are already the root, and
+   *   leaving them as it is not making a second one.
+   *
+   * The check is not the enforcement. Between this and the write, another
+   * transaction can commit a root of its own; the employee_one_root index is
+   * what actually decides, and the repository turns its refusal back into
+   * {@link SecondRootEmployee}. Asking first is for the message, not for the
+   * guarantee.
+   */
+  private async checkManager(managerId: string | null, excludeId: string | null): Promise<void> {
+    if (managerId === null) {
+      const root = await this.employees.findRoot();
+
+      if (root !== undefined && root.id !== excludeId) {
+        throw new SecondRootEmployee(root);
+      }
+      return;
+    }
+
+    const manager = await this.employees.findById(managerId);
+
+    if (manager === undefined) {
+      throw new ManagerNotFound(managerId);
+    }
+    if (manager.employmentStatus === 'TERMINATED') {
+      throw new ManagerHasLeft(manager);
+    }
+  }
+
+  /**
+   * What is wrong with the reporting lines as they stand. FR 02 and FR 04.
+   *
+   * The warning HR is shown for a condition that is already true, as against the
+   * refusal they get for one they are in the middle of causing. Both exist
+   * because they catch different things, and the difference is not tidiness:
+   *
+   *   {@link SecondRootEmployee} and {@link ManagerHasLeft} fire when somebody
+   *   draws a bad line, in front of the person drawing it, while there is still
+   *   something to refuse.
+   *
+   *   This fires for a line that was fine when it was drawn and is not any more.
+   *   The manager left in March; nobody edited their reports' records, so no
+   *   write-time check ever ran on them. Nothing but a standing question finds
+   *   that, which is why the line-manager-rules migration leaves it to be asked
+   *   rather than pretending a constraint could hold it.
+   *
+   * An empty list means every employee has somewhere for their requests to go.
+   * It is a read, and safe to call from a dashboard, a nightly job or a support
+   * request.
+   */
+  async reportingLineWarnings(): Promise<ReportingLineWarning[]> {
+    return warnAboutReportingLines(await this.employees.reportingLines());
+  }
+
+  /** The employee with no line manager. FR 04 permits exactly one, so this is it. */
+  async head(): Promise<Employee | undefined> {
+    return this.employees.findRoot();
   }
 
   async byId(id: string): Promise<Employee> {

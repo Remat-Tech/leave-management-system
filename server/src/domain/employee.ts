@@ -13,10 +13,14 @@
  * impossible, including when something other than this code is writing; the
  * functions here are what make the refusal say which field was wrong and why.
  *
- * The line manager is FR 02 and belongs to LMS 103, so it is deliberately absent
- * here. Deactivation, FR 06, is not: {@link planTermination} is that rule, added
- * by LMS 102. What is still absent from it is who may end an employment, which
- * is authorisation and belongs to LMS 112.
+ * Deactivation, FR 06, is {@link planTermination}, added by LMS 102. The line
+ * manager, FR 02 and FR 04, arrived with LMS 103; the half of it that needs no
+ * database is here, and the half that has to look another record up is in the
+ * service.
+ *
+ * What is still absent: who may end an employment or move a reporting line,
+ * which is authorisation and belongs to LMS 112, and cycle detection, FR 03,
+ * which belongs to LMS 104. A -> B -> A satisfies everything in this file.
  */
 
 import { assertCompanyEmail } from '../auth/company-email.js';
@@ -60,6 +64,18 @@ export interface NewEmployee {
   workEmail: string;
   jobTitle?: string | null;
   departmentId?: string | null;
+  /**
+   * Who this person reports to. FR 02.
+   *
+   * Required, and required in the type rather than only at runtime, which is the
+   * point of the story: a record created without one is a record whose leave
+   * requests have nowhere to go, and nobody should be able to make one by
+   * forgetting a field.
+   *
+   * `null` is the head of the organisation and is a deliberate thing to say, not
+   * an omission. FR 04 permits exactly one, and the service refuses a second.
+   */
+  managerId: string | null;
   workPatternId?: string | null;
   startDate: CalendarDate;
   exitDate?: CalendarDate | null;
@@ -144,6 +160,73 @@ export class EmployeeNotFound extends Error {
 }
 
 /**
+ * A line manager who is nobody.
+ *
+ * Separate from {@link EmployeeNotFound} because the two are different problems
+ * wearing the same words: there, the record being edited does not exist; here it
+ * does, and it is the person it was pointed at who does not. An HR officer needs
+ * to be told which of the two they are looking at.
+ */
+export class ManagerNotFound extends Error {
+  readonly managerId: string;
+
+  constructor(managerId: string) {
+    super(`No employee with id ${managerId}, so there is nobody for this person to report to.`);
+    this.name = 'ManagerNotFound';
+    this.managerId = managerId;
+  }
+}
+
+/**
+ * A line manager who has left.
+ *
+ * Routing a request to somebody who left in July is the same black hole as
+ * routing it nowhere, which is what FR 02 exists to close. This is refused when
+ * the line is drawn; a manager who leaves afterwards is drift, and is reported
+ * by {@link warnAboutReportingLines} instead. See the line-manager-rules
+ * migration for why neither can be a database constraint.
+ */
+export class ManagerHasLeft extends Error {
+  readonly managerId: string;
+
+  constructor(manager: Employee) {
+    super(
+      `${manager.firstName} ${manager.lastName} left on ` +
+        `${manager.exitDate ?? 'a date that was not recorded'} and cannot be anybody's ` +
+        `line manager. A request routed to them would have nowhere to go.`,
+    );
+    this.name = 'ManagerHasLeft';
+    this.managerId = manager.id;
+  }
+}
+
+/**
+ * A second employee with no line manager. FR 04, and the warning HR is shown.
+ *
+ * It names the person who already holds that position, because "somebody else
+ * has no manager" is not something an HR officer can act on and "Kwame Asante
+ * (RH-0001) does" is. The database refuses this as well, through the
+ * employee_one_root index; this is the half that can say who.
+ */
+export class SecondRootEmployee extends Error {
+  /** The employee already recorded without a manager, where one could be identified. */
+  readonly existingRootId: string | null;
+
+  constructor(existing?: Employee) {
+    super(
+      existing
+        ? `${existing.firstName} ${existing.lastName} (${existing.employeeNumber}) is ` +
+            `already the one employee recorded without a line manager. Give this ` +
+            `record a manager, or move ${existing.firstName}'s reporting line first.`
+        : 'Somebody is already recorded without a line manager, and exactly one may ' +
+            'be. Give this record a manager.',
+    );
+    this.name = 'SecondRootEmployee';
+    this.existingRootId = existing?.id ?? null;
+  }
+}
+
+/**
  * Somebody already recorded as having left.
  *
  * Separate from {@link InvalidEmployee} because it is not a bad field, it is a
@@ -169,6 +252,7 @@ export interface ValidatedEmployee {
   workEmail: string;
   jobTitle: string | null;
   departmentId: string | null;
+  managerId: string | null;
   workPatternId: string | null;
   startDate: CalendarDate;
   exitDate: CalendarDate | null;
@@ -199,6 +283,7 @@ export function validateNewEmployee(input: NewEmployee, domains: string[]): Vali
     workEmail: normaliseWorkEmail(input.workEmail, domains),
     jobTitle: optionalText('jobTitle', input.jobTitle, 120),
     departmentId: input.departmentId ?? null,
+    managerId: requireManagerReference(input.managerId),
     workPatternId: input.workPatternId ?? null,
     startDate: requireDate('startDate', input.startDate),
     exitDate: optionalDate('exitDate', input.exitDate),
@@ -247,6 +332,24 @@ export function validateEmployeeChanges(
   }
   if ('departmentId' in changes) {
     validated.departmentId = changes.departmentId ?? null;
+  }
+  if ('managerId' in changes) {
+    const managerId = requireManagerReference(changes.managerId);
+
+    /* The database says the same thing, in employee_not_own_manager. It is said
+       here as well so the refusal names the box rather than the constraint, and
+       because this is the one cycle short enough to see without a walk. The
+       longer ones — A -> B -> A — are FR 03 and LMS 104, and are not checked
+       anywhere yet. */
+    if (managerId !== null && managerId === current.id) {
+      throw new InvalidEmployee(
+        'managerId',
+        'An employee cannot be their own line manager. Their requests would be ' +
+          'theirs to approve.',
+      );
+    }
+
+    validated.managerId = managerId;
   }
   if ('workPatternId' in changes) {
     /* Nullable on the way in so the field can be omitted, but the column is NOT
@@ -347,6 +450,95 @@ export function planTermination(
 }
 
 /**
+ * What is wrong with the recorded reporting lines, as facts about the table.
+ *
+ * Gathered by the repository, judged here, so the judging needs no database and
+ * the same three questions are asked the same way wherever they are asked from.
+ */
+export interface ReportingLines {
+  /** How many employee records there are at all, leavers included. */
+  total: number;
+  /** Everybody recorded with no line manager. FR 04 permits exactly one. */
+  rootless: Employee[];
+  /** Everybody still here whose recorded manager has left. */
+  reportingToLeavers: { employee: Employee; manager: Employee }[];
+}
+
+export interface ReportingLineWarning {
+  code: 'NO_ROOT' | 'SECOND_ROOT' | 'MANAGER_HAS_LEFT';
+  message: string;
+  /** Who the warning is about, so a screen can link to them rather than describe them. */
+  employeeIds: string[];
+}
+
+/**
+ * The standing check on the reporting lines. FR 02 and FR 04.
+ *
+ * This is the other half of the warning HR gets, and it exists because the two
+ * halves catch different things. {@link SecondRootEmployee} and
+ * {@link ManagerHasLeft} catch a bad line being *drawn*, in front of the person
+ * drawing it. This catches a line that was fine when it was drawn and is not any
+ * more, which is the case nothing at write time can see: nobody edited the
+ * record whose manager left.
+ *
+ * It reports rather than refuses, because every condition here is already true
+ * by the time it is asked about. There is nothing left to refuse, only somebody
+ * to tell.
+ */
+export function warnAboutReportingLines(lines: ReportingLines): ReportingLineWarning[] {
+  const warnings: ReportingLineWarning[] = [];
+
+  if (lines.total > 0 && lines.rootless.length === 0) {
+    /* Not an omission. With manager_id a foreign key to this same table and no
+       NULL anywhere in it, every upward walk is infinite over a finite set, so
+       it must revisit somebody: no root means a cycle. Naming that here saves
+       the next person the twenty minutes of looking for the missing chief
+       executive. FR 03 and LMS 104 are what fix it. */
+    warnings.push({
+      code: 'NO_ROOT',
+      message:
+        'Every employee has a line manager and none is the head of the organisation, ' +
+        'so somewhere a reporting line loops back on itself. No upward walk can ' +
+        'terminate, which means no request can be routed.',
+      employeeIds: [],
+    });
+  }
+
+  if (lines.rootless.length > 1) {
+    /* The employee_one_root index makes this unreachable through any write. It
+       is still asked, because the check should report what is in the table
+       rather than what ought to be possible: a database restored from a dump
+       taken before that index, or one the down migration has been run against,
+       can hold it, and this is the only thing that would say so. */
+    warnings.push({
+      code: 'SECOND_ROOT',
+      message:
+        `${lines.rootless.length} employees are recorded with no line manager, and ` +
+        `exactly one may be: ${lines.rootless.map(fullName).join(', ')}. All but the ` +
+        `head of the organisation need one, or their requests have nowhere to go.`,
+      employeeIds: lines.rootless.map((employee) => employee.id),
+    });
+  }
+
+  for (const { employee, manager } of lines.reportingToLeavers) {
+    warnings.push({
+      code: 'MANAGER_HAS_LEFT',
+      message:
+        `${fullName(employee)} reports to ${fullName(manager)}, who left on ` +
+        `${manager.exitDate ?? 'a date that was not recorded'}. Their requests have ` +
+        `nowhere to go until somebody else is recorded as their manager.`,
+      employeeIds: [employee.id, manager.id],
+    });
+  }
+
+  return warnings;
+}
+
+function fullName(employee: Employee): string {
+  return `${employee.firstName} ${employee.lastName} (${employee.employeeNumber})`;
+}
+
+/**
  * The rules that involve more than one field, checked in one place so that
  * creating a record and changing one cannot drift apart.
  */
@@ -398,6 +590,51 @@ function normaliseWorkEmail(value: string | undefined, domains: string[]): strin
   const email = requireText('workEmail', value, 160).toLowerCase();
   assertCompanyEmail(email, domains);
   return email;
+}
+
+/**
+ * The line manager reference, or a deliberate statement that there is none.
+ *
+ * Three inputs, three different meanings, and keeping them apart is most of the
+ * story:
+ *
+ *   `undefined` is the caller not having said. Refused, because a record with no
+ *   manager by accident is exactly the one whose requests go nowhere.
+ *
+ *   `null` is "this is the head of the organisation". Permitted here and checked
+ *   against the rest of the table by the service, because at most one may be it.
+ *
+ *   A string is an id, which the service then has to find.
+ *
+ * `''` is refused rather than read as `null`. Unlike a job title, where blank is
+ * somebody clearing a field, blank in a reference is a form that submitted its
+ * empty select box, and a routing black hole is not something to infer from an
+ * empty string. The route layer of Phase 5 maps its own blanks to `null`
+ * knowingly, which is where that decision belongs.
+ */
+function requireManagerReference(value: string | null | undefined): string | null {
+  if (value === undefined) {
+    throw new InvalidEmployee(
+      'managerId',
+      'Every employee has a line manager, so that their requests have somewhere to ' +
+        'go. If this is the head of the organisation, say so with a managerId of ' +
+        'null rather than by leaving it out.',
+    );
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new InvalidEmployee(
+      'managerId',
+      'managerId must be the id of the line manager, or null for the head of the ' +
+        'organisation.',
+    );
+  }
+
+  return value.trim();
 }
 
 function requireText(field: string, value: string | undefined, maxLength: number): string {
