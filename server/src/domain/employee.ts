@@ -14,13 +14,14 @@
  * functions here are what make the refusal say which field was wrong and why.
  *
  * Deactivation, FR 06, is {@link planTermination}, added by LMS 102. The line
- * manager, FR 02 and FR 04, arrived with LMS 103; the half of it that needs no
- * database is here, and the half that has to look another record up is in the
- * service.
+ * manager, FR 02 and FR 04, arrived with LMS 103, and the rule against a line
+ * that loops, FR 03, with LMS 104: the halves of both that need no database are
+ * here, and the halves that have to look another record up are in the service.
+ * {@link assertNoManagerCycle} is the shape of that split at its clearest — the
+ * walk belongs to the service, the judgement and the message belong here.
  *
- * What is still absent: who may end an employment or move a reporting line,
- * which is authorisation and belongs to LMS 112, and cycle detection, FR 03,
- * which belongs to LMS 104. A -> B -> A satisfies everything in this file.
+ * What is still absent is who may end an employment or move a reporting line,
+ * which is authorisation and belongs to LMS 112.
  */
 
 import { assertCompanyEmail } from '../auth/company-email.js';
@@ -223,6 +224,85 @@ export class SecondRootEmployee extends Error {
     );
     this.name = 'SecondRootEmployee';
     this.existingRootId = existing?.id ?? null;
+  }
+}
+
+/**
+ * A manager change that would close a loop. FR 03.
+ *
+ * A loop is the one bad state in this table that nothing downstream survives.
+ * FR 04 gives the tree a single root so that a walk upward terminates; a loop
+ * makes it not terminate, and a request going round one is never approved, never
+ * rejected and never seen again.
+ *
+ * The loop is carried rather than only described, because "that would create a
+ * cycle" is not something an HR officer can act on. Which three people, and in
+ * what order, is.
+ */
+export class ManagerCycle extends Error {
+  /**
+   * The loop that would have been closed: the proposed manager first, then each
+   * person above them, ending with the employee whose manager was being set.
+   *
+   * Empty when the loop was caught by the database rather than by the walk — see
+   * the repository — in which case there was a refusal but nobody to name.
+   */
+  readonly loop: readonly Employee[];
+
+  constructor(loop: readonly Employee[] = []) {
+    super(describeCycle(loop));
+    this.name = 'ManagerCycle';
+    this.loop = loop;
+  }
+}
+
+function describeCycle(loop: readonly Employee[]): string {
+  const manager = loop[0];
+  const employee = loop[loop.length - 1];
+
+  if (manager === undefined || employee === undefined) {
+    return (
+      'That line manager would close a loop in the reporting lines. A request ' +
+      'walking up it would go round for ever and reach nobody.'
+    );
+  }
+
+  /* Everybody strictly between the two, which is what turns "these two cannot
+     both be right" into a route somebody can follow and correct. */
+  const between = loop.slice(1, -1);
+  const through = between.length === 0 ? '' : `, through ${between.map(fullName).join(', then ')}`;
+
+  return (
+    `${fullName(manager)} already reports to ${fullName(employee)}${through}. ` +
+    `Making them ${employee.firstName}'s line manager would close the loop, and a ` +
+    `request walking up it would reach nobody.`
+  );
+}
+
+/**
+ * The rule, given a walk somebody else did. FR 03 and Technical Design Document
+ * section 5.2.
+ *
+ * `chain` is the reporting line above the *proposed manager*, nearest first,
+ * beginning with the proposed manager themselves. If the employee whose manager
+ * is being set appears anywhere in it, that employee is already above the
+ * proposed manager, and making the proposed manager theirs joins the two ends.
+ *
+ * Walking up from the proposed manager rather than down from the employee finds
+ * the same loop either way, and is bounded by the depth of the organisation
+ * instead of by the number of people in it.
+ *
+ * The walk is not here, because it needs the table. This is only the judgement,
+ * kept in the domain so that the rule and its message can be read and tested
+ * without a database. The same rule is held again as a deferred constraint
+ * trigger, which is what covers a bulk import that never passes through any of
+ * this; see the reject-circular-reporting-lines migration.
+ */
+export function assertNoManagerCycle(employee: Employee, chain: readonly Employee[]): void {
+  const closesAt = chain.findIndex((above) => above.id === employee.id);
+
+  if (closesAt !== -1) {
+    throw new ManagerCycle(chain.slice(0, closesAt + 1));
   }
 }
 

@@ -310,21 +310,59 @@ The reason is routing. A record with no manager is a record whose leave requests
 have nowhere to go, and it is found by the employee whose request vanishes rather
 than by the HR officer who created it.
 
+**And a reporting line never loops.** `A -> B -> C -> A` is the one bad state in
+this table that nothing downstream survives: FR 04 gives the tree a single root
+so that a walk upward terminates, and a loop makes it not terminate. A request
+going round one is never approved, never rejected and never seen again. FR 03.
+
 | | Covers | Does not cover |
 |---|---|---|
 | the `employee_one_root` partial unique index | a second manager-less record, on every connection | a table with *no* root, which no per-statement rule can hold |
 | `employee_manager_id_fkey`, `employee_not_own_manager` | a manager who is nobody, and the loop of length one | any longer loop |
-| `EmployeeService.checkManager()` | the same, said in words HR can act on, plus a manager who has already left | a manager who leaves *afterwards*: nobody touches the reports' records when it happens |
-| `EmployeeService.reportingLineWarnings()` | exactly that drift, reported as a standing check | nothing; it refuses nothing, because everything it finds is already true |
+| `EmployeeService.checkManager()` | all of the above said in words HR can act on, a manager who has already left, and any loop — by walking up from the proposed manager and looking for the employee | anything that does not go through the service |
+| the `employee_no_manager_cycle` constraint trigger | every loop, on every connection, including a bulk import | nothing; it is the backstop |
+| `EmployeeService.reportingLineWarnings()` | a manager who leaves *afterwards*, reported as a standing check | nothing; it refuses nothing, because everything it finds is already true |
 
-Two of those deserve knowing before they are needed.
+Three of those deserve knowing before they are needed.
 
-**Succession is order dependent.** Zero manager-less records is permitted and two
-is not, so when a new head of the organisation arrives, give the outgoing one
-their manager *first* and only then clear the new one's. The other order fails on
-the index. Giving the outgoing head a line rather than leaving them rootless is
-also why it works: the table stays a single tree, so a walk upward from anybody
-at all, leavers included, terminates in one place.
+**The cycle trigger is deferred, and that is the whole point of it.** It is a
+`CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED`, so it fires at `COMMIT`
+rather than per row. A row trigger sees the table half changed: swapping a
+manager and their report over is a legitimate restructure whose final state is a
+good tree, but whichever row is written first leaves a loop standing until the
+other one is written. Checked per row, that legitimate change is refused;
+checked at commit, only the state that will actually be stored is judged. The
+cost is that a bulk import is told it contains a loop rather than which line of
+the file holds it — the right way round, because the service walks first and
+knows the answer before it writes anything.
+
+It covers `INSERT` as well as `UPDATE`, which looks redundant and is not: a
+foreign key is itself an `AFTER ROW` trigger that fires at the end of the
+statement, so a single multi-row `INSERT` can put two rows in that name each
+other and satisfy the key. Verified against Postgres 17 rather than reasoned
+about.
+
+**Succeeding the head of the organisation is one transaction, not two
+statements.** FR 03 and FR 04 between them leave no order that works a statement
+at a time: clearing the incoming head's line first makes two rootless records,
+and giving the outgoing head theirs first makes the two point at each other. Nor
+is there a third move — any manager the outgoing head could be given is somebody
+below them, and below them is where the loop comes from. Inside one transaction
+the loop stands for exactly one statement, which the deferred trigger permits,
+while the rootless count goes 1 → 0 → 1 and never reaches the two the index would
+refuse:
+
+```sql
+BEGIN;
+UPDATE employee SET manager_id = :incoming WHERE id = :outgoing;
+UPDATE employee SET manager_id = NULL      WHERE id = :incoming;
+COMMIT;
+```
+
+`EmployeeService` cannot express that — every method there is a single
+autocommitted statement — so a `succeedHead()` is wanted and is not written. The
+integration suite pins the transaction so the shape is recorded rather than
+rediscovered.
 
 **"A manager who is still here" is not a constraint, and cannot be.** It is a
 rule about the current state of a different row, and that row changes without
@@ -335,16 +373,10 @@ job of `reportingLineWarnings()` — a read, safe from a dashboard or a nightly
 job, returning an empty list when every employee has somewhere for their requests
 to go.
 
-Two things are deliberately absent. **Cycles**: `A -> B -> A` with somebody else
-as the head satisfies every rule above and every constraint in the database. That
-is FR 03 and LMS 104, walked upward from the proposed manager. Until it exists,
-`reportingLineWarnings()` reports the symptom — with `manager_id` a foreign key
-to the same table and no `NULL` anywhere in it, every upward walk is infinite
-over a finite set, so no root at all means a cycle — without being able to name
-which line caused it. And **re-parenting when a manager leaves**: `terminate()`
-does not move the leaver's reports onto anybody, because who they should go to is
-a decision rather than a rule, and guessing it in the termination path is how a
-whole team silently ends up reporting to the CEO.
+One thing is deliberately absent: **re-parenting when a manager leaves**.
+`terminate()` does not move the leaver's reports onto anybody, because who they
+should go to is a decision rather than a rule, and guessing it in the termination
+path is how a whole team silently ends up reporting to the CEO.
 
 ---
 

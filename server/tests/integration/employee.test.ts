@@ -11,6 +11,7 @@ import {
   EmployeeNotFound,
   GENDERS,
   InvalidEmployee,
+  ManagerCycle,
   ManagerHasLeft,
   ManagerNotFound,
   type NewEmployee,
@@ -22,15 +23,16 @@ import { seed } from '../../seeds/seed.mjs';
 import type { Kysely } from 'kysely';
 
 /**
- * The employee record against a real database. FR 01, FR 02, FR 04 and FR 05.
- * LMS 101 to LMS 103.
+ * The employee record against a real database. FR 01 to FR 06, LMS 101 to
+ * LMS 104.
  *
  * The unit suite covers the rules. What needs a database is everything the
  * database itself decides: that the two identifiers really are unique and really
  * are compared without regard to case, that a value outside a permitted list
  * cannot be stored whatever wrote it, that a record cannot be deleted by the
- * role the application connects as, and that exactly one employee can be
- * recorded without a line manager.
+ * role the application connects as, that exactly one employee can be recorded
+ * without a line manager, and that no reporting line loops — including when the
+ * change arrives as a bulk import that no service ever saw.
  */
 
 const testDatabaseUrl = inject('testDatabaseUrl');
@@ -42,6 +44,9 @@ const DOMAINS = ['rematholdings.com'];
 let db: Kysely<Database>;
 let admin: Client;
 let employees: EmployeeService;
+
+/** Reached directly only for chainFrom(), which nothing above it exposes. */
+let repository: EmployeeRepository;
 
 /** The ids the seed created, keyed by the names it uses for them. */
 let people: Record<string, string>;
@@ -74,7 +79,8 @@ beforeAll(async () => {
   admin = new Client({ connectionString: testDatabaseUrl });
   await admin.connect();
 
-  employees = new EmployeeService(new EmployeeRepository(db), { domains: DOMAINS });
+  repository = new EmployeeRepository(db);
+  employees = new EmployeeService(repository, { domains: DOMAINS });
 });
 
 beforeEach(async () => {
@@ -383,12 +389,6 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
       );
     });
 
-    it('refuses somebody managing themselves at the database as well', async () => {
-      await expect(
-        admin.query("UPDATE employee SET manager_id = id WHERE employee_number = 'RH-0011'"),
-      ).rejects.toThrow(/employee_not_own_manager/);
-    });
-
     it('leaves a line alone when the change does not mention it', async () => {
       const created = await employees.create(JOINER);
 
@@ -459,19 +459,50 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
       ).rejects.toThrow(/employee_one_root/);
     });
 
-    it('lets one head succeed another, in the order that keeps the count legal', async () => {
-      // The one operation the index makes order dependent, asserted so that the
-      // order is written down somewhere other than a comment. Zero records
-      // without a manager is permitted and two is not, so the outgoing head is
-      // given one before the incoming one has theirs taken away.
+    it('refuses either half of a succession taken on its own', async () => {
+      /* Succession used to be an ordered pair of ordinary updates: give the
+         outgoing head a manager first, then clear the incoming one's. FR 03
+         closed that off, and the two rules now leave no order that works one
+         statement at a time.
+
+         Clearing the incoming head's line first makes two rootless records.
+         Giving the outgoing head theirs first makes the two of them point at
+         each other, which is a loop. There is no third move: any manager for the
+         outgoing head is somebody below them, and below them is where the loop
+         comes from. */
       const incoming = await employees.create({
         ...JOINER,
         jobTitle: 'Chief Executive Officer',
         managerId: people.ceo,
       });
 
-      await employees.update(people.ceo, { managerId: incoming.id });
-      await employees.update(incoming.id, { managerId: null });
+      await expect(employees.update(incoming.id, { managerId: null })).rejects.toBeInstanceOf(
+        SecondRootEmployee,
+      );
+
+      await expect(employees.update(people.ceo, { managerId: incoming.id })).rejects.toBeInstanceOf(
+        ManagerCycle,
+      );
+    });
+
+    it('lets one head succeed another when both changes commit together', async () => {
+      // So succession is one transaction, and this is the shape of it. The loop
+      // stands for exactly one statement, which the deferred cycle trigger
+      // permits and a per row one would not; the number of rootless records
+      // never reaches two, which the index would not permit at any point.
+      const incoming = await employees.create({
+        ...JOINER,
+        jobTitle: 'Chief Executive Officer',
+        managerId: people.ceo,
+      });
+
+      await admin.query('BEGIN');
+      await admin.query('UPDATE employee SET manager_id = $1 WHERE id = $2', [
+        incoming.id,
+        people.ceo,
+      ]);
+      await admin.query('UPDATE employee SET manager_id = NULL WHERE id = $1', [incoming.id]);
+      await expect(admin.query('COMMIT')).resolves.toBeDefined();
 
       expect((await employees.head())?.id).toBe(incoming.id);
       // The outgoing head keeps a line rather than becoming a second rootless
@@ -517,6 +548,214 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
       for (const id of [people.officer, people.partTimer]) {
         await employees.update(id, { managerId: people.opsManager });
       }
+
+      expect(await employees.reportingLineWarnings()).toEqual([]);
+    });
+  });
+});
+
+describe('a reporting line never loops, FR 03', () => {
+  /**
+   * The seeded branch, top to bottom, which every case here bends into a loop:
+   *
+   *   Kwame -> Yaw -> Akosua -> Kofi -> Adwoa, and Kofi -> Abena as well.
+   *
+   * The unit suite covers the judgement. What needs a database is the walk, and
+   * the deferred trigger that catches what the walk never sees: a bulk import, a
+   * migration correcting data, a person in psql.
+   */
+
+  /** Whatever the loop is, the branch it was bent out of is unchanged afterwards. */
+  async function managerOf(id: string): Promise<string | null> {
+    return (await employees.byId(id)).managerId;
+  }
+
+  describe('the walk, from the proposed manager upward', () => {
+    it('refuses a loop between two people', async () => {
+      // Kofi given Adwoa, who already reports to him.
+      await expect(
+        employees.update(people.teamLead, { managerId: people.officer }),
+      ).rejects.toBeInstanceOf(ManagerCycle);
+
+      expect(await managerOf(people.teamLead)).toBe(people.opsManager);
+    });
+
+    it('refuses a three level loop, and names the person in the middle', async () => {
+      // Akosua -> Kofi -> Adwoa -> Akosua. Neither end of it is directly related
+      // to the other, so nothing short of the walk finds this.
+      let thrown: unknown;
+      try {
+        await employees.update(people.opsManager, { managerId: people.officer });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(ManagerCycle);
+      expect((thrown as ManagerCycle).loop.map((one) => one.employeeNumber)).toEqual([
+        'RH-0011',
+        'RH-0010',
+        'RH-0007',
+      ]);
+      // Kofi is the person HR has to look at, and he is in neither of the two
+      // records being edited.
+      expect((thrown as Error).message).toContain('Kofi Boateng (RH-0010)');
+    });
+
+    it('refuses inverting the organisation onto the head of it', async () => {
+      await expect(
+        employees.update(people.ceo, { managerId: people.officer }),
+      ).rejects.toBeInstanceOf(ManagerCycle);
+
+      expect(await managerOf(people.ceo)).toBeNull();
+    });
+
+    it('still allows a move that only looks like one, across branches', async () => {
+      // Abena under Adwoa. Both are Kofi's reports, so the line gets one level
+      // longer and still terminates at Kwame.
+      const moved = await employees.update(people.partTimer, { managerId: people.officer });
+
+      expect(moved.managerId).toBe(people.officer);
+    });
+
+    it('still allows a move up the line the employee is already on', async () => {
+      // Adwoa from Kofi to Akosua, who is above Kofi. Walking up from Akosua
+      // never reaches Adwoa, because Adwoa is below the branch, not on it.
+      const moved = await employees.update(people.officer, { managerId: people.opsManager });
+
+      expect(moved.managerId).toBe(people.opsManager);
+    });
+
+    it('walks a line that already loops without going round it for ever', async () => {
+      // A table restored from a dump taken before the trigger existed. Without
+      // the CYCLE clause this is the query that never returns, and the check for
+      // cycles is the thing that hangs on one.
+      await admin.query('ALTER TABLE employee DISABLE TRIGGER employee_no_manager_cycle');
+      try {
+        await admin.query('UPDATE employee SET manager_id = $1 WHERE id = $2', [
+          people.officer,
+          people.teamLead,
+        ]);
+      } finally {
+        // Restored here rather than after the assertion, so a failing
+        // expectation cannot leave the trigger off for every test below.
+        await admin.query('ALTER TABLE employee ENABLE TRIGGER employee_no_manager_cycle');
+      }
+
+      const chain = await repository.chainFrom(people.officer);
+
+      // Adwoa, Kofi, and then it stops rather than starting round again.
+      expect(chain.map((one) => one.employeeNumber)).toEqual(['RH-0011', 'RH-0010']);
+    });
+  });
+
+  describe('the database, for the changes that never reach the walk', () => {
+    it('blocks self reference, as a rule about the row itself', async () => {
+      // A CHECK from the organisation migration, so it is evaluated as part of
+      // writing the row rather than at commit, and it names itself. The cycle
+      // trigger would find this too; the one that gets there first and says more
+      // is the one that should.
+      await expect(
+        admin.query("UPDATE employee SET manager_id = id WHERE employee_number = 'RH-0011'"),
+      ).rejects.toThrow(/employee_not_own_manager/);
+    });
+
+    it('refuses a three level loop written straight past the service', async () => {
+      await expect(
+        admin.query('UPDATE employee SET manager_id = $1 WHERE id = $2', [
+          people.officer,
+          people.opsManager,
+        ]),
+      ).rejects.toMatchObject({ constraint: 'employee_no_manager_cycle' });
+
+      expect(await managerOf(people.opsManager)).toBe(people.opsDirector);
+    });
+
+    it('reports the refusal as an integrity violation, not a crash', async () => {
+      // check_violation, so a caller can tell a refused line from a genuine
+      // fault by SQLSTATE rather than by reading the message text.
+      await expect(
+        admin.query('UPDATE employee SET manager_id = $1 WHERE id = $2', [
+          people.officer,
+          people.opsManager,
+        ]),
+      ).rejects.toMatchObject({ code: '23514', constraint: 'employee_no_manager_cycle' });
+    });
+
+    it('refuses two people inserted into a loop by a single statement', async () => {
+      // The reason INSERT is covered as well as UPDATE. A foreign key is itself
+      // an AFTER ROW trigger that fires at the end of the statement, so these
+      // two satisfy it by naming each other, and only the cycle trigger stops
+      // them.
+      await expect(
+        admin.query(
+          `INSERT INTO employee (
+             id, employee_number, first_name, last_name, work_email,
+             work_pattern_id, start_date, manager_id
+           ) VALUES
+             (900001, 'RH-0900', 'Loop', 'One', 'loop.one@rematholdings.com',
+              (SELECT id FROM work_pattern WHERE is_default), DATE '2026-09-01', 900002),
+             (900002, 'RH-0901', 'Loop', 'Two', 'loop.two@rematholdings.com',
+              (SELECT id FROM work_pattern WHERE is_default), DATE '2026-09-01', 900001)`,
+        ),
+      ).rejects.toMatchObject({ constraint: 'employee_no_manager_cycle' });
+    });
+  });
+
+  describe('a bulk import, which goes through no service at all', () => {
+    it('is refused when it ends in a loop, at the point it commits', async () => {
+      // Two reparents, each unremarkable on its own, that between them close a
+      // loop. This is the shape the acceptance criteria means by bulk import,
+      // and the point of the test is *where* it fails.
+      await admin.query('BEGIN');
+
+      await expect(
+        admin.query('UPDATE employee SET manager_id = $1 WHERE id = $2', [
+          people.partTimer,
+          people.officer,
+        ]),
+      ).resolves.toBeDefined();
+
+      await expect(
+        admin.query('UPDATE employee SET manager_id = $1 WHERE id = $2', [
+          people.officer,
+          people.partTimer,
+        ]),
+      ).resolves.toBeDefined();
+
+      // Neither statement failed. The trigger is deferred, so the refusal
+      // arrives here, against the state that would actually have been stored.
+      await expect(admin.query('COMMIT')).rejects.toMatchObject({
+        constraint: 'employee_no_manager_cycle',
+      });
+
+      expect(await managerOf(people.officer)).toBe(people.teamLead);
+      expect(await managerOf(people.partTimer)).toBe(people.teamLead);
+    });
+
+    it('is allowed when it only passes through a loop on the way', async () => {
+      // Akosua and Kofi swapping places. Whichever row is written first leaves a
+      // loop standing until the other one is written, so a per row trigger would
+      // refuse a restructure whose final state is a perfectly good tree. This is
+      // what the deferral buys, and it is why it is a CONSTRAINT TRIGGER.
+      await admin.query('BEGIN');
+      await admin.query('UPDATE employee SET manager_id = $1 WHERE id = $2', [
+        people.teamLead,
+        people.opsManager,
+      ]);
+      await admin.query('UPDATE employee SET manager_id = $1 WHERE id = $2', [
+        people.opsDirector,
+        people.teamLead,
+      ]);
+      await expect(admin.query('COMMIT')).resolves.toBeDefined();
+
+      expect(await managerOf(people.teamLead)).toBe(people.opsDirector);
+      expect(await managerOf(people.opsManager)).toBe(people.teamLead);
+    });
+
+    it('leaves the fixture organisation loop free, which the seed itself proves', async () => {
+      // The seed loads thirteen people in one transaction, so every one of those
+      // rows is walked at its commit. That it loads at all is the assertion.
+      await expect(seed(admin)).resolves.toBeDefined();
 
       expect(await employees.reportingLineWarnings()).toEqual([]);
     });

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   AlreadyTerminated,
+  assertNoManagerCycle,
   EMPLOYMENT_STATUSES,
   EMPLOYMENT_TYPES,
   GENDERS,
   InvalidEmployee,
+  ManagerCycle,
   type Employee,
   type NewEmployee,
   planTermination,
@@ -15,8 +17,8 @@ import {
 } from '../../src/domain/employee.js';
 
 /**
- * The rules for an employee record, FR 01, FR 02, FR 04, FR 05 and FR 06,
- * checked without a database.
+ * The rules for an employee record, FR 01 to FR 06, checked without a
+ * database.
  *
  * The database holds the same rules as constraints and refuses the same records;
  * that is asserted in the integration suite. What is asserted here is that the
@@ -340,6 +342,119 @@ describe('the line manager, FR 02 and FR 04', () => {
   it('lets the head of the organisation go on being it', () => {
     // STORED already has no manager. Saying so again is not a second one.
     expect(validateEmployeeChanges({ managerId: null }, STORED, DOMAINS).managerId).toBeNull();
+  });
+});
+
+describe('a reporting line never loops, FR 03', () => {
+  /**
+   * The judgement, given a walk somebody else did. The walk itself needs the
+   * table and lives in the service; the integration suite proves that half, and
+   * proves the deferred trigger that catches what never reaches the service at
+   * all.
+   *
+   * `chain` throughout is the line above the *proposed manager*, nearest first
+   * and starting with them. A loop is that chain reaching the employee whose
+   * manager is being set.
+   */
+
+  /** Kwame at the top, then Yaw, Akosua, Kofi, Adwoa at the bottom. */
+  const person = (id: string, firstName: string, lastName: string, number: string): Employee => ({
+    ...STORED,
+    id,
+    firstName,
+    lastName,
+    employeeNumber: number,
+  });
+
+  const KWAME = person('1', 'Kwame', 'Asante', 'RH-0001');
+  const YAW = person('3', 'Yaw', 'Boateng', 'RH-0003');
+  const AKOSUA = person('7', 'Akosua', 'Darko', 'RH-0007');
+  const KOFI = person('10', 'Kofi', 'Boateng', 'RH-0010');
+  const ADWOA = person('11', 'Adwoa', 'Frimpong', 'RH-0011');
+
+  /** Walking up from Adwoa, who is at the bottom of the seeded branch. */
+  const ABOVE_ADWOA = [ADWOA, KOFI, AKOSUA, YAW, KWAME];
+
+  function cycle(fn: () => unknown): ManagerCycle {
+    try {
+      fn();
+    } catch (error) {
+      if (error instanceof ManagerCycle) {
+        return error;
+      }
+      throw error;
+    }
+    throw new Error('Expected the line to be refused, but it was accepted.');
+  }
+
+  it('accepts a manager the employee is not already above', () => {
+    // Abena moving under Adwoa. Nothing in Adwoa's line is Abena, so the line
+    // still terminates at Kwame.
+    const abena = person('12', 'Abena', 'Sarpong', 'RH-0012');
+
+    expect(() => assertNoManagerCycle(abena, ABOVE_ADWOA)).not.toThrow();
+  });
+
+  it('refuses a loop between two people', () => {
+    // Kofi being given Adwoa, who already reports to him.
+    const error = cycle(() => assertNoManagerCycle(KOFI, ABOVE_ADWOA));
+
+    expect(error.loop.map((one) => one.employeeNumber)).toEqual(['RH-0011', 'RH-0010']);
+  });
+
+  it('refuses a three level loop, and names the person in the middle', () => {
+    // Akosua -> Kofi -> Adwoa -> Akosua. The one the acceptance criteria asks
+    // for, and the one a two person check would miss: neither Akosua and Adwoa
+    // nor Kofi and Adwoa are directly related, so the loop only appears once the
+    // walk has gone up twice.
+    const error = cycle(() => assertNoManagerCycle(AKOSUA, ABOVE_ADWOA));
+
+    expect(error.loop.map((one) => one.employeeNumber)).toEqual(['RH-0011', 'RH-0010', 'RH-0007']);
+    // Naming Kofi is the point. "That would create a cycle" leaves an HR
+    // officer looking at two records that are each perfectly reasonable.
+    expect(error.message).toContain('Kofi Boateng (RH-0010)');
+    expect(error.message).toMatch(/Adwoa Frimpong \(RH-0011\) already reports to Akosua Darko/);
+  });
+
+  it('stops the loop at the employee rather than carrying the whole line', () => {
+    // Yaw and Kwame are above Akosua and are not part of the loop. Including
+    // them would name two people who have done nothing wrong.
+    const error = cycle(() => assertNoManagerCycle(AKOSUA, ABOVE_ADWOA));
+
+    expect(error.loop.map((one) => one.firstName)).not.toContain('Kwame');
+    expect(error.loop.map((one) => one.firstName)).not.toContain('Yaw');
+  });
+
+  it('refuses inverting the whole organisation onto the head of it', () => {
+    // Kwame given a manager from the bottom of his own tree. Every line in the
+    // company runs through this loop.
+    const error = cycle(() => assertNoManagerCycle(KWAME, ABOVE_ADWOA));
+
+    expect(error.loop).toHaveLength(5);
+  });
+
+  it('treats the degenerate loop of one as a loop', () => {
+    // Adwoa given herself. validateEmployeeChanges refuses this earlier with a
+    // message about the field, and employee_not_own_manager refuses it at the
+    // database, so this is the third of three. It is asserted because a rule
+    // that is right for the general case and wrong for the smallest one is the
+    // usual shape of an off by one.
+    const error = cycle(() => assertNoManagerCycle(ADWOA, ABOVE_ADWOA));
+
+    expect(error.loop).toEqual([ADWOA]);
+  });
+
+  it('accepts a walk that found nobody, because that is a different problem', () => {
+    // An id that is nobody gives an empty chain. The service turns that into
+    // ManagerNotFound; it is not this rule's to report.
+    expect(() => assertNoManagerCycle(ADWOA, [])).not.toThrow();
+  });
+
+  it('still says something usable when it has no names to give', () => {
+    // How the repository raises it: the deferred trigger fires at COMMIT with
+    // the transaction rolled back, so there is no state left to walk.
+    expect(new ManagerCycle().message).toMatch(/close a loop/);
+    expect(new ManagerCycle().loop).toEqual([]);
   });
 });
 
