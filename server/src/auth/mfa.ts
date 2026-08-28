@@ -24,6 +24,7 @@
 import { randomInt } from 'node:crypto';
 import type { Mail } from '../mail/transport.js';
 import { hashPassword, verifyPassword } from './password.js';
+import type { RoleCode } from './roles.js';
 import type { SignInAccount } from './sign-in.js';
 
 /**
@@ -44,7 +45,7 @@ import type { SignInAccount } from './sign-in.js';
  * fails the suite rather than quietly making a code optional for somebody it is
  * mandatory for.
  */
-export const MANDATORY_ROLES = ['HR_OFFICER', 'HR_ADMIN', 'SYS_ADMIN'] as const;
+export const MANDATORY_ROLES: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN', 'SYS_ADMIN'];
 
 /**
  * How many wrong answers a challenge survives.

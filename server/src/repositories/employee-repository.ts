@@ -177,6 +177,54 @@ export class EmployeeRepository {
   }
 
   /**
+   * Several records by id, in employee number order.
+   *
+   * One statement rather than one per id, for the callers that already have a set
+   * of ids from somewhere else — today, everybody holding a role. An empty list
+   * asks nothing rather than asking for `id IN ()`, which is not valid SQL.
+   */
+  async findAllById(ids: readonly string[]): Promise<Employee[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom('employee')
+      .selectAll()
+      .where('id', 'in', [...ids])
+      .orderBy('employee_number')
+      .execute();
+
+    return rows.map(toEmployee);
+  }
+
+  /**
+   * How many employees report to somebody. FR 02, and the whole of how being a
+   * manager is decided. LMS 111.
+   *
+   * A count rather than the records, because the question it answers is "is this
+   * person a manager", and that is a relationship rather than a role: there is no
+   * MANAGER row to read, role_code_known refuses the code outright, and this
+   * statement is the only thing in the system that knows.
+   *
+   * Leavers among the reports are counted. Somebody who has left is not going to
+   * raise a request, but a request already routed to their manager is still
+   * routed there, and filtering here would quietly answer a different question
+   * than the one asked.
+   */
+  async countReports(managerId: string): Promise<number> {
+    const row = await this.db
+      .selectFrom('employee')
+      .where('manager_id', '=', managerId)
+      .select((eb) => eb.fn.countAll<string>().as('reports'))
+      .executeTakeFirstOrThrow();
+
+    // count() comes back as a string, because a count can exceed 2^53 in
+    // principle. It cannot here, and a headcount is a number.
+    return Number(row.reports);
+  }
+
+  /**
    * The employee with no line manager, if there is one. FR 04.
    *
    * Singular because the employee_one_root index makes it so. It is still

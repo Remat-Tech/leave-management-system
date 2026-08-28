@@ -246,7 +246,7 @@ phishing attack against them will rely on. It does say what to do about a code
 nobody asked for, which is the most valuable sentence in it.
 
 What is not built, and is not hidden anywhere else either: no session or cookie
-(LMS 112), no roles beyond reading them (LMS 111), **no rate limit or lockout**,
+(LMS 112), **no rate limit or lockout**,
 no self service password change or reset, and no recovery codes — somebody locked
 out of their company mailbox is locked out of this until IT restores the mailbox.
 The rate limiter matters twice over now: a code challenge is answered by address,
@@ -258,6 +258,63 @@ is a denial of service, and it belongs in front of the route with the rest.
 state of a freshly provisioned account. Set one with `setPassword` when you need
 to sign in as somebody. Ama Mensah and Efua Owusu hold HR roles in the fixture
 set, so they are the two who will ask you for a code — read it in Mailpit.
+
+### Roles
+
+`RoleService` assigns them. §5.3, LMS 111.
+
+```ts
+const roles = new RoleService(
+  new RoleRepository(db),
+  new SignInAccountRepository(db),
+  new EmployeeRepository(db),
+);
+
+await roles.grant(employeeId, 'HR_OFFICER');   // -> everything they now hold
+await roles.revoke(employeeId, 'HR_OFFICER');
+await roles.forEmployee(employeeId);           // with the date each was granted
+await roles.holdersOf('SYS_ADMIN');            // who has the master key
+await roles.authorityFor(employeeId);          // { roles, isManager }
+```
+
+**Four roles, and the set is closed.** `EMPLOYEE`, `HR_OFFICER`, `HR_ADMIN`,
+`SYS_ADMIN`, held by a CHECK constraint rather than by everybody remembering, and
+`role` is read only to the application. A fifth role is a migration, not a row —
+which is right, because a role the authorisation layer has never heard of grants
+nothing, and a row that silently grants nothing is a worse failure than a
+constraint refusing to store it.
+
+**`MANAGER` is not one of them and cannot become one.** Being a manager is a
+relationship: you are one if some employee has your id as their `manager_id`.
+It is derived every time it is asked, so moving a reporting line moves the answer
+with it and there is nothing to keep in step. `authorityFor` returns it as a
+separate field rather than as an entry in `roles`, and that separation is the
+point — a single list with `'MANAGER'` in it is the drift the schema has refused
+since the table was created. Authorisation asks *"is this person one of my
+reports?"*, never *"do they have the manager role?"*.
+
+**`EMPLOYEE` arrives with the login and cannot be taken away.** A trigger grants
+it as the `app_user` row is created, so it is true in a production database —
+which is migrated and never seeded — and not only where fixtures have run. It is
+what *"can see their own leave and ask for more of it"* is called; an account
+without it is somebody who can sign in and then do nothing. To stop somebody
+signing in, close their account instead.
+
+**The last `SYS_ADMIN` cannot be removed.** It is the one role change nobody can
+undo, because the person who would undo it is the person who just stopped
+existing. Deferred, so handing the role on in one transaction works in either
+order; checked in the service for the message and by the database for the
+guarantee, which is what settles two people clicking at once.
+
+**Granting twice is fine; revoking what they never had is not.** Granting the
+same role twice leaves the same person with the same power, so it succeeds
+quietly. Revoking a role somebody never held means the person doing it has
+somebody else in mind, and they should hear about it rather than believe they
+have removed access that is still there.
+
+Nothing here decides who may *call* it. "As an HR Administrator" is LMS 112's to
+enforce. Neither is there an audit trail of who granted what — the date is on the
+row, and the actor needs a session to name.
 
 ---
 

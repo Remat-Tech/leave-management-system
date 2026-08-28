@@ -390,6 +390,12 @@ export class SignInService {
    * — which is the honest state of a joiner's account between HR creating it and
    * somebody choosing a password — and is told from a wrong password only in the
    * log.
+   *
+   * The EMPLOYEE role arrives with the login and is not granted here. LMS 111 put
+   * it in the app_user_holds_the_baseline_role trigger, so that a login and the
+   * baseline role it cannot function without land in one transaction and so that
+   * every writer gets it, not only this one. Anything beyond the baseline is
+   * {@link RoleService.grant}.
    */
   async provision(employeeId: string, options: { password?: string } = {}): Promise<SignInAccount> {
     const employee = await this.employees.findById(employeeId);
