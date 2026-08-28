@@ -896,6 +896,51 @@ One thing is deliberately absent: **re-parenting when a manager leaves**.
 should go to is a decision rather than a rule, and guessing it in the termination
 path is how a whole team silently ends up reporting to the CEO.
 
+**And the whole of it is drawn, because some faults are only visible as a
+shape.** `EmployeeService.orgChart()` builds the tree from `manager_id` and
+nothing else. It is the other half of `reportingLineWarnings()` and catches a
+different mistake: a warning finds the manager who has left, and only a chart
+finds the new starter put under the wrong team lead — nothing is *invalid* about
+that record, it is simply in the wrong place, and being in the wrong place is a
+thing you see rather than a thing you check. FR 09.
+
+**Everybody appears exactly once**, which is the property the whole of
+`server/src/domain/org-chart.ts` is built around. A chart that quietly drops the
+people it could not place looks correct precisely when the organisation is not,
+and the person it drops is the one whose manager is missing. So there is one list
+of roots, everybody hangs off one of them, and a root that should not be a root
+carries a `concern` saying why:
+
+| Standing | What it means | Where it comes from |
+|---|---|---|
+| `HEAD_OF_THE_ORGANISATION` | no line manager, because there is nobody above them | FR 04, and the only root that is not a fault |
+| `SECOND_HEAD` | a second record with no line manager | a database restored from before `employee_one_root` |
+| `MANAGER_NOT_ON_THE_CHART` | their manager is not among the records charted | a chart of one department, or of only the currently employed |
+| `REPORTING_LINE_LOOPS` | the line goes round in a circle, so no walk up it terminates | FR 03, refused by the deferred trigger and drawn anyway |
+
+The last two are the useful ones, and the loop is rooted at somebody actually
+*in* the loop rather than at the first unplaced record — those are often different
+people, and rooting it at the person the loop has trapped would name the fault
+against the wrong record.
+
+**Leavers are on the chart.** A chart of only the currently employed would drop a
+manager who has left and leave their team hanging off nobody, which is the exact
+condition the story exists to catch and the one it would then hide. They are
+marked rather than absent.
+
+**There is no depth limit and no recursion.** The tree is built and drawn with
+explicit stacks, so five levels is a fact about the fixtures rather than a
+ceiling, and a loop — which is an infinitely deep line until something bounds it —
+is charted with a warning on it instead of overflowing the stack. `unit/org-chart.test.ts`
+builds fifty thousand levels to keep that honest.
+
+Two renderings ship with it because there is no front end yet and a chart nobody
+can look at is not a chart: `renderOrgChart()` for anywhere text goes — a support
+request, a nightly job, an email to the officer asking why a request has not
+arrived — and `renderOrgChartAsMermaid()` for anywhere a diagram can be drawn,
+which is a pull request or a document. Both are pure functions of the tree, and so
+is the screen that eventually joins them.
+
 **Every employee is in exactly one department, and a department is closed rather
 than deleted.** `employee.department_id` is `NOT NULL`, and `departmentId` is
 required on `NewEmployee` in the type rather than only at runtime. There is no

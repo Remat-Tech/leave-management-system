@@ -128,6 +128,29 @@ export const employeePolicy = {
   },
 
   /**
+   * The reporting structure, drawn. FR 09. LMS 107.
+   *
+   * The same standing as the staff list, because it is the staff list with the
+   * lines between people shown: it names everybody, their job title, and who
+   * they report to. Anybody who may not have the list may not have the chart,
+   * and the chart is the more revealing of the two — a list says who is here and
+   * a chart says who answers to whom, which is the thing somebody working out
+   * where to aim a phishing email actually wants.
+   *
+   * Deliberately not opened to managers for their own branch. That would be the
+   * skip level read this file declines at the top, arriving through a different
+   * door: a manager who may draw their own subtree may draw their reports'
+   * reports, which is precisely what {@link employeePolicy.read} refuses one
+   * record at a time. A manager who needs to see their team has their direct
+   * reports; a manager who needs the shape of the company is asking HR.
+   */
+  chart(actor: Actor): Decision {
+    return holdsAny(actor, ...READS_EVERY_RECORD)
+      ? about.allow(actor, 'chart')
+      : about.refuse(actor, 'chart', null, 'holds no role that reads everybody');
+  },
+
+  /**
    * The standing check on the reporting lines. FR 02 and FR 04.
    *
    * It names records — whose manager has left, who has none — so it is a read of

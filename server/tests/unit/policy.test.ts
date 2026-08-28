@@ -264,6 +264,7 @@ describe('searching for people', () => {
       expect(employeePolicy.search(them).allowed).toBe(allowed);
       expect(employeePolicy.list(them).allowed).toBe(allowed);
       expect(employeePolicy.warnings(them).allowed).toBe(allowed);
+      expect(employeePolicy.chart(them).allowed).toBe(allowed);
     }
   });
 
@@ -271,6 +272,15 @@ describe('searching for people', () => {
     // A manager may see their reports. That is not a directory.
     expect(employeePolicy.list(manager('akosua')).allowed).toBe(false);
     expect(employeePolicy.search(manager('akosua')).allowed).toBe(false);
+  });
+
+  /* FR 09 and LMS 107. The chart names everybody, their job title and who they
+     answer to, so it is the staff list with the lines drawn in and goes to the
+     same people. Opening it to a manager for their own branch would be the skip
+     level read employee-policy.ts declines, arriving through a different door. */
+  it('does not let a manager draw their own branch of the chart', () => {
+    expect(employeePolicy.chart(manager('akosua')).allowed).toBe(false);
+    expect(employeePolicy.chart(manager('akosua')).told).toBeNull();
   });
 });
 
