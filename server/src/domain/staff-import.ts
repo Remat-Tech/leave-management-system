@@ -54,6 +54,7 @@ import {
   type NewEmployee,
 } from './employee.js';
 import { cellOf, normaliseHeading, type SheetRow } from './spreadsheet.js';
+import { withoutMidnight } from './time.js';
 
 /**
  * The fields a spreadsheet can carry, which is every field of an employee record
@@ -1037,10 +1038,18 @@ function required(field: ImportField, value: string, mapping: ColumnMapping): st
  *
  * The one concession is a time on the end, because a spreadsheet that has
  * decided a column is a datetime writes `2026-09-01 00:00:00` and means the
- * first of September. Dropping midnight is unambiguous; nothing else is.
+ * first of September. Dropping midnight is unambiguous; nothing else is, and
+ * {@link withoutMidnight} in ./time.ts is where that concession is defined —
+ * this is a fact about the form rather than about importing, and the next file
+ * somebody uploads will not be a staff list.
+ *
+ * Shape only. Whether the ten characters are a day anybody could have started on
+ * is {@link isCalendarDate}, applied by {@link validateNewEmployee} when the row
+ * goes through {@link EmployeeService} like every other record. There is no
+ * second opinion about that here and there should not be one.
  */
 function date(field: ImportField, value: string): CalendarDate {
-  const withoutTime = value.replace(/[ T]00:00(:00(\.0+)?)?Z?$/, '');
+  const withoutTime = withoutMidnight(value);
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(withoutTime)) {
     throw new InvalidImportRow(

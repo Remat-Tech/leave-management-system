@@ -20,7 +20,10 @@
  * `date` columns are typed `string` too, holding `YYYY-MM-DD`. The driver is
  * configured in ./index.ts to hand them back untouched instead of building a
  * `Date` at UTC midnight, which is the off by one day bug the README warns
- * about. `timestamptz` columns are instants and stay `Date`.
+ * about, and the session is pinned to `ISO, YMD` so that the characters it hands
+ * back are that form on every host. `timestamptz` columns are instants, are
+ * stored as UTC, and stay `Date`. NFR DAT 03; the rule is
+ * ../domain/time.ts.
  */
 
 import type { ColumnType, Generated } from 'kysely';

@@ -31,6 +31,7 @@
  */
 
 import { assertCompanyEmail } from '../auth/company-email.js';
+import { type CalendarDate, isCalendarDate } from './time.js';
 
 /* Each list is the same set as the matching CHECK constraint on the employee
    table. The integration tests assert that, so adding a value to one and
@@ -60,8 +61,13 @@ export type Gender = (typeof GENDERS)[number];
  * it into an instant to store it is how a leaver acquires an exit date one day
  * either side of the one on their letter. The README says it plainly: leave
  * dates are dates, everything else is UTC.
+ *
+ * Defined in ./time.ts since LMS 114 and re-exported here, because it belongs to
+ * no one record: a start date, an exit date and every day of a leave request are
+ * the same kind of thing, and by Phase 3 most of them will not be in this file.
+ * NFR DAT 03.
  */
-export type CalendarDate = string;
+export type { CalendarDate } from './time.js';
 
 /** What the caller supplies to create a record. */
 export interface NewEmployee {
@@ -860,24 +866,27 @@ function optionalText(field: string, value: string | null | undefined, maxLength
   return requireText(field, value, maxLength);
 }
 
-const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const CALENDAR_DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * What a date is is ./time.ts's; which field was wrong and how to say so is
+ * this file's. The two refusals stay separate because they are the two different
+ * mistakes an HR officer makes — a date written the other way round, and a day
+ * that is not a day — and one message covering both would help with neither.
+ */
 function requireDate(field: string, value: CalendarDate | undefined): CalendarDate {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new InvalidEmployee(field, `${field} is required.`);
   }
 
   const date = value.trim();
-  if (!CALENDAR_DATE.test(date)) {
+  if (!CALENDAR_DATE_SHAPE.test(date)) {
     throw new InvalidEmployee(field, `${field} must be a calendar date, as YYYY-MM-DD.`);
   }
 
-  /* The shape being right does not make the date real: 2026-02-31 and 2026-13-01
-     both match. Round tripping through UTC and comparing catches those without
-     bringing a timezone anywhere near the value, because a date built at UTC
-     midnight and formatted back at UTC is the same day it went in. */
-  const parsed = new Date(`${date}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+  // The shape being right does not make the date real: 2026-02-31 and 2026-13-01
+  // both match ten characters and are not days.
+  if (!isCalendarDate(date)) {
     throw new InvalidEmployee(field, `${date} is not a real date.`);
   }
 
