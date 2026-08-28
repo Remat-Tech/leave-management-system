@@ -115,6 +115,7 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 | `PORT` | API port, defaults to 3000 |
 | `SESSION_SECRET` | Signing key for sessions. Nothing reads it yet; sessions arrive with the request layer, LMS 112 |
 | `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01. Settled at `rematholdings.com` |
+| `MFA_CODE_*` | Length and lifetime of the sign in code. Both have safe defaults; a value that is present and nonsense is refused |
 | `SMTP_*` | Mail settings. Points at Mailpit in development |
 | `STORAGE_*` | Object storage for attachments. Local directory in development |
 
@@ -145,14 +146,27 @@ attacker knocks on.
 
 ### Signing in
 
-`SignInService` is the login door. NFR SEC 01, LMS 109.
+`SignInService` is the login door. NFR SEC 01, LMS 109 and LMS 110.
 
 ```ts
-const logins = new SignInService(new SignInAccountRepository(db), new EmployeeRepository(db));
+const logins = new SignInService(
+  new SignInAccountRepository(db),
+  new EmployeeRepository(db),
+  new RoleRepository(db),
+  createMailer(),
+);
 
 await logins.provision(employeeId, { password }); // HR gives somebody a login
 await logins.setPassword(employeeId, password);   // and sets or resets it
-const { employee, account } = await logins.signIn(email, password);
+
+const outcome = await logins.signIn(email, password);
+
+if (outcome.status === 'SIGNED_IN') {
+  const { employee, account } = outcome;
+} else {
+  // A code is in their mailbox. Show the second screen.
+  const { employee, account } = await logins.submitCode(email, code);
+}
 ```
 
 **A login is the employee's work address.** Not a copy of it — the address is
@@ -189,15 +203,61 @@ Minimum length is twelve and there are no composition rules — length is the
 property that costs an attacker something, and `Password1!` is what asking for a
 capital and a symbol produces.
 
+### The one time code
+
+Signing in is two steps for anybody who needs a code. `signIn` either opens the
+door or sends a code and says so; `submitCode` answers it. Which of the two is
+decided here, not by the caller, and `SignInOutcome` is a union so that a caller
+cannot forget the second case exists. NFR SEC 01, LMS 110.
+
+**Mandatory for `HR_OFFICER`, `HR_ADMIN` and `SYS_ADMIN`.** Those three can read
+everybody's leave records and the medical certificates attached to them; an
+ordinary employee's password opens their own leave, an HR Administrator's opens
+the company's. Everybody else may turn it on for themselves with `requireCode`.
+`stopRequiringCode` refuses for a mandatory role and names the role rather than
+saying no.
+
+**Roles are read at sign in, never copied onto the account.** Grant `HR_OFFICER`
+this morning and they are asked for a code this afternoon, with nothing else to
+update. Same reasoning as employment status, and as the organisation migration's
+note about not storing `MANAGER` as a role.
+
+**The mailbox is the factor, and that is the limit of what it buys.** Somebody
+who has taken over the company mailbox has both factors, and email is weaker than
+an authenticator app or a hardware key. It is the one every member of staff
+already has, on the account this system already ties access to, with nothing to
+enrol and nothing to lose.
+
+**Hashed at rest with scrypt, exactly as passwords are**, so a copy of `app_user`
+taken while people are signing in is not a list of the codes currently in flight.
+Ten minutes, six digits, both configurable and both bounded — a length read from
+a typo as `1` would be a ten possibility second factor that looks like a working
+one, so it is refused rather than shipped.
+
+**Single use, and finite.** The challenge is consumed by the same statement that
+stamps the sign in, a reissue replaces the previous code, and five wrong answers
+burn it. That last part is not a detail: six digits is a million guesses, and a
+limit that leaves the code alive is not a limit. The count is `attempts + 1` in
+the database, not read-modify-write, so four guesses arriving at once cost four.
+
+**The message carries no link.** A sign in email with a link in it teaches staff
+that clicking links in sign in emails is normal, which is the habit every
+phishing attack against them will rely on. It does say what to do about a code
+nobody asked for, which is the most valuable sentence in it.
+
 What is not built, and is not hidden anywhere else either: no session or cookie
-(LMS 112), no second factor (LMS 110), no roles (LMS 111), **no rate limit or
-lockout**, and no self service password change or reset. The first belongs in
-front of the route with the others; the last needs an email identity flow this
-system does not have yet.
+(LMS 112), no roles beyond reading them (LMS 111), **no rate limit or lockout**,
+no self service password change or reset, and no recovery codes — somebody locked
+out of their company mailbox is locked out of this until IT restores the mailbox.
+The rate limiter matters twice over now: a code challenge is answered by address,
+so somebody who knows a colleague's address and polls `submitCode` can spend that
+colleague's five attempts and make them start again. It grants no access, but it
+is a denial of service, and it belongs in front of the route with the rest.
 
 `npm run seed` gives everybody a login and nobody a password, which is the honest
 state of a freshly provisioned account. Set one with `setPassword` when you need
-to sign in as somebody.
+to sign in as somebody. Ama Mensah and Efua Owusu hold HR roles in the fixture
+set, so they are the two who will ask you for a code — read it in Mailpit.
 
 ---
 
@@ -704,11 +764,19 @@ npm test              # unit
 npm run test:watch    # unit, re-running as you edit
 npm run test:int      # integration, against a disposable database
 npm run test:all      # both
+npm run walkthrough   # not a test: a narrated run of signing in
 ```
 
 Unit tests live in `server/tests/unit` and touch no database, no network and no
 fixtures. Anything that needs one of those is an integration test and belongs in
 `server/tests/integration`.
+
+**`npm run walkthrough` is not a test and is not run by either suite.** It is
+`server/tests/walkthrough`, a narrated run of signing in — the password door, the
+code, the guesses, the leaver — against a database it builds and drops, sending
+real mail you can read in Mailpit. It prints rather than asserts, so it is for
+seeing the thing work rather than for proving it does. Start `npm run mail`
+first.
 
 **Integration tests build their own database and throw it away.** Each run creates
 `lms_test_<random>`, applies the migrations to it, runs the suite, and drops it

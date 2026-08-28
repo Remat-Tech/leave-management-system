@@ -58,15 +58,34 @@ export interface NewSignInAccount {
 }
 
 /**
- * An account together with the hash to check a password against.
+ * A one time code challenge as it stands on the row. LMS 110.
  *
- * The two are returned in one object rather than by two reads because they are
- * read together exactly once, in the sign in path, and a second round trip there
- * is a second chance for the row to have changed between them.
+ * All three together, because they are only meaningful together: a hash with no
+ * expiry is a code that never dies, an expiry with no hash is a question nothing
+ * answers, and a count with neither is counting nothing. The
+ * app_user_code_and_expiry_together constraint holds the first two to that.
+ *
+ * `hash` is here rather than on {@link SignInAccount} for the reason the password
+ * hash is: a secret at rest leaves the repository only through something whose
+ * name says it is handing one over.
+ */
+export interface CodeChallenge {
+  hash: string | null;
+  expiresAt: Date | null;
+  attempts: number;
+}
+
+/**
+ * An account together with the secrets to check an answer against.
+ *
+ * Returned in one object rather than by several reads because they are read
+ * together exactly once, in the sign in path, and a second round trip there is a
+ * second chance for the row to have changed between them.
  */
 export interface SignInCredentials {
   account: SignInAccount;
   passwordHash: string | null;
+  challenge: CodeChallenge;
 }
 
 export class SignInAccountRepository {
@@ -135,9 +154,75 @@ export class SignInAccountRepository {
       .where((eb) => eb(eb.fn('lower', ['company_email']), '=', fold(companyEmail)))
       .executeTakeFirst();
 
-    return row === undefined
-      ? undefined
-      : { account: toAccount(row), passwordHash: row.password_hash };
+    return row === undefined ? undefined : toCredentials(row);
+  }
+
+  /**
+   * Starts a one time code challenge, replacing whatever was there. LMS 110.
+   *
+   * One statement, and it is what makes a code single use from the moment it is
+   * issued: the previous hash, its expiry and its attempt count all go at once.
+   * Two codes in flight for one account would mean the older one still opens the
+   * door, which is exactly the code an attacker who has been fishing in a mailbox
+   * already has.
+   *
+   * The attempt count is reset here rather than anywhere else, because this is
+   * the only place a new challenge begins.
+   */
+  async startChallenge(id: string, hash: string, expiresAt: Date): Promise<void> {
+    await this.db
+      .updateTable('app_user')
+      .set({ mfa_code_hash: hash, mfa_code_expires_at: expiresAt, mfa_code_attempts: 0 })
+      .where('id', '=', id)
+      .execute();
+  }
+
+  /**
+   * Ends a challenge, whether it was answered or abandoned.
+   *
+   * The other half of single use. Called on a correct code, on the attempt that
+   * exhausts the limit, and on a code found to have expired — a dead challenge is
+   * cleared rather than left lying about, so that the resting state of the column
+   * is genuinely "nobody is half way through signing in".
+   */
+  async clearChallenge(id: string): Promise<void> {
+    await this.db
+      .updateTable('app_user')
+      .set({ mfa_code_hash: null, mfa_code_expires_at: null, mfa_code_attempts: 0 })
+      .where('id', '=', id)
+      .execute();
+  }
+
+  /**
+   * Counts a wrong answer, and says how many have now been made.
+   *
+   * Incremented in the database rather than read, added to and written back. The
+   * two are not the same under concurrency: somebody guessing from four
+   * connections at once against a read-modify-write records one attempt where
+   * four were made, which is how a five attempt limit becomes a twenty attempt
+   * one. `attempts + 1` is decided by the database, once, per statement.
+   */
+  async countFailedAttempt(id: string): Promise<number> {
+    const row = await this.db
+      .updateTable('app_user')
+      .set((eb) => ({ mfa_code_attempts: eb('mfa_code_attempts', '+', 1) }))
+      .where('id', '=', id)
+      .returning('mfa_code_attempts')
+      .executeTakeFirst();
+
+    return row?.mfa_code_attempts ?? 0;
+  }
+
+  /** Turns the code requirement on or off for somebody who may choose. LMS 110. */
+  async setMfaEnabled(id: string, enabled: boolean): Promise<SignInAccount | undefined> {
+    const row = await this.db
+      .updateTable('app_user')
+      .set({ mfa_enabled: enabled })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirst();
+
+    return row === undefined ? undefined : toAccount(row);
   }
 
   /** Sets or replaces the password. Undefined if there is no such login. */
@@ -165,22 +250,30 @@ export class SignInAccountRepository {
   }
 
   /**
-   * Stamps a successful sign in, and rewrites the hash if it was made with an
-   * older cost.
+   * Stamps a successful sign in, ends any challenge, and rewrites the password
+   * hash if it was made with an older cost.
    *
-   * One statement for both, because they happen at the same moment and for the
-   * same reason: this is the only point at which the plain password is
-   * legitimately in hand, so it is the only point at which a hash can be brought
-   * up to the current cost without asking anybody to change anything.
+   * One statement for all three, because they are one event. The door opened, so
+   * whatever challenge was in progress is finished by definition — leaving it
+   * behind is how a code that has already been used stays usable — and this is
+   * the only point at which the plain password is legitimately in hand, so it is
+   * the only point at which an old hash can be brought up to the current cost
+   * without asking anybody to change anything.
+   *
+   * Clearing unconditionally is deliberate. Most sign ins never had a challenge
+   * and set three columns that were already null, which costs nothing and means
+   * there is no path through this method that leaves a live code behind.
    */
   async recordSignIn(id: string, at: Date, passwordHash?: string): Promise<void> {
     await this.db
       .updateTable('app_user')
-      .set(
-        passwordHash === undefined
-          ? { last_login_at: at }
-          : { last_login_at: at, password_hash: passwordHash },
-      )
+      .set({
+        last_login_at: at,
+        mfa_code_hash: null,
+        mfa_code_expires_at: null,
+        mfa_code_attempts: 0,
+        ...(passwordHash === undefined ? {} : { password_hash: passwordHash }),
+      })
       .where('id', '=', id)
       .execute();
   }
@@ -249,8 +342,26 @@ function fold(email: string): string {
 }
 
 /**
- * A row as the rest of the application wants it, which is a row without its
- * password hash. Adding it here is how it starts appearing in logs.
+ * A row with the secrets the sign in path has to check an answer against.
+ *
+ * The one shape in this file that carries a hash, and it is built in one place so
+ * that adding a secret to the table is a change here rather than in every read.
+ */
+function toCredentials(row: AppUserRow): SignInCredentials {
+  return {
+    account: toAccount(row),
+    passwordHash: row.password_hash,
+    challenge: {
+      hash: row.mfa_code_hash,
+      expiresAt: row.mfa_code_expires_at,
+      attempts: row.mfa_code_attempts,
+    },
+  };
+}
+
+/**
+ * A row as the rest of the application wants it, which is a row without any of
+ * its secrets. Adding one here is how it starts appearing in logs.
  */
 function toAccount(row: AppUserRow): SignInAccount {
   return {
