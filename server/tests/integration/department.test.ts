@@ -15,6 +15,8 @@ import { WorkPatternRepository } from '../../src/repositories/work-pattern-repos
 import { DepartmentService } from '../../src/services/department-service.js';
 import { EmployeeService } from '../../src/services/employee-service.js';
 import { seed } from '../../seeds/seed.mjs';
+import { theSystem } from '../../src/auth/actor.js';
+import { Guard } from '../../src/auth/policy.js';
 
 /**
  * Departments against a real database. LMS 105.
@@ -30,6 +32,25 @@ const testDatabaseUrl = inject('testDatabaseUrl');
 
 const DOMAINS = ['rematholdings.com'];
 
+/**
+ * The actor these fixtures are built by, and the guard the services are given.
+ *
+ * {@link theSystem} rather than a person, because that is what this is: work
+ * nobody asked for, setting up an organisation for the assertions below to be
+ * about. It holds every role and is nobody, so no policy refuses it and no
+ * "this is my own record" rule can accidentally match it.
+ *
+ * Whether the policies refuse the right people is not this suite's question. It
+ * is server/tests/integration/authorisation.test.ts, and the rules themselves
+ * are server/tests/unit/policy.test.ts.
+ *
+ * The guard writes refusals to stderr, which is the default. Nothing here should
+ * provoke one, so a line appearing in the output is a failing test explaining
+ * itself.
+ */
+const system = theSystem('department integration fixtures');
+const guard = new Guard();
+
 let db: Kysely<Database>;
 let admin: Client;
 let departments: DepartmentService;
@@ -42,11 +63,12 @@ beforeAll(async () => {
   admin = new Client({ connectionString: testDatabaseUrl });
   await admin.connect();
 
-  departments = new DepartmentService(new DepartmentRepository(db));
+  departments = new DepartmentService(new DepartmentRepository(db), guard);
   employees = new EmployeeService(
     new EmployeeRepository(db),
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
+    guard,
     { domains: DOMAINS },
   );
 });
@@ -62,23 +84,23 @@ afterAll(async () => {
 
 /** Operations, which most of the fixture organisation is in. */
 async function operations() {
-  const found = await departments.byName('Operations');
+  const found = await departments.byName(system, 'Operations');
   expect(found).toBeDefined();
   return found!;
 }
 
 describe('creating a department', () => {
   it('stores the name and reads it back, open and empty', async () => {
-    const created = await departments.create({ name: 'Internal Audit' });
+    const created = await departments.create(system, { name: 'Internal Audit' });
 
-    const readBack = await departments.byId(created.id);
+    const readBack = await departments.byId(system, created.id);
 
     expect(readBack).toMatchObject({ name: 'Internal Audit', isActive: true, parentId: null });
-    expect(await departments.headcount(created.id)).toBe(0);
+    expect(await departments.headcount(system, created.id)).toBe(0);
   });
 
   it('refuses a second department with the same name', async () => {
-    await expect(departments.create({ name: 'Operations' })).rejects.toBeInstanceOf(
+    await expect(departments.create(system, { name: 'Operations' })).rejects.toBeInstanceOf(
       DuplicateDepartmentName,
     );
   });
@@ -86,13 +108,13 @@ describe('creating a department', () => {
   it('treats a name differing only in case as the same department', async () => {
     // Two rows of Operations is two sets of figures for one team, found when
     // they disagree.
-    await expect(departments.create({ name: 'operations' })).rejects.toBeInstanceOf(
+    await expect(departments.create(system, { name: 'operations' })).rejects.toBeInstanceOf(
       DuplicateDepartmentName,
     );
   });
 
   it('keeps the name in the shape it was typed', async () => {
-    const created = await departments.create({ name: 'Internal  Audit' });
+    const created = await departments.create(system, { name: 'Internal  Audit' });
 
     expect(created.name).toBe('Internal  Audit');
   });
@@ -112,11 +134,13 @@ describe('creating a department', () => {
   });
 
   it('refuses a blank name before the write, and says which field', async () => {
-    await expect(departments.create({ name: '  ' })).rejects.toBeInstanceOf(InvalidDepartment);
+    await expect(departments.create(system, { name: '  ' })).rejects.toBeInstanceOf(
+      InvalidDepartment,
+    );
   });
 
   it('finds one by name whatever case it is asked in', async () => {
-    const found = await departments.byName('OPERATIONS');
+    const found = await departments.byName(system, 'OPERATIONS');
 
     expect(found?.name).toBe('Operations');
   });
@@ -126,19 +150,19 @@ describe('editing a department', () => {
   it('renames one without moving the id anybody points at', async () => {
     const before = await operations();
 
-    const renamed = await departments.update(before.id, { name: 'Operations & Logistics' });
+    const renamed = await departments.update(system, before.id, { name: 'Operations & Logistics' });
 
     expect(renamed.name).toBe('Operations & Logistics');
     // The point of renaming rather than replacing: every employee record still
     // points at the same row, so nobody's team changed underneath them.
     expect(renamed.id).toBe(before.id);
-    expect(await departments.headcount(before.id)).toBeGreaterThan(0);
+    expect(await departments.headcount(system, before.id)).toBeGreaterThan(0);
   });
 
   it('moves updated_at, so a record says when it last changed', async () => {
     const before = await operations();
 
-    const renamed = await departments.update(before.id, { name: 'Operations & Logistics' });
+    const renamed = await departments.update(system, before.id, { name: 'Operations & Logistics' });
 
     // The department_set_updated_at trigger does this, attached to the same
     // set_updated_at() the employee table uses.
@@ -149,13 +173,13 @@ describe('editing a department', () => {
   it('refuses renaming one onto a name that already belongs to another', async () => {
     const before = await operations();
 
-    await expect(departments.update(before.id, { name: 'finance' })).rejects.toBeInstanceOf(
+    await expect(departments.update(system, before.id, { name: 'finance' })).rejects.toBeInstanceOf(
       DuplicateDepartmentName,
     );
   });
 
   it('says so plainly when there is no such department', async () => {
-    await expect(departments.update('999999', { name: 'Nobody' })).rejects.toBeInstanceOf(
+    await expect(departments.update(system, '999999', { name: 'Nobody' })).rejects.toBeInstanceOf(
       DepartmentNotFound,
     );
   });
@@ -164,65 +188,67 @@ describe('editing a department', () => {
 describe('deactivating a department', () => {
   it('refuses while people are still in it, and says how many', async () => {
     const ops = await operations();
-    const headcount = await departments.headcount(ops.id);
+    const headcount = await departments.headcount(system, ops.id);
 
     let thrown: unknown;
     try {
-      await departments.deactivate(ops.id);
+      await departments.deactivate(system, ops.id);
     } catch (error) {
       thrown = error;
     }
 
     expect(thrown).toBeInstanceOf(DepartmentStillStaffed);
     expect((thrown as DepartmentStillStaffed).headcount).toBe(headcount);
-    expect((await departments.byId(ops.id)).isActive).toBe(true);
+    expect((await departments.byId(system, ops.id)).isActive).toBe(true);
   });
 
   it('allows it once everybody has been moved out', async () => {
-    const audit = await departments.create({ name: 'Internal Audit' });
-    const moved = await employees.update(people.engineer, { departmentId: audit.id });
+    const audit = await departments.create(system, { name: 'Internal Audit' });
+    const moved = await employees.update(system, people.engineer, { departmentId: audit.id });
     expect(moved.departmentId).toBe(audit.id);
 
     // Still staffed, by exactly the one person just moved in.
-    await expect(departments.deactivate(audit.id)).rejects.toBeInstanceOf(DepartmentStillStaffed);
+    await expect(departments.deactivate(system, audit.id)).rejects.toBeInstanceOf(
+      DepartmentStillStaffed,
+    );
 
-    await employees.update(people.engineer, { departmentId: (await operations()).id });
+    await employees.update(system, people.engineer, { departmentId: (await operations()).id });
 
-    expect((await departments.deactivate(audit.id)).isActive).toBe(false);
+    expect((await departments.deactivate(system, audit.id)).isActive).toBe(false);
   });
 
   it('does not count a leaver as somebody still in it', async () => {
     /* A leaver stays in the department they left from, because FR 06 keeps every
        other field of their record too. They are no bar to closing it: they are
        not going to raise a request that has to appear under a team heading. */
-    const audit = await departments.create({ name: 'Internal Audit' });
-    await employees.update(people.leaver, { departmentId: audit.id });
+    const audit = await departments.create(system, { name: 'Internal Audit' });
+    await employees.update(system, people.leaver, { departmentId: audit.id });
 
-    expect(await departments.headcount(audit.id)).toBe(0);
-    expect((await departments.deactivate(audit.id)).isActive).toBe(false);
+    expect(await departments.headcount(system, audit.id)).toBe(0);
+    expect((await departments.deactivate(system, audit.id)).isActive).toBe(false);
   });
 
   it('is not a delete: the row, the name and everybody in it stay', async () => {
-    const audit = await departments.create({ name: 'Internal Audit' });
-    await departments.deactivate(audit.id);
+    const audit = await departments.create(system, { name: 'Internal Audit' });
+    await departments.deactivate(system, audit.id);
 
-    const closed = await departments.byId(audit.id);
+    const closed = await departments.byId(system, audit.id);
 
     expect(closed.name).toBe('Internal Audit');
     expect(closed.isActive).toBe(false);
     // The name stays reserved, so reopening is what happens rather than a second
     // row of the same team appearing beside it.
-    await expect(departments.create({ name: 'Internal Audit' })).rejects.toBeInstanceOf(
+    await expect(departments.create(system, { name: 'Internal Audit' })).rejects.toBeInstanceOf(
       DuplicateDepartmentName,
     );
   });
 
   it('leaves it out of the list an HR officer picks from, and in the full one', async () => {
-    const audit = await departments.create({ name: 'Internal Audit' });
-    await departments.deactivate(audit.id);
+    const audit = await departments.create(system, { name: 'Internal Audit' });
+    await departments.deactivate(system, audit.id);
 
-    const all = await departments.list();
-    const open = await departments.list({ openOnly: true });
+    const all = await departments.list(system);
+    const open = await departments.list(system, { openOnly: true });
 
     expect(all.map((one) => one.name)).toContain('Internal Audit');
     expect(open.map((one) => one.name)).not.toContain('Internal Audit');
@@ -230,10 +256,10 @@ describe('deactivating a department', () => {
   });
 
   it('can be undone, because the record is still there to undo', async () => {
-    const audit = await departments.create({ name: 'Internal Audit' });
-    await departments.deactivate(audit.id);
+    const audit = await departments.create(system, { name: 'Internal Audit' });
+    await departments.deactivate(system, audit.id);
 
-    const reopened = await departments.reactivate(audit.id);
+    const reopened = await departments.reactivate(system, audit.id);
 
     expect(reopened.isActive).toBe(true);
     // Same team, same id. Nothing that pointed at it was ever orphaned.
@@ -242,8 +268,12 @@ describe('deactivating a department', () => {
   });
 
   it('says so plainly when there is no such department', async () => {
-    await expect(departments.deactivate('999999')).rejects.toBeInstanceOf(DepartmentNotFound);
-    await expect(departments.reactivate('999999')).rejects.toBeInstanceOf(DepartmentNotFound);
+    await expect(departments.deactivate(system, '999999')).rejects.toBeInstanceOf(
+      DepartmentNotFound,
+    );
+    await expect(departments.reactivate(system, '999999')).rejects.toBeInstanceOf(
+      DepartmentNotFound,
+    );
   });
 });
 

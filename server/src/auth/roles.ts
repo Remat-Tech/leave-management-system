@@ -19,8 +19,15 @@
  *
  * The rules live here as pure functions. Which roles somebody actually holds is
  * a table, and that is ../repositories/role-repository.ts; deciding when to
- * grant one is ../services/role-service.ts; deciding what a role *permits* is
- * LMS 112, and none of it is here.
+ * grant one is ../services/role-service.ts.
+ *
+ * Deciding what a role *permits* is LMS 112 and is ./policy.ts and the policy
+ * objects beside it. What this file gained from that story is the four standing
+ * groups the policies are written in terms of — {@link READS_EVERY_RECORD} and
+ * the three below it. They are here rather than there because a group of roles
+ * is a fact about roles, and because five policies each spelling out its own
+ * copy of the same three codes is five places for them to drift apart. No rule
+ * about any particular record is here, and none should arrive.
  */
 
 /**
@@ -54,6 +61,93 @@ export const BASELINE_ROLE: RoleCode = 'EMPLOYEE';
 export const ASSIGNABLE_ROLES: readonly RoleCode[] = ROLE_CODES.filter(
   (code) => code !== BASELINE_ROLE,
 );
+
+/**
+ * The roles that may read anybody's record. LMS 112.
+ *
+ * The same three as {@link MANDATORY_ROLES} in ./mfa.ts, and that is not a
+ * coincidence to be tidied away into a shared constant — it is two files stating
+ * the same fact for different reasons, and the unit suite asserts they agree.
+ * mfa.ts says these three must answer a one time code *because* they can read
+ * everybody's records; this is the file that makes that true. If the two ever
+ * disagree, one of them is wrong and the suite says so rather than a code
+ * quietly becoming optional for somebody who can read the company's leave.
+ */
+export const READS_EVERY_RECORD: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN', 'SYS_ADMIN'];
+
+/**
+ * The roles that create, change and terminate employee records. LMS 112.
+ *
+ * The day to day of HR. SYS_ADMIN is deliberately not among them: a system
+ * administrator keeps the system running and is not the person who decides that
+ * somebody has left the company. They can read the record — a support request
+ * about a wrong balance is unanswerable otherwise — and they cannot write it.
+ */
+export const MAINTAINS_EMPLOYEE_RECORDS: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN'];
+
+/**
+ * The role that changes what the system does to everybody. LMS 112.
+ *
+ * Departments and working patterns are not records about a person, they are the
+ * shape leave is counted and reported in: closing a team moves a heading off
+ * every report, and editing a week changes what a day off costs for everybody on
+ * it. That is an HR Administrator's decision rather than an HR Officer's, and it
+ * is the whole of what distinguishes the two.
+ *
+ * One role rather than a list, which reads oddly and is meant to. It is here as
+ * a name so that the reason lives in one place and so that widening it later is
+ * a deliberate edit to this line with this comment above it.
+ */
+export const SETS_UP_THE_ORGANISATION: readonly RoleCode[] = ['HR_ADMIN'];
+
+/**
+ * The roles that set a joiner up with a login and reset a forgotten password.
+ * LMS 112.
+ *
+ * HR, and the reason is that this is the desk people actually walk up to. An HR
+ * Officer is who creates the employee record on somebody's first morning, and
+ * making them stop there and wait for an administrator to add the login turns a
+ * two minute job into a ticket — which is how a company ends up with a shared
+ * administrator password that four people in HR know, and that is a worse
+ * outcome than anything this rule was protecting.
+ *
+ * SYS_ADMIN is included because somebody has to be able to do it when HR cannot
+ * sign in, which is the failure this system has to survive.
+ *
+ * The same three codes as {@link READS_EVERY_RECORD}, and deliberately a
+ * separate constant rather than a reuse of it. They agree today for unrelated
+ * reasons — one is about seeing the company's records, this is about who runs
+ * the joining process — and the day one of them changes is the day sharing a
+ * constant would have moved the other silently.
+ *
+ * What is **not** here is closing an account, which is {@link ADMINISTERS_ACCESS}
+ * below. Giving somebody access as they join and taking it away in the middle of
+ * an investigation are not the same act, and the second is the one that wants a
+ * second pair of eyes.
+ */
+export const PROVIDES_LOGINS: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN', 'SYS_ADMIN'];
+
+/**
+ * The roles that decide who may get in and what they may do. LMS 112.
+ *
+ * Role grants, and closing or reopening an account. Two roles rather than one
+ * because they come at it from different ends and both are legitimate: HR knows
+ * who has joined and who has left, and the system administrator is who is left
+ * when HR cannot sign in.
+ *
+ * Giving somebody a login in the first place is not here — see
+ * {@link PROVIDES_LOGINS}. The line between the two is that this is where a
+ * decision about somebody is being made rather than a joining process being
+ * followed: granting HR powers, and shutting an account because of a lost laptop
+ * or an investigation.
+ *
+ * It is worth being plain that this is the escalation path in this system. A
+ * SYS_ADMIN who wants to close a department cannot, but can grant themselves
+ * HR_ADMIN and then do it — which is true of every system administrator
+ * everywhere, is not a hole to be plugged with a rule they could also change,
+ * and is precisely why every grant is a dated row and every refusal is logged.
+ */
+export const ADMINISTERS_ACCESS: readonly RoleCode[] = ['HR_ADMIN', 'SYS_ADMIN'];
 
 /**
  * What somebody is, for the purposes of deciding what they may do.

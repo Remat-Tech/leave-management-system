@@ -18,6 +18,8 @@ import { WorkPatternRepository } from '../../src/repositories/work-pattern-repos
 import { EmployeeService } from '../../src/services/employee-service.js';
 import { WorkPatternService } from '../../src/services/work-pattern-service.js';
 import { seed } from '../../seeds/seed.mjs';
+import { theSystem } from '../../src/auth/actor.js';
+import { Guard } from '../../src/auth/policy.js';
 
 /**
  * Working patterns against a real database. FR 23, LMS 106.
@@ -39,6 +41,25 @@ const testDatabaseUrl = inject('testDatabaseUrl');
 
 const DOMAINS = ['rematholdings.com'];
 
+/**
+ * The actor these fixtures are built by, and the guard the services are given.
+ *
+ * {@link theSystem} rather than a person, because that is what this is: work
+ * nobody asked for, setting up an organisation for the assertions below to be
+ * about. It holds every role and is nobody, so no policy refuses it and no
+ * "this is my own record" rule can accidentally match it.
+ *
+ * Whether the policies refuse the right people is not this suite's question. It
+ * is server/tests/integration/authorisation.test.ts, and the rules themselves
+ * are server/tests/unit/policy.test.ts.
+ *
+ * The guard writes refusals to stderr, which is the default. Nothing here should
+ * provoke one, so a line appearing in the output is a failing test explaining
+ * itself.
+ */
+const system = theSystem('working pattern integration fixtures');
+const guard = new Guard();
+
 let db: Kysely<Database>;
 let admin: Client;
 let patterns: WorkPatternService;
@@ -51,11 +72,12 @@ beforeAll(async () => {
   admin = new Client({ connectionString: testDatabaseUrl });
   await admin.connect();
 
-  patterns = new WorkPatternService(new WorkPatternRepository(db));
+  patterns = new WorkPatternService(new WorkPatternRepository(db), guard);
   employees = new EmployeeService(
     new EmployeeRepository(db),
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
+    guard,
     { domains: DOMAINS },
   );
 });
@@ -112,7 +134,7 @@ async function inTransaction(...statements: string[]): Promise<void> {
 
 /** The part timer's pattern, which the seed creates: Wednesdays off. */
 async function partTime() {
-  const found = await patterns.byName('Part time, Wednesdays off');
+  const found = await patterns.byName(system, 'Part time, Wednesdays off');
   expect(found).toBeDefined();
   return found!;
 }
@@ -123,7 +145,7 @@ describe('the standard week every database has', () => {
        fixture data: a production database is migrated and never seeded, and
        employee.work_pattern_id is NOT NULL. Asserted through the service, which
        is how EmployeeService.create() finds it. */
-    const standard = await patterns.standard();
+    const standard = await patterns.standard(system);
 
     expect(standard.name).toBe(STANDARD_PATTERN_NAME);
     expect(standard.isDefault).toBe(true);
@@ -133,7 +155,7 @@ describe('the standard week every database has', () => {
   });
 
   it('names all seven days, saying which two are not worked', async () => {
-    const standard = await patterns.standard();
+    const standard = await patterns.standard(system);
 
     const { rows } = await admin.query<{ day_of_week: number; is_working_day: boolean }>(
       'SELECT day_of_week, is_working_day FROM work_pattern_day WHERE work_pattern_id = $1 ORDER BY day_of_week',
@@ -150,22 +172,22 @@ describe('the standard week every database has', () => {
     // The seed no longer owns this row. It deletes the patterns it does own and
     // leaves the default alone, so reloading the fixtures cannot take reference
     // data with it.
-    const before = await patterns.standard();
+    const before = await patterns.standard(system);
 
     await seed(admin);
 
-    expect((await patterns.standard()).id).toBe(before.id);
+    expect((await patterns.standard(system)).id).toBe(before.id);
   });
 });
 
 describe('creating a working pattern', () => {
   it('stores the name and the week, and reads both back', async () => {
-    const created = await patterns.create({
+    const created = await patterns.create(system, {
       name: 'Four days, Fridays off',
       workingDays: [1, 2, 3, 4],
     });
 
-    const readBack = await patterns.byId(created.id);
+    const readBack = await patterns.byId(system, created.id);
 
     expect(readBack).toMatchObject({
       name: 'Four days, Fridays off',
@@ -175,7 +197,7 @@ describe('creating a working pattern', () => {
   });
 
   it('writes the whole week, not only the days that are worked', async () => {
-    const created = await patterns.create({ name: 'Weekends only', workingDays: [6, 7] });
+    const created = await patterns.create(system, { name: 'Weekends only', workingDays: [6, 7] });
 
     const { rows } = await admin.query<{ count: number }>(
       'SELECT count(*)::int AS count FROM work_pattern_day WHERE work_pattern_id = $1',
@@ -188,20 +210,20 @@ describe('creating a working pattern', () => {
   it('never makes a new pattern the default', async () => {
     // Making one the default unmakes another, which changes the week every
     // future joiner is given. It is said deliberately or not at all.
-    const created = await patterns.create({ name: 'Nights', workingDays: [1, 2, 3, 4, 5] });
+    const created = await patterns.create(system, { name: 'Nights', workingDays: [1, 2, 3, 4, 5] });
 
     expect(created.isDefault).toBe(false);
-    expect((await patterns.standard()).name).toBe(STANDARD_PATTERN_NAME);
+    expect((await patterns.standard(system)).name).toBe(STANDARD_PATTERN_NAME);
   });
 
   it('refuses a second pattern with the same name, whatever case it is in', async () => {
     await expect(
-      patterns.create({ name: 'standard mon-fri', workingDays: [1, 2, 3, 4, 5] }),
+      patterns.create(system, { name: 'standard mon-fri', workingDays: [1, 2, 3, 4, 5] }),
     ).rejects.toBeInstanceOf(DuplicateWorkPatternName);
   });
 
   it('refuses a blank name before the write, and says which field', async () => {
-    await expect(patterns.create({ name: '  ', workingDays: [1] })).rejects.toBeInstanceOf(
+    await expect(patterns.create(system, { name: '  ', workingDays: [1] })).rejects.toBeInstanceOf(
       InvalidWorkPattern,
     );
   });
@@ -217,11 +239,11 @@ describe('creating a working pattern', () => {
   it('leaves nothing behind when the week is refused', async () => {
     // The pattern row and its seven days are one write. A pattern row with no
     // days is not half a pattern, it is one that answers nothing.
-    await expect(patterns.create({ name: 'Never', workingDays: [] })).rejects.toBeInstanceOf(
-      InvalidWorkPattern,
-    );
+    await expect(
+      patterns.create(system, { name: 'Never', workingDays: [] }),
+    ).rejects.toBeInstanceOf(InvalidWorkPattern);
 
-    expect(await patterns.byName('Never')).toBeUndefined();
+    expect(await patterns.byName(system, 'Never')).toBeUndefined();
   });
 });
 
@@ -234,7 +256,7 @@ describe('a pattern always names a whole week', () => {
       inTransaction("INSERT INTO work_pattern (name) VALUES ('Nothing but a name')"),
     ).rejects.toMatchObject({ code: '23514', constraint: 'work_pattern_week_complete' });
 
-    expect(await patterns.byName('Nothing but a name')).toBeUndefined();
+    expect(await patterns.byName(system, 'Nothing but a name')).toBeUndefined();
   });
 
   it('refuses a pattern that names only the days it works', async () => {
@@ -260,7 +282,7 @@ describe('a pattern always names a whole week', () => {
   });
 
   it('refuses a day being taken away from a pattern that exists', async () => {
-    const standard = await patterns.standard();
+    const standard = await patterns.standard(system);
 
     await expect(
       inTransaction(`DELETE FROM work_pattern_day WHERE work_pattern_id = ${standard.id}
@@ -272,12 +294,12 @@ describe('a pattern always names a whole week', () => {
     /* The seven day rows are deleted and seven more written. Between those two
        statements the pattern names no days at all, which a per statement rule
        would refuse — and it is the ordinary way of changing a week. */
-    const created = await patterns.create({ name: 'Half days', workingDays: [1, 2] });
+    const created = await patterns.create(system, { name: 'Half days', workingDays: [1, 2] });
 
-    const changed = await patterns.update(created.id, { workingDays: [3, 4, 5] });
+    const changed = await patterns.update(system, created.id, { workingDays: [3, 4, 5] });
 
     expect(changed.workingDays).toEqual([3, 4, 5]);
-    expect((await patterns.byId(created.id)).workingDays).toEqual([3, 4, 5]);
+    expect((await patterns.byId(system, created.id)).workingDays).toEqual([3, 4, 5]);
   });
 });
 
@@ -285,19 +307,19 @@ describe('editing a working pattern', () => {
   it('renames one without moving the id anybody points at', async () => {
     const before = await partTime();
 
-    const renamed = await patterns.update(before.id, { name: 'Part time, midweek off' });
+    const renamed = await patterns.update(system, before.id, { name: 'Part time, midweek off' });
 
     expect(renamed.name).toBe('Part time, midweek off');
     // The point of editing rather than replacing: everybody on the pattern moves
     // with it and nobody is reassigned.
     expect(renamed.id).toBe(before.id);
-    expect(await patterns.headcount(before.id)).toBeGreaterThan(0);
+    expect(await patterns.headcount(system, before.id)).toBeGreaterThan(0);
   });
 
   it('moves updated_at, including when only the week changed', async () => {
     const before = await partTime();
 
-    const changed = await patterns.update(before.id, { workingDays: [1, 2, 3, 4] });
+    const changed = await patterns.update(system, before.id, { workingDays: [1, 2, 3, 4] });
 
     /* The work_pattern_set_updated_at trigger, attached to the same
        set_updated_at() the employee and department tables use. The days are the
@@ -311,15 +333,15 @@ describe('editing a working pattern', () => {
     const before = await partTime();
 
     await expect(
-      patterns.update(before.id, { name: STANDARD_PATTERN_NAME.toLowerCase() }),
+      patterns.update(system, before.id, { name: STANDARD_PATTERN_NAME.toLowerCase() }),
     ).rejects.toBeInstanceOf(DuplicateWorkPatternName);
   });
 
   it('says so plainly when there is no such pattern', async () => {
-    await expect(patterns.update('999999', { name: 'Nobody' })).rejects.toBeInstanceOf(
+    await expect(patterns.update(system, '999999', { name: 'Nobody' })).rejects.toBeInstanceOf(
       WorkPatternNotFound,
     );
-    await expect(patterns.byId('999999')).rejects.toBeInstanceOf(WorkPatternNotFound);
+    await expect(patterns.byId(system, '999999')).rejects.toBeInstanceOf(WorkPatternNotFound);
   });
 });
 
@@ -327,19 +349,19 @@ describe('exactly one pattern is the default', () => {
   it('moves the default from one pattern to another', async () => {
     const before = await partTime();
 
-    const promoted = await patterns.makeDefault(before.id);
+    const promoted = await patterns.makeDefault(system, before.id);
 
     expect(promoted.isDefault).toBe(true);
-    expect((await patterns.standard()).id).toBe(before.id);
+    expect((await patterns.standard(system)).id).toBe(before.id);
     // And the week that was the default no longer is. Both halves are one
     // transaction, because neither order works as two statements.
-    expect((await patterns.byName(STANDARD_PATTERN_NAME))?.isDefault).toBe(false);
+    expect((await patterns.byName(system, STANDARD_PATTERN_NAME))?.isDefault).toBe(false);
   });
 
   it('is unbothered by being told twice', async () => {
-    const standard = await patterns.standard();
+    const standard = await patterns.standard(system);
 
-    expect((await patterns.makeDefault(standard.id)).isDefault).toBe(true);
+    expect((await patterns.makeDefault(system, standard.id)).isDefault).toBe(true);
   });
 
   it('refuses a second default at the database', async () => {
@@ -360,7 +382,7 @@ describe('exactly one pattern is the default', () => {
       { code: '23514', constraint: 'work_pattern_always_has_a_default' },
     );
 
-    expect((await patterns.standard()).name).toBe(STANDARD_PATTERN_NAME);
+    expect((await patterns.standard(system)).name).toBe(STANDARD_PATTERN_NAME);
   });
 
   it('permits no default for the length of one statement inside a transaction', async () => {
@@ -373,17 +395,17 @@ describe('exactly one pattern is the default', () => {
       `UPDATE work_pattern SET is_default = true WHERE id = ${before.id}`,
     );
 
-    expect((await patterns.standard()).id).toBe(before.id);
+    expect((await patterns.standard(system)).id).toBe(before.id);
   });
 });
 
 describe('deleting a working pattern', () => {
   it('removes one nobody works, and its seven days with it', async () => {
-    const created = await patterns.create({ name: 'Typo on a Tuesday', workingDays: [2] });
+    const created = await patterns.create(system, { name: 'Typo on a Tuesday', workingDays: [2] });
 
-    await patterns.remove(created.id);
+    await patterns.remove(system, created.id);
 
-    await expect(patterns.byId(created.id)).rejects.toBeInstanceOf(WorkPatternNotFound);
+    await expect(patterns.byId(system, created.id)).rejects.toBeInstanceOf(WorkPatternNotFound);
     const { rows } = await admin.query<{ count: number }>(
       'SELECT count(*)::int AS count FROM work_pattern_day WHERE work_pattern_id = $1',
       [created.id],
@@ -392,18 +414,20 @@ describe('deleting a working pattern', () => {
   });
 
   it('refuses the default, whether or not anybody is on it', async () => {
-    const standard = await patterns.standard();
+    const standard = await patterns.standard(system);
 
-    await expect(patterns.remove(standard.id)).rejects.toBeInstanceOf(DefaultWorkPatternRequired);
+    await expect(patterns.remove(system, standard.id)).rejects.toBeInstanceOf(
+      DefaultWorkPatternRequired,
+    );
   });
 
   it('refuses one somebody is still working, and says how many', async () => {
     const pattern = await partTime();
-    const headcount = await patterns.headcount(pattern.id);
+    const headcount = await patterns.headcount(system, pattern.id);
 
     let thrown: unknown;
     try {
-      await patterns.remove(pattern.id);
+      await patterns.remove(system, pattern.id);
     } catch (error) {
       thrown = error;
     }
@@ -417,11 +441,11 @@ describe('deleting a working pattern', () => {
     /* Deliberately unlike a department's headcount, which leaves them out. FR 37a
        settles a leaver's final figure by counting days against the week they
        worked, so their pattern is still load bearing after they have gone. */
-    const created = await patterns.create({ name: 'Left on it', workingDays: [1, 2, 3] });
-    await employees.update(people.leaver, { workPatternId: created.id });
+    const created = await patterns.create(system, { name: 'Left on it', workingDays: [1, 2, 3] });
+    await employees.update(system, people.leaver, { workPatternId: created.id });
 
-    expect(await patterns.headcount(created.id)).toBe(1);
-    await expect(patterns.remove(created.id)).rejects.toBeInstanceOf(WorkPatternInUse);
+    expect(await patterns.headcount(system, created.id)).toBe(1);
+    await expect(patterns.remove(system, created.id)).rejects.toBeInstanceOf(WorkPatternInUse);
   });
 
   it('is refused by the foreign key on the owner connection too', async () => {
@@ -433,7 +457,7 @@ describe('deleting a working pattern', () => {
   });
 
   it('refuses deleting the default on the owner connection too', async () => {
-    const standard = await patterns.standard();
+    const standard = await patterns.standard(system);
 
     /* Nobody is on it in this test — the seed puts everybody on it, so it has to
        be emptied first to prove that the refusal is about the default rather
@@ -451,15 +475,15 @@ describe('deleting a working pattern', () => {
   });
 
   it('says so plainly when there is no such pattern', async () => {
-    await expect(patterns.remove('999999')).rejects.toBeInstanceOf(WorkPatternNotFound);
+    await expect(patterns.remove(system, '999999')).rejects.toBeInstanceOf(WorkPatternNotFound);
   });
 });
 
 describe('listing them', () => {
   it('puts the default first, then the rest by name', async () => {
-    await patterns.create({ name: 'Alphabetically first', workingDays: [1] });
+    await patterns.create(system, { name: 'Alphabetically first', workingDays: [1] });
 
-    const all = await patterns.list();
+    const all = await patterns.list(system);
 
     expect(all[0].name).toBe(STANDARD_PATTERN_NAME);
     expect(all[0].isDefault).toBe(true);

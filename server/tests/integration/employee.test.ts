@@ -30,6 +30,8 @@ import { DepartmentService } from '../../src/services/department-service.js';
 import { EmployeeService } from '../../src/services/employee-service.js';
 import { seed } from '../../seeds/seed.mjs';
 import type { Kysely } from 'kysely';
+import { theSystem } from '../../src/auth/actor.js';
+import { Guard } from '../../src/auth/policy.js';
 
 /**
  * The employee record against a real database. FR 01 to FR 06, LMS 101 to
@@ -53,6 +55,25 @@ const testDatabaseUrl = inject('testDatabaseUrl');
 // The suite supplies its own rather than reading ALLOWED_EMAIL_DOMAINS, which is
 // set in .env but not in CI.
 const DOMAINS = ['rematholdings.com'];
+
+/**
+ * The actor these fixtures are built by, and the guard the services are given.
+ *
+ * {@link theSystem} rather than a person, because that is what this is: work
+ * nobody asked for, setting up an organisation for the assertions below to be
+ * about. It holds every role and is nobody, so no policy refuses it and no
+ * "this is my own record" rule can accidentally match it.
+ *
+ * Whether the policies refuse the right people is not this suite's question. It
+ * is server/tests/integration/authorisation.test.ts, and the rules themselves
+ * are server/tests/unit/policy.test.ts.
+ *
+ * The guard writes refusals to stderr, which is the default. Nothing here should
+ * provoke one, so a line appearing in the output is a failing test explaining
+ * itself.
+ */
+const system = theSystem('employee integration fixtures');
+const guard = new Guard();
 
 let db: Kysely<Database>;
 let admin: Client;
@@ -97,11 +118,12 @@ beforeAll(async () => {
   await admin.connect();
 
   repository = new EmployeeRepository(db);
-  departments = new DepartmentService(new DepartmentRepository(db));
+  departments = new DepartmentService(new DepartmentRepository(db), guard);
   employees = new EmployeeService(
     repository,
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
+    guard,
     { domains: DOMAINS },
   );
 });
@@ -111,7 +133,7 @@ beforeEach(async () => {
   // and a test that adds somebody cannot affect the next one.
   people = (await seed(admin)) as Record<string, string>;
 
-  const found = await departments.byName('Operations');
+  const found = await departments.byName(system, 'Operations');
   expect(found).toBeDefined();
   operations = found!;
 
@@ -125,13 +147,13 @@ afterAll(async () => {
 
 describe('creating an employee record', () => {
   it('stores every field FR 01 asks for and reads them back unchanged', async () => {
-    const created = await employees.create({
+    const created = await employees.create(system, {
       ...JOINER,
       employmentType: 'PART_TIME',
       gender: 'FEMALE',
     });
 
-    const readBack = await employees.byId(created.id);
+    const readBack = await employees.byId(system, created.id);
 
     expect(readBack).toMatchObject({
       employeeNumber: 'RH-0100',
@@ -150,7 +172,7 @@ describe('creating an employee record', () => {
 
   it('gives a joiner the default working pattern when none is chosen', async () => {
     // The column is NOT NULL, so creating an employee has to resolve one. FR 23.
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
     const { rows } = await admin.query<{ name: string }>(
       'SELECT name FROM work_pattern WHERE id = $1',
@@ -164,7 +186,7 @@ describe('creating an employee record', () => {
     // A `date` parsed into a JavaScript Date is midnight UTC, and is then read
     // in whatever timezone the process runs in. That is the off by one day this
     // system cannot afford on a leaver's exit date.
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
     expect(created.startDate).toBe('2026-09-01');
     expect(typeof created.startDate).toBe('string');
@@ -173,28 +195,28 @@ describe('creating an employee record', () => {
 
 describe('the two identifiers are unique', () => {
   it('refuses a second employee with the same number', async () => {
-    await employees.create(JOINER);
+    await employees.create(system, JOINER);
 
     await expect(
-      employees.create({ ...JOINER, workEmail: 'someone.else@rematholdings.com' }),
+      employees.create(system, { ...JOINER, workEmail: 'someone.else@rematholdings.com' }),
     ).rejects.toBeInstanceOf(DuplicateEmployeeNumber);
   });
 
   it('refuses a second employee with the same work address', async () => {
-    await employees.create(JOINER);
+    await employees.create(system, JOINER);
 
-    await expect(employees.create({ ...JOINER, employeeNumber: 'RH-0101' })).rejects.toBeInstanceOf(
-      DuplicateWorkEmail,
-    );
+    await expect(
+      employees.create(system, { ...JOINER, employeeNumber: 'RH-0101' }),
+    ).rejects.toBeInstanceOf(DuplicateWorkEmail);
   });
 
   it('treats a number differing only in case as the same number', async () => {
-    await employees.create(JOINER);
+    await employees.create(system, JOINER);
 
     // Nobody was ever issued a second staff number that differs from their first
     // only in capitals.
     await expect(
-      employees.create({
+      employees.create(system, {
         ...JOINER,
         employeeNumber: 'rh-0100',
         workEmail: 'someone.else@rematholdings.com',
@@ -203,10 +225,10 @@ describe('the two identifiers are unique', () => {
   });
 
   it('treats an address differing only in case as the same address', async () => {
-    await employees.create(JOINER);
+    await employees.create(system, JOINER);
 
     await expect(
-      employees.create({
+      employees.create(system, {
         ...JOINER,
         employeeNumber: 'RH-0101',
         workEmail: 'Esi.Nyarko@RematHoldings.com',
@@ -217,13 +239,13 @@ describe('the two identifiers are unique', () => {
   it('keeps the number in the shape it was typed', async () => {
     // Compared folded, stored as written, so a staff number still looks like the
     // one on HR's paperwork.
-    const created = await employees.create({ ...JOINER, employeeNumber: 'RH-0100' });
+    const created = await employees.create(system, { ...JOINER, employeeNumber: 'RH-0100' });
 
     expect(created.employeeNumber).toBe('RH-0100');
   });
 
   it('refuses the duplicate at the database, not merely in the code', async () => {
-    await employees.create(JOINER);
+    await employees.create(system, JOINER);
 
     // Straight past the service, as the seed or a data fixing migration would
     // go. The unique index is what makes this a fact rather than a convention,
@@ -243,10 +265,10 @@ describe('the two identifiers are unique', () => {
   });
 
   it('finds an employee by either identifier, whatever case it is asked in', async () => {
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
-    expect(await employees.byNumber('rh-0100')).toMatchObject({ id: created.id });
-    expect(await employees.byWorkEmail('ESI.NYARKO@rematholdings.com')).toMatchObject({
+    expect(await employees.byNumber(system, 'rh-0100')).toMatchObject({ id: created.id });
+    expect(await employees.byWorkEmail(system, 'ESI.NYARKO@rematholdings.com')).toMatchObject({
       id: created.id,
     });
   });
@@ -335,9 +357,9 @@ describe('the values a record may hold', () => {
 
 describe('maintaining a record', () => {
   it('changes the field it was given and leaves the others alone', async () => {
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
-    const updated = await employees.update(created.id, { jobTitle: 'Operations Manager' });
+    const updated = await employees.update(system, created.id, { jobTitle: 'Operations Manager' });
 
     expect(updated.jobTitle).toBe('Operations Manager');
     expect(updated.firstName).toBe('Esi');
@@ -345,9 +367,9 @@ describe('maintaining a record', () => {
   });
 
   it('moves updated_at, so a record says when it last changed', async () => {
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
-    const updated = await employees.update(created.id, { jobTitle: 'Operations Manager' });
+    const updated = await employees.update(system, created.id, { jobTitle: 'Operations Manager' });
 
     // The trigger does this, not the application, so the seed and a data fixing
     // migration get the same treatment.
@@ -356,15 +378,15 @@ describe('maintaining a record', () => {
   });
 
   it('refuses to move a number onto one that already belongs to somebody', async () => {
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
     await expect(
-      employees.update(created.id, { employeeNumber: 'rh-0001' }),
+      employees.update(system, created.id, { employeeNumber: 'rh-0001' }),
     ).rejects.toBeInstanceOf(DuplicateEmployeeNumber);
   });
 
   it('says so plainly when there is no such employee', async () => {
-    await expect(employees.update('999999', { jobTitle: 'Nobody' })).rejects.toBeInstanceOf(
+    await expect(employees.update(system, '999999', { jobTitle: 'Nobody' })).rejects.toBeInstanceOf(
       EmployeeNotFound,
     );
   });
@@ -373,17 +395,17 @@ describe('maintaining a record', () => {
 describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
   describe('recording the line', () => {
     it('stores who somebody reports to and reads it back', async () => {
-      const created = await employees.create(JOINER);
+      const created = await employees.create(system, JOINER);
 
-      expect((await employees.byId(created.id)).managerId).toBe(people.teamLead);
+      expect((await employees.byId(system, created.id)).managerId).toBe(people.teamLead);
     });
 
     it('refuses a manager who is nobody', async () => {
       // The foreign key would refuse this too, with a message about
       // employee_manager_id_fkey. This is the refusal an HR officer can read.
-      await expect(employees.create({ ...JOINER, managerId: '999999' })).rejects.toBeInstanceOf(
-        ManagerNotFound,
-      );
+      await expect(
+        employees.create(system, { ...JOINER, managerId: '999999' }),
+      ).rejects.toBeInstanceOf(ManagerNotFound);
     });
 
     it('refuses a manager who is nobody at the database as well', async () => {
@@ -396,14 +418,14 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
       // Kojo left in July. Routing a request to him is the same black hole as
       // routing it nowhere, which is the whole of what FR 02 is for.
       await expect(
-        employees.create({ ...JOINER, managerId: people.leaver }),
+        employees.create(system, { ...JOINER, managerId: people.leaver }),
       ).rejects.toBeInstanceOf(ManagerHasLeft);
     });
 
     it('moves a reporting line onto somebody else', async () => {
-      const created = await employees.create(JOINER);
+      const created = await employees.create(system, JOINER);
 
-      const moved = await employees.update(created.id, { managerId: people.opsManager });
+      const moved = await employees.update(system, created.id, { managerId: people.opsManager });
 
       expect(moved.managerId).toBe(people.opsManager);
       // The move is the only thing that moved.
@@ -412,17 +434,19 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
     });
 
     it('refuses an employee as their own line manager', async () => {
-      const created = await employees.create(JOINER);
+      const created = await employees.create(system, JOINER);
 
-      await expect(employees.update(created.id, { managerId: created.id })).rejects.toBeInstanceOf(
-        InvalidEmployee,
-      );
+      await expect(
+        employees.update(system, created.id, { managerId: created.id }),
+      ).rejects.toBeInstanceOf(InvalidEmployee);
     });
 
     it('leaves a line alone when the change does not mention it', async () => {
-      const created = await employees.create(JOINER);
+      const created = await employees.create(system, JOINER);
 
-      const updated = await employees.update(created.id, { jobTitle: 'Operations Manager' });
+      const updated = await employees.update(system, created.id, {
+        jobTitle: 'Operations Manager',
+      });
 
       expect(updated.managerId).toBe(people.teamLead);
     });
@@ -430,7 +454,7 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
 
   describe('exactly one employee with none, FR 04', () => {
     it('is the head of the organisation, and there is one of them', async () => {
-      const head = await employees.head();
+      const head = await employees.head(system);
 
       expect(head?.id).toBe(people.ceo);
       expect(head?.jobTitle).toBe('Chief Executive Officer');
@@ -441,7 +465,7 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
       // HR officer can act on; "Kwame Asante (RH-0001) does" is.
       let thrown: unknown;
       try {
-        await employees.create({ ...JOINER, managerId: null });
+        await employees.create(system, { ...JOINER, managerId: null });
       } catch (error) {
         thrown = error;
       }
@@ -452,18 +476,18 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
     });
 
     it('refuses cutting an existing line for the same reason', async () => {
-      await expect(employees.update(people.officer, { managerId: null })).rejects.toBeInstanceOf(
-        SecondRootEmployee,
-      );
+      await expect(
+        employees.update(system, people.officer, { managerId: null }),
+      ).rejects.toBeInstanceOf(SecondRootEmployee);
 
-      expect((await employees.byId(people.officer)).managerId).toBe(people.teamLead);
+      expect((await employees.byId(system, people.officer)).managerId).toBe(people.teamLead);
     });
 
     it('lets the head of the organisation go on being it', async () => {
       // Saying null about the record that is already the root is not a second
       // root, and an edit to that record must not be refused because of a rule
       // it already satisfies.
-      const updated = await employees.update(people.ceo, {
+      const updated = await employees.update(system, people.ceo, {
         managerId: null,
         jobTitle: 'Group Chief Executive',
       });
@@ -501,19 +525,19 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
          each other, which is a loop. There is no third move: any manager for the
          outgoing head is somebody below them, and below them is where the loop
          comes from. */
-      const incoming = await employees.create({
+      const incoming = await employees.create(system, {
         ...JOINER,
         jobTitle: 'Chief Executive Officer',
         managerId: people.ceo,
       });
 
-      await expect(employees.update(incoming.id, { managerId: null })).rejects.toBeInstanceOf(
-        SecondRootEmployee,
-      );
+      await expect(
+        employees.update(system, incoming.id, { managerId: null }),
+      ).rejects.toBeInstanceOf(SecondRootEmployee);
 
-      await expect(employees.update(people.ceo, { managerId: incoming.id })).rejects.toBeInstanceOf(
-        ManagerCycle,
-      );
+      await expect(
+        employees.update(system, people.ceo, { managerId: incoming.id }),
+      ).rejects.toBeInstanceOf(ManagerCycle);
     });
 
     it('lets one head succeed another when both changes commit together', async () => {
@@ -521,7 +545,7 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
       // stands for exactly one statement, which the deferred cycle trigger
       // permits and a per row one would not; the number of rootless records
       // never reaches two, which the index would not permit at any point.
-      const incoming = await employees.create({
+      const incoming = await employees.create(system, {
         ...JOINER,
         jobTitle: 'Chief Executive Officer',
         managerId: people.ceo,
@@ -535,10 +559,10 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
       await admin.query('UPDATE employee SET manager_id = NULL WHERE id = $1', [incoming.id]);
       await expect(admin.query('COMMIT')).resolves.toBeDefined();
 
-      expect((await employees.head())?.id).toBe(incoming.id);
+      expect((await employees.head(system))?.id).toBe(incoming.id);
       // The outgoing head keeps a line rather than becoming a second rootless
       // record, so a walk upward from anybody still terminates in one place.
-      expect((await employees.byId(people.ceo)).managerId).toBe(incoming.id);
+      expect((await employees.byId(system, people.ceo)).managerId).toBe(incoming.id);
     });
   });
 
@@ -546,15 +570,15 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
     it('says nothing about the fixture organisation', async () => {
       // The useful shape of a passing check: an empty list, not a page of
       // reassurances to read past.
-      expect(await employees.reportingLineWarnings()).toEqual([]);
+      expect(await employees.reportingLineWarnings(system)).toEqual([]);
     });
 
     it('warns about the reports of a manager who has since left', async () => {
       // The case no write-time check can see. Nobody edited Adwoa's or Abena's
       // record when Kofi left, so nothing was there to refuse.
-      await employees.terminate(people.teamLead, { exitDate: '2026-08-31' });
+      await employees.terminate(system, people.teamLead, { exitDate: '2026-08-31' });
 
-      const warnings = await employees.reportingLineWarnings();
+      const warnings = await employees.reportingLineWarnings(system);
 
       expect(warnings.map((warning) => warning.code)).toEqual([
         'MANAGER_HAS_LEFT',
@@ -566,21 +590,21 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
     it('leaves a leaver reporting to a leaver out of it', async () => {
       // Kojo also reported to Kofi, and is warned about by neither: the warning
       // is that requests have nowhere to go, and Kojo is not raising any.
-      await employees.terminate(people.teamLead, { exitDate: '2026-08-31' });
+      await employees.terminate(system, people.teamLead, { exitDate: '2026-08-31' });
 
-      const warnings = await employees.reportingLineWarnings();
+      const warnings = await employees.reportingLineWarnings(system);
 
       expect(warnings.some((warning) => warning.employeeIds.includes(people.leaver))).toBe(false);
     });
 
     it('goes quiet again once the reports are moved', async () => {
-      await employees.terminate(people.teamLead, { exitDate: '2026-08-31' });
+      await employees.terminate(system, people.teamLead, { exitDate: '2026-08-31' });
 
       for (const id of [people.officer, people.partTimer]) {
-        await employees.update(id, { managerId: people.opsManager });
+        await employees.update(system, id, { managerId: people.opsManager });
       }
 
-      expect(await employees.reportingLineWarnings()).toEqual([]);
+      expect(await employees.reportingLineWarnings(system)).toEqual([]);
     });
   });
 });
@@ -588,21 +612,21 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
 describe('every employee is in one department, LMS 105', () => {
   /** A department with nobody in it, for the cases that need one. */
   async function emptyDepartment(name = 'Internal Audit'): Promise<Department> {
-    return departments.create({ name });
+    return departments.create(system, { name });
   }
 
   it('stores the team and reads it back', async () => {
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
-    expect((await employees.byId(created.id)).departmentId).toBe(operations.id);
+    expect((await employees.byId(system, created.id)).departmentId).toBe(operations.id);
   });
 
   it('refuses a team that is nobody', async () => {
     // The foreign key would refuse this too, with a message about
     // employee_department_id_fkey. This is the refusal an HR officer can read.
-    await expect(employees.create({ ...JOINER, departmentId: '999999' })).rejects.toBeInstanceOf(
-      DepartmentNotFound,
-    );
+    await expect(
+      employees.create(system, { ...JOINER, departmentId: '999999' }),
+    ).rejects.toBeInstanceOf(DepartmentNotFound);
   });
 
   it('refuses a record with no team at the database as well', async () => {
@@ -622,9 +646,9 @@ describe('every employee is in one department, LMS 105', () => {
 
   it('moves somebody between teams as an ordinary edit', async () => {
     const audit = await emptyDepartment();
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
-    const moved = await employees.update(created.id, { departmentId: audit.id });
+    const moved = await employees.update(system, created.id, { departmentId: audit.id });
 
     expect(moved.departmentId).toBe(audit.id);
     // The move is the only thing that moved. Their line manager is unchanged,
@@ -635,11 +659,11 @@ describe('every employee is in one department, LMS 105', () => {
   it('gives every one of the fixture organisation a team', async () => {
     // The assertion the story is about: a headcount by department adds up to the
     // whole company, with nobody quietly missing from every team's figures.
-    const all = await employees.list();
+    const all = await employees.list(system);
     const byTeam = await Promise.all(
-      (await departments.list()).map(async (team) => ({
+      (await departments.list(system)).map(async (team) => ({
         team: team.name,
-        headcount: await departments.headcount(team.id),
+        headcount: await departments.headcount(system, team.id),
       })),
     );
 
@@ -653,23 +677,23 @@ describe('every employee is in one department, LMS 105', () => {
   describe('a team that has been closed', () => {
     it('takes nobody new', async () => {
       const audit = await emptyDepartment();
-      await departments.deactivate(audit.id);
+      await departments.deactivate(system, audit.id);
 
-      await expect(employees.create({ ...JOINER, departmentId: audit.id })).rejects.toBeInstanceOf(
-        DepartmentDeactivated,
-      );
+      await expect(
+        employees.create(system, { ...JOINER, departmentId: audit.id }),
+      ).rejects.toBeInstanceOf(DepartmentDeactivated);
     });
 
     it('takes nobody by transfer either', async () => {
       const audit = await emptyDepartment();
-      await departments.deactivate(audit.id);
-      const created = await employees.create(JOINER);
+      await departments.deactivate(system, audit.id);
+      const created = await employees.create(system, JOINER);
 
-      await expect(employees.update(created.id, { departmentId: audit.id })).rejects.toBeInstanceOf(
-        DepartmentDeactivated,
-      );
+      await expect(
+        employees.update(system, created.id, { departmentId: audit.id }),
+      ).rejects.toBeInstanceOf(DepartmentDeactivated);
 
-      expect((await employees.byId(created.id)).departmentId).toBe(operations.id);
+      expect((await employees.byId(system, created.id)).departmentId).toBe(operations.id);
     });
 
     it('still takes a leaver, so history can be imported', async () => {
@@ -677,9 +701,9 @@ describe('every employee is in one department, LMS 105', () => {
       // this would make the history unimportable, and a leaver raises nothing
       // that has to appear under a team heading.
       const audit = await emptyDepartment();
-      await departments.deactivate(audit.id);
+      await departments.deactivate(system, audit.id);
 
-      const imported = await employees.create({
+      const imported = await employees.create(system, {
         ...JOINER,
         departmentId: audit.id,
         employmentStatus: 'TERMINATED',
@@ -695,23 +719,23 @@ describe('every employee is in one department, LMS 105', () => {
          only one nothing else covers: nobody edits their department when the
          team closes, so no write-time check ever runs on their record. */
       const audit = await emptyDepartment();
-      const created = await employees.create({ ...JOINER, departmentId: audit.id });
-      await employees.terminate(created.id, { exitDate: '2026-12-31' });
-      await departments.deactivate(audit.id);
+      const created = await employees.create(system, { ...JOINER, departmentId: audit.id });
+      await employees.terminate(system, created.id, { exitDate: '2026-12-31' });
+      await departments.deactivate(system, audit.id);
 
       await expect(
-        employees.update(created.id, { employmentStatus: 'ACTIVE', exitDate: null }),
+        employees.update(system, created.id, { employmentStatus: 'ACTIVE', exitDate: null }),
       ).rejects.toBeInstanceOf(DepartmentDeactivated);
     });
 
     it('lets that reinstatement through once they are given an open team', async () => {
       // Both halves in one edit, which is what an HR officer would actually do.
       const audit = await emptyDepartment();
-      const created = await employees.create({ ...JOINER, departmentId: audit.id });
-      await employees.terminate(created.id, { exitDate: '2026-12-31' });
-      await departments.deactivate(audit.id);
+      const created = await employees.create(system, { ...JOINER, departmentId: audit.id });
+      await employees.terminate(system, created.id, { exitDate: '2026-12-31' });
+      await departments.deactivate(system, audit.id);
 
-      const back = await employees.update(created.id, {
+      const back = await employees.update(system, created.id, {
         employmentStatus: 'ACTIVE',
         exitDate: null,
         departmentId: operations.id,
@@ -737,7 +761,7 @@ describe('every employee works some week, FR 23 and LMS 106', () => {
     /* The asymmetry with the line manager, which is required explicitly: there is
        no right answer to "who does this person report to" and there is one to
        "which week do they work". */
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
     const { rows } = await admin.query<{ name: string; is_default: boolean }>(
       'SELECT name, is_default FROM work_pattern WHERE id = $1',
@@ -752,15 +776,15 @@ describe('every employee works some week, FR 23 and LMS 106', () => {
     // week off costs her four days rather than five.
     const pattern = await partTimePattern();
 
-    const created = await employees.create({ ...JOINER, workPatternId: pattern });
+    const created = await employees.create(system, { ...JOINER, workPatternId: pattern });
 
-    expect((await employees.byId(created.id)).workPatternId).toBe(pattern);
+    expect((await employees.byId(system, created.id)).workPatternId).toBe(pattern);
   });
 
   it('reads an empty choice as "the usual week" rather than as no week', async () => {
     // A form that submitted its empty select box is saying "no preference". On a
     // record that does not exist yet there is nothing being cleared.
-    const created = await employees.create({ ...JOINER, workPatternId: null });
+    const created = await employees.create(system, { ...JOINER, workPatternId: null });
 
     const { rows } = await admin.query<{ is_default: boolean }>(
       'SELECT is_default FROM work_pattern WHERE id = $1',
@@ -772,9 +796,9 @@ describe('every employee works some week, FR 23 and LMS 106', () => {
 
   it('moves somebody onto a different week as an ordinary edit', async () => {
     const pattern = await partTimePattern();
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
-    const moved = await employees.update(created.id, { workPatternId: pattern });
+    const moved = await employees.update(system, created.id, { workPatternId: pattern });
 
     expect(moved.workPatternId).toBe(pattern);
     // Nothing else moved with it. Which week somebody works, which team they are
@@ -786,27 +810,27 @@ describe('every employee works some week, FR 23 and LMS 106', () => {
   it('refuses a pattern that is nobody', async () => {
     // The foreign key would refuse this too, with a message about
     // employee_work_pattern_id_fkey. This is the refusal an HR officer can read.
-    await expect(employees.create({ ...JOINER, workPatternId: '999999' })).rejects.toBeInstanceOf(
-      WorkPatternNotFound,
-    );
+    await expect(
+      employees.create(system, { ...JOINER, workPatternId: '999999' }),
+    ).rejects.toBeInstanceOf(WorkPatternNotFound);
 
-    const created = await employees.create(JOINER);
-    await expect(employees.update(created.id, { workPatternId: '999999' })).rejects.toBeInstanceOf(
-      WorkPatternNotFound,
-    );
+    const created = await employees.create(system, JOINER);
+    await expect(
+      employees.update(system, created.id, { workPatternId: '999999' }),
+    ).rejects.toBeInstanceOf(WorkPatternNotFound);
   });
 
   it('refuses taking somebody off every pattern', async () => {
     /* There is no such thing as an employee who works no week: the column is NOT
        NULL, and a leaver keeps their pattern because FR 37a settles their final
        figure against it. Moving them to a different one was what was meant. */
-    const created = await employees.create(JOINER);
+    const created = await employees.create(system, JOINER);
 
-    await expect(employees.update(created.id, { workPatternId: null })).rejects.toBeInstanceOf(
-      InvalidEmployee,
-    );
+    await expect(
+      employees.update(system, created.id, { workPatternId: null }),
+    ).rejects.toBeInstanceOf(InvalidEmployee);
 
-    expect((await employees.byId(created.id)).workPatternId).toBeTruthy();
+    expect((await employees.byId(system, created.id)).workPatternId).toBeTruthy();
   });
 
   it('refuses a record with no pattern at the database as well', async () => {
@@ -823,7 +847,7 @@ describe('every employee works some week, FR 23 and LMS 106', () => {
   });
 
   it('gives every one of the fixture organisation a week, the leaver included', async () => {
-    const all = await employees.list();
+    const all = await employees.list(system);
 
     expect(all.every((one) => one.workPatternId !== null)).toBe(true);
     // And not all the same week: a fixture set where everybody worked Monday to
@@ -845,14 +869,14 @@ describe('a reporting line never loops, FR 03', () => {
 
   /** Whatever the loop is, the branch it was bent out of is unchanged afterwards. */
   async function managerOf(id: string): Promise<string | null> {
-    return (await employees.byId(id)).managerId;
+    return (await employees.byId(system, id)).managerId;
   }
 
   describe('the walk, from the proposed manager upward', () => {
     it('refuses a loop between two people', async () => {
       // Kofi given Adwoa, who already reports to him.
       await expect(
-        employees.update(people.teamLead, { managerId: people.officer }),
+        employees.update(system, people.teamLead, { managerId: people.officer }),
       ).rejects.toBeInstanceOf(ManagerCycle);
 
       expect(await managerOf(people.teamLead)).toBe(people.opsManager);
@@ -863,7 +887,7 @@ describe('a reporting line never loops, FR 03', () => {
       // to the other, so nothing short of the walk finds this.
       let thrown: unknown;
       try {
-        await employees.update(people.opsManager, { managerId: people.officer });
+        await employees.update(system, people.opsManager, { managerId: people.officer });
       } catch (error) {
         thrown = error;
       }
@@ -881,7 +905,7 @@ describe('a reporting line never loops, FR 03', () => {
 
     it('refuses inverting the organisation onto the head of it', async () => {
       await expect(
-        employees.update(people.ceo, { managerId: people.officer }),
+        employees.update(system, people.ceo, { managerId: people.officer }),
       ).rejects.toBeInstanceOf(ManagerCycle);
 
       expect(await managerOf(people.ceo)).toBeNull();
@@ -890,7 +914,7 @@ describe('a reporting line never loops, FR 03', () => {
     it('still allows a move that only looks like one, across branches', async () => {
       // Abena under Adwoa. Both are Kofi's reports, so the line gets one level
       // longer and still terminates at Kwame.
-      const moved = await employees.update(people.partTimer, { managerId: people.officer });
+      const moved = await employees.update(system, people.partTimer, { managerId: people.officer });
 
       expect(moved.managerId).toBe(people.officer);
     });
@@ -898,7 +922,9 @@ describe('a reporting line never loops, FR 03', () => {
     it('still allows a move up the line the employee is already on', async () => {
       // Adwoa from Kofi to Akosua, who is above Kofi. Walking up from Akosua
       // never reaches Adwoa, because Adwoa is below the branch, not on it.
-      const moved = await employees.update(people.officer, { managerId: people.opsManager });
+      const moved = await employees.update(system, people.officer, {
+        managerId: people.opsManager,
+      });
 
       expect(moved.managerId).toBe(people.opsManager);
     });
@@ -1036,7 +1062,7 @@ describe('a reporting line never loops, FR 03', () => {
       // rows is walked at its commit. That it loads at all is the assertion.
       await expect(seed(admin)).resolves.toBeDefined();
 
-      expect(await employees.reportingLineWarnings()).toEqual([]);
+      expect(await employees.reportingLineWarnings(system)).toEqual([]);
     });
   });
 });
@@ -1046,16 +1072,16 @@ describe('a record is deactivated, never deleted, FR 06', () => {
   const LEAVER = 'kojo.antwi@rematholdings.com';
 
   async function leaverId(): Promise<string> {
-    const employee = await employees.byWorkEmail(LEAVER);
+    const employee = await employees.byWorkEmail(system, LEAVER);
     expect(employee).toBeDefined();
     return employee!.id;
   }
 
   describe('terminating', () => {
     it('sets the status and the exit date together', async () => {
-      const created = await employees.create(JOINER);
+      const created = await employees.create(system, JOINER);
 
-      const left = await employees.terminate(created.id, { exitDate: '2026-12-31' });
+      const left = await employees.terminate(system, created.id, { exitDate: '2026-12-31' });
 
       expect(left.employmentStatus).toBe('TERMINATED');
       expect(left.exitDate).toBe('2026-12-31');
@@ -1066,13 +1092,13 @@ describe('a record is deactivated, never deleted, FR 06', () => {
       // leave request, ledger entry and approval of theirs points at is the same
       // row, with the same id, and everything on it that was true yesterday is
       // still true.
-      const created = await employees.create({
+      const created = await employees.create(system, {
         ...JOINER,
         gender: 'FEMALE',
         employmentType: 'PART_TIME',
       });
 
-      const left = await employees.terminate(created.id, { exitDate: '2026-12-31' });
+      const left = await employees.terminate(system, created.id, { exitDate: '2026-12-31' });
 
       expect(left).toEqual({
         ...created,
@@ -1087,31 +1113,31 @@ describe('a record is deactivated, never deleted, FR 06', () => {
       // Kojo's final figure was settled from the date on his record. Silently
       // moving it months later is the defect this refusal exists to prevent.
       await expect(
-        employees.terminate(await leaverId(), { exitDate: '2026-12-31' }),
+        employees.terminate(system, await leaverId(), { exitDate: '2026-12-31' }),
       ).rejects.toBeInstanceOf(AlreadyTerminated);
 
-      expect((await employees.byWorkEmail(LEAVER))?.exitDate).toBe('2026-07-31');
+      expect((await employees.byWorkEmail(system, LEAVER))?.exitDate).toBe('2026-07-31');
     });
 
     it('refuses an exit date before the day they started', async () => {
-      const created = await employees.create(JOINER);
+      const created = await employees.create(system, JOINER);
 
       await expect(
-        employees.terminate(created.id, { exitDate: '2026-08-01' }),
+        employees.terminate(system, created.id, { exitDate: '2026-08-01' }),
       ).rejects.toBeInstanceOf(InvalidEmployee);
     });
 
     it('says so plainly when there is no such employee', async () => {
       await expect(
-        employees.terminate('999999', { exitDate: '2026-12-31' }),
+        employees.terminate(system, '999999', { exitDate: '2026-12-31' }),
       ).rejects.toBeInstanceOf(EmployeeNotFound);
     });
 
     it('can be corrected, because the record is still there to correct', async () => {
-      const created = await employees.create(JOINER);
-      await employees.terminate(created.id, { exitDate: '2026-12-31' });
+      const created = await employees.create(system, JOINER);
+      await employees.terminate(system, created.id, { exitDate: '2026-12-31' });
 
-      const back = await employees.update(created.id, {
+      const back = await employees.update(system, created.id, {
         employmentStatus: 'ACTIVE',
         exitDate: null,
       });
@@ -1146,7 +1172,7 @@ describe('a record is deactivated, never deleted, FR 06', () => {
         admin.query('DELETE FROM employee WHERE work_email = $1', [LEAVER]),
       ).rejects.toThrow(/never deleted/);
 
-      expect(await employees.byWorkEmail(LEAVER)).toBeDefined();
+      expect(await employees.byWorkEmail(system, LEAVER)).toBeDefined();
     });
 
     it('refuses a delete that would take the whole table with it', async () => {
@@ -1174,14 +1200,14 @@ describe('a record is deactivated, never deleted, FR 06', () => {
       // so it is asserted rather than left to be discovered.
       await expect(seed(admin)).resolves.toBeDefined();
 
-      expect(await employees.byWorkEmail(LEAVER)).toBeDefined();
+      expect(await employees.byWorkEmail(system, LEAVER)).toBeDefined();
     });
   });
 
   describe('the history that survives', () => {
     it('keeps a leaver in the list, and can leave them out when asked', async () => {
-      const all = await employees.list();
-      const active = await employees.list({ activeOnly: true });
+      const all = await employees.list(system);
+      const active = await employees.list(system, { activeOnly: true });
 
       // FR 06 keeps the record, and FR 37a needs exactly this shape of it.
       expect(all.map((employee) => employee.workEmail)).toContain(LEAVER);
@@ -1192,8 +1218,8 @@ describe('a record is deactivated, never deleted, FR 06', () => {
     it('still answers every question about a leaver by either identifier', async () => {
       // "Any dispute about it can still be settled" starts with being able to
       // find the person. A leaver is looked up exactly as anybody else is.
-      const byEmail = await employees.byWorkEmail(LEAVER);
-      const byNumber = await employees.byNumber(byEmail!.employeeNumber);
+      const byEmail = await employees.byWorkEmail(system, LEAVER);
+      const byNumber = await employees.byNumber(system, byEmail!.employeeNumber);
 
       expect(byNumber).toEqual(byEmail);
       expect(byEmail).toMatchObject({
@@ -1211,10 +1237,10 @@ describe('a record is deactivated, never deleted, FR 06', () => {
     it('keeps their identifiers reserved, so nobody inherits their history', async () => {
       // The other half of not deleting. Were the row gone, the next joiner could
       // be issued RH-0007 and quietly acquire everything that pointed at it.
-      const leaver = await employees.byWorkEmail(LEAVER);
+      const leaver = await employees.byWorkEmail(system, LEAVER);
 
       await expect(
-        employees.create({
+        employees.create(system, {
           ...JOINER,
           employeeNumber: leaver!.employeeNumber,
           workEmail: 'someone.else@rematholdings.com',
@@ -1222,7 +1248,7 @@ describe('a record is deactivated, never deleted, FR 06', () => {
       ).rejects.toBeInstanceOf(DuplicateEmployeeNumber);
 
       await expect(
-        employees.create({ ...JOINER, employeeNumber: 'RH-0300', workEmail: LEAVER }),
+        employees.create(system, { ...JOINER, employeeNumber: 'RH-0300', workEmail: LEAVER }),
       ).rejects.toBeInstanceOf(DuplicateWorkEmail);
     });
   });

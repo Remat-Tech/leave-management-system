@@ -19,6 +19,8 @@ import { EmployeeService } from '../../src/services/employee-service.js';
 import { type SignedIn, SignInService } from '../../src/services/sign-in-service.js';
 import { recordingMailer, type RecordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { theSystem } from '../../src/auth/actor.js';
+import { Guard } from '../../src/auth/policy.js';
 
 /**
  * The one time code, against a real database. NFR SEC 01, LMS 110.
@@ -51,6 +53,25 @@ const testDatabaseUrl = inject('testDatabaseUrl');
 const DOMAINS = ['rematholdings.com'];
 const PASSWORD = 'a passphrase nobody guesses';
 
+/**
+ * The actor these fixtures are built by, and the guard the services are given.
+ *
+ * {@link theSystem} rather than a person, because that is what this is: work
+ * nobody asked for, setting up an organisation for the assertions below to be
+ * about. It holds every role and is nobody, so no policy refuses it and no
+ * "this is my own record" rule can accidentally match it.
+ *
+ * Whether the policies refuse the right people is not this suite's question. It
+ * is server/tests/integration/authorisation.test.ts, and the rules themselves
+ * are server/tests/unit/policy.test.ts.
+ *
+ * The guard writes refusals to stderr, which is the default. Nothing here should
+ * provoke one, so a line appearing in the output is a failing test explaining
+ * itself.
+ */
+const system = theSystem('one time code integration fixtures');
+const guard = new Guard();
+
 let db: Kysely<Database>;
 let admin: Client;
 let accounts: SignInAccountRepository;
@@ -80,13 +101,14 @@ beforeAll(async () => {
   roles = new RoleRepository(db);
   mailer = recordingMailer();
 
-  logins = new SignInService(accounts, new EmployeeRepository(db), roles, mailer, {
+  logins = new SignInService(accounts, new EmployeeRepository(db), roles, mailer, guard, {
     domains: DOMAINS,
   });
   employees = new EmployeeService(
     new EmployeeRepository(db),
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
+    guard,
     { domains: DOMAINS },
   );
 });
@@ -103,7 +125,7 @@ afterAll(async () => {
 
 /** The seed gives everybody a login and nobody a password. */
 async function withPassword(employeeId: string): Promise<void> {
-  await logins.setPassword(employeeId, PASSWORD);
+  await logins.setPassword(system, employeeId, PASSWORD);
 }
 
 /**
@@ -163,7 +185,7 @@ describe('who is asked for a code', () => {
     /* The story's third criterion. Neither has mfa_enabled set — the seed sets it
        on nobody — and both are asked anyway, because the role decides. */
     await withPassword(people[key]);
-    const before = await logins.forEmployee(people[key]);
+    const before = await logins.forEmployee(system, people[key]);
     expect(before?.mfaEnabled).toBe(false);
 
     const outcome = await logins.signIn(email, PASSWORD);
@@ -173,7 +195,7 @@ describe('who is asked for a code', () => {
 
   it('asks an ordinary employee who has asked to be asked', async () => {
     await withPassword(people.officer);
-    await logins.requireCode(people.officer);
+    await logins.requireCode(system, people.officer);
 
     expect(await logins.signIn(OFFICER_EMAIL, PASSWORD)).toMatchObject({ status: 'CODE_SENT' });
   });
@@ -221,17 +243,17 @@ describe('who is asked for a code', () => {
   });
 
   it('says whether somebody will be asked, and whether they get a choice', async () => {
-    expect(await logins.codePolicyFor(people.officer)).toEqual({
+    expect(await logins.codePolicyFor(system, people.officer)).toEqual({
       required: false,
       mandatory: false,
     });
-    expect(await logins.codePolicyFor(people.headOfHr)).toEqual({
+    expect(await logins.codePolicyFor(system, people.headOfHr)).toEqual({
       required: true,
       mandatory: true,
     });
 
-    await logins.requireCode(people.officer);
-    expect(await logins.codePolicyFor(people.officer)).toEqual({
+    await logins.requireCode(system, people.officer);
+    expect(await logins.codePolicyFor(system, people.officer)).toEqual({
       required: true,
       mandatory: false,
     });
@@ -240,15 +262,15 @@ describe('who is asked for a code', () => {
 
 describe('turning the code off', () => {
   it('lets an ordinary employee turn off what they turned on', async () => {
-    await logins.requireCode(people.officer);
-    await logins.stopRequiringCode(people.officer);
+    await logins.requireCode(system, people.officer);
+    await logins.stopRequiringCode(system, people.officer);
 
     await withPassword(people.officer);
     await signedInDirectly(OFFICER_EMAIL);
   });
 
   it('refuses to turn it off for somebody whose role requires it', async () => {
-    const error = await rejection(() => logins.stopRequiringCode(people.headOfHr));
+    const error = await rejection(() => logins.stopRequiringCode(system, people.headOfHr));
 
     expect(error).toBeInstanceOf(CodeIsMandatory);
     expect(error.message).toContain('HR_ADMIN');
@@ -257,7 +279,7 @@ describe('turning the code off', () => {
   it('leaves it genuinely on after refusing', async () => {
     // A switch that reports off while the thing is on is worse than one that
     // refuses.
-    await rejection(() => logins.stopRequiringCode(people.headOfHr));
+    await rejection(() => logins.stopRequiringCode(system, people.headOfHr));
 
     await withPassword(people.headOfHr);
     expect(await logins.signIn(HR_ADMIN_EMAIL, PASSWORD)).toMatchObject({ status: 'CODE_SENT' });
@@ -279,7 +301,7 @@ describe('the code that is sent', () => {
     await withPassword(people.headOfHr);
     const corrected = 'ama.mensah-darko@rematholdings.com';
 
-    await employees.update(people.headOfHr, { workEmail: corrected });
+    await employees.update(system, people.headOfHr, { workEmail: corrected });
     await logins.signIn(corrected, PASSWORD);
 
     expect(mailer.last().to).toBe(corrected);
@@ -321,7 +343,7 @@ describe('the code that is sent', () => {
 
   it('is not sent to a leaver, whatever roles they hold', async () => {
     await withPassword(people.headOfHr);
-    await employees.terminate(people.headOfHr, { exitDate: '2026-09-30' });
+    await employees.terminate(system, people.headOfHr, { exitDate: '2026-09-30' });
 
     await expect(logins.signIn(HR_ADMIN_EMAIL, PASSWORD)).rejects.toMatchObject({
       reason: 'EMPLOYMENT_ENDED',
@@ -496,7 +518,7 @@ describe('what changes between the two steps', () => {
     await withPassword(people.headOfHr);
     const code = await codeSentTo(HR_ADMIN_EMAIL);
 
-    await employees.terminate(people.headOfHr, { exitDate: '2026-09-30' });
+    await employees.terminate(system, people.headOfHr, { exitDate: '2026-09-30' });
 
     await expect(logins.submitCode(HR_ADMIN_EMAIL, code)).rejects.toMatchObject({
       reason: 'EMPLOYMENT_ENDED',
@@ -507,7 +529,7 @@ describe('what changes between the two steps', () => {
     await withPassword(people.headOfHr);
     const code = await codeSentTo(HR_ADMIN_EMAIL);
 
-    await logins.close(people.headOfHr);
+    await logins.close(system, people.headOfHr);
 
     await expect(logins.submitCode(HR_ADMIN_EMAIL, code)).rejects.toMatchObject({
       reason: 'ACCOUNT_CLOSED',
@@ -566,7 +588,7 @@ describe('what the database holds whatever is writing', () => {
     await withPassword(people.headOfHr);
     await codeSentTo(HR_ADMIN_EMAIL);
 
-    const account = await logins.forEmployee(people.headOfHr);
+    const account = await logins.forEmployee(system, people.headOfHr);
 
     expect(JSON.stringify(account)).not.toContain('scrypt');
     expect(Object.keys(account!)).not.toContain('mfaCodeHash');

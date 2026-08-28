@@ -30,10 +30,16 @@
  *   many people are in a department, because closing one turns on it, and moves
  *   none of them itself.
  *
- *   No authorisation. "As an HR Officer" is enforced by the policy layer of
- *   LMS 112, from this layer, when it exists.
+ *   No authorisation rules. Since LMS 112 every method takes an {@link Actor}
+ *   and asks ../auth/department-policy.ts what they may do, but the rules
+ *   themselves are there. Reading a team is open to anybody signed in and
+ *   writing one is an HR Administrator's; the reasoning for both, including why
+ *   the headcount is not open, is in that file.
  */
 
+import type { Actor } from '../auth/actor.js';
+import { departmentPolicy } from '../auth/department-policy.js';
+import type { Guard } from '../auth/policy.js';
 import {
   assertCanDeactivate,
   type Department,
@@ -47,7 +53,11 @@ import {
 import type { DepartmentRepository } from '../repositories/department-repository.js';
 
 export class DepartmentService {
-  constructor(private readonly departments: DepartmentRepository) {}
+  constructor(
+    private readonly departments: DepartmentRepository,
+    /* NFR SEC 02. Required rather than defaulted; see ../auth/policy.ts. */
+    private readonly guard: Guard,
+  ) {}
 
   /**
    * Creates one.
@@ -58,12 +68,16 @@ export class DepartmentService {
    * so that reopening it is what happens rather than a second row of the same
    * team appearing beside it.
    */
-  async create(input: NewDepartment): Promise<Department> {
+  async create(actor: Actor, input: NewDepartment): Promise<Department> {
+    this.guard.enforce(departmentPolicy.create(actor));
+
     return this.departments.create(validateNewDepartment(input));
   }
 
   /** Renames one. The id every employee record points at does not move. */
-  async update(id: string, changes: DepartmentChanges): Promise<Department> {
+  async update(actor: Actor, id: string, changes: DepartmentChanges): Promise<Department> {
+    this.guard.enforce(departmentPolicy.update(actor, id));
+
     return this.change(id, () => validateDepartmentChanges(changes));
   }
 
@@ -83,8 +97,14 @@ export class DepartmentService {
    * record. See {@link assertCanDeactivate} for why that differs from
    * terminating an employee twice, which is refused.
    */
-  async deactivate(id: string): Promise<Department> {
-    const department = await this.byId(id);
+  async deactivate(actor: Actor, id: string): Promise<Department> {
+    this.guard.enforce(departmentPolicy.close(actor, id));
+
+    /* Read through the repository rather than through byId(actor, id), which
+       would ask the read policy a second question that this caller has already
+       been asked a harder version of. Closing a team is permitted; seeing its
+       name obviously follows. */
+    const department = await this.require(id);
 
     assertCanDeactivate(department, await this.departments.activeHeadcount(id));
 
@@ -103,33 +123,63 @@ export class DepartmentService {
    * report already points at, rather than as a new department with the same name
    * and none of the history.
    */
-  async reactivate(id: string): Promise<Department> {
-    await this.byId(id);
+  async reactivate(actor: Actor, id: string): Promise<Department> {
+    this.guard.enforce(departmentPolicy.reopen(actor, id));
+
+    await this.require(id);
     return this.setActive(id, true);
   }
 
-  async byId(id: string): Promise<Department> {
+  async byId(actor: Actor, id: string): Promise<Department> {
+    this.guard.enforce(departmentPolicy.read(actor, id));
+
+    return this.require(id);
+  }
+
+  /** Undefined rather than a throw: asking whether a name is taken is a fair question. */
+  async byName(actor: Actor, name: string): Promise<Department | undefined> {
+    this.guard.enforce(departmentPolicy.read(actor));
+
+    return this.departments.findByName(name);
+  }
+
+  /** Everything, closed ones included, unless asked otherwise. */
+  async list(actor: Actor, options: { openOnly?: boolean } = {}): Promise<Department[]> {
+    this.guard.enforce(departmentPolicy.list(actor));
+
+    return this.departments.list(options);
+  }
+
+  /**
+   * How many people are still employed in one.
+   *
+   * The one read here that is not open to everybody. A headcount is a fact about
+   * people rather than about the team, and a small one is close to naming them —
+   * see ../auth/department-policy.ts.
+   */
+  async headcount(actor: Actor, id: string): Promise<number> {
+    this.guard.enforce(departmentPolicy.headcount(actor, id));
+
+    await this.require(id);
+    return this.departments.activeHeadcount(id);
+  }
+
+  /**
+   * The record, or {@link DepartmentNotFound}.
+   *
+   * No policy question, deliberately, and the difference from
+   * {@link EmployeeService.findOrRefuse} is worth knowing rather than looking
+   * like an inconsistency. There, being told that an id is nobody is a
+   * disclosure, because employee records are what the story is about hiding.
+   * Here, every signed in caller may read every department, so there is nothing
+   * a missing one could disclose that a present one would not.
+   */
+  private async require(id: string): Promise<Department> {
     const department = await this.departments.findById(id);
     if (department === undefined) {
       throw new DepartmentNotFound(id);
     }
     return department;
-  }
-
-  /** Undefined rather than a throw: asking whether a name is taken is a fair question. */
-  async byName(name: string): Promise<Department | undefined> {
-    return this.departments.findByName(name);
-  }
-
-  /** Everything, closed ones included, unless asked otherwise. */
-  async list(options: { openOnly?: boolean } = {}): Promise<Department[]> {
-    return this.departments.list(options);
-  }
-
-  /** How many people are still employed in one. */
-  async headcount(id: string): Promise<number> {
-    await this.byId(id);
-    return this.departments.activeHeadcount(id);
   }
 
   /**
@@ -142,7 +192,7 @@ export class DepartmentService {
     id: string,
     decide: (current: Department) => Partial<ValidatedDepartment>,
   ): Promise<Department> {
-    const current = await this.byId(id);
+    const current = await this.require(id);
 
     const updated = await this.departments.update(id, decide(current));
     if (updated === undefined) {

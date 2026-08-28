@@ -51,11 +51,22 @@
  *   Operations and a headcount report that splits in half. HR creates the team
  *   once, deliberately, and imports again.
  *
- *   No authorisation. "As an HR Officer" is enforced by the policy layer of
- *   LMS 112, from this layer, when it exists.
+ *   No authorisation rules. Since LMS 112 both methods take an {@link Actor} and
+ *   ask ../auth/employee-policy.ts whether they may import staff, which is the
+ *   same standing as creating and changing records one at a time — because that
+ *   is exactly what this does.
+ *
+ *   Checked at this door as well as row by row, and the reason is
+ *   {@link dryRun}: it writes nothing, so it reaches no write check, and what it
+ *   hands back is a report naming everybody in the organisation the file
+ *   overlaps. An unauthorised dry run is a staff list with a spreadsheet in front
+ *   of it.
  */
 
+import type { Actor } from '../auth/actor.js';
 import { allowedDomains, NotACompanyEmail } from '../auth/company-email.js';
+import { employeePolicy } from '../auth/employee-policy.js';
+import type { Guard } from '../auth/policy.js';
 import {
   assertCanTakeEmployees,
   type Department,
@@ -182,6 +193,10 @@ export class StaffImportService {
 
   constructor(
     private readonly transactions: Transactions,
+    /* NFR SEC 02. Held here and handed to the EmployeeService this service
+       builds inside the transaction, so that the four hundredth row is judged by
+       the same guard and written to the same denial log as the first. */
+    private readonly guard: Guard,
     options: EmployeeServiceOptions = {},
   ) {
     // Resolved once, at construction, exactly as EmployeeService does it, so a
@@ -209,7 +224,12 @@ export class StaffImportService {
    * spreadsheet, and {@link InvalidColumnMapping} when the columns cannot be
    * matched to fields. There is no per row answer to give to either.
    */
-  async dryRun(source: string, options: ImportOptions = {}): Promise<ImportPlan> {
+  async dryRun(actor: Actor, source: string, options: ImportOptions = {}): Promise<ImportPlan> {
+    /* Before the transaction opens, because a refused caller should not so much
+       as take a snapshot of the tables, and because a plan is a report on the
+       organisation whether or not it is ever confirmed. */
+    this.guard.enforce(employeePolicy.importStaff(actor));
+
     return this.transactions.allOrNothing(
       async (repositories) => (await this.plan(repositories, source, options)).plan,
     );
@@ -237,10 +257,13 @@ export class StaffImportService {
    * ninety-nine back out with it.
    */
   async confirm(
+    actor: Actor,
     source: string,
     fingerprint: string,
     options: ConfirmOptions = {},
   ): Promise<ImportOutcome> {
+    this.guard.enforce(employeePolicy.importStaff(actor));
+
     return this.transactions.allOrNothing(async (repositories) => {
       const { plan, organisation } = await this.plan(repositories, source, options);
 
@@ -252,7 +275,7 @@ export class StaffImportService {
         throw new ImportWouldRejectRows(plan.rejected);
       }
 
-      return this.write(repositories, plan, organisation);
+      return this.write(actor, repositories, plan, organisation);
     });
   }
 
@@ -652,14 +675,21 @@ export class StaffImportService {
    * that trade by a very long way.
    */
   private async write(
+    actor: Actor,
     repositories: Repositories,
     plan: ImportPlan,
     organisation: Organisation,
   ): Promise<ImportOutcome> {
+    /* The same guard this service was built with, so that a row refused four
+       hundred deep is written to the same log as anything else. The actor is the
+       HR officer who confirmed the import, carried down rather than replaced by
+       a system actor — a bulk write is still something a person did, and the
+       trail should say who. */
     const employees = new EmployeeService(
       repositories.employees,
       repositories.departments,
       repositories.patterns,
+      this.guard,
       { domains: this.domains },
     );
 
@@ -690,7 +720,7 @@ export class StaffImportService {
 
     for (const operation of orderForWriting(plan, reportingLinesAfter(plan, organisation))) {
       if (operation.kind === 'create') {
-        const employee = await employees.create({
+        const employee = await employees.create(actor, {
           ...operation.create.record,
           managerId: managerId(operation.create.managerNumber),
         });
@@ -707,7 +737,7 @@ export class StaffImportService {
         changes.managerId = managerId(change.managerNumber ?? null);
       }
 
-      changed.push(await employees.update(change.employeeId, changes));
+      changed.push(await employees.update(actor, change.employeeId, changes));
     }
 
     return {

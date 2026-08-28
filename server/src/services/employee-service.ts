@@ -35,9 +35,16 @@
  *   reported by {@link reportingLineWarnings} instead, for HR to answer. It
  *   needs doing, and it is not done.
  *
- *   No authorisation. "As an HR Officer" is enforced by the policy layer of
- *   LMS 112, from this layer, when it exists. Nothing here decides who may call
- *   it, and nothing here should start to.
+ *   No authorisation rules. Since LMS 112 every method takes an {@link Actor} and
+ *   asks ../auth/employee-policy.ts what they may do — but the rules themselves
+ *   are there and not here, and nothing in this file may grow an `if` about a
+ *   role. What is here is *when* to ask, which is the same division of labour
+ *   /domain and this file already have: the domain says what a rule is, the
+ *   service says when it applies.
+ *
+ *   The one thing worth reading closely is {@link findOrRefuse}. "There is no
+ *   such employee" is itself a disclosure, and it is answered there rather than
+ *   at four call sites.
  *
  *   No sign in. Terminating still does not touch the leaver's app_user row, and
  *   since LMS 109 that is the decision rather than the gap it used to be.
@@ -51,7 +58,10 @@
  *   sign-in-account-rules migration.
  */
 
+import type { Actor } from '../auth/actor.js';
 import { allowedDomains } from '../auth/company-email.js';
+import { employeePolicy } from '../auth/employee-policy.js';
+import type { Decision, Guard } from '../auth/policy.js';
 import { assertCanTakeEmployees, DepartmentNotFound } from '../domain/department.js';
 import {
   assertNoManagerCycle,
@@ -98,6 +108,11 @@ export class EmployeeService {
        here is two reads — does this pattern exist, and which one is the default
        — not the rules about what a pattern may contain. */
     private readonly patterns: WorkPatternRepository,
+    /* NFR SEC 02. Required rather than defaulted, because a service that can be
+       built without one is a service somebody builds without one, and the
+       failure is silent: everything works, nothing is refused, and nothing is
+       written down. See ../auth/policy.ts. */
+    private readonly guard: Guard,
     options: EmployeeServiceOptions = {},
   ) {
     // Resolved once, at construction. allowedDomains() throws on an empty list,
@@ -124,7 +139,12 @@ export class EmployeeService {
    * the part timer, which is the whole of what FR 23 is about; everybody else
    * gets the default without anybody having to look its id up.
    */
-  async create(input: NewEmployee): Promise<Employee> {
+  async create(actor: Actor, input: NewEmployee): Promise<Employee> {
+    /* First, before the record is even read. A caller who may not create an
+       employee has no business finding out whether their proposed employee
+       number is taken, and refusing after the validation would tell them. */
+    this.guard.enforce(employeePolicy.create(actor));
+
     const record = validateNewEmployee(input, this.domains);
 
     /* A leaver being loaded from an old system may belong to a team that has
@@ -157,8 +177,10 @@ export class EmployeeService {
    * Moving a reporting line is an ordinary edit too, and goes through the same
    * checks a new record's does. See {@link checkManager}.
    */
-  async update(id: string, changes: EmployeeChanges): Promise<Employee> {
-    return this.change(id, (current) => validateEmployeeChanges(changes, current, this.domains));
+  async update(actor: Actor, id: string, changes: EmployeeChanges): Promise<Employee> {
+    return this.change(actor, id, employeePolicy.update, (current) =>
+      validateEmployeeChanges(changes, current, this.domains),
+    );
   }
 
   /**
@@ -178,8 +200,10 @@ export class EmployeeService {
    * then stayed — is {@link update}, an ordinary edit to a record that still
    * exists. That is the dividend of never having deleted it.
    */
-  async terminate(id: string, termination: Termination): Promise<Employee> {
-    return this.change(id, (current) => planTermination(current, termination));
+  async terminate(actor: Actor, id: string, termination: Termination): Promise<Employee> {
+    return this.change(actor, id, employeePolicy.terminate, (current) =>
+      planTermination(current, termination),
+    );
   }
 
   /**
@@ -199,13 +223,22 @@ export class EmployeeService {
    * changed while this caller had the form open.
    */
   private async change(
+    actor: Actor,
     id: string,
+    /* The policy that judges this particular change. Passed in rather than
+       decided here, because "may they edit this record" and "may they record
+       that this person has left" are two questions with two answers and two
+       lines in the denial log, and folding them into one would put the wrong
+       word in that log. */
+    permit: (actor: Actor, employee: Employee) => Decision,
     decide: (current: Employee) => Partial<ValidatedEmployee>,
   ): Promise<Employee> {
-    const current = await this.employees.findById(id);
-    if (current === undefined) {
-      throw new EmployeeNotFound(id);
-    }
+    const current = await this.findOrRefuse(actor, id);
+
+    /* After the read and before anything else. The record is needed to decide —
+       a line manager's standing towards it is on the record — and nothing has
+       happened yet that a refused caller could observe. */
+    this.guard.enforce(permit(actor, current));
 
     const changes = decide(current);
 
@@ -425,34 +458,85 @@ export class EmployeeService {
    * It is a read, and safe to call from a dashboard, a nightly job or a support
    * request.
    */
-  async reportingLineWarnings(): Promise<ReportingLineWarning[]> {
+  async reportingLineWarnings(actor: Actor): Promise<ReportingLineWarning[]> {
+    this.guard.enforce(employeePolicy.warnings(actor));
+
     return warnAboutReportingLines(await this.employees.reportingLines());
   }
 
   /** The employee with no line manager. FR 04 permits exactly one, so this is it. */
-  async head(): Promise<Employee | undefined> {
+  async head(actor: Actor): Promise<Employee | undefined> {
+    this.guard.enforce(employeePolicy.search(actor));
+
     return this.employees.findRoot();
   }
 
-  async byId(id: string): Promise<Employee> {
-    const employee = await this.employees.findById(id);
-    if (employee === undefined) {
-      throw new EmployeeNotFound(id);
-    }
+  async byId(actor: Actor, id: string): Promise<Employee> {
+    const employee = await this.findOrRefuse(actor, id);
+
+    this.guard.enforce(employeePolicy.read(actor, employee));
+
     return employee;
   }
 
-  /** Undefined rather than a throw: asking whether a number is taken is a fair question. */
-  async byNumber(employeeNumber: string): Promise<Employee | undefined> {
+  /**
+   * By employee number. Undefined rather than a throw, because asking whether a
+   * number is taken is a fair question — from somebody entitled to ask it.
+   *
+   * That entitlement is the whole of what changed in LMS 112. A lookup by number
+   * or by address is a directory search, so it is HR's; see
+   * {@link employeePolicy.search}.
+   */
+  async byNumber(actor: Actor, employeeNumber: string): Promise<Employee | undefined> {
+    this.guard.enforce(employeePolicy.search(actor));
+
     return this.employees.findByNumber(employeeNumber);
   }
 
-  async byWorkEmail(workEmail: string): Promise<Employee | undefined> {
+  async byWorkEmail(actor: Actor, workEmail: string): Promise<Employee | undefined> {
+    this.guard.enforce(employeePolicy.search(actor));
+
     return this.employees.findByWorkEmail(workEmail);
   }
 
   /** Everybody, leavers included, unless asked otherwise. */
-  async list(options: { activeOnly?: boolean } = {}): Promise<Employee[]> {
+  async list(actor: Actor, options: { activeOnly?: boolean } = {}): Promise<Employee[]> {
+    this.guard.enforce(employeePolicy.list(actor));
+
     return this.employees.list(options);
+  }
+
+  /**
+   * The record, or the right refusal for an id that is nobody. NFR SEC 02.
+   *
+   * This is the method the story turns on, so it is worth the paragraph.
+   *
+   * "A colleague cannot reach them by guessing a web address" is not satisfied
+   * by refusing to show them the record. It is satisfied by refusing to *answer*,
+   * and a system that says `EmployeeNotFound` for an id that is nobody and
+   * `NotAuthorised` for an id that is somebody has answered: the pair of them is
+   * a working existence oracle, and running it over a list of guesses is exactly
+   * the attack the story describes.
+   *
+   * So being told that a record is missing is itself a permission, and it is the
+   * one {@link employeePolicy.search} grants — the same permission as looking
+   * somebody up by employee number, because it is the same question asked with a
+   * different key. Anybody who may search is told plainly that there is no such
+   * record, which is what makes a mistyped id a five second problem for HR.
+   * Anybody who may not gets the one sentence that covers both cases, and
+   * learns nothing by repeating it.
+   *
+   * Every path that takes an id from a caller goes through here, which is the
+   * only way a property like this survives the next method somebody adds.
+   */
+  private async findOrRefuse(actor: Actor, id: string): Promise<Employee> {
+    const employee = await this.employees.findById(id);
+
+    if (employee === undefined) {
+      this.guard.enforce(employeePolicy.search(actor));
+      throw new EmployeeNotFound(id);
+    }
+
+    return employee;
   }
 }

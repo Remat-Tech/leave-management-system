@@ -22,6 +22,8 @@ import { EmployeeService } from '../../src/services/employee-service.js';
 import { type SignedIn, SignInService } from '../../src/services/sign-in-service.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { theSystem } from '../../src/auth/actor.js';
+import { Guard } from '../../src/auth/policy.js';
 
 /**
  * Signing in with a company email address, against a real database. NFR SEC 01,
@@ -54,6 +56,25 @@ const DOMAINS = ['rematholdings.com'];
 /** Long enough to be accepted, and the same one throughout so a failure is legible. */
 const PASSWORD = 'a passphrase nobody guesses';
 
+/**
+ * The actor these fixtures are built by, and the guard the services are given.
+ *
+ * {@link theSystem} rather than a person, because that is what this is: work
+ * nobody asked for, setting up an organisation for the assertions below to be
+ * about. It holds every role and is nobody, so no policy refuses it and no
+ * "this is my own record" rule can accidentally match it.
+ *
+ * Whether the policies refuse the right people is not this suite's question. It
+ * is server/tests/integration/authorisation.test.ts, and the rules themselves
+ * are server/tests/unit/policy.test.ts.
+ *
+ * The guard writes refusals to stderr, which is the default. Nothing here should
+ * provoke one, so a line appearing in the output is a failing test explaining
+ * itself.
+ */
+const system = theSystem('sign in integration fixtures');
+const guard = new Guard();
+
 let db: Kysely<Database>;
 let admin: Client;
 let accounts: SignInAccountRepository;
@@ -78,12 +99,14 @@ beforeAll(async () => {
     new EmployeeRepository(db),
     new RoleRepository(db),
     recordingMailer(),
+    guard,
     { domains: DOMAINS },
   );
   employees = new EmployeeService(
     new EmployeeRepository(db),
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
+    guard,
     { domains: DOMAINS },
   );
 });
@@ -124,14 +147,14 @@ async function inTransaction(...statements: string[]): Promise<void> {
  * with.
  */
 async function withPassword(employeeId: string, password = PASSWORD): Promise<void> {
-  await logins.setPassword(employeeId, password);
+  await logins.setPassword(system, employeeId, password);
 }
 
 /** A joiner nobody has provisioned, in the officer's department and under her lead. */
 async function newEmployee(email = 'esi.nyarko@rematholdings.com') {
-  const officer = await employees.byId(people.officer);
+  const officer = await employees.byId(system, people.officer);
 
-  return employees.create({
+  return employees.create(system, {
     employeeNumber: 'RH-0100',
     firstName: 'Esi',
     lastName: 'Nyarko',
@@ -180,7 +203,7 @@ describe('signing in', () => {
     expect(account.lastLoginAt!.getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000);
 
     // And it is in the table, not only in the object that was returned.
-    const stored = await logins.forEmployee(people.officer);
+    const stored = await logins.forEmployee(system, people.officer);
     expect(stored?.lastLoginAt).not.toBeNull();
   });
 
@@ -249,6 +272,7 @@ describe('only the configured company domains, at the login door', () => {
       new EmployeeRepository(db),
       new RoleRepository(db),
       recordingMailer(),
+      guard,
       { domains: ['remat.tech'] },
     );
 
@@ -273,7 +297,7 @@ describe('access ends when employment does', () => {
     await withPassword(people.officer);
     await expect(logins.signIn(OFFICER_EMAIL, PASSWORD)).resolves.toBeDefined();
 
-    await employees.terminate(people.officer, { exitDate: '2026-09-30' });
+    await employees.terminate(system, people.officer, { exitDate: '2026-09-30' });
 
     await expect(logins.signIn(OFFICER_EMAIL, PASSWORD)).rejects.toMatchObject({
       reason: 'EMPLOYMENT_ENDED',
@@ -282,7 +306,7 @@ describe('access ends when employment does', () => {
     /* And the account itself was never touched. That is the design: the status is
        read from the employee record at the moment somebody knocks, so there is no
        copy to keep in step and no path that can forget to. */
-    const account = await logins.forEmployee(people.officer);
+    const account = await logins.forEmployee(system, people.officer);
     expect(account?.isActive).toBe(true);
   });
 
@@ -291,9 +315,9 @@ describe('access ends when employment does', () => {
     // an ordinary edit, and the door follows the record rather than needing its
     // own correction.
     await withPassword(people.officer);
-    await employees.terminate(people.officer, { exitDate: '2026-09-30' });
+    await employees.terminate(system, people.officer, { exitDate: '2026-09-30' });
 
-    await employees.update(people.officer, { employmentStatus: 'ACTIVE', exitDate: null });
+    await employees.update(system, people.officer, { employmentStatus: 'ACTIVE', exitDate: null });
 
     await expect(logins.signIn(OFFICER_EMAIL, PASSWORD)).resolves.toBeDefined();
   });
@@ -302,14 +326,14 @@ describe('access ends when employment does', () => {
     // An exit date on an ACTIVE record is somebody serving notice, and they are
     // exactly the person who needs to book the leave they are owed.
     await withPassword(people.officer);
-    await employees.update(people.officer, { exitDate: '2026-12-31' });
+    await employees.update(system, people.officer, { exitDate: '2026-12-31' });
 
     await expect(logins.signIn(OFFICER_EMAIL, PASSWORD)).resolves.toBeDefined();
   });
 
   it('shuts the door on a suspended employee', async () => {
     await withPassword(people.officer);
-    await employees.update(people.officer, { employmentStatus: 'SUSPENDED' });
+    await employees.update(system, people.officer, { employmentStatus: 'SUSPENDED' });
 
     await expect(logins.signIn(OFFICER_EMAIL, PASSWORD)).rejects.toMatchObject({
       reason: 'EMPLOYMENT_SUSPENDED',
@@ -321,15 +345,15 @@ describe('closing a login on its own', () => {
   it('closes and reopens, without touching the employee record', async () => {
     await withPassword(people.officer);
 
-    await logins.close(people.officer);
+    await logins.close(system, people.officer);
     await expect(logins.signIn(OFFICER_EMAIL, PASSWORD)).rejects.toMatchObject({
       reason: 'ACCOUNT_CLOSED',
     });
 
-    const employee = await employees.byId(people.officer);
+    const employee = await employees.byId(system, people.officer);
     expect(employee.employmentStatus).toBe('ACTIVE');
 
-    await logins.reopen(people.officer);
+    await logins.reopen(system, people.officer);
     await expect(logins.signIn(OFFICER_EMAIL, PASSWORD)).resolves.toBeDefined();
   });
 
@@ -337,7 +361,7 @@ describe('closing a login on its own', () => {
     /* Only reachable after a correct password, so the person has proved who they
        are and there is no stranger left to keep anything from. */
     await withPassword(people.officer);
-    await logins.close(people.officer);
+    await logins.close(system, people.officer);
 
     const refused = await refusal(() => logins.signIn(OFFICER_EMAIL, PASSWORD));
     const wrong = await refusal(() => logins.signIn(OFFICER_EMAIL, 'not the password'));
@@ -349,8 +373,10 @@ describe('closing a login on its own', () => {
   it('refuses to act on somebody with no login at all', async () => {
     const joiner = await newEmployee();
 
-    await expect(logins.close(joiner.id)).rejects.toThrow(SignInAccountNotFound);
-    await expect(logins.setPassword(joiner.id, PASSWORD)).rejects.toThrow(SignInAccountNotFound);
+    await expect(logins.close(system, joiner.id)).rejects.toThrow(SignInAccountNotFound);
+    await expect(logins.setPassword(system, joiner.id, PASSWORD)).rejects.toThrow(
+      SignInAccountNotFound,
+    );
   });
 });
 
@@ -358,7 +384,7 @@ describe('provisioning a login', () => {
   it('takes the address from the employee record rather than from the caller', async () => {
     const joiner = await newEmployee();
 
-    const account = await logins.provision(joiner.id, { password: PASSWORD });
+    const account = await logins.provision(system, joiner.id, { password: PASSWORD });
 
     expect(account.companyEmail).toBe(joiner.workEmail);
     await expect(logins.signIn(joiner.workEmail, PASSWORD)).resolves.toBeDefined();
@@ -367,7 +393,7 @@ describe('provisioning a login', () => {
   it('creates one without a password, which nobody can sign in with', async () => {
     const joiner = await newEmployee();
 
-    const account = await logins.provision(joiner.id);
+    const account = await logins.provision(system, joiner.id);
 
     expect(account.isActive).toBe(true);
     await expect(logins.signIn(joiner.workEmail, PASSWORD)).rejects.toMatchObject({
@@ -375,7 +401,7 @@ describe('provisioning a login', () => {
     });
 
     // And it becomes usable when somebody sets one, without being recreated.
-    await logins.setPassword(joiner.id, PASSWORD);
+    await logins.setPassword(system, joiner.id, PASSWORD);
     await expect(logins.signIn(joiner.workEmail, PASSWORD)).resolves.toMatchObject({
       account: { id: account.id },
     });
@@ -384,14 +410,14 @@ describe('provisioning a login', () => {
   it('gives nobody a second login', async () => {
     // app_user.employee_id is UNIQUE. Two logins would be two passwords, two
     // audit trails, and one of them abandoned.
-    await expect(logins.provision(people.officer)).rejects.toThrow(SignInAccountExists);
+    await expect(logins.provision(system, people.officer)).rejects.toThrow(SignInAccountExists);
   });
 
   it('gives a leaver none, and says so to the person asking', async () => {
-    const leaver = await employees.byId(people.leaver);
+    const leaver = await employees.byId(system, people.leaver);
     await admin.query('DELETE FROM app_user WHERE employee_id = $1', [leaver.id]);
 
-    const error = await rejection(() => logins.provision(leaver.id));
+    const error = await rejection(() => logins.provision(system, leaver.id));
 
     /* Not a SignInRefused. That message is addressed to the person at the sign in
        box, and this one is read by an HR officer who is neither that person nor
@@ -402,21 +428,23 @@ describe('provisioning a login', () => {
   });
 
   it('refuses an employee who is nobody', async () => {
-    await expect(logins.provision('999999')).rejects.toThrow(EmployeeNotFound);
+    await expect(logins.provision(system, '999999')).rejects.toThrow(EmployeeNotFound);
   });
 
   it('refuses a password too short to be worth hashing', async () => {
     const joiner = await newEmployee();
 
-    await expect(logins.provision(joiner.id, { password: 'short' })).rejects.toThrow(WeakPassword);
+    await expect(logins.provision(system, joiner.id, { password: 'short' })).rejects.toThrow(
+      WeakPassword,
+    );
 
     // And nothing was created on the way to refusing.
-    expect(await logins.forEmployee(joiner.id)).toBeUndefined();
+    expect(await logins.forEmployee(system, joiner.id)).toBeUndefined();
   });
 
   it('never stores the password', async () => {
     const joiner = await newEmployee();
-    await logins.provision(joiner.id, { password: PASSWORD });
+    await logins.provision(system, joiner.id, { password: PASSWORD });
 
     const { rows } = await admin.query<{ hash: string }>(
       'SELECT password_hash AS hash FROM app_user WHERE employee_id = $1',
@@ -436,9 +464,9 @@ describe('the login is the work address, and stays it', () => {
     await withPassword(people.officer);
     const corrected = 'adwoa.frimpong-mensah@rematholdings.com';
 
-    await employees.update(people.officer, { workEmail: corrected });
+    await employees.update(system, people.officer, { workEmail: corrected });
 
-    const account = await logins.forEmployee(people.officer);
+    const account = await logins.forEmployee(system, people.officer);
     expect(account?.companyEmail).toBe(corrected);
 
     await expect(logins.signIn(corrected, PASSWORD)).resolves.toBeDefined();
@@ -524,12 +552,12 @@ describe('what the database holds whatever is writing', () => {
   it('records when a login last changed', async () => {
     // "When was this account created" and "when did it last change" are the first
     // two questions asked of access nobody can account for.
-    const before = await logins.forEmployee(people.officer);
+    const before = await logins.forEmployee(system, people.officer);
     expect(before?.createdAt).toBeInstanceOf(Date);
 
     await withPassword(people.officer);
 
-    const after = await logins.forEmployee(people.officer);
+    const after = await logins.forEmployee(system, people.officer);
     expect(after!.updatedAt.getTime()).toBeGreaterThan(before!.updatedAt.getTime());
     expect(after!.createdAt.getTime()).toBe(before!.createdAt.getTime());
   });
@@ -540,7 +568,7 @@ describe('what the database holds whatever is writing', () => {
        line by being carried along in an object nobody looked inside. */
     await withPassword(people.officer);
 
-    const account = await logins.forEmployee(people.officer);
+    const account = await logins.forEmployee(system, people.officer);
 
     expect(JSON.stringify(account)).not.toContain('scrypt');
     expect(Object.keys(account!)).not.toContain('passwordHash');
