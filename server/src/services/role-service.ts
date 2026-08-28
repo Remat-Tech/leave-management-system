@@ -103,7 +103,7 @@ export class RoleService {
 
     const accountId = await this.accountFor(employeeId);
 
-    await this.roles.grant(accountId, role);
+    await this.roles.grant(actor, accountId, role);
 
     return this.roles.codesFor(accountId);
   }
@@ -142,7 +142,7 @@ export class RoleService {
       }
     }
 
-    const removed = await this.translateRefusals(() => this.roles.revoke(accountId, role));
+    const removed = await this.translateRefusals(() => this.roles.revoke(actor, accountId, role));
 
     if (!removed) {
       throw new RoleNotHeld(role);

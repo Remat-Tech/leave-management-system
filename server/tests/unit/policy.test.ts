@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Actor, holdsAny, isSelf, signedInAs, theSystem } from '../../src/auth/actor.js';
+import { auditPolicy } from '../../src/auth/audit-policy.js';
 import { departmentPolicy } from '../../src/auth/department-policy.js';
 import { employeePolicy } from '../../src/auth/employee-policy.js';
 import { MANDATORY_ROLES } from '../../src/auth/mfa.js';
@@ -464,6 +465,80 @@ describe('logins', () => {
     for (const [code, roles] of EACH_ROLE) {
       expect(signInPolicy.search(employee('adwoa', roles)).allowed).toBe(
         PROVIDES_LOGINS.includes(code),
+      );
+    }
+  });
+});
+
+describe('the audit log', () => {
+  const hers = record('ama');
+
+  it('gives somebody the history of their own record, which is the point of it', () => {
+    /* "So that if a balance is ever disputed there is an account of how it got
+       there" is written from the point of view of the person disputing it. An
+       account they cannot see is not an account. */
+    expect(auditPolicy.forEmployee(employee('ama'), hers).allowed).toBe(true);
+  });
+
+  it('gives a line manager the same standing over a report that they have over the record', () => {
+    const akosua = manager('akosua');
+
+    expect(auditPolicy.forEmployee(akosua, record('kojo', 'akosua')).allowed).toBe(true);
+    expect(auditPolicy.forEmployee(akosua, record('kojo', 'kofi')).allowed).toBe(false);
+  });
+
+  it('refuses a colleague, exactly as reading the record does', () => {
+    /* The rule this policy exists to keep: without it, somebody refused a record
+       could ask for its history instead and be handed several copies of it. */
+    for (const [, roles] of EACH_ROLE) {
+      const other = employee('adwoa', roles);
+
+      expect(auditPolicy.forEmployee(other, hers).allowed).toBe(
+        employeePolicy.read(other, hers).allowed,
+      );
+    }
+  });
+
+  it('says nothing when it refuses a record, so the log is not an existence oracle', () => {
+    const adwoa = employee('adwoa');
+
+    expect(auditPolicy.forEmployee(adwoa, hers).told).toBeNull();
+    expect(auditPolicy.browse(adwoa).told).toBeNull();
+  });
+
+  it('keeps the history of a login and its roles narrower than the record', () => {
+    /* When a password was reset and who gave somebody HR powers is the material
+       of an investigation, not of approving leave. A line manager is deliberately
+       not here even though they may read the record's history. */
+    const akosua = manager('akosua');
+
+    expect(auditPolicy.forAccess(employee('ama'), 'ama').allowed).toBe(true);
+    expect(auditPolicy.forAccess(akosua, 'kojo').allowed).toBe(false);
+
+    for (const [code, roles] of EACH_ROLE) {
+      expect(auditPolicy.forAccess(employee('adwoa', roles), 'kojo').allowed).toBe(
+        ADMINISTERS_ACCESS.includes(code),
+      );
+    }
+  });
+
+  it('keeps who renamed a team to HR, even though the team itself is open', () => {
+    /* The current name of Operations is on every screen. "Yaw renamed it on 3
+       March" is an administrative fact about a colleague. */
+    for (const [code, roles] of EACH_ROLE) {
+      const them = employee('adwoa', roles);
+      const allowed = READS_EVERY_RECORD.includes(code);
+
+      expect(departmentPolicy.read(them, 'operations').allowed).toBe(true);
+      expect(auditPolicy.forOrganisation(them, 'department', 'operations').allowed).toBe(allowed);
+    }
+  });
+
+  it('keeps the whole log to the people who may read every record', () => {
+    // Browsing without naming a record is every record at once.
+    for (const [code, roles] of EACH_ROLE) {
+      expect(auditPolicy.browse(employee('adwoa', roles)).allowed).toBe(
+        READS_EVERY_RECORD.includes(code),
       );
     }
   });

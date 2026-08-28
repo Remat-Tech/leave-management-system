@@ -179,8 +179,44 @@ export interface UserRoleTable {
   granted_at: Generated<Date>;
 }
 
+/**
+ * The audit log. NFR AUD 01 and NFR AUD 02. LMS 113.
+ *
+ * Read by the application and never written by it — not because it holds no
+ * INSERT, which it does, but because every row here is written by a trigger on
+ * the table that changed. There is no insert statement anywhere above this file
+ * and there should never be one: an entry the application composes is an entry
+ * the application can compose wrongly, or forget.
+ *
+ * `never` on every column for insert and update is that rule said in the type
+ * system. lms_app holds no UPDATE or DELETE at all, so the update half is
+ * doubly true.
+ */
+export interface AuditLogTable {
+  id: Generated<string>;
+  occurred_at: Timestamp;
+  /* CREATE | UPDATE | DELETE, held closed by audit_log_action_known. */
+  action: ColumnType<string, never, never>;
+  /* The table that changed, from TG_TABLE_NAME, so it cannot drift from it. */
+  entity: ColumnType<string, never, never>;
+  /* The record this is filed under: its own id, or its parent's for a child
+     table. Text rather than bigint because work_pattern_day files under a
+     pattern and user_role under a login, and one column has to hold both. */
+  entity_id: ColumnType<string, never, never>;
+  /* The record either side of the change. Null on one side says which kind of
+     change it was as reliably as `action` does. Secrets are stored as a marker;
+     see the audit-log migration. */
+  before: ColumnType<Record<string, unknown> | null, never, never>;
+  after: ColumnType<Record<string, unknown> | null, never, never>;
+  /* Who, in words, from the setting the repositories put on the transaction. A
+     writer that did not say so says so. */
+  actor: ColumnType<string, never, never>;
+  actor_employee_id: ColumnType<string | null, never, never>;
+}
+
 export interface Database {
   app_user: AppUserTable;
+  audit_log: AuditLogTable;
   department: DepartmentTable;
   employee: EmployeeTable;
   role: RoleTable;

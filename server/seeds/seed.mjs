@@ -28,8 +28,24 @@ export const SCENARIOS = ['base', 'lone-hr'];
  * truncated here — doing so would delete reference data every time somebody
  * reloaded the fixtures — and the extra patterns this file does own are cleared
  * by name in insertWorkPatterns().
+ *
+ * `audit_log` is here since LMS 113, and it is the one entry in this list that
+ * deserves an argument rather than a mention.
+ *
+ * Nothing may update or delete a row in it, on any connection — that is NFR AUD
+ * 02 and the point of the whole table. TRUNCATE is not either of those and no row
+ * trigger sees it, which is the same latitude `employee` has and for the same
+ * reason: emptying a table on purpose, on the owner connection, is not the
+ * failure an audit trail exists to prevent. Losing one entry quietly is.
+ *
+ * It has to be here, because the fixtures being reloaded are the fixtures being
+ * reloaded: an account of how the organisation got here is meaningless when the
+ * organisation was replaced wholesale a second ago, and leaving the entries
+ * behind would leave every integration run reading the previous run's history.
+ * A production database is migrated and never seeded, so nothing here can reach
+ * a real audit log.
  */
-const SEEDED_TABLES = ['user_role', 'app_user', 'employee', 'department'];
+const SEEDED_TABLES = ['audit_log', 'user_role', 'app_user', 'employee', 'department'];
 
 /**
  * Loads the fixture set. Clears what it owns first, so running it twice gives

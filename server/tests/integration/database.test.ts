@@ -43,7 +43,13 @@ describe('the disposable test database', () => {
 
 describe('the application role, NFR AUD 02', () => {
   it('may append to a new table but never rewrite or erase it', async () => {
-    // Stands in for leave_ledger_entry and audit_log, which Phase 2 creates.
+    /* The default privilege itself, tested on a table nothing else touches.
+       audit_log now exists and is asserted the same way in ./audit.test.ts; this
+       is the more general claim, and the one that will still hold for
+       leave_ledger_entry when Phase 2 creates it. The arrangement is what makes
+       an append only table append only by nobody ever having granted it more —
+       forget the explicit grant on an ordinary table and you get a loud
+       permission error, which is the right way round. */
     await db.query('create table ledger_shaped (id bigserial primary key, days numeric(6,2))');
 
     const { rows } = await db.query<Record<string, boolean>>(

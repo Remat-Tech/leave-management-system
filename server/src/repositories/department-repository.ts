@@ -16,6 +16,8 @@
 import type { Kysely, Selectable } from 'kysely';
 import type { Database } from '../db/index.js';
 import type { DepartmentTable } from '../db/schema.js';
+import type { Attribution } from '../domain/audit.js';
+import { recording } from './recording.js';
 import {
   type Department,
   DuplicateDepartmentName,
@@ -33,13 +35,15 @@ type DepartmentRow = Selectable<DepartmentTable>;
 export class DepartmentRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async create(record: ValidatedDepartment): Promise<Department> {
+  async create(by: Attribution, record: ValidatedDepartment): Promise<Department> {
     const row = await this.catchRefusals(record, () =>
-      this.db
-        .insertInto('department')
-        .values({ name: record.name })
-        .returningAll()
-        .executeTakeFirstOrThrow(),
+      recording(this.db, by, (on) =>
+        on
+          .insertInto('department')
+          .values({ name: record.name })
+          .returningAll()
+          .executeTakeFirstOrThrow(),
+      ),
     );
 
     return toDepartment(row);
@@ -53,33 +57,42 @@ export class DepartmentRepository {
    * fixing migration get the same treatment as the application rather than only
    * the writer who remembered.
    */
-  async update(id: string, changes: Partial<ValidatedDepartment>): Promise<Department | undefined> {
+  async update(
+    by: Attribution,
+    id: string,
+    changes: Partial<ValidatedDepartment>,
+  ): Promise<Department | undefined> {
     // Kysely refuses an UPDATE with no columns, and rightly. Nothing to change
-    // is not an error, though, so the record is returned as it stands.
+    // is not an error, though, so the record is returned as it stands — and
+    // nothing is audited, because nothing happened.
     if (changes.name === undefined) {
       return this.findById(id);
     }
 
     const row = await this.catchRefusals(changes, () =>
-      this.db
-        .updateTable('department')
-        .set({ name: changes.name })
-        .where('id', '=', id)
-        .returningAll()
-        .executeTakeFirst(),
+      recording(this.db, by, (on) =>
+        on
+          .updateTable('department')
+          .set({ name: changes.name })
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirst(),
+      ),
     );
 
     return row === undefined ? undefined : toDepartment(row);
   }
 
   /** Opens or closes one. The rule about when that is allowed is the service's. */
-  async setActive(id: string, isActive: boolean): Promise<Department | undefined> {
-    const row = await this.db
-      .updateTable('department')
-      .set({ is_active: isActive })
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirst();
+  async setActive(by: Attribution, id: string, isActive: boolean): Promise<Department | undefined> {
+    const row = await recording(this.db, by, (on) =>
+      on
+        .updateTable('department')
+        .set({ is_active: isActive })
+        .where('id', '=', id)
+        .returningAll()
+        .executeTakeFirst(),
+    );
 
     return row === undefined ? undefined : toDepartment(row);
   }

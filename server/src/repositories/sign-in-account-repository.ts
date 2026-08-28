@@ -21,6 +21,8 @@
 import type { Kysely, Selectable } from 'kysely';
 import type { Database } from '../db/index.js';
 import type { AppUserTable } from '../db/schema.js';
+import type { Attribution } from '../domain/audit.js';
+import { recording } from './recording.js';
 import {
   SignInAccountExists,
   SignInAddressMustBeTheWorkAddress,
@@ -99,17 +101,19 @@ export class SignInAccountRepository {
    * app_user_email_is_the_work_email trigger — because this is not the only thing
    * that can write to the table.
    */
-  async create(record: NewSignInAccount): Promise<SignInAccount> {
+  async create(by: Attribution, record: NewSignInAccount): Promise<SignInAccount> {
     const row = await this.catchRefusals(record, () =>
-      this.db
-        .insertInto('app_user')
-        .values({
-          employee_id: record.employeeId,
-          company_email: record.companyEmail,
-          password_hash: record.passwordHash,
-        })
-        .returningAll()
-        .executeTakeFirstOrThrow(),
+      recording(this.db, by, (on) =>
+        on
+          .insertInto('app_user')
+          .values({
+            employee_id: record.employeeId,
+            company_email: record.companyEmail,
+            password_hash: record.passwordHash,
+          })
+          .returningAll()
+          .executeTakeFirstOrThrow(),
+      ),
     );
 
     return toAccount(row);
@@ -213,38 +217,75 @@ export class SignInAccountRepository {
     return row?.mfa_code_attempts ?? 0;
   }
 
+  /*
+   * A note on which methods here carry an {@link Attribution} and which do not.
+   * LMS 113.
+   *
+   * The three challenge methods above — startChallenge, clearChallenge and
+   * countFailedAttempt — touch nothing but mfa_code_hash, mfa_code_expires_at
+   * and mfa_code_attempts, and the audit trigger is told those are noise. A
+   * change to nothing but noise writes no entry, so there is no entry for a name
+   * to go on. That is deliberate and it is the difference between an audit log
+   * and an access log: a code issued and answered is how somebody got in, not a
+   * decision anybody will dispute two years from now. See the audit-log
+   * migration, and ../auth/denials.ts, which draws the same line about refusals.
+   *
+   * recordSignIn does carry one, because it can also rewrite the password hash
+   * when the cost has been raised. That is a real change to a credential, it is
+   * recorded, and the person it is attributed to is the person signing in — who
+   * has, at that exact moment, just proved who they are.
+   */
+
   /** Turns the code requirement on or off for somebody who may choose. LMS 110. */
-  async setMfaEnabled(id: string, enabled: boolean): Promise<SignInAccount | undefined> {
-    const row = await this.db
-      .updateTable('app_user')
-      .set({ mfa_enabled: enabled })
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirst();
+  async setMfaEnabled(
+    by: Attribution,
+    id: string,
+    enabled: boolean,
+  ): Promise<SignInAccount | undefined> {
+    const row = await recording(this.db, by, (on) =>
+      on
+        .updateTable('app_user')
+        .set({ mfa_enabled: enabled })
+        .where('id', '=', id)
+        .returningAll()
+        .executeTakeFirst(),
+    );
 
     return row === undefined ? undefined : toAccount(row);
   }
 
   /** Sets or replaces the password. Undefined if there is no such login. */
-  async setPassword(id: string, passwordHash: string): Promise<SignInAccount | undefined> {
-    const row = await this.db
-      .updateTable('app_user')
-      .set({ password_hash: passwordHash })
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirst();
+  async setPassword(
+    by: Attribution,
+    id: string,
+    passwordHash: string,
+  ): Promise<SignInAccount | undefined> {
+    const row = await recording(this.db, by, (on) =>
+      on
+        .updateTable('app_user')
+        .set({ password_hash: passwordHash })
+        .where('id', '=', id)
+        .returningAll()
+        .executeTakeFirst(),
+    );
 
     return row === undefined ? undefined : toAccount(row);
   }
 
   /** Closes or reopens a login. Undefined if there is no such login. */
-  async setActive(id: string, isActive: boolean): Promise<SignInAccount | undefined> {
-    const row = await this.db
-      .updateTable('app_user')
-      .set({ is_active: isActive })
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirst();
+  async setActive(
+    by: Attribution,
+    id: string,
+    isActive: boolean,
+  ): Promise<SignInAccount | undefined> {
+    const row = await recording(this.db, by, (on) =>
+      on
+        .updateTable('app_user')
+        .set({ is_active: isActive })
+        .where('id', '=', id)
+        .returningAll()
+        .executeTakeFirst(),
+    );
 
     return row === undefined ? undefined : toAccount(row);
   }
@@ -264,18 +305,20 @@ export class SignInAccountRepository {
    * and set three columns that were already null, which costs nothing and means
    * there is no path through this method that leaves a live code behind.
    */
-  async recordSignIn(id: string, at: Date, passwordHash?: string): Promise<void> {
-    await this.db
-      .updateTable('app_user')
-      .set({
-        last_login_at: at,
-        mfa_code_hash: null,
-        mfa_code_expires_at: null,
-        mfa_code_attempts: 0,
-        ...(passwordHash === undefined ? {} : { password_hash: passwordHash }),
-      })
-      .where('id', '=', id)
-      .execute();
+  async recordSignIn(by: Attribution, id: string, at: Date, passwordHash?: string): Promise<void> {
+    await recording(this.db, by, (on) =>
+      on
+        .updateTable('app_user')
+        .set({
+          last_login_at: at,
+          mfa_code_hash: null,
+          mfa_code_expires_at: null,
+          mfa_code_attempts: 0,
+          ...(passwordHash === undefined ? {} : { password_hash: passwordHash }),
+        })
+        .where('id', '=', id)
+        .execute(),
+    );
   }
 
   /**
