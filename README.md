@@ -116,6 +116,7 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 | `SESSION_SECRET` | Signing key for sessions. Still nothing reads it. LMS 112 put authorisation in the service layer, which is the half that has to be right whatever the interface does; a session is a route layer thing and there are no routes |
 | `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01. Settled at `rematholdings.com` |
 | `MFA_CODE_*` | Length and lifetime of the sign in code. Both have safe defaults; a value that is present and nonsense is refused |
+| `DISPLAY_TIMEZONE` | The zone instants are *shown* in. NFR DAT 03. Display only: everything is stored in UTC and every leave date has no zone at all, so changing it moves nothing in the database. Defaults to `Africa/Accra`; a name this Node does not know is refused rather than quietly falling back |
 | `SMTP_*` | Mail settings. Points at Mailpit in development |
 | `STORAGE_*` | Object storage for attachments. Local directory in development |
 
@@ -738,12 +739,51 @@ An append-only ledger is three triggers and no new machinery. See
 
 **Dates are dates.** Leave dates are calendar dates with no time and no timezone. Everything else is UTC. Mixing these up is the most common source of off by one day bugs in leave systems.
 
-The driver is set up to help rather than hinder that. `server/src/db` registers a
-type parser so a Postgres `date` arrives as the string `'2026-07-31'` instead of
-being turned into a `Date` at midnight UTC and then read back in whatever
-timezone the process happens to run in. Compare them as strings; for `YYYY-MM-DD`
-that is the same comparison. `timestamptz` is left alone, because those really
-are instants.
+The two rules, said plainly, because almost every such bug is the two being
+confused:
+
+| | Is | Stored as | Carried as | Shown as |
+|---|---|---|---|---|
+| An instant — signed in at, expires at, occurred at | a moment in time, the same moment everywhere | `timestamptz`, which is UTC | a `Date` | the reader's zone, `DISPLAY_TIMEZONE` |
+| A date — started on, left on, away from | a day, with nothing in it for a zone to move | `date` | the ten characters `YYYY-MM-DD` | itself, unconverted |
+
+**Never turn a calendar date into an instant, and never turn an instant into a
+calendar date without saying where.** `new Date('2026-07-31')` is midnight UTC,
+which is the thirtieth of July in Accra by an hour and in New York by five, and
+it is how a leaver acquires an exit date one day either side of the one on their
+letter. `server/src/domain/time.ts` holds both rules, and there is exactly one
+function in it that crosses between the two — `calendarDateIn()`, which will not
+do it without a zone.
+
+Four things hold that up, and it is worth knowing which covers what:
+
+| | Covers | Does not cover |
+|---|---|---|
+| the `date` type parser in `server/src/db` | a `date` arriving as `'2026-07-31'` instead of a `Date` at midnight UTC, on every read | what the *server* renders it as, which is `DateStyle` |
+| `server/src/db` setting `TimeZone` and `DateStyle` on every pooled connection | the running application, whatever the host is set to and whether or not the migration has run | psql, the seed, a migration correcting data |
+| the timestamps-in-utc migration, on the role and on the database | every connection to this database, owner included — which is what keeps an audit snapshot's timestamps comparable between two writers | a host that will not permit the `ALTER DATABASE`, where it warns and the first two still hold |
+| `unit/migrations.test.ts` and `integration/time.test.ts` | a *future* table declaring a moment without a zone, or a leave date with a time on it — the ledger, the request, the balance | nothing; it is the backstop, and it is a test because the only thing in Postgres that sees DDL is an event trigger and those need a superuser |
+
+Compare dates as strings; for `YYYY-MM-DD` that is the same comparison, and it is
+most of why the form is fixed. `DateStyle` being pinned to `ISO, YMD` is what
+makes that safe rather than usually safe: the parser hands back the characters
+the server sent, and a host set to `German, DMY` would send `01.09.2026` and
+every date comparison in `/domain` would quietly begin comparing the day of the
+month first.
+
+**The display timezone is a setting and moves nothing.** `DISPLAY_TIMEZONE`
+defaults to `Africa/Accra` and is read by `displayTimezone()`. It is one zone for
+the company rather than one per person, deliberately — somebody travelling wants
+their leave to read the same as it does to the colleague approving it. A name
+this Node does not know is refused rather than quietly falling back, because
+`Africa/Akkra` silently becoming Accra is right this once and wrong the day
+somebody sets `Europe/Lisbon` and means it.
+
+Accra is UTC+0 all year and observes no daylight saving, which makes it a correct
+default to ship and a useless one to test against: a suite that only ever ran
+there would pass with every conversion deleted. `unit/time.test.ts` therefore does
+its arithmetic in Kiritimati, Niue, Tokyo and London, on both sides of midnight
+and across a clock change.
 
 **`updated_at` is maintained by a trigger, not by the writer.** The
 `set_updated_at()` function is deliberately named for the job rather than for the
@@ -1137,6 +1177,15 @@ Almost all of that story is in the database — the triggers that write the entr
 the ones that refuse to change them, the privileges that make the refusals worth
 anything — so there is little to prove without one. `unit/audit.test.ts` covers
 the reading of an entry, which is a pure function.
+
+**`integration/time.test.ts` carries LMS 114 for the same reason.** Which type a
+column is, what a session does to a value on the way past, and what the driver
+hands back are all facts about a real server. It also holds the rule for tables
+nobody has written yet: any column typed `timestamp without time zone`, any
+`*_date` that is not a `date`, and any `*_at` that is not a `timestamptz` fails
+there. `unit/time.test.ts` covers the pure half, and `unit/migrations.test.ts`
+asks the same question of the SQL so the answer arrives in a second rather than a
+minute.
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than

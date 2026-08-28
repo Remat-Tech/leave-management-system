@@ -9,6 +9,7 @@ import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { CodeRefused } from '../../src/auth/mfa.js';
 import { SignInRefused } from '../../src/auth/sign-in.js';
+import { displayTimezone, formatInstant } from '../../src/domain/time.js';
 import { createMailer } from '../../src/mail/mailer.js';
 import { DepartmentRepository } from '../../src/repositories/department-repository.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
@@ -245,6 +246,18 @@ describe('signing in', () => {
     say(`  mfa_code_expires_at ${rows[0].expires.toISOString()}`);
     say(`  mfa_code_attempts   ${rows[0].attempts}`);
     say('  Nobody can read the code out of this table, including us.');
+    say();
+
+    /* NFR DAT 03, which has no screen to show itself on yet. The column is a
+       timestamptz, the connection is pinned to UTC, and what a person is shown is
+       the same instant said in the zone the company reads leave in. Change
+       DISPLAY_TIMEZONE in .env and only the second line moves. */
+    const zone = displayTimezone();
+
+    say('--- The same instant, stored and shown. NFR DAT 03 ---------------------');
+    say(`  stored (UTC)        ${rows[0].expires.toISOString()}`);
+    say(`  shown (${zone})  ${formatInstant(rows[0].expires, zone)}`);
+    say('  One instant. The zone is a setting; the row is not.');
     say();
   });
 
