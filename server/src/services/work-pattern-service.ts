@@ -28,10 +28,16 @@
  *   {@link remove}, refused for the default and for one anybody is on. The
  *   working-pattern-rules migration sets out why that differs from a department.
  *
- *   No authorisation. "As an HR Officer" is enforced by the policy layer of
- *   LMS 112, from this layer, when it exists.
+ *   No authorisation rules. Since LMS 112 every method takes an {@link Actor}
+ *   and asks ../auth/work-pattern-policy.ts what they may do, but the rules
+ *   themselves are there. Reading a week is open to anybody signed in and
+ *   writing one is an HR Administrator's; which pattern a particular *person*
+ *   works is a field of their employee record and is guarded there.
  */
 
+import type { Actor } from '../auth/actor.js';
+import type { Guard } from '../auth/policy.js';
+import { workPatternPolicy } from '../auth/work-pattern-policy.js';
 import {
   assertCanDelete,
   DefaultWorkPatternRequired,
@@ -46,7 +52,11 @@ import {
 import type { WorkPatternRepository } from '../repositories/work-pattern-repository.js';
 
 export class WorkPatternService {
-  constructor(private readonly patterns: WorkPatternRepository) {}
+  constructor(
+    private readonly patterns: WorkPatternRepository,
+    /* NFR SEC 02. Required rather than defaulted; see ../auth/policy.ts. */
+    private readonly guard: Guard,
+  ) {}
 
   /**
    * Creates one, as a whole week.
@@ -60,7 +70,9 @@ export class WorkPatternService {
    * being created, and doing it silently on create would change which week every
    * future joiner is given. It is {@link makeDefault}, said deliberately.
    */
-  async create(input: NewWorkPattern): Promise<WorkPattern> {
+  async create(actor: Actor, input: NewWorkPattern): Promise<WorkPattern> {
+    this.guard.enforce(workPatternPolicy.create(actor));
+
     return this.patterns.create(validateNewWorkPattern(input));
   }
 
@@ -78,7 +90,9 @@ export class WorkPatternService {
    * days it cost at the time it was written, which is the other half of why the
    * ledger is the truth.
    */
-  async update(id: string, changes: WorkPatternChanges): Promise<WorkPattern> {
+  async update(actor: Actor, id: string, changes: WorkPatternChanges): Promise<WorkPattern> {
+    this.guard.enforce(workPatternPolicy.update(actor, id));
+
     return this.change(id, () => validateWorkPatternChanges(changes));
   }
 
@@ -92,8 +106,10 @@ export class WorkPatternService {
    * Doing it twice is allowed and does nothing, like closing an already closed
    * department: the second attempt writes the boolean that is already there.
    */
-  async makeDefault(id: string): Promise<WorkPattern> {
-    await this.byId(id);
+  async makeDefault(actor: Actor, id: string): Promise<WorkPattern> {
+    this.guard.enforce(workPatternPolicy.makeDefault(actor, id));
+
+    await this.require(id);
 
     const updated = await this.patterns.makeDefault(id);
     if (updated === undefined) {
@@ -117,8 +133,10 @@ export class WorkPatternService {
    * foreign key and the deferred trigger hold the other two cases against every
    * connection, whatever this method does.
    */
-  async remove(id: string): Promise<void> {
-    const pattern = await this.byId(id);
+  async remove(actor: Actor, id: string): Promise<void> {
+    this.guard.enforce(workPatternPolicy.remove(actor, id));
+
+    const pattern = await this.require(id);
 
     assertCanDelete(pattern, await this.patterns.headcount(id));
 
@@ -127,16 +145,16 @@ export class WorkPatternService {
     }
   }
 
-  async byId(id: string): Promise<WorkPattern> {
-    const pattern = await this.patterns.findById(id);
-    if (pattern === undefined) {
-      throw new WorkPatternNotFound(id);
-    }
-    return pattern;
+  async byId(actor: Actor, id: string): Promise<WorkPattern> {
+    this.guard.enforce(workPatternPolicy.read(actor, id));
+
+    return this.require(id);
   }
 
   /** Undefined rather than a throw: asking whether a name is taken is a fair question. */
-  async byName(name: string): Promise<WorkPattern | undefined> {
+  async byName(actor: Actor, name: string): Promise<WorkPattern | undefined> {
+    this.guard.enforce(workPatternPolicy.read(actor));
+
     return this.patterns.findByName(name);
   }
 
@@ -150,7 +168,9 @@ export class WorkPatternService {
    * Monday to Friday week, so this is a real condition only where that migration
    * has been rolled back or the row deleted around the trigger that protects it.
    */
-  async standard(): Promise<WorkPattern> {
+  async standard(actor: Actor): Promise<WorkPattern> {
+    this.guard.enforce(workPatternPolicy.read(actor));
+
     const pattern = await this.patterns.findDefault();
     if (pattern === undefined) {
       throw new DefaultWorkPatternRequired();
@@ -159,14 +179,39 @@ export class WorkPatternService {
   }
 
   /** Every pattern, the default first. */
-  async list(): Promise<WorkPattern[]> {
+  async list(actor: Actor): Promise<WorkPattern[]> {
+    this.guard.enforce(workPatternPolicy.list(actor));
+
     return this.patterns.list();
   }
 
-  /** How many employee records are on one, leavers included. */
-  async headcount(id: string): Promise<number> {
-    await this.byId(id);
+  /**
+   * How many employee records are on one, leavers included.
+   *
+   * The one read here that is not open to everybody, for the same reason a
+   * department's headcount is not: it is a count of people, and a small count on
+   * an unusual week is close to naming one of them.
+   */
+  async headcount(actor: Actor, id: string): Promise<number> {
+    this.guard.enforce(workPatternPolicy.headcount(actor, id));
+
+    await this.require(id);
     return this.patterns.headcount(id);
+  }
+
+  /**
+   * The record, or {@link WorkPatternNotFound}.
+   *
+   * No policy question, as with a department and unlike an employee record:
+   * every signed in caller may read every pattern, so a missing one discloses
+   * nothing a present one would not.
+   */
+  private async require(id: string): Promise<WorkPattern> {
+    const pattern = await this.patterns.findById(id);
+    if (pattern === undefined) {
+      throw new WorkPatternNotFound(id);
+    }
+    return pattern;
   }
 
   /**
@@ -178,7 +223,7 @@ export class WorkPatternService {
     id: string,
     decide: (current: WorkPattern) => Partial<ValidatedWorkPattern>,
   ): Promise<WorkPattern> {
-    const current = await this.byId(id);
+    const current = await this.require(id);
 
     const updated = await this.patterns.update(id, decide(current));
     if (updated === undefined) {

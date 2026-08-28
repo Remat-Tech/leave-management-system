@@ -24,15 +24,19 @@
  *
  * What this service does not do, all of it deliberate and none of it hidden:
  *
- *   No session. Signing in returns who signed in; it does not issue a cookie,
- *   because there is no HTTP layer to set one on and a token minted here would be
- *   a security decision made in the wrong place and a month early. SESSION_SECRET
- *   is in the environment waiting for it. LMS 112 is where the request side of
- *   this lands.
+ *   No session. Signing in returns who signed in — and, since LMS 112, the
+ *   {@link Actor} that says what they may do. It still does not issue a cookie
+ *   or a token, because there is no HTTP layer to set one on and minting a
+ *   signed credential here would be a security decision made in the wrong place.
+ *   SESSION_SECRET is still in the environment and still unread. What LMS 112
+ *   settled is the half that has to be right whatever the interface does: what
+ *   happens once a request is identified.
  *
  *   No roles beyond reading them. What somebody may do once they are in is
- *   LMS 111 and LMS 112. What is read here is one question — do they hold a role
- *   for which a code is mandatory — and nothing else is decided from it.
+ *   ../auth/, and the four policy objects there are what read the actor this
+ *   service hands out. Two questions are answered here and no more: do they hold
+ *   a role for which a code is mandatory, and what does the actor for this person
+ *   look like.
  *
  *   No rate limit and no lockout, and LMS 110 adds a second thing that needs one.
  *   A code challenge is answered by address, so somebody who knows a colleague's
@@ -53,6 +57,7 @@
  *   the mailbox is the company account this whole story ties access to.
  */
 
+import { type Actor, signedInAs } from '../auth/actor.js';
 import {
   allowedDomains,
   assertCompanyEmail,
@@ -83,6 +88,8 @@ import {
   SignInAccountNotFound,
   SignInRefused,
 } from '../auth/sign-in.js';
+import type { Guard } from '../auth/policy.js';
+import { signInPolicy } from '../auth/sign-in-policy.js';
 import { EmployeeNotFound, type Employee } from '../domain/employee.js';
 import type { Mailer } from '../mail/mailer.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
@@ -107,6 +114,20 @@ export interface SignInServiceOptions {
 export interface SignedIn {
   account: SignInAccount;
   employee: Employee;
+  /**
+   * What they may do. NFR SEC 02, LMS 112.
+   *
+   * The only place in the system a person's {@link Actor} is minted, and it is
+   * here because this is the only place that has just proved who somebody is.
+   * Everything above this line passes it down; nothing else constructs one.
+   *
+   * It is not a session and cannot be used as one. There is no signature on it
+   * and nothing that could verify one, so a route layer must derive its own from
+   * whatever it uses to identify a request rather than taking one over the wire
+   * — the whole point of this object is that it is the *answer* to "who is this",
+   * never the evidence for it.
+   */
+  actor: Actor;
 }
 
 /**
@@ -152,6 +173,10 @@ export class SignInService {
        an SMTP connection nor knows that nodemailer exists — and so that a test
        can read what the message actually said. */
     private readonly mailer: Mailer,
+    /* NFR SEC 02. Required rather than defaulted; see ../auth/policy.ts. It
+       guards everything HR does with an account and deliberately guards neither
+       {@link signIn} nor {@link submitCode} — see ../auth/sign-in-policy.ts. */
+    private readonly guard: Guard,
     options: SignInServiceOptions = {},
   ) {
     /* Both resolved once, at construction, so that a misconfigured environment
@@ -343,6 +368,19 @@ export class SignInService {
    * that had one in hand — the code step never sees a password, so a hash made at
    * an older cost is left for the next single factor sign in to rewrite rather
    * than being rewritten from nothing.
+   *
+   * Since LMS 112 it is also the one place a person's {@link Actor} is minted,
+   * and for the same reason it is the one place the sign in is stamped: whatever
+   * is true of somebody the moment they get in has to be settled here or it is
+   * settled twice and differently.
+   *
+   * The two reads it takes are the two halves of {@link Authority}, and they are
+   * made here rather than through {@link RoleService.authorityFor} on purpose.
+   * That method asks the role policy whether the caller may read somebody's
+   * roles, and the caller at this instant is somebody who has just finished
+   * proving who they are and holds no actor yet — there is nothing to authorise
+   * with. The roles are read here already, for the mandatory code rule; this
+   * adds one count of the reporting lines beside it.
    */
   private async open(
     account: SignInAccount,
@@ -362,9 +400,19 @@ export class SignInService {
 
     await this.accounts.recordSignIn(account.id, at, rehashed);
 
+    const [roles, reports] = await Promise.all([
+      this.roles.codesFor(account.id),
+      this.employees.countReports(employee.id),
+    ]);
+
     return {
       employee,
       account: { ...account, lastLoginAt: at },
+      /* Being a manager is derived here, from the reporting lines, exactly as
+         RoleService derives it and for the reason the organisation migration
+         gave when it refused to store MANAGER as a role. It is a snapshot taken
+         now, which is what the whole actor is; see ../auth/actor.ts. */
+      actor: signedInAs(employee.id, { roles, isManager: reports > 0 }),
     };
   }
 
@@ -397,7 +445,17 @@ export class SignInService {
    * every writer gets it, not only this one. Anything beyond the baseline is
    * {@link RoleService.grant}.
    */
-  async provision(employeeId: string, options: { password?: string } = {}): Promise<SignInAccount> {
+  async provision(
+    actor: Actor,
+    employeeId: string,
+    options: { password?: string } = {},
+  ): Promise<SignInAccount> {
+    /* HR, and not only an administrator. Setting a joiner up is the same five
+       minutes as creating their record, and a rule that turns it into a ticket
+       is a rule that gets worked around with a shared password. See
+       ../auth/sign-in-policy.ts, where that argument is made properly. */
+    this.guard.enforce(signInPolicy.provision(actor, employeeId));
+
     const employee = await this.employees.findById(employeeId);
     if (employee === undefined) {
       throw new EmployeeNotFound(employeeId);
@@ -435,7 +493,9 @@ export class SignInService {
    * out, not a person changing their own. Self service change, which does have to
    * ask, is not written — see the note at the top of this file.
    */
-  async setPassword(employeeId: string, password: string): Promise<SignInAccount> {
+  async setPassword(actor: Actor, employeeId: string, password: string): Promise<SignInAccount> {
+    this.guard.enforce(signInPolicy.setPassword(actor, employeeId));
+
     const account = await this.requireAccount(employeeId);
     const updated = await this.accounts.setPassword(
       account.id,
@@ -456,8 +516,8 @@ export class SignInService {
    * second factor gets one by asking; an HR officer has one whether they ask or
    * not, so calling this for them changes nothing they did not already have.
    */
-  async requireCode(employeeId: string): Promise<SignInAccount> {
-    return this.setMfa(employeeId, true);
+  async requireCode(actor: Actor, employeeId: string): Promise<SignInAccount> {
+    return this.setMfa(actor, employeeId, true);
   }
 
   /**
@@ -472,11 +532,17 @@ export class SignInService {
    * Refused rather than silently ignored, for the same reason: a switch that
    * reports off while the thing is on is worse than one that refuses.
    */
-  async stopRequiringCode(employeeId: string): Promise<SignInAccount> {
-    return this.setMfa(employeeId, false);
+  async stopRequiringCode(actor: Actor, employeeId: string): Promise<SignInAccount> {
+    return this.setMfa(actor, employeeId, false);
   }
 
-  private async setMfa(employeeId: string, enabled: boolean): Promise<SignInAccount> {
+  private async setMfa(actor: Actor, employeeId: string, enabled: boolean): Promise<SignInAccount> {
+    /* Your own switch, or HR's. Two refusals can come out of this method and they
+       are for different things: this one says the caller has no business touching
+       that account, and CodeIsMandatory below says the *account holder's roles*
+       will not let the code be turned off whoever is asking. */
+    this.guard.enforce(signInPolicy.changeCodeSetting(actor, employeeId));
+
     const account = await this.requireAccount(employeeId);
 
     if (!enabled) {
@@ -502,7 +568,12 @@ export class SignInService {
    * "you chose this" from "your role decides this", which is the difference
    * between a switch to show and a sentence to show.
    */
-  async codePolicyFor(employeeId: string): Promise<{ required: boolean; mandatory: boolean }> {
+  async codePolicyFor(
+    actor: Actor,
+    employeeId: string,
+  ): Promise<{ required: boolean; mandatory: boolean }> {
+    this.guard.enforce(signInPolicy.read(actor, employeeId));
+
     const account = await this.requireAccount(employeeId);
     const codes = await this.roles.codesFor(account.id);
 
@@ -521,16 +592,22 @@ export class SignInService {
    * it, and LMS 113's audit entries will name it. An account that was removed
    * rather than closed leaves a trail referring to somebody nobody can identify.
    */
-  async close(employeeId: string): Promise<SignInAccount> {
+  async close(actor: Actor, employeeId: string): Promise<SignInAccount> {
+    this.guard.enforce(signInPolicy.close(actor, employeeId));
+
     return this.setActive(employeeId, false);
   }
 
-  async reopen(employeeId: string): Promise<SignInAccount> {
+  async reopen(actor: Actor, employeeId: string): Promise<SignInAccount> {
+    this.guard.enforce(signInPolicy.reopen(actor, employeeId));
+
     return this.setActive(employeeId, true);
   }
 
   /** Somebody's login, if they have one. Undefined rather than a throw: it is a fair question. */
-  async forEmployee(employeeId: string): Promise<SignInAccount | undefined> {
+  async forEmployee(actor: Actor, employeeId: string): Promise<SignInAccount | undefined> {
+    this.guard.enforce(signInPolicy.read(actor, employeeId));
+
     return this.accounts.findByEmployeeId(employeeId);
   }
 
@@ -539,10 +616,12 @@ export class SignInService {
    *
    * Undefined rather than a throw, and unlike {@link signIn} it says whether the
    * address is known. That is safe because nothing anonymous calls it: this is
-   * for HR looking somebody up, behind the authorisation of LMS 112, not for the
-   * sign in box.
+   * for HR looking somebody up, and since LMS 112 the authorisation that sentence
+   * was relying on is on the line below rather than in a story yet to be written.
    */
-  async forEmail(companyEmail: string): Promise<SignInAccount | undefined> {
+  async forEmail(actor: Actor, companyEmail: string): Promise<SignInAccount | undefined> {
+    this.guard.enforce(signInPolicy.search(actor));
+
     return this.accounts.findByEmail(companyEmail);
   }
 

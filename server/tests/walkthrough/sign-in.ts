@@ -18,6 +18,8 @@ import { WorkPatternRepository } from '../../src/repositories/work-pattern-repos
 import { EmployeeService } from '../../src/services/employee-service.js';
 import { SignInService } from '../../src/services/sign-in-service.js';
 import { seed } from '../../seeds/seed.mjs';
+import { theSystem } from '../../src/auth/actor.js';
+import { Guard } from '../../src/auth/policy.js';
 
 /**
  * A walkthrough of signing in, for a person rather than for a build. LMS 109 and
@@ -48,6 +50,25 @@ const AMA = 'ama.mensah@rematholdings.com';
 let adminUrl: string;
 let databaseName: string;
 let databaseUrl: string;
+
+/**
+ * The actor these fixtures are built by, and the guard the services are given.
+ *
+ * {@link theSystem} rather than a person, because that is what this is: work
+ * nobody asked for, setting up an organisation for the assertions below to be
+ * about. It holds every role and is nobody, so no policy refuses it and no
+ * "this is my own record" rule can accidentally match it.
+ *
+ * Whether the policies refuse the right people is not this suite's question. It
+ * is server/tests/integration/authorisation.test.ts, and the rules themselves
+ * are server/tests/unit/policy.test.ts.
+ *
+ * The guard writes refusals to stderr, which is the default. Nothing here should
+ * provoke one, so a line appearing in the output is a failing test explaining
+ * itself.
+ */
+const system = theSystem('the sign in walkthrough');
+const guard = new Guard();
 
 let db: Kysely<Database>;
 let admin: Client;
@@ -119,17 +140,19 @@ beforeAll(async () => {
     new EmployeeRepository(db),
     new RoleRepository(db),
     mailer,
+    guard,
   );
   employees = new EmployeeService(
     new EmployeeRepository(db),
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
+    guard,
   );
 
   people = (await seed(admin)) as Record<string, string>;
 
-  await logins.setPassword(people.officer, PASSWORD);
-  await logins.setPassword(people.headOfHr, PASSWORD);
+  await logins.setPassword(system, people.officer, PASSWORD);
+  await logins.setPassword(system, people.headOfHr, PASSWORD);
 
   say('Seeded the fixture organisation and set a password on two of them.');
   say();
@@ -190,8 +213,8 @@ describe('signing in', () => {
   it('4. the HR Administrator is sent a code, without ever asking for one', async () => {
     say('--- Ama Mensah, Head of HR. Holds HR_ADMIN. ----------------------------');
 
-    const policy = await logins.codePolicyFor(people.headOfHr);
-    const account = await logins.forEmployee(people.headOfHr);
+    const policy = await logins.codePolicyFor(system, people.headOfHr);
+    const account = await logins.forEmployee(system, people.headOfHr);
 
     say(`  Her account's own setting: mfaEnabled = ${account?.mfaEnabled}`);
     say(`  codePolicyFor -> required: ${policy.required}, mandatory: ${policy.mandatory}`);
@@ -275,8 +298,8 @@ describe('signing in', () => {
     const outcome = await logins.signIn(AMA, PASSWORD);
     say(`  signIn -> ${outcome.status}, a fresh code is in her mailbox.`);
 
-    await employees.terminate(people.headOfHr, { exitDate: '2026-09-30' });
-    say('  employees.terminate(ama, { exitDate: "2026-09-30" })');
+    await employees.terminate(system, people.headOfHr, { exitDate: '2026-09-30' });
+    say('  employees.terminate(system, ama, { exitDate: "2026-09-30" })');
     say('    Nothing was written to her login. Nothing needed to be.');
 
     const code = await codeInMailbox(AMA);

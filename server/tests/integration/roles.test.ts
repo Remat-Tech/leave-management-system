@@ -24,6 +24,8 @@ import { RoleService } from '../../src/services/role-service.js';
 import { SignInService } from '../../src/services/sign-in-service.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { theSystem } from '../../src/auth/actor.js';
+import { Guard } from '../../src/auth/policy.js';
 
 /**
  * Roles and role assignment, against a real database. §5.3, LMS 111.
@@ -49,6 +51,25 @@ const testDatabaseUrl = inject('testDatabaseUrl');
 
 const DOMAINS = ['rematholdings.com'];
 
+/**
+ * The actor these fixtures are built by, and the guard the services are given.
+ *
+ * {@link theSystem} rather than a person, because that is what this is: work
+ * nobody asked for, setting up an organisation for the assertions below to be
+ * about. It holds every role and is nobody, so no policy refuses it and no
+ * "this is my own record" rule can accidentally match it.
+ *
+ * Whether the policies refuse the right people is not this suite's question. It
+ * is server/tests/integration/authorisation.test.ts, and the rules themselves
+ * are server/tests/unit/policy.test.ts.
+ *
+ * The guard writes refusals to stderr, which is the default. Nothing here should
+ * provoke one, so a line appearing in the output is a failing test explaining
+ * itself.
+ */
+const system = theSystem('role integration fixtures');
+const guard = new Guard();
+
 let db: Kysely<Database>;
 let admin: Client;
 let roles: RoleService;
@@ -66,14 +87,22 @@ beforeAll(async () => {
   const roleRepository = new RoleRepository(db);
   const employeeRepository = new EmployeeRepository(db);
 
-  roles = new RoleService(roleRepository, accounts, employeeRepository);
-  logins = new SignInService(accounts, employeeRepository, roleRepository, recordingMailer(), {
-    domains: DOMAINS,
-  });
+  roles = new RoleService(roleRepository, accounts, employeeRepository, guard);
+  logins = new SignInService(
+    accounts,
+    employeeRepository,
+    roleRepository,
+    recordingMailer(),
+    guard,
+    {
+      domains: DOMAINS,
+    },
+  );
   employees = new EmployeeService(
     employeeRepository,
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
+    guard,
     { domains: DOMAINS },
   );
 });
@@ -115,7 +144,7 @@ async function rejection(call: () => Promise<unknown>): Promise<Error> {
 describe('the roles that exist', () => {
   it('is the four the story names, seeded and nothing else', async () => {
     // The story's first criterion.
-    const seeded = await roles.list();
+    const seeded = await roles.list(system);
 
     expect(seeded.map((role) => role.code)).toEqual([
       'EMPLOYEE',
@@ -131,7 +160,7 @@ describe('the roles that exist', () => {
     /* Three lists have to agree: ROLE_CODES, the role_code_known constraint, and
        the rows the organisation migration seeded. Adding a role in one place and
        forgetting the others fails here rather than in production. */
-    const seeded = (await roles.list()).map((role) => role.code).sort();
+    const seeded = (await roles.list(system)).map((role) => role.code).sort();
 
     expect(seeded).toEqual([...ROLE_CODES].sort());
   });
@@ -183,16 +212,16 @@ describe('the roles that exist', () => {
 describe('assigning a role', () => {
   it('gives somebody a role and gives back what they now hold', async () => {
     // The story's second criterion.
-    const held = await roles.grant(people.officer, 'HR_OFFICER');
+    const held = await roles.grant(system, people.officer, 'HR_OFFICER');
 
     expect(held).toEqual(['EMPLOYEE', 'HR_OFFICER']);
   });
 
   it('records when it was granted', async () => {
     const before = new Date();
-    await roles.grant(people.officer, 'HR_OFFICER');
+    await roles.grant(system, people.officer, 'HR_OFFICER');
 
-    const grants = await roles.forEmployee(people.officer);
+    const grants = await roles.forEmployee(system, people.officer);
     const officer = grants.find((grant) => grant.code === 'HR_OFFICER');
 
     // "Who has HR powers and since when" is the review this story exists for.
@@ -201,15 +230,15 @@ describe('assigning a role', () => {
   });
 
   it('orders what somebody holds from least to most power', async () => {
-    await roles.grant(people.officer, 'SYS_ADMIN');
-    const held = await roles.grant(people.officer, 'HR_OFFICER');
+    await roles.grant(system, people.officer, 'SYS_ADMIN');
+    const held = await roles.grant(system, people.officer, 'HR_OFFICER');
 
     // Alphabetically SYS_ADMIN would come last anyway; HR_ADMIN before
     // HR_OFFICER is where an alphabetical order goes wrong.
-    await roles.grant(people.officer, 'HR_ADMIN');
+    await roles.grant(system, people.officer, 'HR_ADMIN');
 
     expect(held).toEqual(['EMPLOYEE', 'HR_OFFICER', 'SYS_ADMIN']);
-    expect(await roles.grant(people.officer, 'HR_ADMIN')).toEqual([
+    expect(await roles.grant(system, people.officer, 'HR_ADMIN')).toEqual([
       'EMPLOYEE',
       'HR_OFFICER',
       'HR_ADMIN',
@@ -220,17 +249,17 @@ describe('assigning a role', () => {
   it('is not upset by granting the same role twice', async () => {
     /* Two HR officers doing the same sensible thing, or one clicking twice. The
        state afterwards is the state that was wanted either way. */
-    await roles.grant(people.officer, 'HR_OFFICER');
-    const held = await roles.grant(people.officer, 'HR_OFFICER');
+    await roles.grant(system, people.officer, 'HR_OFFICER');
+    const held = await roles.grant(system, people.officer, 'HR_OFFICER');
 
     expect(held).toEqual(['EMPLOYEE', 'HR_OFFICER']);
   });
 
   it('survives two people granting the same role at the same moment', async () => {
     const results = await Promise.all([
-      roles.grant(people.officer, 'HR_OFFICER'),
-      roles.grant(people.officer, 'HR_OFFICER'),
-      roles.grant(people.officer, 'HR_OFFICER'),
+      roles.grant(system, people.officer, 'HR_OFFICER'),
+      roles.grant(system, people.officer, 'HR_OFFICER'),
+      roles.grant(system, people.officer, 'HR_OFFICER'),
     ]);
 
     for (const held of results) {
@@ -239,30 +268,32 @@ describe('assigning a role', () => {
   });
 
   it('refuses a role that is not one', async () => {
-    await expect(roles.grant(people.officer, 'PAYROLL_ADMIN')).rejects.toThrow(UnknownRole);
+    await expect(roles.grant(system, people.officer, 'PAYROLL_ADMIN')).rejects.toThrow(UnknownRole);
   });
 
   it('refuses MANAGER, and says where being a manager actually comes from', async () => {
-    const error = await rejection(() => roles.grant(people.teamLead, 'MANAGER'));
+    const error = await rejection(() => roles.grant(system, people.teamLead, 'MANAGER'));
 
     expect(error).toBeInstanceOf(UnknownRole);
     expect(error.message).toMatch(/who reports to whom/i);
   });
 
   it('refuses to grant the baseline, which everybody already has', async () => {
-    await expect(roles.grant(people.officer, 'EMPLOYEE')).rejects.toThrow(RoleCannotBeRevoked);
+    await expect(roles.grant(system, people.officer, 'EMPLOYEE')).rejects.toThrow(
+      RoleCannotBeRevoked,
+    );
   });
 
   it('refuses an employee who is nobody', async () => {
-    await expect(roles.grant('999999', 'HR_OFFICER')).rejects.toThrow(EmployeeNotFound);
+    await expect(roles.grant(system, '999999', 'HR_OFFICER')).rejects.toThrow(EmployeeNotFound);
   });
 
   it('says plainly when somebody has no login to give a role to', async () => {
     /* "She has no roles" and "she has no login" are different problems and want
        different answers: one needs a role granting, the other needs the account
        provisioning first. */
-    const officer = await employees.byId(people.officer);
-    const joiner = await employees.create({
+    const officer = await employees.byId(system, people.officer);
+    const joiner = await employees.create(system, {
       employeeNumber: 'RH-0100',
       firstName: 'Esi',
       lastName: 'Nyarko',
@@ -272,7 +303,7 @@ describe('assigning a role', () => {
       startDate: '2026-09-01',
     });
 
-    const error = await rejection(() => roles.grant(joiner.id, 'HR_OFFICER'));
+    const error = await rejection(() => roles.grant(system, joiner.id, 'HR_OFFICER'));
 
     expect(error).toBeInstanceOf(SignInAccountNotFound);
     expect(error.message).toContain('Esi Nyarko');
@@ -282,20 +313,20 @@ describe('assigning a role', () => {
 
 describe('taking a role away', () => {
   it('removes it and gives back what is left', async () => {
-    await roles.grant(people.officer, 'HR_OFFICER');
+    await roles.grant(system, people.officer, 'HR_OFFICER');
 
-    expect(await roles.revoke(people.officer, 'HR_OFFICER')).toEqual(['EMPLOYEE']);
+    expect(await roles.revoke(system, people.officer, 'HR_OFFICER')).toEqual(['EMPLOYEE']);
   });
 
   it('refuses when they never held it', async () => {
     /* The opposite of what granting twice does, and deliberately. Granting twice
        leaves the same person with the same power; revoking something they never
        had means the person doing it has somebody else in mind. */
-    await expect(roles.revoke(people.officer, 'HR_ADMIN')).rejects.toThrow(RoleNotHeld);
+    await expect(roles.revoke(system, people.officer, 'HR_ADMIN')).rejects.toThrow(RoleNotHeld);
   });
 
   it('never takes away the baseline', async () => {
-    const error = await rejection(() => roles.revoke(people.officer, 'EMPLOYEE'));
+    const error = await rejection(() => roles.revoke(system, people.officer, 'EMPLOYEE'));
 
     expect(error).toBeInstanceOf(RoleCannotBeRevoked);
     expect(error.message).toMatch(/close their account/i);
@@ -316,26 +347,26 @@ describe('taking a role away', () => {
 
 describe('the last System Administrator', () => {
   it('cannot be removed', async () => {
-    await roles.grant(people.headOfHr, 'SYS_ADMIN');
+    await roles.grant(system, people.headOfHr, 'SYS_ADMIN');
 
-    const error = await rejection(() => roles.revoke(people.headOfHr, 'SYS_ADMIN'));
+    const error = await rejection(() => roles.revoke(system, people.headOfHr, 'SYS_ADMIN'));
 
     expect(error).toBeInstanceOf(LastSystemAdministrator);
     expect(error.message).toMatch(/give somebody else the role first/i);
   });
 
   it('can be removed once somebody else holds it', async () => {
-    await roles.grant(people.headOfHr, 'SYS_ADMIN');
-    await roles.grant(people.ceo, 'SYS_ADMIN');
+    await roles.grant(system, people.headOfHr, 'SYS_ADMIN');
+    await roles.grant(system, people.ceo, 'SYS_ADMIN');
 
-    expect(await roles.revoke(people.headOfHr, 'SYS_ADMIN')).not.toContain('SYS_ADMIN');
+    expect(await roles.revoke(system, people.headOfHr, 'SYS_ADMIN')).not.toContain('SYS_ADMIN');
   });
 
   it('is refused by the database as well, which is what settles a race', async () => {
     /* Between the service's count and its delete, another transaction can remove
        the other administrator. The trigger is what makes the answer right when two
        people are clicking at once. */
-    await roles.grant(people.headOfHr, 'SYS_ADMIN');
+    await roles.grant(system, people.headOfHr, 'SYS_ADMIN');
 
     await expect(
       inTransaction(
@@ -349,7 +380,7 @@ describe('the last System Administrator', () => {
     /* The constraint name travels in the error's own field rather than in the
        message, which is what lets the repository translate it into
        LastSystemAdministrator without matching on prose. */
-    await roles.grant(people.headOfHr, 'SYS_ADMIN');
+    await roles.grant(system, people.headOfHr, 'SYS_ADMIN');
 
     const error = (await rejection(() =>
       inTransaction(
@@ -365,7 +396,7 @@ describe('the last System Administrator', () => {
     /* Deferred, so a revoke followed by a grant passes through nobody holding it
        and is judged only on the state that will actually be stored. Checked per
        statement, this would refuse the very operation it exists to protect. */
-    await roles.grant(people.headOfHr, 'SYS_ADMIN');
+    await roles.grant(system, people.headOfHr, 'SYS_ADMIN');
 
     await expect(
       inTransaction(
@@ -378,7 +409,7 @@ describe('the last System Administrator', () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(await roles.forEmployee(people.ceo)).toContainEqual(
+    expect(await roles.forEmployee(system, people.ceo)).toContainEqual(
       expect.objectContaining({ code: 'SYS_ADMIN' }),
     );
   });
@@ -387,11 +418,11 @@ describe('the last System Administrator', () => {
     /* The rule is "do not go from some to none", not "always have one", and those
        differ exactly at the beginning. A freshly migrated production database has
        no logins at all. */
-    expect(await roles.holdersOf('SYS_ADMIN')).toEqual([]);
+    expect(await roles.holdersOf(system, 'SYS_ADMIN')).toEqual([]);
 
-    await roles.grant(people.ceo, 'SYS_ADMIN');
+    await roles.grant(system, people.ceo, 'SYS_ADMIN');
 
-    expect((await roles.holdersOf('SYS_ADMIN')).map((employee) => employee.id)).toEqual([
+    expect((await roles.holdersOf(system, 'SYS_ADMIN')).map((employee) => employee.id)).toEqual([
       people.ceo,
     ]);
   });
@@ -401,8 +432,8 @@ describe('every login is an employee', () => {
   it('grants the baseline as the login is created, not as the fixtures are loaded', async () => {
     /* The gap this closed: production is migrated and never seeded, so before
        LMS 111 the first login SignInService provisioned held no roles at all. */
-    const officer = await employees.byId(people.officer);
-    const joiner = await employees.create({
+    const officer = await employees.byId(system, people.officer);
+    const joiner = await employees.create(system, {
       employeeNumber: 'RH-0101',
       firstName: 'Yaw',
       lastName: 'Boakye',
@@ -412,17 +443,17 @@ describe('every login is an employee', () => {
       startDate: '2026-09-01',
     });
 
-    await logins.provision(joiner.id);
+    await logins.provision(system, joiner.id);
 
-    expect(await roles.forEmployee(joiner.id)).toEqual([
+    expect(await roles.forEmployee(system, joiner.id)).toEqual([
       expect.objectContaining({ code: 'EMPLOYEE' }),
     ]);
   });
 
   it('grants it to a login created by anything at all', async () => {
     // Whatever creates a login creates an employee, service or not.
-    const officer = await employees.byId(people.officer);
-    const joiner = await employees.create({
+    const officer = await employees.byId(system, people.officer);
+    const joiner = await employees.create(system, {
       employeeNumber: 'RH-0102',
       firstName: 'Yaa',
       lastName: 'Asantewaa',
@@ -437,7 +468,7 @@ describe('every login is an employee', () => {
       'yaa.asantewaa@rematholdings.com',
     ]);
 
-    expect(await roles.forEmployee(joiner.id)).toEqual([
+    expect(await roles.forEmployee(system, joiner.id)).toEqual([
       expect.objectContaining({ code: 'EMPLOYEE' }),
     ]);
   });
@@ -458,15 +489,15 @@ describe('every login is an employee', () => {
 describe('being a manager is not a role', () => {
   it('is true of somebody who has reports', async () => {
     // The story's third criterion, from the other side: derived, every time.
-    expect(await roles.isManager(people.teamLead)).toBe(true);
+    expect(await roles.isManager(system, people.teamLead)).toBe(true);
   });
 
   it('is false of somebody who has none', async () => {
-    expect(await roles.isManager(people.officer)).toBe(false);
+    expect(await roles.isManager(system, people.officer)).toBe(false);
   });
 
   it('never appears among the roles they hold', async () => {
-    const authority = await roles.authorityFor(people.teamLead);
+    const authority = await roles.authorityFor(system, people.teamLead);
 
     expect(authority.isManager).toBe(true);
     expect(authority.roles).not.toContain('MANAGER');
@@ -477,40 +508,40 @@ describe('being a manager is not a role', () => {
     /* Nobody grants it and nobody revokes it. Moving a line moves the answer,
        which is exactly what a stored role could not do without something
        remembering to update it. */
-    expect(await roles.isManager(people.officer)).toBe(false);
+    expect(await roles.isManager(system, people.officer)).toBe(false);
 
-    await employees.update(people.partTimer, { managerId: people.officer });
+    await employees.update(system, people.partTimer, { managerId: people.officer });
 
-    expect(await roles.isManager(people.officer)).toBe(true);
+    expect(await roles.isManager(system, people.officer)).toBe(true);
   });
 
   it('stops being true when the last report moves away', async () => {
-    await employees.update(people.partTimer, { managerId: people.officer });
-    expect(await roles.isManager(people.officer)).toBe(true);
+    await employees.update(system, people.partTimer, { managerId: people.officer });
+    expect(await roles.isManager(system, people.officer)).toBe(true);
 
-    await employees.update(people.partTimer, { managerId: people.teamLead });
+    await employees.update(system, people.partTimer, { managerId: people.teamLead });
 
-    expect(await roles.isManager(people.officer)).toBe(false);
+    expect(await roles.isManager(system, people.officer)).toBe(false);
   });
 
   it('refuses an employee who is nobody', async () => {
-    await expect(roles.isManager('999999')).rejects.toThrow(EmployeeNotFound);
+    await expect(roles.isManager(system, '999999')).rejects.toThrow(EmployeeNotFound);
   });
 });
 
 describe('reviewing who holds what', () => {
   it('lists everybody holding a role, in employee number order', async () => {
-    const holders = await roles.holdersOf('HR_ADMIN');
+    const holders = await roles.holdersOf(system, 'HR_ADMIN');
 
     expect(holders.map((employee) => employee.id)).toEqual([people.headOfHr]);
   });
 
   it('gives an empty list for a role nobody holds', async () => {
-    expect(await roles.holdersOf('SYS_ADMIN')).toEqual([]);
+    expect(await roles.holdersOf(system, 'SYS_ADMIN')).toEqual([]);
   });
 
   it('refuses to look up a role that is not one', async () => {
-    await expect(roles.holdersOf('MANAGER')).rejects.toThrow(UnknownRole);
+    await expect(roles.holdersOf(system, 'MANAGER')).rejects.toThrow(UnknownRole);
   });
 
   it('offers the three that are a choice', () => {
@@ -523,24 +554,24 @@ describe('what the roles are for', () => {
     /* LMS 110 reads roles at sign in rather than copying them, and this is the
        other end of that: granting through this service is enough, with nothing
        else to update. */
-    expect(await logins.codePolicyFor(people.officer)).toEqual({
+    expect(await logins.codePolicyFor(system, people.officer)).toEqual({
       required: false,
       mandatory: false,
     });
 
-    await roles.grant(people.officer, 'HR_OFFICER');
+    await roles.grant(system, people.officer, 'HR_OFFICER');
 
-    expect(await logins.codePolicyFor(people.officer)).toEqual({
+    expect(await logins.codePolicyFor(system, people.officer)).toEqual({
       required: true,
       mandatory: true,
     });
   });
 
   it('stops requiring it when the role goes', async () => {
-    await roles.grant(people.officer, 'HR_OFFICER');
-    await roles.revoke(people.officer, 'HR_OFFICER');
+    await roles.grant(system, people.officer, 'HR_OFFICER');
+    await roles.revoke(system, people.officer, 'HR_OFFICER');
 
-    expect(await logins.codePolicyFor(people.officer)).toEqual({
+    expect(await logins.codePolicyFor(system, people.officer)).toEqual({
       required: false,
       mandatory: false,
     });
@@ -550,15 +581,15 @@ describe('what the roles are for', () => {
     /* The CEO holds SYS_ADMIN throughout, so that taking it off the officer below
        is not the last administrator being removed — which is a different rule and
        would refuse before this one could be tested. */
-    await roles.grant(people.ceo, 'SYS_ADMIN');
+    await roles.grant(system, people.ceo, 'SYS_ADMIN');
 
     for (const code of MANDATORY_ROLES) {
-      await roles.grant(people.officer, code);
-      expect((await logins.codePolicyFor(people.officer)).mandatory).toBe(true);
-      await roles.revoke(people.officer, code);
+      await roles.grant(system, people.officer, code);
+      expect((await logins.codePolicyFor(system, people.officer)).mandatory).toBe(true);
+      await roles.revoke(system, people.officer, code);
     }
 
     // And the baseline, which everybody has, makes it mandatory for nobody.
-    expect((await logins.codePolicyFor(people.officer)).mandatory).toBe(false);
+    expect((await logins.codePolicyFor(system, people.officer)).mandatory).toBe(false);
   });
 });

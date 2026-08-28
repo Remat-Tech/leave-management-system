@@ -113,7 +113,7 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 | `DATABASE_MIGRATION_URL` | Connection for migrations only, as the owner role. Never used by the application |
 | `TEST_DATABASE_URL` | Where integration tests build their disposable database. Point it at local Postgres 17; falls back to `DATABASE_MIGRATION_URL` |
 | `PORT` | API port, defaults to 3000 |
-| `SESSION_SECRET` | Signing key for sessions. Nothing reads it yet; sessions arrive with the request layer, LMS 112 |
+| `SESSION_SECRET` | Signing key for sessions. Still nothing reads it. LMS 112 put authorisation in the service layer, which is the half that has to be right whatever the interface does; a session is a route layer thing and there are no routes |
 | `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01. Settled at `rematholdings.com` |
 | `MFA_CODE_*` | Length and lifetime of the sign in code. Both have safe defaults; a value that is present and nonsense is refused |
 | `SMTP_*` | Mail settings. Points at Mailpit in development |
@@ -154,20 +154,27 @@ const logins = new SignInService(
   new EmployeeRepository(db),
   new RoleRepository(db),
   createMailer(),
+  guard,
 );
 
-await logins.provision(employeeId, { password }); // HR gives somebody a login
-await logins.setPassword(employeeId, password);   // and sets or resets it
+await logins.provision(hr, employeeId, { password }); // HR gives somebody a login
+await logins.setPassword(hr, employeeId, password);   // and sets or resets it
 
+// The door takes no actor. Nobody is anybody until they are through it.
 const outcome = await logins.signIn(email, password);
 
 if (outcome.status === 'SIGNED_IN') {
-  const { employee, account } = outcome;
+  const { employee, account, actor } = outcome;
 } else {
   // A code is in their mailbox. Show the second screen.
-  const { employee, account } = await logins.submitCode(email, code);
+  const { employee, account, actor } = await logins.submitCode(email, code);
 }
 ```
+
+**Signing in is the only place a person's `actor` is minted.** It is what every
+other service method takes as its first argument, and it is minted here because
+this is the only code that has just proved who somebody is. See
+[Authorisation](#authorisation).
 
 **A login is the employee's work address.** Not a copy of it — the address is
 never a parameter, `provision` reads it off the employee record, and the
@@ -268,13 +275,14 @@ const roles = new RoleService(
   new RoleRepository(db),
   new SignInAccountRepository(db),
   new EmployeeRepository(db),
+  guard,
 );
 
-await roles.grant(employeeId, 'HR_OFFICER');   // -> everything they now hold
-await roles.revoke(employeeId, 'HR_OFFICER');
-await roles.forEmployee(employeeId);           // with the date each was granted
-await roles.holdersOf('SYS_ADMIN');            // who has the master key
-await roles.authorityFor(employeeId);          // { roles, isManager }
+await roles.grant(admin, employeeId, 'HR_OFFICER'); // -> everything they now hold
+await roles.revoke(admin, employeeId, 'HR_OFFICER');
+await roles.forEmployee(admin, employeeId);         // with the date each was granted
+await roles.holdersOf(admin, 'SYS_ADMIN');          // who has the master key
+await roles.authorityFor(admin, employeeId);        // { roles, isManager }
 ```
 
 **Four roles, and the set is closed.** `EMPLOYEE`, `HR_OFFICER`, `HR_ADMIN`,
@@ -312,9 +320,168 @@ quietly. Revoking a role somebody never held means the person doing it has
 somebody else in mind, and they should hear about it rather than believe they
 have removed access that is still there.
 
-Nothing here decides who may *call* it. "As an HR Administrator" is LMS 112's to
-enforce. Neither is there an audit trail of who granted what — the date is on the
-row, and the actor needs a session to name.
+Who may *call* it is [Authorisation](#authorisation), below: an HR Administrator
+or a System Administrator, and never the person the roles are about. There is
+still no audit trail of who granted what — the date is on the row, there is now
+an actor to name, and naming them is LMS 113's table rather than a column added
+here on the way past.
+
+---
+
+## Authorisation
+
+**Records are protected on the server, not hidden in the interface.** NFR SEC 02
+and NFR SEC 03, §10, LMS 112.
+
+`employee.id` is a bigint from a sequence. The ids either side of yours are your
+colleagues', so "a colleague reaches them by guessing a web address" is not a
+thought experiment about this schema — it is a `for` loop. Nothing an interface
+does can help with that, because the interface is not what answers.
+
+Three pieces, and the shape is the whole point.
+
+```ts
+const guard = new Guard();                            // holds the denial log
+const { actor } = await logins.signIn(email, password);
+
+await employees.byId(actor, someId);   // the service asks the policy
+await employees.list(actor);           // and refuses before it reads anything
+```
+
+**An `Actor` is who is asking.** An employee id, the roles they were granted, and
+whether anybody reports to them. It is `Authority` from LMS 111 with a name
+attached rather than a second shape beside it, and it is minted in exactly one
+place — `SignInService`, which has just proved who somebody is. `server/src/auth/actor.ts`.
+
+**A policy is one object per resource type**, in `server/src/auth/*-policy.ts`,
+made of pure functions from an actor and a record to a `Decision`. So
+`employee-policy.ts` is the complete answer to "who may see an employee record",
+readable in a minute by somebody who has never seen the system. Policies never
+throw and never touch a database, which is why the whole matrix of who may do
+what is enumerated in a unit test rather than sampled in an integration one.
+
+**The service is what invokes them**, before it reads or writes anything. Not a
+route, not middleware, not a decorator. A route that forgets to check has
+therefore not opened a hole, and neither has a job, a test, an import, or next
+year's GraphQL layer — there is no second entrance to guard, which is the only
+version of "no role checks scattered in controllers" that is a property rather
+than a convention.
+
+Every service method takes the actor as its first argument. That is deliberately
+impossible to forget: a call that does not answer "who is this" does not compile.
+
+### Who may do what
+
+| | Reads | Writes |
+|---|---|---|
+| Employee records | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_OFFICER`, `HR_ADMIN` |
+| Searching people by number or address | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
+| Departments and working patterns | anybody signed in | `HR_ADMIN` |
+| A headcount on either | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
+| Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
+| Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
+| Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
+
+Four of those lines are decisions rather than defaults, and each is argued in the
+policy file that holds it.
+
+**A line manager sees their reports because of the record, never because of a
+role.** `employee.managerId` is read off the record in hand, so moving a
+reporting line moves the answer with it and there is nothing to keep in step.
+Direct reports only — a skip level read is a different power nobody has asked
+for, and a subtree is a recursive query on every read of every record.
+
+**Nobody edits their own record, however senior.** Reading yours is the point of
+the system; writing yours is what HR is for. A start date, a department and a
+working pattern are figures somebody's entitlement is calculated from, and a
+system where the person the figure is about can change it is not one anybody can
+settle a dispute with.
+
+**Nobody changes their own roles, and `SYS_ADMIN` is handed on by somebody
+holding it.** The first is the story's "so that" taken literally — a power
+somebody granted themselves is a power nobody granted — and it costs an attacker
+a second account. The second stops "administrators appoint administrators" being
+"the lock can be picked from the next room". Neither breaks the bootstrap: the
+seed and the migrations run as `theSystem()`, which is nobody and so is never
+itself.
+
+**Setting a joiner up is HR's, and closing an account is not.** An HR Officer
+creates the record on somebody's first morning and gives them the login in the
+same five minutes. Put that behind an administrator and the two minute job
+becomes a ticket, and a company that raises a ticket to let a new starter in is a
+company where four people in HR know the administrator password by March. The
+rule that gets worked around protects nothing. Closing an account is a decision
+about somebody — a lost laptop, an investigation — and wants the second pair of
+eyes that onboarding does not.
+
+### The two refusals, and the one that says nothing
+
+**A refusal aimed at somebody who cannot see the record at all says nothing** —
+one sentence, the same for every resource and every action, and in particular the
+same sentence a record that does not exist gets. Being told "you may not read
+employee 4471" has learned that employee 4471 is somebody, and a pair of messages
+that differ is a working existence oracle you can run down the sequence.
+
+That property needs both halves, so being told a record is *missing* is itself a
+permission: `EmployeeService.findOrRefuse()` consults the search policy before it
+reports `EmployeeNotFound`. HR gets the useful answer, which is what makes a
+mistyped id a five second problem. Everybody else gets one sentence whatever they
+type.
+
+**A refusal aimed at somebody who can see the record but may not do that to it
+says what the rule is.** A line manager who has just read their report's record
+and then tries to change it is told "employee records are changed by HR", which
+discloses nothing they did not have. It is the same distinction the sign in door
+makes — vague until something is proved, specific once it is.
+
+### Denied attempts are logged
+
+NFR SEC 03. An authorisation layer that refuses silently protects the records and
+tells nobody that somebody went looking: the colleague working through ids one at
+a time is refused four hundred times and the first anybody hears of it is never.
+
+Every refusal goes through `Guard.enforce()`, which writes it down before it
+throws — who, what they held, which resource, which action, which record, and the
+policy's reason. **No field of the record is ever in there.** A refused read is a
+read that did not happen, and a log that quotes the record has performed the
+disclosure the refusal existed to prevent, into a file that is usually less
+protected than the database.
+
+The reason is written and never said. `NotAuthorised.attempt` carries it for a
+caller that has to record it again; **nothing that reaches a screen may read it
+and turn it back into a message**, exactly as with `SignInRefused.reason`.
+
+Allowed attempts are not logged. "Who read whose record" is a much larger
+question and belongs in the audit log of LMS 113 rather than beside the refusals.
+
+The default driver writes one JSON line per denial to stderr. That is a stop-gap
+and the shape is the part that is right: a log line is rotated away and is not an
+audit trail, and NFR AUD 02 wants rows nobody can update or delete. When LMS 113
+brings the append-only table, it is a driver behind the same interface and
+nothing above it changes.
+
+### What is not built
+
+**No session, no cookie, no token.** `signIn` hands back an actor, which is the
+*answer* to "who is this" and never the evidence for it. A route layer has to
+derive its own from whatever identifies a request; an actor must never arrive
+over the wire. `SESSION_SECRET` is still waiting.
+
+**Roles are a snapshot taken at sign in.** Revoke `HR_ADMIN` while somebody is
+working and they keep it until they sign in again. Reading `user_role` on every
+policy check would be a round trip per decision and still a snapshot, just a
+fresher one. Where it genuinely matters the answer is `close()` the account, which
+the next sign in cannot survive.
+
+**No rate limit.** Four hundred refusals in a minute are four hundred lines and no
+delay. The counter belongs in front of the route with the one unlimited password
+guesses need. It needs doing, and it is not done.
+
+**`theSystem()` is a back door with a name on it.** A job, a migration, a seed and
+a test fixture all have to write records and none has a person behind them, so
+they run as an actor that holds every role and is nobody. `grep -rn theSystem
+server/src` is the list of everything that runs unattended, and it should stay
+short.
 
 ---
 
@@ -391,7 +558,7 @@ one of them public.
     /domain          the types and rules a record obeys, with no dependencies
     /db              the connection and the table types Kysely reads
     /jobs            scheduled work: reminders, rollover, reconciliation
-    /auth            company email, sessions, MFA
+    /auth            company email, MFA, the actor, and one policy per resource
     /mail            outbound notification transport
     /storage         attachment bytes, behind one interface
   /tests
@@ -407,6 +574,12 @@ one of them public.
 Routes do HTTP. Services do business rules. Repositories do database access.
 
 A route never contains a leave rule. A service never touches an HTTP request object. This matters most for `LeaveRequestService`, which is otherwise where every special case will accumulate.
+
+**A route never contains an authorisation check either.** Every service method
+takes an `Actor` and asks the policy for its resource; a route identifies the
+request and passes the actor down. See [Authorisation](#authorisation) for why
+that is the only arrangement in which forgetting is impossible rather than
+merely unlikely.
 
 `/domain` sits under all three. It holds what a record is and what makes one
 valid, as plain types and pure functions that import nothing and touch nothing,
@@ -827,6 +1000,14 @@ npm run walkthrough   # not a test: a narrated run of signing in
 Unit tests live in `server/tests/unit` and touch no database, no network and no
 fixtures. Anything that needs one of those is an integration test and belongs in
 `server/tests/integration`.
+
+**`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
+pure functions, so every role can be enumerated against every action rather than
+sampled — a fifth role added without a decision about what it may do fails there.
+`integration/authorisation.test.ts` covers the half that needs a database: that
+the services ask, that an actor is what signing in produces, that a missing record
+and a forbidden one give the same answer, and that the refusals reach the log
+carrying nothing from the record.
 
 **`npm run walkthrough` is not a test and is not run by either suite.** It is
 `server/tests/walkthrough`, a narrated run of signing in — the password door, the
