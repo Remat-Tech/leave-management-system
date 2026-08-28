@@ -171,6 +171,12 @@ export interface RoleTable {
 export interface UserRoleTable {
   user_id: string;
   role_id: string;
+  /* When it was granted. LMS 111. "Who has HR powers and since when" is most of
+     what somebody reviewing access asks, and two ids answer only the first half.
+     Who granted it waits for an authenticated actor — LMS 112 — and belongs in
+     the audit log of LMS 113 rather than in a column that would be null on every
+     row until then. */
+  granted_at: Generated<Date>;
 }
 
 export interface Database {

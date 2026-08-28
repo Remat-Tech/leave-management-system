@@ -372,15 +372,15 @@ async function insertEmployees(db, { departments, patterns, scenario }) {
  *            Get it wrong and an HR officer approves their own leave.
  */
 async function grantLogins(db, people, scenario) {
-  // One login per employee, and EMPLOYEE for all of them, in two statements
-  // rather than two per person.
+  // One login per employee, in one statement rather than one per person.
+  //
+  // EMPLOYEE is not granted here and no longer needs to be. Since LMS 111 the
+  // app_user_holds_the_baseline_role trigger gives it to every login as it is
+  // created, which is what makes it true of a production database as well —
+  // production is migrated and never seeded, so a grant that lived only in this
+  // file was a rule that held nowhere it mattered.
   await db.query(
     'INSERT INTO app_user (employee_id, company_email) SELECT id, work_email FROM employee',
-  );
-
-  await db.query(
-    `INSERT INTO user_role (user_id, role_id)
-     SELECT u.id, r.id FROM app_user u CROSS JOIN role r WHERE r.code = 'EMPLOYEE'`,
   );
 
   const grantRole = (employeeId, code) =>
