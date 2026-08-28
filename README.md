@@ -36,7 +36,7 @@ Work is tracked in GitHub Issues, grouped by Phase and Epic on the project board
 
 ### Why no ORM
 
-The schema uses `CREATE RULE` to make the ledger and audit tables append only, a GiST exclusion constraint to prevent overlapping leave at the database level, partial indexes, and a number of CHECK constraints that enforce business rules where they cannot be bypassed.
+The schema makes the audit log and the ledger append only in the database itself, uses a GiST exclusion constraint to prevent overlapping leave, writes every change to an audited table from a trigger, and carries a number of CHECK constraints that enforce business rules where they cannot be bypassed. Partial indexes hold the shapes the organisation depends on — one root employee, one default working pattern.
 
 Most ORMs cannot express any of that, so adopting one means either fighting it or dropping the protections. Migrations are therefore hand written SQL, and Kysely reads the resulting types rather than generating the schema.
 
@@ -63,8 +63,8 @@ alongside a newer version on a different port.
 The point is that the versions match, not that they are recent. Nothing here
 needs anything newer. The load bearing features are recursive CTEs for the org
 tree, `daterange` with a GiST exclusion constraint for overlapping leave, `jsonb`
-for audit snapshots and `CREATE RULE` for the append only ledger, and all of them
-have worked for several major versions. Building against a version the host does
+for audit snapshots and plpgsql triggers for the append only audit log and
+ledger, and all of them have worked for several major versions. Building against a version the host does
 not offer is an avoidable way to lose a day, and a managed host is always a
 release or so behind.
 
@@ -451,13 +451,13 @@ The reason is written and never said. `NotAuthorised.attempt` carries it for a
 caller that has to record it again; **nothing that reaches a screen may read it
 and turn it back into a message**, exactly as with `SignInRefused.reason`.
 
-Allowed attempts are not logged. "Who read whose record" is a much larger
-question and belongs in the audit log of LMS 113 rather than beside the refusals.
+Allowed attempts are not logged here. "Who read whose record" is a much larger
+question; what *changed* a record is the [audit log](#the-audit-log), which is a
+different table with a different guarantee.
 
 The default driver writes one JSON line per denial to stderr. That is a stop-gap
 and the shape is the part that is right: a log line is rotated away and is not an
-audit trail, and NFR AUD 02 wants rows nobody can update or delete. When LMS 113
-brings the append-only table, it is a driver behind the same interface and
+audit trail. Moving it to a table is a driver behind the same interface, and
 nothing above it changes.
 
 ### What is not built
@@ -482,6 +482,130 @@ a test fixture all have to write records and none has a person behind them, so
 they run as an actor that holds every role and is nobody. `grep -rn theSystem
 server/src` is the list of everything that runs unattended, and it should stay
 short.
+
+---
+
+## The audit log
+
+**Every change to a record is written down, permanently, by the database.** NFR
+AUD 01 and NFR AUD 02, LMS 113.
+
+The story is a dispute two years from now: a balance is wrong, or is said to be,
+and nobody remembers how it got that way. What settles it is a row written at the
+time by the same statement that made the change, which nobody has been able to
+touch since.
+
+```ts
+const audit = new AuditService(
+  new AuditRepository(db),
+  new EmployeeRepository(db),
+  new SignInAccountRepository(db),
+  guard,
+);
+
+await audit.forEmployee(actor, employeeId);   // how this record came to say what it says
+await audit.forAccess(actor, employeeId);     // their login and their roles
+await audit.forWorkPattern(actor, patternId); // the week, and its seven days
+await audit.recent(actor, { actorEmployeeId }); // what one person has been doing
+```
+
+### Triggers write the entries. Nothing in the application does.
+
+**There is no method that writes an entry, and there must never be one.** A
+trigger on every audited table captures `to_jsonb(OLD)` and `to_jsonb(NEW)`, in
+the same transaction as the change. That buys three things a service writing its
+own entries cannot have:
+
+**It cannot be forgotten.** The seed, a bulk import, a migration correcting data
+and somebody in psql on a Friday afternoon are all recorded. There is no second
+way to change a row.
+
+**There is no window.** The change and the record of it commit together or not at
+all. An audit trail with a gap in it is wrong exactly when somebody is
+investigating a crash.
+
+**It cannot be composed wrongly.** The entry is the row, not somebody's
+description of the row.
+
+The table types in `server/src/db/schema.ts` make every column unwritable, so
+this is a rule the compiler holds as well as the prose.
+
+### The application supplies the one thing the database cannot know
+
+Which person asked. Every audited write goes through `recording()` in
+`server/src/repositories/`, which opens a transaction, puts the writer's name on
+it with `SET LOCAL`, and runs the write on that connection. `SET LOCAL` rather
+than `SET`, because the connection goes back to a pool and a session-level
+setting would attribute the next request's writes to whoever last borrowed it.
+
+It composes with a transaction that is already open: a staff import opens one
+around four hundred rows, and `recording()` finds it is already inside one rather
+than taking a second connection and blocking on the import's own uncommitted
+rows. All four hundred entries are attributed to the officer who confirmed it,
+and roll back with the rows if the last line is wrong.
+
+Nothing set means nobody said, and the entry records that in words —
+`not named by the writer` — rather than leaving a null for every reader to guard.
+A migration and the seed produce those honestly.
+
+### Nothing may be changed once written
+
+| | Covers | Does not cover |
+|---|---|---|
+| `lms_app` holds no `UPDATE` or `DELETE` | the application, which is the writer an attacker reaches | the owner connection |
+| the `audit_log_is_never_changed` / `_deleted` triggers | every connection, owner included | `TRUNCATE`, and a superuser who disables triggers |
+| the application never running as the owner | the whole of the above being worth anything | nothing |
+
+The first is the one that matters, and it is the one nobody had to write: the
+default privileges grant `SELECT` and `INSERT` on a new table and nothing else,
+so the log is append only because nobody ever granted it more.
+
+The triggers are the loud half, and they are triggers rather than a
+`DO INSTEAD NOTHING` rule on purpose. A rule would make an `UPDATE` *succeed*
+while changing nothing, and a silent success is the worst possible answer to
+somebody rewriting history: they believe they have, and nobody finds out either
+way. A refusal with SQLSTATE `23001` on it is an error in a log and a question
+somebody asks.
+
+### Both states, and no secrets
+
+An entry holds the whole record either side of the change rather than a list of
+what moved. That is what settles an argument: "her start date says 2023" is
+answered by a snapshot and is not answered by knowing that somebody changed some
+fields in March. `changedFields()` in `server/src/domain/audit.ts` turns the pair
+back into a readable change.
+
+**No credential is ever in an entry.** A password hash in a table the application
+can `SELECT` would make the audit log the cheapest way to steal the credentials
+it exists to protect. So the comparison happens on the real values — a reset from
+one hash to another is a real change and is recorded — and what is stored says
+only `[set]`. That a secret changed is the fact; what it changed to is not.
+
+**Signing in writes nothing.** The sign in stamp and the one time code columns are
+noise, and a change to nothing but noise writes no entry at all. Who signed in and
+when is an access log, which this is not and which does not exist. The same rule
+means two HR officers saving the same form produce one entry, not two.
+
+### Reading it is the same permission as reading the record
+
+The log holds every version of every record, so a policy that let anybody browse
+it would undo [Authorisation](#authorisation) entirely — a colleague refused a
+record could ask for its history instead and be handed several copies of it.
+
+| | Who |
+|---|---|
+| One employee record's history | yourself, your line manager, HR — the same standing as reading the record |
+| A login's and roles' history | yourself, `HR_ADMIN`, `SYS_ADMIN` |
+| A team's or a working pattern's history | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
+| The whole log | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
+
+**Your own history is yours**, and that is the story rather than a concession: an
+account of a disputed balance that the person disputing it cannot see is not an
+account, it is a reassurance.
+
+`user_role.granted_by` was deliberately never added. LMS 111 left it out and said
+why — it wanted an authenticated actor and a place to put it — and this is that
+place.
 
 ---
 
@@ -598,6 +722,12 @@ These are the load bearing decisions. The reasoning is in the Technical Design D
 
 **The ledger is the truth, balances are a cache.** Every day added to or removed from a balance is an immutable row in `leave_ledger_entry`. The `leave_balance` table is a running total kept alongside it for fast reads. If they ever disagree, the ledger wins and the balance is rebuilt. **Never update a balance directly.**
 
+When it arrives it attaches to what LMS 113 already built: `refuse_update()` and
+`refuse_delete()` are named for the job rather than for the table, and
+`record_in_audit_log()` takes the table it is attached to from `TG_TABLE_NAME`.
+An append-only ledger is three triggers and no new machinery. See
+[The audit log](#the-audit-log).
+
 **Policy is data, not code.** Every entitlement figure, threshold and notice period lives in a table with an effective date. Nobody should ever ship a release because HR changed an allowance.
 
 **Pending days are reserved.** Submitting a request writes a `RESERVATION` entry immediately. This is what stops somebody with five days left having three separate five day requests in flight.
@@ -637,11 +767,12 @@ Three things enforce that, and it is worth knowing which covers what:
 | `server/tests/unit/employee-never-deleted.test.ts` | the delete being *written* — a repository call, raw SQL, a `DELETE /employees/:id` route | anything that reaches the database by a route it does not recognise |
 
 The trigger calls `refuse_delete()`, which like `set_updated_at()` is named for
-the job rather than the table and reads `TG_TABLE_NAME` for its message. The
-Phase 2 ledger and audit tables are append only for the same reason and should
-attach to it rather than each declaring their own `RAISE`. It raises
-`restrict_violation` (SQLSTATE `23001`), so a caller can tell a refused delete
-from a genuine fault without reading the message text.
+the job rather than the table and reads `TG_TABLE_NAME` for its message. LMS 113
+took it at its word: `audit_log` attaches to the same function rather than
+declaring its own `RAISE`, and gained a sibling, `refuse_update()`. The Phase 2
+ledger should do the same. Both raise `restrict_violation` (SQLSTATE `23001`), so
+a caller can tell a refused write from a genuine fault without reading the message
+text.
 
 If a hard delete is ever genuinely needed, drop the trigger in a migration,
 delete the row, and restore the trigger in the same migration. That makes it a
@@ -1000,6 +1131,12 @@ npm run walkthrough   # not a test: a narrated run of signing in
 Unit tests live in `server/tests/unit` and touch no database, no network and no
 fixtures. Anything that needs one of those is an integration test and belongs in
 `server/tests/integration`.
+
+**`integration/audit.test.ts` carries LMS 113 rather than supplementing it.**
+Almost all of that story is in the database — the triggers that write the entries,
+the ones that refuse to change them, the privileges that make the refusals worth
+anything — so there is little to prove without one. `unit/audit.test.ts` covers
+the reading of an entry, which is a pure function.
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than

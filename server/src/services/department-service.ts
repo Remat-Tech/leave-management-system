@@ -71,14 +71,14 @@ export class DepartmentService {
   async create(actor: Actor, input: NewDepartment): Promise<Department> {
     this.guard.enforce(departmentPolicy.create(actor));
 
-    return this.departments.create(validateNewDepartment(input));
+    return this.departments.create(actor, validateNewDepartment(input));
   }
 
   /** Renames one. The id every employee record points at does not move. */
   async update(actor: Actor, id: string, changes: DepartmentChanges): Promise<Department> {
     this.guard.enforce(departmentPolicy.update(actor, id));
 
-    return this.change(id, () => validateDepartmentChanges(changes));
+    return this.change(actor, id, () => validateDepartmentChanges(changes));
   }
 
   /**
@@ -108,7 +108,7 @@ export class DepartmentService {
 
     assertCanDeactivate(department, await this.departments.activeHeadcount(id));
 
-    return this.setActive(id, false);
+    return this.setActive(actor, id, false);
   }
 
   /**
@@ -127,7 +127,7 @@ export class DepartmentService {
     this.guard.enforce(departmentPolicy.reopen(actor, id));
 
     await this.require(id);
-    return this.setActive(id, true);
+    return this.setActive(actor, id, true);
   }
 
   async byId(actor: Actor, id: string): Promise<Department> {
@@ -189,12 +189,13 @@ export class DepartmentService {
    * write.
    */
   private async change(
+    actor: Actor,
     id: string,
     decide: (current: Department) => Partial<ValidatedDepartment>,
   ): Promise<Department> {
     const current = await this.require(id);
 
-    const updated = await this.departments.update(id, decide(current));
+    const updated = await this.departments.update(actor, id, decide(current));
     if (updated === undefined) {
       throw new DepartmentNotFound(id);
     }
@@ -202,8 +203,8 @@ export class DepartmentService {
     return updated;
   }
 
-  private async setActive(id: string, isActive: boolean): Promise<Department> {
-    const updated = await this.departments.setActive(id, isActive);
+  private async setActive(actor: Actor, id: string, isActive: boolean): Promise<Department> {
+    const updated = await this.departments.setActive(actor, id, isActive);
     if (updated === undefined) {
       throw new DepartmentNotFound(id);
     }

@@ -73,7 +73,7 @@ export class WorkPatternService {
   async create(actor: Actor, input: NewWorkPattern): Promise<WorkPattern> {
     this.guard.enforce(workPatternPolicy.create(actor));
 
-    return this.patterns.create(validateNewWorkPattern(input));
+    return this.patterns.create(actor, validateNewWorkPattern(input));
   }
 
   /**
@@ -93,7 +93,7 @@ export class WorkPatternService {
   async update(actor: Actor, id: string, changes: WorkPatternChanges): Promise<WorkPattern> {
     this.guard.enforce(workPatternPolicy.update(actor, id));
 
-    return this.change(id, () => validateWorkPatternChanges(changes));
+    return this.change(actor, id, () => validateWorkPatternChanges(changes));
   }
 
   /**
@@ -111,7 +111,7 @@ export class WorkPatternService {
 
     await this.require(id);
 
-    const updated = await this.patterns.makeDefault(id);
+    const updated = await this.patterns.makeDefault(actor, id);
     if (updated === undefined) {
       throw new WorkPatternNotFound(id);
     }
@@ -140,7 +140,7 @@ export class WorkPatternService {
 
     assertCanDelete(pattern, await this.patterns.headcount(id));
 
-    if (!(await this.patterns.remove(id))) {
+    if (!(await this.patterns.remove(actor, id))) {
       throw new WorkPatternNotFound(id);
     }
   }
@@ -220,12 +220,13 @@ export class WorkPatternService {
    * reports it if it stops existing between the read and the write.
    */
   private async change(
+    actor: Actor,
     id: string,
     decide: (current: WorkPattern) => Partial<ValidatedWorkPattern>,
   ): Promise<WorkPattern> {
     const current = await this.require(id);
 
-    const updated = await this.patterns.update(id, decide(current));
+    const updated = await this.patterns.update(actor, id, decide(current));
     if (updated === undefined) {
       throw new WorkPatternNotFound(id);
     }

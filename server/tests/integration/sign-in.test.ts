@@ -499,7 +499,7 @@ describe('the login is the work address, and stays it', () => {
     const joiner = await newEmployee();
 
     await expect(
-      accounts.create({
+      accounts.create(system, {
         employeeId: joiner.id,
         companyEmail: 'someone.else@rematholdings.com',
         passwordHash: null,

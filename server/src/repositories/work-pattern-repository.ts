@@ -22,9 +22,11 @@
  * decide, which makes the answer right even under concurrency.
  */
 
-import type { Kysely, Selectable, Transaction } from 'kysely';
+import type { Kysely, Selectable } from 'kysely';
 import type { Database } from '../db/index.js';
 import type { WorkPatternDayTable, WorkPatternTable } from '../db/schema.js';
+import type { Attribution } from '../domain/audit.js';
+import { recording } from './recording.js';
 import {
   DefaultWorkPatternRequired,
   DuplicateWorkPatternName,
@@ -63,9 +65,9 @@ export class WorkPatternRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
   /** The pattern and its seven days, or neither. */
-  async create(record: ValidatedWorkPattern): Promise<WorkPattern> {
+  async create(by: Attribution, record: ValidatedWorkPattern): Promise<WorkPattern> {
     return this.catchRefusals(record, () =>
-      this.db.transaction().execute(async (trx) => {
+      recording(this.db, by, async (trx) => {
         const row = await trx
           .insertInto('work_pattern')
           .values({ name: record.name })
@@ -95,6 +97,7 @@ export class WorkPatternRepository {
    * row is touched deliberately below.
    */
   async update(
+    by: Attribution,
     id: string,
     changes: Partial<ValidatedWorkPattern>,
   ): Promise<WorkPattern | undefined> {
@@ -105,7 +108,7 @@ export class WorkPatternRepository {
     }
 
     return this.catchRefusals(changes, () =>
-      this.db.transaction().execute(async (trx) => {
+      recording(this.db, by, async (trx) => {
         /* Touched even when only the week changed, so that updated_at moves: the
            question "when did this pattern last change" is asked of a pattern
            producing a day count somebody disputes, and the days are the part
@@ -147,9 +150,9 @@ export class WorkPatternRepository {
    *
    * Returns undefined if there is no such pattern.
    */
-  async makeDefault(id: string): Promise<WorkPattern | undefined> {
+  async makeDefault(by: Attribution, id: string): Promise<WorkPattern | undefined> {
     return this.catchRefusals({}, () =>
-      this.db.transaction().execute(async (trx) => {
+      recording(this.db, by, async (trx) => {
         await trx
           .updateTable('work_pattern')
           .set({ is_default: false })
@@ -182,12 +185,11 @@ export class WorkPatternRepository {
    * Returns false if there was no such pattern, so that deleting one twice is
    * answered rather than mistaken for success.
    */
-  async remove(id: string): Promise<boolean> {
+  async remove(by: Attribution, id: string): Promise<boolean> {
     try {
-      const result = await this.db
-        .deleteFrom('work_pattern')
-        .where('id', '=', id)
-        .executeTakeFirst();
+      const result = await recording(this.db, by, (on) =>
+        on.deleteFrom('work_pattern').where('id', '=', id).executeTakeFirst(),
+      );
 
       return (result.numDeletedRows ?? 0n) > 0n;
     } catch (error) {
@@ -319,7 +321,7 @@ export class WorkPatternRepository {
 
   /** The seven rows a week is stored as. */
   private async writeWeek(
-    trx: Transaction<Database>,
+    trx: Kysely<Database>,
     id: string,
     workingDays: readonly Weekday[],
   ): Promise<void> {
@@ -335,7 +337,7 @@ export class WorkPatternRepository {
       .execute();
   }
 
-  private async weekFor(db: Kysely<Database> | Transaction<Database>, id: string) {
+  private async weekFor(db: Kysely<Database>, id: string) {
     const days = await db
       .selectFrom('work_pattern_day')
       .selectAll()

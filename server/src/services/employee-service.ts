@@ -159,7 +159,7 @@ export class EmployeeService {
     // can reach it.
     await this.checkManager(record.managerId, null);
 
-    return this.employees.create({
+    return this.employees.create(actor, {
       ...record,
       workPatternId: await this.resolveWorkPattern(record.workPatternId),
     });
@@ -276,7 +276,7 @@ export class EmployeeService {
       await this.checkWorkPattern(changes.workPatternId!);
     }
 
-    const updated = await this.employees.update(id, changes);
+    const updated = await this.employees.update(actor, id, changes);
     if (updated === undefined) {
       // Gone between the read and the write. Not possible — nothing may delete
       // an employee, and the database now refuses the statement outright — but

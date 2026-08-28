@@ -21,6 +21,8 @@
 
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/index.js';
+import type { Attribution } from '../domain/audit.js';
+import { recording } from './recording.js';
 import { orderRoles, type RoleCode } from '../auth/roles.js';
 
 export interface Role {
@@ -123,13 +125,15 @@ export class RoleRepository {
    * violation for doing what it was asked. The database settles it in one
    * statement.
    */
-  async grant(accountId: string, code: RoleCode): Promise<boolean> {
+  async grant(by: Attribution, accountId: string, code: RoleCode): Promise<boolean> {
     const result = await this.catchRefusals(() =>
-      this.db
-        .insertInto('user_role')
-        .values({ user_id: accountId, role_id: this.idOf(code) })
-        .onConflict((conflict) => conflict.columns(['user_id', 'role_id']).doNothing())
-        .executeTakeFirst(),
+      recording(this.db, by, (on) =>
+        on
+          .insertInto('user_role')
+          .values({ user_id: accountId, role_id: this.idOf(code) })
+          .onConflict((conflict) => conflict.columns(['user_id', 'role_id']).doNothing())
+          .executeTakeFirst(),
+      ),
     );
 
     return (result?.numInsertedOrUpdatedRows ?? 0n) > 0n;
@@ -143,13 +147,15 @@ export class RoleRepository {
    * and both come back as {@link RoleRefusedByDatabase} for the service to
    * translate.
    */
-  async revoke(accountId: string, code: RoleCode): Promise<boolean> {
+  async revoke(by: Attribution, accountId: string, code: RoleCode): Promise<boolean> {
     const result = await this.catchRefusals(() =>
-      this.db
-        .deleteFrom('user_role')
-        .where('user_id', '=', accountId)
-        .where('role_id', '=', this.idOf(code))
-        .executeTakeFirst(),
+      recording(this.db, by, (on) =>
+        on
+          .deleteFrom('user_role')
+          .where('user_id', '=', accountId)
+          .where('role_id', '=', this.idOf(code))
+          .executeTakeFirst(),
+      ),
     );
 
     return (result?.numDeletedRows ?? 0n) > 0n;

@@ -16,6 +16,8 @@
 import { sql, type Kysely, type Selectable } from 'kysely';
 import type { Database } from '../db/index.js';
 import type { EmployeeTable } from '../db/schema.js';
+import type { Attribution } from '../domain/audit.js';
+import { recording } from './recording.js';
 import {
   DuplicateEmployeeNumber,
   DuplicateWorkEmail,
@@ -65,27 +67,29 @@ export class EmployeeRepository {
    * {@link EmployeeService.create}, where the rest of the cross table checks
    * already live.
    */
-  async create(record: StorableEmployee): Promise<Employee> {
+  async create(by: Attribution, record: StorableEmployee): Promise<Employee> {
     const row = await this.catchRefusals(record, () =>
-      this.db
-        .insertInto('employee')
-        .values({
-          employee_number: record.employeeNumber,
-          first_name: record.firstName,
-          last_name: record.lastName,
-          work_email: record.workEmail,
-          job_title: record.jobTitle,
-          department_id: record.departmentId,
-          manager_id: record.managerId,
-          work_pattern_id: record.workPatternId,
-          start_date: record.startDate,
-          exit_date: record.exitDate,
-          employment_type: record.employmentType,
-          employment_status: record.employmentStatus,
-          gender: record.gender,
-        })
-        .returningAll()
-        .executeTakeFirstOrThrow(),
+      recording(this.db, by, (on) =>
+        on
+          .insertInto('employee')
+          .values({
+            employee_number: record.employeeNumber,
+            first_name: record.firstName,
+            last_name: record.lastName,
+            work_email: record.workEmail,
+            job_title: record.jobTitle,
+            department_id: record.departmentId,
+            manager_id: record.managerId,
+            work_pattern_id: record.workPatternId,
+            start_date: record.startDate,
+            exit_date: record.exitDate,
+            employment_type: record.employmentType,
+            employment_status: record.employmentStatus,
+            gender: record.gender,
+          })
+          .returningAll()
+          .executeTakeFirstOrThrow(),
+      ),
     );
 
     return toEmployee(row);
@@ -99,22 +103,33 @@ export class EmployeeRepository {
    * fixing migration get the same treatment as the application rather than only
    * the writer who remembered.
    */
-  async update(id: string, changes: Partial<ValidatedEmployee>): Promise<Employee | undefined> {
+  async update(
+    by: Attribution,
+    id: string,
+    changes: Partial<ValidatedEmployee>,
+  ): Promise<Employee | undefined> {
     const values = toColumns(changes);
 
     // Kysely refuses an UPDATE with no columns, and rightly. Nothing to change
     // is not an error, though, so the record is returned as it stands.
+    //
+    // Nor is it an audited event: no statement runs, so no trigger fires and no
+    // entry is written. That is the right answer and matches what the trigger
+    // does with an update that sets every column to what it already held — an
+    // audit log is a record of changes, and this is not one.
     if (Object.keys(values).length === 0) {
       return this.findById(id);
     }
 
     const row = await this.catchRefusals(changes, () =>
-      this.db
-        .updateTable('employee')
-        .set(values)
-        .where('id', '=', id)
-        .returningAll()
-        .executeTakeFirst(),
+      recording(this.db, by, (on) =>
+        on
+          .updateTable('employee')
+          .set(values)
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirst(),
+      ),
     );
 
     return row === undefined ? undefined : toEmployee(row);

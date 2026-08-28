@@ -398,21 +398,28 @@ export class SignInService {
         ? await hashPassword(password)
         : undefined;
 
-    await this.accounts.recordSignIn(account.id, at, rehashed);
-
     const [roles, reports] = await Promise.all([
       this.roles.codesFor(account.id),
       this.employees.countReports(employee.id),
     ]);
 
+    /* Built before the write rather than after it, because the write is
+       attributed to them. Stamping a sign in records nothing — the audit trigger
+       is told those columns are noise — but a hash rewritten at a raised cost is
+       a real change to a credential, and the person it is recorded against is
+       the person who has just this moment proved who they are. LMS 113. */
+    const actor = signedInAs(employee.id, { roles, isManager: reports > 0 });
+
+    await this.accounts.recordSignIn(actor, account.id, at, rehashed);
+
     return {
       employee,
       account: { ...account, lastLoginAt: at },
-      /* Being a manager is derived here, from the reporting lines, exactly as
+      /* Being a manager is derived above, from the reporting lines, exactly as
          RoleService derives it and for the reason the organisation migration
          gave when it refused to store MANAGER as a role. It is a snapshot taken
          now, which is what the whole actor is; see ../auth/actor.ts. */
-      actor: signedInAs(employee.id, { roles, isManager: reports > 0 }),
+      actor,
     };
   }
 
@@ -474,7 +481,7 @@ export class SignInService {
         ? null
         : await hashPassword(assertUsablePassword(options.password));
 
-    return this.accounts.create({
+    return this.accounts.create(actor, {
       employeeId: employee.id,
       /* Folded, as the employee domain folds it on the way in. The address is a
          machine identifier rather than a name and there is nothing to preserve
@@ -498,6 +505,7 @@ export class SignInService {
 
     const account = await this.requireAccount(employeeId);
     const updated = await this.accounts.setPassword(
+      actor,
       account.id,
       await hashPassword(assertUsablePassword(password)),
     );
@@ -552,7 +560,7 @@ export class SignInService {
       }
     }
 
-    const updated = await this.accounts.setMfaEnabled(account.id, enabled);
+    const updated = await this.accounts.setMfaEnabled(actor, account.id, enabled);
     if (updated === undefined) {
       throw new SignInAccountNotFound(`employee ${employeeId}`);
     }
@@ -595,13 +603,13 @@ export class SignInService {
   async close(actor: Actor, employeeId: string): Promise<SignInAccount> {
     this.guard.enforce(signInPolicy.close(actor, employeeId));
 
-    return this.setActive(employeeId, false);
+    return this.setActive(actor, employeeId, false);
   }
 
   async reopen(actor: Actor, employeeId: string): Promise<SignInAccount> {
     this.guard.enforce(signInPolicy.reopen(actor, employeeId));
 
-    return this.setActive(employeeId, true);
+    return this.setActive(actor, employeeId, true);
   }
 
   /** Somebody's login, if they have one. Undefined rather than a throw: it is a fair question. */
@@ -625,9 +633,13 @@ export class SignInService {
     return this.accounts.findByEmail(companyEmail);
   }
 
-  private async setActive(employeeId: string, isActive: boolean): Promise<SignInAccount> {
+  private async setActive(
+    actor: Actor,
+    employeeId: string,
+    isActive: boolean,
+  ): Promise<SignInAccount> {
     const account = await this.requireAccount(employeeId);
-    const updated = await this.accounts.setActive(account.id, isActive);
+    const updated = await this.accounts.setActive(actor, account.id, isActive);
 
     if (updated === undefined) {
       throw new SignInAccountNotFound(`employee ${employeeId}`);
