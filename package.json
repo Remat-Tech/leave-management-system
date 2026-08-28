@@ -17,6 +17,7 @@
     "test:watch": "vitest --config vitest.config.mts",
     "test:int": "vitest run --config vitest.integration.config.mts",
     "test:all": "npm run test && npm run test:int",
+    "walkthrough": "vitest run --config vitest.walkthrough.mts",
     "mail": "node scripts/mailpit.mjs",
     "seed": "node server/seeds/seed.mjs"
   },

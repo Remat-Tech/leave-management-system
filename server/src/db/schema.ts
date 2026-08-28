@@ -120,10 +120,18 @@ export interface AppUserTable {
      and the state every seeded login is in. Refused at the door, and told apart
      from a wrong password only in the log. */
   password_hash: string | null;
-  /* LMS 110. Written by nothing yet. */
+  /* LMS 110. Whether this person chose a code on top of their password. It is
+     not the whole answer to "do they need one": the HR and administrator roles
+     need one whatever this says, and that is read from user_role at sign in
+     rather than copied here. */
   mfa_enabled: Generated<boolean>;
+  /* A challenge in progress. All three move together: issued together, cleared
+     together, and meaningless apart — app_user_code_and_expiry_together holds the
+     first two to that, and the attempt count is reset by the same write that
+     issues a code. NULL in all three is most rows most of the time. */
   mfa_code_hash: string | null;
   mfa_code_expires_at: Date | null;
+  mfa_code_attempts: Generated<number>;
   /* An administrative lock, separate from employment. A leaver is refused by
      their employee record's status, which cannot drift; this is for an account
      that has to be closed for a reason of its own. */
@@ -136,10 +144,41 @@ export interface AppUserTable {
   updated_at: Timestamp;
 }
 
+/**
+ * The roles somebody can hold. Reference data, seeded by the organisation
+ * migration and not edited at runtime — lms_app holds no UPDATE or DELETE on it.
+ *
+ * MANAGER is deliberately not among them. Being a manager is a relationship: you
+ * are one if some employee has your id as their manager_id. Holding it as a role
+ * as well would be two sources of truth that drift the moment somebody changes
+ * team.
+ */
+export interface RoleTable {
+  id: Generated<string>;
+  /* EMPLOYEE | HR_OFFICER | HR_ADMIN | SYS_ADMIN. Matched against
+     MANDATORY_ROLES in ../auth/mfa.ts, which the integration tests assert. */
+  code: string;
+  name: string;
+}
+
+/**
+ * Who holds which. Read at sign in by the rule that makes a one time code
+ * mandatory for HR and administrators. LMS 110.
+ *
+ * Writing to it — assigning and removing roles — is LMS 111, which is why nothing
+ * in the tree inserts here yet but the seed.
+ */
+export interface UserRoleTable {
+  user_id: string;
+  role_id: string;
+}
+
 export interface Database {
   app_user: AppUserTable;
   department: DepartmentTable;
   employee: EmployeeTable;
+  role: RoleTable;
+  user_role: UserRoleTable;
   work_pattern: WorkPatternTable;
   work_pattern_day: WorkPatternDayTable;
 }

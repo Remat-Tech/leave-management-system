@@ -1,5 +1,6 @@
 /**
- * Signing in with a company email address. NFR SEC 01. LMS 109.
+ * Signing in with a company email address, and the one time code that follows
+ * it. NFR SEC 01. LMS 109 and LMS 110.
  *
  * The login door, and the other side of the provisioning door that
  * {@link EmployeeService.create} already holds. The story asks for both, and the
@@ -14,6 +15,13 @@
  * is said plainly, because at that point the person has proved they are the
  * account holder.
  *
+ * Signing in is two steps for anybody who needs a code. {@link signIn} takes the
+ * password and either opens the door or sends a code and says so;
+ * {@link submitCode} takes the code and opens the door. Which of the two
+ * {@link signIn} does is not the caller's choice and not the caller's business to
+ * predict — it is decided here, from the account and the roles it holds, and the
+ * return type is a union so that a caller cannot forget the second case exists.
+ *
  * What this service does not do, all of it deliberate and none of it hidden:
  *
  *   No session. Signing in returns who signed in; it does not issue a cookie,
@@ -22,23 +30,27 @@
  *   is in the environment waiting for it. LMS 112 is where the request side of
  *   this lands.
  *
- *   No second factor. LMS 110 sends a one time code to the same company address
- *   and makes it mandatory for the HR and administrator roles. The seam is marked
- *   in {@link signIn}: this method is the first of what will be two steps, and
- *   `mfaEnabled` is read by nothing until then.
+ *   No roles beyond reading them. What somebody may do once they are in is
+ *   LMS 111 and LMS 112. What is read here is one question — do they hold a role
+ *   for which a code is mandatory — and nothing else is decided from it.
  *
- *   No roles. What somebody may do once they are in is LMS 111 and LMS 112.
- *   This answers who they are, and stops.
- *
- *   No rate limit and no lockout. Ten thousand guesses a second against this
- *   method are refused ten thousand times and nothing notices. scrypt makes each
- *   guess cost something, which is a floor rather than a defence, and the real
- *   answer is a counter and a delay in front of the route. It needs doing, it
- *   belongs with the route, and it is not done.
+ *   No rate limit and no lockout, and LMS 110 adds a second thing that needs one.
+ *   A code challenge is answered by address, so somebody who knows a colleague's
+ *   address and polls this method can spend that colleague's five attempts as
+ *   soon as they appear and make them start again. It grants no access — every
+ *   guess is still a guess — but it is a denial of service, and the answer is the
+ *   same counter and delay in front of the route that unlimited password guesses
+ *   need. It belongs with the route, it needs doing, and it is not done. The
+ *   alternative, binding the second step to an opaque token issued by the first,
+ *   is the better answer if that route never arrives.
  *
  *   No password reset, and no self service change. HR sets a password through
  *   {@link setPassword}, which is enough for a system with no email based
  *   identity flow in it yet, and not enough for long. It needs doing.
+ *
+ *   No recovery codes. Somebody locked out of their company mailbox is locked out
+ *   of this, and the answer for now is that IT can restore the mailbox, because
+ *   the mailbox is the company account this whole story ties access to.
  */
 
 import {
@@ -47,6 +59,21 @@ import {
   isCompanyEmail,
   NotACompanyEmail,
 } from '../auth/company-email.js';
+import {
+  challengeIsLive,
+  checkCode,
+  CodeIsMandatory,
+  CodeRefused,
+  type CodeSettings,
+  codeEmail,
+  codeSettings,
+  expiryFrom,
+  generateCode,
+  hashCode,
+  holdsMandatoryRole,
+  isCodeRequired,
+  MAX_CODE_ATTEMPTS,
+} from '../auth/mfa.js';
 import { hashPassword, needsRehash, verifyPassword } from '../auth/password.js';
 import {
   assertCanSignIn,
@@ -57,7 +84,9 @@ import {
   SignInRefused,
 } from '../auth/sign-in.js';
 import { EmployeeNotFound, type Employee } from '../domain/employee.js';
+import type { Mailer } from '../mail/mailer.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
+import type { RoleRepository } from '../repositories/role-repository.js';
 import type { SignInAccountRepository } from '../repositories/sign-in-account-repository.js';
 
 export interface SignInServiceOptions {
@@ -67,6 +96,11 @@ export interface SignInServiceOptions {
    * tests pass their own so they need no environment.
    */
   domains?: string[];
+  /**
+   * How long a code lives and how many digits it has. Read from
+   * MFA_CODE_TTL_MINUTES and MFA_CODE_LENGTH when not given.
+   */
+  code?: CodeSettings;
 }
 
 /** Who signed in. Not a session, and not a token. */
@@ -75,8 +109,33 @@ export interface SignedIn {
   employee: Employee;
 }
 
+/**
+ * What happened when somebody gave the right password.
+ *
+ * A union rather than a {@link SignedIn} with a nullable field, because the two
+ * cases are not the same event wearing different clothes. In one, somebody is in.
+ * In the other, nobody is in, a code is in a mailbox, and the caller has another
+ * screen to show. A caller that treats the second as the first has let somebody
+ * past a factor, and the type is what stops that being a thing you can do by
+ * forgetting.
+ *
+ * `CODE_SENT` carries no account and no employee. Nothing about who they are is
+ * settled until the code comes back, and handing over a record at this point is
+ * how it ends up on a screen that has not finished authenticating anybody.
+ */
+export type SignInOutcome =
+  | ({ status: 'SIGNED_IN' } & SignedIn)
+  | {
+      status: 'CODE_SENT';
+      /** Where it went, so a screen can say "we have sent a code to a...h@..." */
+      companyEmail: string;
+      /** When it stops working, so a screen can say how long they have. */
+      expiresAt: Date;
+    };
+
 export class SignInService {
   private readonly domains: string[];
+  private readonly code: CodeSettings;
 
   constructor(
     private readonly accounts: SignInAccountRepository,
@@ -86,12 +145,21 @@ export class SignInService {
        Bringing the service would put "may this person's manager be changed"
        behind the sign in surface, which is not this layer's question. */
     private readonly employees: EmployeeRepository,
+    /* One question asked of it, in one place: does this account hold a role for
+       which a code is mandatory. LMS 110. */
+    private readonly roles: RoleRepository,
+    /* Sending, behind the interface in /mail, so that this service neither holds
+       an SMTP connection nor knows that nodemailer exists — and so that a test
+       can read what the message actually said. */
+    private readonly mailer: Mailer,
     options: SignInServiceOptions = {},
   ) {
-    // Resolved once, at construction. allowedDomains() throws on an empty list,
-    // so a misconfigured environment stops the application starting rather than
-    // letting the first sign in attempt decide what an empty allow list means.
+    /* Both resolved once, at construction, so that a misconfigured environment
+       stops the application starting rather than letting the first sign in
+       attempt discover it. allowedDomains() throws on an empty list; codeSettings()
+       throws on a length or a lifetime that is present and nonsense. */
     this.domains = options.domains ?? allowedDomains();
+    this.code = options.code ?? codeSettings();
   }
 
   /**
@@ -117,16 +185,20 @@ export class SignInService {
    *      suspension: each says which it is, because the password has been proved
    *      and there is no longer a stranger to keep anything from.
    *
+   *   4. And only now, whether a code is needed. LMS 110. Asked last on purpose:
+   *      sending a code is sending mail to a real person, and doing it before the
+   *      password is proved would turn this method into a way of posting a message
+   *      into any colleague's mailbox as often as you like.
+   *
    * The password is not checked for strength here, ever. Strength is a rule about
    * what may be *stored*, and applying it at the door would lock everybody out on
    * the day {@link MINIMUM_PASSWORD_LENGTH} is raised — which is exactly the day
    * nobody should be locked out.
    *
-   * LMS 110 goes between steps 3 and 4: a successful return here becomes "the
-   * first factor is satisfied, now send a code", and only the second step returns
-   * a {@link SignedIn}.
+   * Returns either `SIGNED_IN` or `CODE_SENT`, and the caller does not get to
+   * choose which. See {@link SignInOutcome}.
    */
-  async signIn(email: string, password: string): Promise<SignedIn> {
+  async signIn(email: string, password: string): Promise<SignInOutcome> {
     /* This is the outermost door of the system and whatever is pushed through it
        has been through no parser of ours. A door does not raise a TypeError at
        what it is handed; it refuses it. The route layer of Phase 5 will validate
@@ -161,20 +233,137 @@ export class SignInService {
     // company account does".
     assertCanSignIn(account, employee);
 
+    /* Read now as well, and for the same reason: an HR officer who had their
+       role removed this morning is not an HR officer this afternoon, and one who
+       was given it this morning is. A copy of this on the account row would be
+       wrong on both of those days. */
+    if (isCodeRequired(account, await this.roles.codesFor(account.id))) {
+      return this.sendCode(account.companyEmail, account.id);
+    }
+
+    return {
+      status: 'SIGNED_IN',
+      // employee is defined: assertCanSignIn refuses undefined above.
+      ...(await this.open(account, employee!, passwordHash, supplied)),
+    };
+  }
+
+  /**
+   * Answers the code, and opens the door. LMS 110, the second step.
+   *
+   * Keyed on the address rather than on something the first step handed out,
+   * which is the simplest thing that works without a session and is the thing
+   * that needs a rate limiter in front of it — see the note at the top of this
+   * file. It discloses nothing: an address with no challenge in progress is every
+   * address, to anybody who has not already given the right password.
+   *
+   * The order here is as deliberate as the first step's:
+   *
+   *   Is there a live challenge at all — one that exists, has not expired and has
+   *   attempts left. A dead one is cleared as it is found, so that the resting
+   *   state of those columns is honestly "nobody is half way through signing in".
+   *
+   *   Is the code right. A wrong one costs an attempt, counted by the database so
+   *   that four connections guessing at once cost four.
+   *
+   *   And *then* the account and the employee again. Not a repetition of the
+   *   first step: minutes have passed, and somebody terminated in between must
+   *   not be let in by a code that was issued while they still worked here.
+   *
+   * The challenge is consumed by {@link SignInAccountRepository.recordSignIn}, in
+   * the same statement that stamps the sign in, which is what makes a code single
+   * use rather than merely intended to be.
+   */
+  async submitCode(email: string, code: string): Promise<SignedIn> {
+    const address = typeof email === 'string' ? email : '';
+    const answer = typeof code === 'string' ? code.trim() : '';
+
+    assertCompanyEmail(address, this.domains);
+
+    const credentials = await this.accounts.credentialsByEmail(address);
+    if (credentials === undefined) {
+      throw new CodeRefused('NO_CHALLENGE');
+    }
+
+    const { account, passwordHash, challenge } = credentials;
+
+    const dead = challengeIsLive(challenge.expiresAt, challenge.attempts, new Date());
+    if (dead !== null) {
+      if (dead !== 'NO_CHALLENGE') {
+        await this.accounts.clearChallenge(account.id);
+      }
+      throw new CodeRefused(dead);
+    }
+
+    if (!(await checkCode(answer, challenge.hash))) {
+      const attempts = await this.accounts.countFailedAttempt(account.id);
+
+      if (attempts >= MAX_CODE_ATTEMPTS) {
+        await this.accounts.clearChallenge(account.id);
+        throw new CodeRefused('TOO_MANY_ATTEMPTS');
+      }
+
+      throw new CodeRefused('WRONG_CODE', MAX_CODE_ATTEMPTS - attempts);
+    }
+
+    const employee = await this.employees.findById(account.employeeId);
+    assertCanSignIn(account, employee);
+
+    return this.open(account, employee!, passwordHash, undefined);
+  }
+
+  /**
+   * Issues a code, sends it, and says so.
+   *
+   * The hash is written before the message is sent, and the order matters. Sent
+   * first, a failure to write leaves somebody holding a code the system has no
+   * record of; written first, a failure to send leaves a challenge nobody can
+   * answer, which expires in ten minutes and costs one more sign in attempt. The
+   * second is the cheaper failure.
+   *
+   * A send that throws comes out of {@link signIn} unchanged rather than being
+   * swallowed. "We have sent you a code" when nothing was sent is the worst of
+   * the three outcomes: the person waits, then telephones.
+   */
+  private async sendCode(companyEmail: string, accountId: string): Promise<SignInOutcome> {
+    const code = generateCode(this.code.length);
+    const expiresAt = expiryFrom(new Date(), this.code.ttlMinutes);
+
+    await this.accounts.startChallenge(accountId, await hashCode(code), expiresAt);
+    await this.mailer.send(codeEmail(companyEmail, code, this.code.ttlMinutes));
+
+    return { status: 'CODE_SENT', companyEmail, expiresAt };
+  }
+
+  /**
+   * The last thing every successful sign in does, whichever door it came through.
+   *
+   * One place, so that the stamp, the consumed challenge and the rehash cannot
+   * happen on one path and not the other. `password` is present only on the path
+   * that had one in hand — the code step never sees a password, so a hash made at
+   * an older cost is left for the next single factor sign in to rewrite rather
+   * than being rewritten from nothing.
+   */
+  private async open(
+    account: SignInAccount,
+    employee: Employee,
+    passwordHash: string | null,
+    password: string | undefined,
+  ): Promise<SignedIn> {
     const at = new Date();
 
     /* The one moment the plain password is legitimately in hand, so the one
        moment a hash made with an older cost can be brought up to the current one.
        Nobody is asked to change anything and nothing is migrated. */
-    await this.accounts.recordSignIn(
-      account.id,
-      at,
-      needsRehash(passwordHash) ? await hashPassword(supplied) : undefined,
-    );
+    const rehashed =
+      password !== undefined && needsRehash(passwordHash)
+        ? await hashPassword(password)
+        : undefined;
+
+    await this.accounts.recordSignIn(account.id, at, rehashed);
 
     return {
-      // employee is defined: assertCanSignIn refuses undefined above.
-      employee: employee!,
+      employee,
       account: { ...account, lastLoginAt: at },
     };
   }
@@ -252,6 +441,66 @@ export class SignInService {
     }
 
     return updated;
+  }
+
+  /**
+   * Turns the one time code on for somebody who is not obliged to have it.
+   *
+   * The choice half of {@link isCodeRequired}. An ordinary employee who wants a
+   * second factor gets one by asking; an HR officer has one whether they ask or
+   * not, so calling this for them changes nothing they did not already have.
+   */
+  async requireCode(employeeId: string): Promise<SignInAccount> {
+    return this.setMfa(employeeId, true);
+  }
+
+  /**
+   * Turns it off, unless the roles they hold say it cannot be turned off.
+   *
+   * {@link CodeIsMandatory} names the roles rather than saying no. "You cannot do
+   * that" is not something an HR administrator can act on; "this is required for
+   * HR_ADMIN, remove the role first if that is what you meant" is, and it is also
+   * the sentence that stops somebody quietly stripping a colleague's second
+   * factor and believing they have done it.
+   *
+   * Refused rather than silently ignored, for the same reason: a switch that
+   * reports off while the thing is on is worse than one that refuses.
+   */
+  async stopRequiringCode(employeeId: string): Promise<SignInAccount> {
+    return this.setMfa(employeeId, false);
+  }
+
+  private async setMfa(employeeId: string, enabled: boolean): Promise<SignInAccount> {
+    const account = await this.requireAccount(employeeId);
+
+    if (!enabled) {
+      const codes = await this.roles.codesFor(account.id);
+      if (holdsMandatoryRole(codes)) {
+        throw new CodeIsMandatory(codes);
+      }
+    }
+
+    const updated = await this.accounts.setMfaEnabled(account.id, enabled);
+    if (updated === undefined) {
+      throw new SignInAccountNotFound(`employee ${employeeId}`);
+    }
+
+    return updated;
+  }
+
+  /**
+   * Whether this person will be asked for a code, and why.
+   *
+   * A read, for a screen that has to show somebody the state of their own account
+   * without making them sign in to find out. `mandatory` is what distinguishes
+   * "you chose this" from "your role decides this", which is the difference
+   * between a switch to show and a sentence to show.
+   */
+  async codePolicyFor(employeeId: string): Promise<{ required: boolean; mandatory: boolean }> {
+    const account = await this.requireAccount(employeeId);
+    const codes = await this.roles.codesFor(account.id);
+
+    return { required: isCodeRequired(account, codes), mandatory: holdsMandatoryRole(codes) };
   }
 
   /**

@@ -1,5 +1,6 @@
 import type { Transporter } from 'nodemailer';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { codeEmail } from '../../src/auth/mfa.js';
 import { createTransport, sendMail } from '../../src/mail/transport.js';
 
 /**
@@ -90,5 +91,38 @@ describe('outbound mail in development', () => {
         process.env.MAIL_OVERRIDE_RECIPIENT = previous;
       }
     }
+  });
+});
+
+describe('the sign in code', () => {
+  /**
+   * NFR SEC 01, LMS 110, and the one acceptance criterion that is not really
+   * about the database: the code has to actually leave the application and reach
+   * the company address.
+   *
+   * ./mfa.test.ts covers everything else about codes against a recording mailer,
+   * which is faster and can read what a message said. What it cannot prove is
+   * that the message goes anywhere, because nothing in it opens a socket. This
+   * is the one test that does, and it lives here because this file already owns
+   * the Mailpit dependency and the guard that explains it.
+   */
+  it('reaches the company mailbox with the code in it', async () => {
+    const code = '042317';
+    const mail = codeEmail('ama.mensah@rematholdings.com', code, 10);
+
+    // Unique per run, so a Mailpit left running for days stays usable. The real
+    // subject is asserted below.
+    const marker = crypto.randomUUID();
+    const sent = await sendMail(transport, { ...mail, subject: `${mail.subject} ${marker}` });
+
+    expect(sent.redirected).toBe(false);
+    expect(sent.deliveredTo).toBe('ama.mensah@rematholdings.com');
+
+    const [caught] = await messagesFor(marker);
+
+    expect(caught).toBeDefined();
+    expect(caught.To[0].Address).toBe('ama.mensah@rematholdings.com');
+    // In the subject, which is where a phone shows it.
+    expect(caught.Subject).toContain(code);
   });
 });

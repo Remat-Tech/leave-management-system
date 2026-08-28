@@ -15,10 +15,12 @@ import {
 import { EmployeeNotFound } from '../../src/domain/employee.js';
 import { DepartmentRepository } from '../../src/repositories/department-repository.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
+import { RoleRepository } from '../../src/repositories/role-repository.js';
 import { SignInAccountRepository } from '../../src/repositories/sign-in-account-repository.js';
 import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
 import { EmployeeService } from '../../src/services/employee-service.js';
-import { SignInService } from '../../src/services/sign-in-service.js';
+import { type SignedIn, SignInService } from '../../src/services/sign-in-service.js';
+import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
@@ -71,7 +73,13 @@ beforeAll(async () => {
   await admin.connect();
 
   accounts = new SignInAccountRepository(db);
-  logins = new SignInService(accounts, new EmployeeRepository(db), { domains: DOMAINS });
+  logins = new SignInService(
+    accounts,
+    new EmployeeRepository(db),
+    new RoleRepository(db),
+    recordingMailer(),
+    { domains: DOMAINS },
+  );
   employees = new EmployeeService(
     new EmployeeRepository(db),
     new DepartmentRepository(db),
@@ -138,7 +146,7 @@ describe('signing in', () => {
   it('accepts the work address and the password that was set', async () => {
     await withPassword(people.officer);
 
-    const { employee, account } = await logins.signIn(OFFICER_EMAIL, PASSWORD);
+    const { employee, account } = await signedIn(OFFICER_EMAIL, PASSWORD);
 
     expect(employee.workEmail).toBe(OFFICER_EMAIL);
     expect(account.employeeId).toBe(people.officer);
@@ -166,7 +174,7 @@ describe('signing in', () => {
     await withPassword(people.officer);
     const before = new Date();
 
-    const { account } = await logins.signIn(OFFICER_EMAIL, PASSWORD);
+    const { account } = await signedIn(OFFICER_EMAIL, PASSWORD);
 
     expect(account.lastLoginAt).not.toBeNull();
     expect(account.lastLoginAt!.getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000);
@@ -236,9 +244,13 @@ describe('only the configured company domains, at the login door', () => {
        question at the door is whether it is accepted today. */
     await withPassword(people.officer);
 
-    const narrower = new SignInService(accounts, new EmployeeRepository(db), {
-      domains: ['remat.tech'],
-    });
+    const narrower = new SignInService(
+      accounts,
+      new EmployeeRepository(db),
+      new RoleRepository(db),
+      recordingMailer(),
+      { domains: ['remat.tech'] },
+    );
 
     await expect(narrower.signIn(OFFICER_EMAIL, PASSWORD)).rejects.toThrow(NotACompanyEmail);
   });
@@ -534,6 +546,22 @@ describe('what the database holds whatever is writing', () => {
     expect(Object.keys(account!)).not.toContain('passwordHash');
   });
 });
+
+/**
+ * Signs in and asserts that the door actually opened.
+ *
+ * Since LMS 110 a sign in either opens the door or sends a code, and everybody in
+ * this file holds only EMPLOYEE, so it opens. Saying so through a helper rather
+ * than a cast means that if somebody makes the code mandatory for everyone, these
+ * tests fail with "expected SIGNED_IN, got CODE_SENT" rather than with a
+ * property missing from an object.
+ */
+async function signedIn(email: string, password: string): Promise<SignedIn> {
+  const outcome = await logins.signIn(email, password);
+
+  expect(outcome.status).toBe('SIGNED_IN');
+  return outcome as { status: 'SIGNED_IN' } & SignedIn;
+}
 
 /** The {@link SignInRefused} a call produced, having asserted that it produced one. */
 async function refusal(call: () => Promise<unknown>): Promise<SignInRefused> {
