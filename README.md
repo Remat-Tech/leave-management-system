@@ -377,6 +377,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 |---|---|---|
 | Employee records | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_OFFICER`, `HR_ADMIN` |
 | Searching people by number or address | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
+| The organisation chart | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Departments and working patterns | anybody signed in | `HR_ADMIN` |
 | A headcount on either | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
@@ -390,7 +391,11 @@ policy file that holds it.
 role.** `employee.managerId` is read off the record in hand, so moving a
 reporting line moves the answer with it and there is nothing to keep in step.
 Direct reports only — a skip level read is a different power nobody has asked
-for, and a subtree is a recursive query on every read of every record.
+for, and a subtree is a recursive query on every read of every record. The
+organisation chart is the same rule seen from the other end: it is the staff list
+with the lines drawn in, so it goes to the people who may read the staff list and
+not to a manager for their own branch, which would be that skip level read
+arriving through a different door.
 
 **Nobody edits their own record, however senior.** Reading yours is the point of
 the system; writing yours is what HR is for. A start date, a department and a
@@ -941,6 +946,15 @@ arrived — and `renderOrgChartAsMermaid()` for anywhere a diagram can be drawn,
 which is a pull request or a document. Both are pure functions of the tree, and so
 is the screen that eventually joins them.
 
+```bash
+npm run chart   # the fixture organisation drawn, and then broken on purpose
+```
+
+That is `server/tests/walkthrough/org-chart.ts`, and it exists because a chart is
+judged by looking at it. It builds a disposable database, draws the organisation
+at five levels, has the team lead leave, and shows what the same chart looks like
+with the leavers taken off it.
+
 **Every employee is in exactly one department, and a department is closed rather
 than deleted.** `employee.department_id` is `NOT NULL`, and `departmentId` is
 required on `NewEmployee` in the type rather than only at runtime. There is no
@@ -1210,7 +1224,8 @@ npm test              # unit
 npm run test:watch    # unit, re-running as you edit
 npm run test:int      # integration, against a disposable database
 npm run test:all      # both
-npm run walkthrough   # not a test: a narrated run of signing in
+npm run walkthrough   # not a test: narrated runs, for reading rather than for a build
+npm run chart         # one of them: the organisation chart, which needs no mail
 ```
 
 Unit tests live in `server/tests/unit` and touch no database, no network and no
@@ -1241,11 +1256,18 @@ and a forbidden one give the same answer, and that the refusals reach the log
 carrying nothing from the record.
 
 **`npm run walkthrough` is not a test and is not run by either suite.** It is
-`server/tests/walkthrough`, a narrated run of signing in — the password door, the
-code, the guesses, the leaver — against a database it builds and drops, sending
-real mail you can read in Mailpit. It prints rather than asserts, so it is for
-seeing the thing work rather than for proving it does. Start `npm run mail`
-first.
+`server/tests/walkthrough`, narrated runs against a database each builds and
+drops. They print rather than assert, so they are for seeing the thing work
+rather than for proving it does.
+
+`sign-in.ts` is the password door, the code, the guesses and the leaver, sending
+real mail you can read in Mailpit — start `npm run mail` first. `org-chart.ts` is
+FR 09 and needs no mail, so it has `npm run chart` to itself: the organisation
+drawn at five levels, then a team lead leaves and the chart says so, then the
+same organisation charted without its leavers so you can see what dropping them
+would have hidden, then a loop the database refuses and the chart draws anyway.
+A chart is a thing you judge by looking at it, which is the one thing an
+assertion cannot do.
 
 **Integration tests build their own database and throw it away.** Each run creates
 `lms_test_<random>`, applies the migrations to it, runs the suite, and drops it

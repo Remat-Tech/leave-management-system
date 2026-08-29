@@ -1,16 +1,17 @@
 import { defineConfig } from 'vitest/config';
 
 /**
- * Runs the sign in walkthrough in server/tests/walkthrough.
+ * Runs the walkthroughs in server/tests/walkthrough.
  *
- * Not a test suite. It is a narrated run of LMS 109 and LMS 110 against a real
- * database and real mail, for reading rather than for a build, and it is a
- * separate config precisely so that `npm test` and `npm run test:int` never pick
- * it up: it wants Mailpit running, it takes half a minute, and it is written to
- * print rather than to assert.
+ * Not a test suite. They are narrated runs against a real database, for reading
+ * rather than for a build, and this is a separate config precisely so that
+ * `npm test` and `npm run test:int` never pick them up: they take half a minute,
+ * one of them wants Mailpit running, and both are written to print rather than
+ * to assert.
  *
- *   npm run mail                                       # in another terminal
- *   npx vitest run --config vitest.walkthrough.mts
+ *   npm run mail          # in another terminal, for the sign in one only
+ *   npm run walkthrough   # both
+ *   npm run chart         # only the organisation chart, which needs no mail
  */
 export default defineConfig({
   test: {
