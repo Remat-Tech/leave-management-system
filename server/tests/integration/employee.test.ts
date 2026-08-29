@@ -22,6 +22,12 @@ import {
   DepartmentDeactivated,
   DepartmentNotFound,
 } from '../../src/domain/department.js';
+import {
+  concerns,
+  everybodyOn,
+  renderOrgChart,
+  renderOrgChartAsMermaid,
+} from '../../src/domain/org-chart.js';
 import { WorkPatternNotFound } from '../../src/domain/work-pattern.js';
 import { DepartmentRepository } from '../../src/repositories/department-repository.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
@@ -30,8 +36,8 @@ import { DepartmentService } from '../../src/services/department-service.js';
 import { EmployeeService } from '../../src/services/employee-service.js';
 import { seed } from '../../seeds/seed.mjs';
 import type { Kysely } from 'kysely';
-import { theSystem } from '../../src/auth/actor.js';
-import { Guard } from '../../src/auth/policy.js';
+import { signedInAs, theSystem } from '../../src/auth/actor.js';
+import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 
 /**
  * The employee record against a real database. FR 01 to FR 06, LMS 101 to
@@ -1064,6 +1070,108 @@ describe('a reporting line never loops, FR 03', () => {
 
       expect(await employees.reportingLineWarnings(system)).toEqual([]);
     });
+  });
+});
+
+describe('the reporting structure as a chart, FR 09 and LMS 107', () => {
+  /**
+   * The half of the story that needs the real organisation.
+   *
+   * The shaping is a pure function and ../unit/org-chart.test.ts proves it
+   * against organisations no database would accept — a loop, two heads, a manager
+   * who is not in the set. What is left for here is the two things only the
+   * fixtures can show: that the chart is drawn from what the table actually
+   * holds, and that the five levels the story asks for are five levels of real
+   * seeded records rather than of a fixture written to make the number come out.
+   *
+   * The seeded branch is Kwame -> Yaw -> Akosua -> Kofi -> Adwoa, with Abena
+   * beside Adwoa and Kojo the leaver below Kofi as well.
+   */
+
+  it('draws the whole organisation from one head', async () => {
+    const chart = await employees.orgChart(system);
+
+    expect(chart.roots).toHaveLength(1);
+    expect(chart.roots[0].standing).toBe('HEAD_OF_THE_ORGANISATION');
+    expect(chart.roots[0].node.employee.id).toBe(people.ceo);
+    expect(chart.roots[0].concern).toBeNull();
+  });
+
+  /* The story's second criterion, against the seeded records rather than a
+     hand written tree. */
+  it('handles the five levels the fixture organisation actually has', async () => {
+    const chart = await employees.orgChart(system);
+
+    expect(chart.depth).toBe(5);
+  });
+
+  it('puts everybody on it exactly once, the leaver included', async () => {
+    const chart = await employees.orgChart(system);
+    const everybody = await employees.list(system);
+
+    const charted = everybodyOn(chart).map((employee) => employee.id);
+
+    expect(charted).toHaveLength(everybody.length);
+    expect(new Set(charted)).toEqual(new Set(everybody.map((employee) => employee.id)));
+    expect(chart.total).toBe(everybody.length);
+  });
+
+  it('has nothing to be concerned about in a sound organisation', async () => {
+    expect(concerns(await employees.orgChart(system))).toEqual([]);
+  });
+
+  it('follows a reporting line that moves', async () => {
+    const before = await employees.orgChart(system);
+    const under = (chart: Awaited<ReturnType<typeof employees.orgChart>>, id: string) =>
+      everybodyOn(chart).filter((employee) => employee.managerId === id).length;
+
+    expect(under(before, people.teamLead)).toBeGreaterThan(0);
+
+    // The part timer moves from the team lead to the operations manager.
+    await employees.update(system, people.partTimer, { managerId: people.opsManager });
+
+    const after = await employees.orgChart(system);
+
+    expect(under(after, people.teamLead)).toBe(under(before, people.teamLead) - 1);
+    expect(under(after, people.opsManager)).toBe(under(before, people.opsManager) + 1);
+  });
+
+  /* The chart is a read of the whole organisation, so it goes to the people who
+     may read the whole organisation. The matrix of who that is belongs to
+     ../unit/policy.test.ts; what is asserted here is that the service asks. */
+  it('is refused to somebody who may not read everybody', async () => {
+    const adwoa = signedInAs(people.officer, { roles: ['EMPLOYEE'], isManager: false });
+
+    await expect(employees.orgChart(adwoa)).rejects.toBeInstanceOf(NotAuthorised);
+  });
+
+  it('renders as text a person can read, five levels deep', async () => {
+    const drawn = renderOrgChart(await employees.orgChart(system));
+    const lines = drawn.split('\n');
+
+    expect(lines[0]).toMatch(/^Kwame Asante/);
+    expect(lines).toHaveLength((await employees.list(system)).length);
+
+    /* Adwoa is at the fifth level, and the drawing says so: four characters of
+       prefix for each of the three levels between her and the head, then her own
+       corner. That the prefix is drawn at all is what makes five levels readable
+       — twelve spaces would leave nobody able to tell which manager she is under. */
+    expect(drawn).toMatch(/\n.{12}[├└]── Adwoa Frimpong/);
+
+    // And the leaver is marked rather than quietly dropped off the chart.
+    expect(drawn).toMatch(/Kojo Antwi .*left \d{4}-\d{2}-\d{2}/);
+  });
+
+  it('renders as a Mermaid flowchart with an edge per reporting line', async () => {
+    const everybody = await employees.list(system);
+    const drawn = renderOrgChartAsMermaid(await employees.orgChart(system));
+
+    expect(drawn.startsWith('flowchart TD')).toBe(true);
+
+    const edges = drawn.split('\n').filter((line) => line.includes('-->'));
+
+    // One per employee who has a manager, which is everybody but the head.
+    expect(edges).toHaveLength(everybody.length - 1);
   });
 });
 

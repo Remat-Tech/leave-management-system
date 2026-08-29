@@ -80,6 +80,7 @@ import {
   validateNewEmployee,
   warnAboutReportingLines,
 } from '../domain/employee.js';
+import { buildOrgChart, type OrgChart } from '../domain/org-chart.js';
 import { DefaultWorkPatternRequired, WorkPatternNotFound } from '../domain/work-pattern.js';
 import type { DepartmentRepository } from '../repositories/department-repository.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
@@ -504,6 +505,39 @@ export class EmployeeService {
     this.guard.enforce(employeePolicy.list(actor));
 
     return this.employees.list(options);
+  }
+
+  /**
+   * The reporting structure, as a chart. FR 09. LMS 107.
+   *
+   * The story's own method: an HR officer looking at the organisation and seeing
+   * that somebody's manager is wrong or missing, before a request is raised and
+   * routed at them. {@link reportingLineWarnings} answers the same worry as a
+   * list of sentences; this answers it as a shape, and the two catch different
+   * mistakes. A warning finds the manager who has left. Only a chart finds the
+   * new starter put under the wrong team lead, because nothing is *invalid* about
+   * that record — it is simply in the wrong place, and being in the wrong place
+   * is a thing you see rather than a thing you check.
+   *
+   * **Leavers are on it, and that is the decision worth knowing.** A chart of
+   * only the currently employed would quietly drop a manager who has left and
+   * leave their whole team hanging off nobody, which is the exact condition the
+   * story exists to catch and the one it would then hide. Every node carries the
+   * record, so a screen greys out anybody TERMINATED and the text rendering marks
+   * them; either way they are visible rather than absent.
+   *
+   * One statement, and the tree is built from it in memory. The organisation is
+   * a few hundred rows and this is not the recursive walk
+   * {@link EmployeeRepository.chainFrom} does — that one goes up one line and is
+   * a query because it must stop early, and this one is every line at once, which
+   * is every row either way. Building it here keeps the whole of the shaping in a
+   * pure function that can be tested against organisations no database would
+   * accept, loops included. See ../domain/org-chart.ts.
+   */
+  async orgChart(actor: Actor): Promise<OrgChart> {
+    this.guard.enforce(employeePolicy.chart(actor));
+
+    return buildOrgChart(await this.employees.list());
   }
 
   /**
