@@ -119,6 +119,10 @@ export interface WorkPatternDayTable {
  * point. Nothing above the database may read it and decide anything: the rules
  * are the columns, and a `WHEN code = 'MATERNITY'` anywhere is the bug the table
  * exists to prevent.
+ *
+ * One rule of a type is not a column of it. The approval chain of FR 38a is an
+ * ordered list, so it is {@link LeaveTypeApprovalStepTable} below — read and
+ * written with the type, the way a working pattern's week is.
  */
 export interface LeaveTypeTable {
   id: Generated<string>;
@@ -183,6 +187,32 @@ export interface LeaveTypeTable {
   /* Maintained by the leave_type_set_updated_at trigger, which attaches to the
      same set_updated_at() every other table uses. Never supplied by a writer. */
   updated_at: Timestamp;
+}
+
+/**
+ * Who approves a kind of leave, and in what order. FR 38a, §5.5. LMS 204.
+ *
+ * One row per stage. `step_order` is 1 for the first approver and is contiguous
+ * from there, which `leave_type_approval_chain_is_whole` holds: a chain that skips
+ * a number stops at the gap, and the request waits in a queue nobody is looking
+ * at.
+ *
+ * Written as a whole rather than edited — deleted and re-inserted inside one
+ * transaction, the way a working pattern's week is — which is why `lms_app` holds
+ * DELETE here and no UPDATE. There are no timestamps for the same reason
+ * `work_pattern_day` has none: a step is part of a chain rather than a record in
+ * its own right, and its history is the type's. The audit entries are filed under
+ * `leave_type_id`.
+ */
+export interface LeaveTypeApprovalStepTable {
+  leave_type_id: string;
+  step_order: number;
+  /* MANAGER | HR | CEO, held closed by leave_type_approval_step_role_known.
+     **Not** one of the four role codes: the chain names the desk a request goes
+     to, and how that desk is found is three different questions — a reporting
+     line, a role grant, and the one employee with no manager. See
+     ../domain/approval-chain.ts. */
+  approver_role: string;
 }
 
 /**
@@ -357,6 +387,7 @@ export interface Database {
   employee: EmployeeTable;
   leave_entitlement_rule: LeaveEntitlementRuleTable;
   leave_type: LeaveTypeTable;
+  leave_type_approval_step: LeaveTypeApprovalStepTable;
   role: RoleTable;
   user_role: UserRoleTable;
   work_pattern: WorkPatternTable;

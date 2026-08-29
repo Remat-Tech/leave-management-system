@@ -115,6 +115,13 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  /* Left as the migrations left it, which matters since LMS 204 because this is
+     no longer the only file that snapshots this table in beforeAll. A type
+     created here and not cleared would be part of ./approval-chain.test.ts's idea
+     of the statutory set when it runs second — a failure that depends on the
+     order the files happened to run in, which is the worst kind to debug. */
+  await restoreTheStatutorySet();
+
   await db?.destroy();
   await admin?.end();
 });
@@ -153,6 +160,14 @@ async function restoreTheStatutorySet(): Promise<void> {
 
   await admin.query(`SELECT setval('leave_type_id_seq', (SELECT max(id) FROM leave_type))`);
   await admin.query('SELECT ensure_statutory_entitlement_rules()');
+
+  /* And the approval chains, which the DELETE above took with the types — the
+     steps cascade, because a step is part of a type rather than a record about
+     one. LMS 204. Put back by the function that owns them for the same reason the
+     figures are: nothing in this file knows who approves unpaid leave, and
+     nothing here should. Leaving them out would hand every other suite a database
+     full of types nobody can approve leave against. */
+  await admin.query('SELECT ensure_statutory_approval_chains()');
 }
 
 async function byCode(code: string): Promise<LeaveType> {

@@ -65,10 +65,23 @@
  * closed leave years, and a column has no date on it. They are
  * `leave_entitlement_rule`.
  *
- * **No approval chain.** FR 38a, and it is a child table with a step order rather
- * than a column. See the foot of the leave-type-rules migration.
+ * ## What arrived with LMS 204
+ *
+ * **The approval chain.** FR 38a, and it is the second of the two things design
+ * principle 5 says vary by leave type. It is a field of {@link LeaveType} like
+ * every other rule — {@link LeaveType.approvalChain}, an ordered list of desks —
+ * but it is stored as its own rows and it is changed by its own operation rather
+ * than as part of an ordinary edit, so what a chain *is* lives next door in
+ * ./approval-chain.ts and only what it means for a leave type is here.
  */
 
+import {
+  type ApproverRole,
+  chainInWords,
+  DEFAULT_APPROVAL_CHAIN,
+  isApprovable,
+  validateApprovalChain,
+} from './approval-chain.js';
 import type { Gender } from './employee.js';
 
 /**
@@ -152,6 +165,15 @@ export interface NewLeaveType {
   /** FR 05. Null for a type open to everybody, which is most of them. */
   genderRestriction?: Gender | null;
   displayOrder?: number;
+  /**
+   * FR 38a. The desks a request goes to, in order. Manager then HR when nobody
+   * says otherwise — {@link DEFAULT_APPROVAL_CHAIN}.
+   *
+   * Supplied here, on the one operation where the type and its chain are written
+   * together, and nowhere else. Changing it afterwards is
+   * {@link LeaveTypeService.setApprovalChain}; see {@link LeaveTypeChanges}.
+   */
+  approvalChain?: readonly string[];
 }
 
 /**
@@ -173,8 +195,17 @@ export interface NewLeaveType {
  * a typo made on the afternoon a type was created has to be fixable by somebody
  * other than a developer, which is the whole story. The audit log is what makes
  * the difference between the two visible afterwards.
+ *
+ * `approvalChain` is not among them either, and it is the same argument `isActive`
+ * makes rather than a new one. Who signs a request off is a decision about every
+ * request that will ever be raised against the type, not a correction to what the
+ * type is, and leaving it in an ordinary edit would give that decision a second
+ * door — one that the denial log and the audit log would both record as "changed
+ * the leave type". It is {@link LeaveTypeService.setApprovalChain}, so that
+ * "the administrator took the Chief Executive out of the unpaid leave chain" is a
+ * sentence somebody can find afterwards.
  */
-export type LeaveTypeChanges = Partial<NewLeaveType>;
+export type LeaveTypeChanges = Partial<Omit<NewLeaveType, 'approvalChain'>>;
 
 /** A record as it comes back out. */
 export interface LeaveType {
@@ -196,6 +227,14 @@ export interface LeaveType {
   genderRestriction: Gender | null;
   /** FR 33. Always false, held as a column so the requirement is a constraint. */
   deductsFromAnnual: boolean;
+  /**
+   * FR 38a. The desks a request goes to, in order.
+   *
+   * Empty only for a type somebody left half configured — the database allows it
+   * and the leave-type-approval-chain migration says why — and
+   * {@link assertSomebodyApprovesIt} is where that is refused.
+   */
+  approvalChain: ApproverRole[];
   displayOrder: number;
   /** Retired types are still readable and still head every report they ever did. */
   isActive: boolean;
@@ -221,6 +260,11 @@ export interface ValidatedLeaveType {
   maxBackdateCalendarDays: number;
   genderRestriction: Gender | null;
   displayOrder: number;
+  /**
+   * FR 38a. Not a column of `leave_type` at all — the repository writes it as
+   * rows in the same transaction, the way a working pattern's week is written.
+   */
+  approvalChain: ApproverRole[];
 }
 
 /**
@@ -323,6 +367,35 @@ export class NotEligibleForLeaveType extends Error {
 }
 
 /**
+ * FR 38a. A type nobody is set up to approve, being requested.
+ *
+ * The counterpart of {@link LeaveTypeRetired}: that one is a type deliberately
+ * taken out of use, this one is a type nobody finished configuring. Telling the
+ * two apart matters to the person reading the message, because only one of them
+ * is somebody's mistake and only one of them has a fix.
+ *
+ * The state is reachable, which is why this exists. A type restored by
+ * `ensure_statutory_leave_types()` comes back without a chain — that function
+ * predates the table — and the repair is the call beside it. Refusing here rather
+ * than in the database is the decision the leave-type-approval-chain migration
+ * argues: a constraint would fire on the operator putting the type back, and this
+ * fires on the person the gap actually affects, with the answer in the message.
+ */
+export class NobodyApprovesLeaveType extends Error {
+  readonly leaveTypeId: string;
+
+  constructor(type: LeaveType) {
+    super(
+      `Nobody is set up to approve ${type.name}, so a request for it would sit in ` +
+        `no queue at all. Ask an HR Administrator to say who approves it — most ` +
+        `types go to ${chainInWords(DEFAULT_APPROVAL_CHAIN)}.`,
+    );
+    this.name = 'NobodyApprovesLeaveType';
+    this.leaveTypeId = type.id;
+  }
+}
+
+/**
  * FR 18. Dated further into the past than the type's backdating window allows.
  *
  * The one window that refuses. Its message names the escape hatch, because there
@@ -401,6 +474,12 @@ export function validateNewLeaveType(input: NewLeaveType): ValidatedLeaveType {
         ? null
         : requireOneOf('genderRestriction', input.genderRestriction, GENDERS),
     displayOrder: requireOrder(input.displayOrder ?? 0),
+    /* FR 38a. Manager then HR unless the caller said otherwise, applied here
+       rather than left to the writer for the reason every other default is: the
+       record the caller gets back is the record that was written, and a type
+       created through a form that did not mention approvals reads as the type it
+       is immediately rather than after a round trip. */
+    approvalChain: validateApprovalChain(input.approvalChain ?? DEFAULT_APPROVAL_CHAIN),
   };
 
   assertRulesAgree(validated);
@@ -721,6 +800,38 @@ export function assertStillOffered(type: LeaveType): void {
 }
 
 /**
+ * FR 38a. Whether anybody is set up to approve leave of this kind.
+ *
+ * Asked beside {@link assertStillOffered} and answered separately from it,
+ * because they are different facts with different fixes: a retired type was taken
+ * out of use on purpose, and a type with no chain is one somebody has not
+ * finished configuring. Both stop a request; only one is a mistake.
+ *
+ * Every type shipped has a chain and every type created through
+ * {@link LeaveTypeService.create} gets one, so this fires on the seam the
+ * leave-type-approval-chain migration names: a type restored by
+ * `ensure_statutory_leave_types()` without the call beside it, or one written
+ * from a psql prompt.
+ */
+export function assertSomebodyApprovesIt(type: LeaveType): void {
+  if (!isApprovable(type.approvalChain)) {
+    throw new NobodyApprovesLeaveType(type);
+  }
+}
+
+/**
+ * FR 38a. Who a request of this kind goes to, in order, as a person reads it.
+ *
+ * "your line manager then HR", or "HR then the Chief Executive". What the request
+ * form shows beside the type, so that somebody knows before they ask rather than
+ * after they have waited — the same argument ../auth/leave-type-policy.ts makes
+ * for leaving the whole table readable.
+ */
+export function approvalChainInWords(type: LeaveType): string {
+  return chainInWords(type.approvalChain);
+}
+
+/**
  * The order a form and a balance screen list types in. §7.4 orders the balance
  * read by it, so it is a decision rather than an alphabetical accident.
  */
@@ -934,6 +1045,7 @@ function asValidated(type: LeaveType): ValidatedLeaveType {
     maxBackdateCalendarDays: type.maxBackdateCalendarDays,
     genderRestriction: type.genderRestriction,
     displayOrder: type.displayOrder,
+    approvalChain: type.approvalChain,
   };
 }
 

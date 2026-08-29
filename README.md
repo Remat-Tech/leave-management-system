@@ -747,8 +747,10 @@ An append-only ledger is three triggers and no new machinery. See
 
 **Counting basis and approval chain vary by leave type.** Annual, sick and compassionate count working days; maternity and paternity count calendar days. Most types go manager then HR; unpaid leave goes HR then CEO. Both are configuration. If either appears as an `if` on a type code, that is a bug.
 
-Since LMS 201 the first half of that is a table, `leave_type`, and it is set out
-further down. The second half is FR 48 and is not built.
+Since LMS 201 the first half of that is a table, `leave_type`, and since LMS 204
+the second is `leave_type_approval_step` beside it. Both are set out further down.
+What is still not built is the routing itself — which person a chain's desk
+resolves to, and what happens when the request reaches them — which is FR 48.
 
 **Dates are dates.** Leave dates are calendar dates with no time and no timezone. Everything else is UTC. Mixing these up is the most common source of off by one day bugs in leave systems.
 
@@ -1169,11 +1171,9 @@ the person who most needs to read a notice window is the one about to miss it.
 annual leave, a hundred and twenty of maternity, three of sick — are
 `leave_entitlement_rule` and are set out below. FR 31 requires them versioned with
 an effective date and forbids them altering closed leave years, and a column has
-no date on it. The approval chain is FR 38a and `leave_type_approval_step`: an
-ordered list of steps with a role each, manager then HR for most and HR then the
-CEO for the two unpaid types. It is a child table rather than a column, so a
-nullable `approver_role` added now would be the wrong shape stored in the right
-place, which is harder to remove than nothing.
+no date on it. The approval chain is FR 38a and is not a column either: it is an
+ordered list, so it is `leave_type_approval_step`, which arrived with LMS 204 and
+is set out two sections below.
 
 ### What a leave type is worth, and from when
 
@@ -1285,6 +1285,84 @@ every fixture reload whether or not `seed.mjs` mentioned them. It names the tabl
 and calls `ensure_statutory_entitlement_rules()`, the same arrangement LMS 202
 made for the types. Nothing in that file knows what annual leave is worth, and
 nothing there should.
+
+### Who approves each kind of leave
+
+**The chain is an ordered list of rows, and it is the second half of design
+principle 5.** FR 38a, LMS 204. Most types go manager then HR; unpaid leave and
+the unpaid maternity extension go HR then CEO, with no manager stage at all —
+§4.3.1 says of both that they are "Decided by HR and the Chief Executive", which
+is an arrangement with the company rather than a request a line manager signs off.
+Nothing anywhere reads a type code to work that out, and
+`unit/migrations.test.ts` asserts that no file under `server/src` so much as names
+one.
+
+**`leave_type_approval_step` is a child table because a chain is a list.** Held as
+`approver_1_role` and `approver_2_role` it would need a migration the day somebody
+wants three stages, and a pair of nullable columns can hold a hole — a second
+approver with no first is a chain nothing can walk. As rows with a `step_order`, a
+third stage is a third row and the hole is a constraint.
+
+**The three approver roles are not the four role codes, and the two sets are
+disjoint on purpose.** A chain names a *desk*; how the person at that desk is
+found is three different questions with three different answers.
+
+| Desk | What it is | Where the answer comes from |
+|---|---|---|
+| `MANAGER` | a relationship | `employee.manager_id`. Never a grant — "Holding it as a role too would create two sources of truth that drift the moment somebody changes team" |
+| `HR` | a granted role, and in fact two of them | `HR_OFFICER` or `HR_ADMIN`. The chain names the desk, because which of the two is on duty is not something HR should have to encode |
+| `CEO` | a position | FR 04's single root: exactly one employee has no line manager, and `employee_one_root` is what makes that exactly one |
+
+Turning them into a `role_id` would have made the chain joinable to `role` and
+then silently wrong, because two of the three have no row there to join to. The
+spellings deliberately do not collide with `role.code` either: nothing can match
+`HR` against `HR_ADMIN` by accident, and `readRoleCode('MANAGER')` already refuses
+with an explanation.
+
+**The default is rows, not a fallback read.** Manager then HR, for any type that
+does not say otherwise. Reading an empty chain as "the default" at query time
+would have been the version of default HR cannot see — the configuration screen
+showing nothing for annual leave while the system routed it somewhere — so every
+type carries its chain explicitly. It is therefore stated twice, in
+`/domain/approval-chain.ts` for a type nobody configured and in the migration for
+a type an operator restores, and `integration/approval-chain.test.ts` asserts the
+two are the same two desks. Same arrangement as `READS_EVERY_RECORD` and
+`MANDATORY_ROLES`.
+
+**A chain is replaced as a whole, and `lms_app` holds `DELETE` but no `UPDATE`.**
+Moving "manager then HR" to "HR then CEO" by editing rows in place passes through
+"HR then HR" or "manager then CEO" depending on which row is written first, and
+both of those are real chains a concurrent reader would find. Delete and insert
+has no such state to read. That means an intermediate moment with no chain at all,
+which is why `leave_type_approval_chain_is_whole` is deferred — the same shape,
+and the same reason, as replacing a working pattern's week.
+
+**Changing it is its own operation with its own policy decision.**
+`LeaveTypeService.setApprovalChain`, not a field of `update`, for the reason
+retiring a type is not one either. "Changed the maternity type" and "changed who
+approves maternity leave" are different sentences, and the second is the one whose
+effect nobody sees directly: a request sent to the wrong desk does not fail, it
+waits.
+
+**A type with no chain at all is possible, and is refused at the point of
+asking.** `ensure_statutory_leave_types()` puts back a lost leave type in one
+statement and cannot know about a table written after it, so a type restored on
+its own comes back unapprovable. A constraint forbidding that would have turned
+LMS 202's documented repair into a failure, so instead there are two answers:
+`ensure_statutory_approval_chains()` is the call beside it, and
+`assertSomebodyApprovesIt()` refuses a request against such a type with a message
+saying whose job it is to fix. That is told apart from `NotEligibleForLeaveType`
+deliberately — one is somebody's mistake and the other is a fact about the person
+asking, and telling somebody they are ineligible for a type nobody finished
+configuring sends them away with the wrong problem.
+
+**What is not built.** Which *person* a desk resolves to, and what happens when
+the request gets there, is FR 48 and Phase 3 — `approverAfter()` is the walk, as a
+pure function, so that when the workflow arrives there is nothing left to decide.
+The manager who raises their own leave and has to route upwards is FR 48b, and is
+about a reporting line rather than a leave type. Cover while an approver is
+themselves away is FR 49. Parallel approval is nothing the SRS asks for and is the
+one thing `step_order` refuses outright: two rows cannot share a number.
 
 **`department.parent_id` exists and nothing writes it.** A hierarchy does not
 exist rather than half existing. A story that exposes sub-departments needs what
@@ -1514,6 +1592,26 @@ leaves an edited notice window edited, a reworded name reworded, and a retired
 type retired — and `unit/migrations.test.ts` asks the cheap half of the question
 without a database, which is that the seven come from a migration rather than
 from the fixture seed no production database runs.
+
+**`unit/approval-chain.test.ts` proves LMS 204 without ever naming a leave type.**
+Every assertion sets a chain and reads the answer back; not one of them builds a
+type called maternity and expects a chain from it, which is the only way to tell a
+system that is configured from one with the seven cases written into it.
+`unit/migrations.test.ts` guards the same property from the other end, by failing
+if any file under `server/src` contains a statutory type code at all once comments
+are stripped. `integration/approval-chain.test.ts` covers what the database
+decides: that the two unpaid types really go to HR and the Chief Executive on a
+migrated database, that the default the domain applies and the default the
+migration writes are the same two desks, that a chain cannot acquire a hole or a
+repeated desk whoever is writing, and that `lms_app` has no way to rewrite a step
+in place.
+
+The suite that empties `leave_type` has to put the chains back, and
+`integration/leave-type.test.ts` does — the steps cascade from the type, so a
+restore that stopped at the types would hand every later suite a database full of
+types nobody can approve leave against. It calls
+`ensure_statutory_approval_chains()`, as it calls the function that owns the
+figures, so that nothing in a test file knows who approves unpaid leave.
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than

@@ -397,6 +397,7 @@ describe('leave types, FR 21 and LMS 201', () => {
       expect(leaveTypePolicy.update(them, 'annual').allowed).toBe(allowed);
       expect(leaveTypePolicy.retire(them, 'annual').allowed).toBe(allowed);
       expect(leaveTypePolicy.reinstate(them, 'annual').allowed).toBe(allowed);
+      expect(leaveTypePolicy.setApprovalChain(them, 'annual').allowed).toBe(allowed);
     }
   });
 
@@ -422,6 +423,24 @@ describe('leave types, FR 21 and LMS 201', () => {
     expect(leaveTypePolicy.retire(adwoa, 'annual').action).toBe('retire');
     expect(leaveTypePolicy.reinstate(adwoa, 'annual').action).toBe('reinstate');
     expect(leaveTypePolicy.retire(adwoa, 'annual').resource).toBe('leave type');
+  });
+
+  /* And so does saying who approves a type, FR 38a and LMS 204. It is the change
+     whose effect nobody sees directly — a request sent to the wrong desk does not
+     fail, it waits — so "changed who approves maternity leave" has to be findable
+     as its own sentence rather than as another "changed the maternity type". */
+  it('name setting the approval chain apart from editing the type', () => {
+    const adwoa = employee('adwoa');
+    const efua = employee('efua', ['EMPLOYEE', 'HR_OFFICER']);
+
+    expect(leaveTypePolicy.setApprovalChain(adwoa, 'unpaid').action).toBe('set approval chain');
+    expect(leaveTypePolicy.setApprovalChain(adwoa, 'unpaid').resource).toBe('leave type');
+
+    /* Refused openly, like every other write here: somebody who can read the
+       chain already knows it exists, so there is nothing for a quiet refusal to
+       protect and a great deal for a clear one to explain. */
+    expect(leaveTypePolicy.setApprovalChain(efua, 'unpaid').allowed).toBe(false);
+    expect(leaveTypePolicy.setApprovalChain(efua, 'unpaid').told).toMatch(/HR Administrator/);
   });
 });
 

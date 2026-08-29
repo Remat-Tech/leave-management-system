@@ -5,7 +5,7 @@
  * ../domain/leave-type.ts and when to apply one is
  * ../services/leave-type-service.ts.
  *
- * Two pieces of judgement live here rather than above.
+ * Three pieces of judgement live here rather than above.
  *
  * Refusals are translated rather than allowed to surface, the same way the
  * working pattern repository does it and for the same reason: checking first and
@@ -14,15 +14,30 @@
  * actually decide, which makes the answer right even when two administrators are
  * adding the same type at the same moment.
  *
- * There is no `remove`. lms_app holds no DELETE on this table — see the
+ * A type is two tables since LMS 204, and is written as one thing. Every write
+ * that touches the approval chain opens a transaction, and a chain is replaced
+ * rather than reconciled — every step deleted, the new ones inserted — which is
+ * the arrangement the working pattern repository has with a week and is why
+ * `leave_type_approval_chain_is_whole` is deferred. Between those two statements
+ * the type has no chain at all, and at COMMIT that state does not exist.
+ *
+ * There is no `remove`. lms_app holds no DELETE on `leave_type` — see the
  * privileges section of the leave-type-rules migration — so a delete method here
  * would be a method that always fails, which is worse than one that does not
- * exist. Retiring is {@link LeaveTypeRepository.setActive}.
+ * exist. Retiring is {@link LeaveTypeRepository.setActive}. The DELETE it does
+ * hold is on `leave_type_approval_step`, which is a different thing: a step is
+ * part of a type rather than a record about one.
  */
 
 import type { Insertable, Kysely, Selectable, Updateable } from 'kysely';
 import type { Database } from '../db/index.js';
-import type { LeaveTypeTable } from '../db/schema.js';
+import type { LeaveTypeApprovalStepTable, LeaveTypeTable } from '../db/schema.js';
+import {
+  type ApproverRole,
+  chainOf,
+  InvalidApprovalChain,
+  stepsOf,
+} from '../domain/approval-chain.js';
 import type { Attribution } from '../domain/audit.js';
 import type { Gender } from '../domain/employee.js';
 import {
@@ -74,7 +89,32 @@ const CHECKED_FIELDS: Record<string, string> = {
   leave_type_name_not_blank: 'name',
 };
 
+/**
+ * What the approval chain is refused for, all of it reported as one error.
+ *
+ * A chain has one field on a form and one thing wrong with it — the desks named,
+ * or their order — so there is nothing for a {@link CHECKED_FIELDS} style mapping
+ * to say that {@link InvalidApprovalChain} does not. The database's own message
+ * is carried through, because reaching any of these means the write did not come
+ * from this repository: every chain written here is validated and numbered by
+ * ../domain/approval-chain.ts first.
+ *
+ * `leave_type_approval_chain_is_whole` is the deferred trigger, which raises with
+ * a constraint name of its own so that it is recognisable here the same way a
+ * real constraint is.
+ */
+const REFUSED_CHAINS = [
+  'leave_type_approval_chain_is_whole',
+  'leave_type_approval_step_role_known',
+  'leave_type_approval_step_order_positive',
+];
+
+/** The two unique keys on the steps: one step per position, one position per desk. */
+const STEP_ORDER_KEY = 'leave_type_approval_step_pkey';
+const ROLE_ONCE_INDEX = 'leave_type_approval_step_role_once';
+
 type LeaveTypeRow = Selectable<LeaveTypeTable>;
+type ApprovalStepRow = Selectable<LeaveTypeApprovalStepTable>;
 
 export interface LeaveTypeListOptions {
   /** Only the types a request form should offer. Everything, unless asked. */
@@ -84,14 +124,21 @@ export interface LeaveTypeListOptions {
 export class LeaveTypeRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
+  /** The type and its approval chain, or neither. */
   async create(by: Attribution, record: ValidatedLeaveType): Promise<LeaveType> {
-    return this.catchRefusals(record, async () => {
-      const row = await recording(this.db, by, (on) =>
-        on.insertInto('leave_type').values(rowFor(record)).returningAll().executeTakeFirstOrThrow(),
-      );
+    return this.catchRefusals(record, () =>
+      recording(this.db, by, async (on) => {
+        const row = await on
+          .insertInto('leave_type')
+          .values(rowFor(record))
+          .returningAll()
+          .executeTakeFirstOrThrow();
 
-      return toLeaveType(row);
-    });
+        await writeChain(on, row.id, record.approvalChain);
+
+        return { ...toLeaveType(row), approvalChain: [...record.approvalChain] };
+      }),
+    );
   }
 
   /**
@@ -126,8 +173,59 @@ export class LeaveTypeRepository {
           .executeTakeFirst(),
       );
 
-      return row === undefined ? undefined : toLeaveType(row);
+      return row === undefined ? undefined : this.withChain(row);
     });
+  }
+
+  /**
+   * Replaces the approval chain. FR 38a.
+   *
+   * Separate from {@link update} rather than a field of it, for the reason
+   * {@link setActive} is separate: it is a decision about every request that will
+   * ever be raised against the type rather than a correction to what the type is,
+   * and the audit log should say which of the two happened.
+   *
+   * The chain is replaced rather than reconciled step by step. There is nothing
+   * to preserve in a step row and no history kept in one — the history is the
+   * audit entries, which are filed under the type — and reconciling would have to
+   * pass through an intermediate chain that is a real chain: rewriting 'manager
+   * then HR' to 'HR then CEO' in place is 'HR then HR' or 'manager then CEO' for
+   * a statement, depending on which row moves first. Deleting and inserting has
+   * no such state to be read, which is why `lms_app` holds DELETE on the steps and
+   * no UPDATE.
+   *
+   * `leave_type` itself is touched so that `updated_at` moves. "When did this last
+   * change" is asked of a type whose requests went to the wrong desk, and the
+   * chain is exactly the part most likely to be behind it — the same reason the
+   * working pattern repository touches the pattern when only the week changed.
+   *
+   * Returns undefined if there is no such type.
+   */
+  async setApprovalChain(
+    by: Attribution,
+    id: string,
+    chain: readonly ApproverRole[],
+  ): Promise<LeaveType | undefined> {
+    return this.catchRefusals({}, () =>
+      recording(this.db, by, async (on) => {
+        const row = await on
+          .updateTable('leave_type')
+          .set((eb) => ({ code: eb.ref('code') }))
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirst();
+
+        if (row === undefined) {
+          return undefined;
+        }
+
+        await on.deleteFrom('leave_type_approval_step').where('leave_type_id', '=', id).execute();
+
+        await writeChain(on, id, chain);
+
+        return { ...toLeaveType(row), approvalChain: [...chain] };
+      }),
+    );
   }
 
   /**
@@ -148,7 +246,7 @@ export class LeaveTypeRepository {
         .executeTakeFirst(),
     );
 
-    return row === undefined ? undefined : toLeaveType(row);
+    return row === undefined ? undefined : this.withChain(row);
   }
 
   async findById(id: string): Promise<LeaveType | undefined> {
@@ -158,7 +256,7 @@ export class LeaveTypeRepository {
       .where('id', '=', id)
       .executeTakeFirst();
 
-    return row === undefined ? undefined : toLeaveType(row);
+    return row === undefined ? undefined : this.withChain(row);
   }
 
   /**
@@ -177,7 +275,7 @@ export class LeaveTypeRepository {
       .where((eb) => eb(eb.fn('upper', ['code']), '=', code.trim().toUpperCase()))
       .executeTakeFirst();
 
-    return row === undefined ? undefined : toLeaveType(row);
+    return row === undefined ? undefined : this.withChain(row);
   }
 
   async findByName(name: string): Promise<LeaveType | undefined> {
@@ -187,7 +285,7 @@ export class LeaveTypeRepository {
       .where((eb) => eb(eb.fn('lower', ['name']), '=', name.trim().toLowerCase()))
       .executeTakeFirst();
 
-    return row === undefined ? undefined : toLeaveType(row);
+    return row === undefined ? undefined : this.withChain(row);
   }
 
   /**
@@ -205,7 +303,46 @@ export class LeaveTypeRepository {
       query = query.where('is_active', '=', true);
     }
 
-    return (await query.orderBy('display_order').orderBy('name').execute()).map(toLeaveType);
+    const rows = await query.orderBy('display_order').orderBy('name').execute();
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    /* One statement for every type's chain rather than one per type, the way the
+       working pattern repository reads a list of weeks. The database is usually a
+       Neon branch at the end of a network, where the round trip costs far more
+       than the work. */
+    const steps = await this.db
+      .selectFrom('leave_type_approval_step')
+      .selectAll()
+      .where(
+        'leave_type_id',
+        'in',
+        rows.map((row) => row.id),
+      )
+      .execute();
+
+    const byType = new Map<string, ApprovalStepRow[]>();
+    for (const step of steps) {
+      byType.set(step.leave_type_id, [...(byType.get(step.leave_type_id) ?? []), step]);
+    }
+
+    return rows.map((row) => ({
+      ...toLeaveType(row),
+      approvalChain: toApprovalChain(byType.get(row.id) ?? []),
+    }));
+  }
+
+  /** A type row with the chain that belongs to it. */
+  private async withChain(row: LeaveTypeRow): Promise<LeaveType> {
+    const steps = await this.db
+      .selectFrom('leave_type_approval_step')
+      .selectAll()
+      .where('leave_type_id', '=', row.id)
+      .execute();
+
+    return { ...toLeaveType(row), approvalChain: toApprovalChain(steps) };
   }
 
   private async catchRefusals<T>(
@@ -226,7 +363,28 @@ export class LeaveTypeRepository {
         }
       }
 
+      if (violation?.code === UNIQUE_VIOLATION) {
+        if (violation.constraint === ROLE_ONCE_INDEX || violation.constraint === STEP_ORDER_KEY) {
+          /* Reachable only from outside this repository — every write here sends
+             a whole chain, validated, and numbers it itself. Reported as what it
+             is rather than dressed up as something this file decided. */
+          throw new InvalidApprovalChain(
+            error instanceof Error
+              ? error.message
+              : 'The approval chain names the same approver twice.',
+          );
+        }
+      }
+
       if (violation?.code === CHECK_VIOLATION) {
+        if (REFUSED_CHAINS.includes(violation.constraint)) {
+          throw new InvalidApprovalChain(
+            error instanceof Error
+              ? error.message
+              : `The approval chain breaks ${violation.constraint}.`,
+          );
+        }
+
         const field = CHECKED_FIELDS[violation.constraint];
 
         if (field !== undefined) {
@@ -331,14 +489,62 @@ function changedColumnsOf(changes: Partial<ValidatedLeaveType>): Updateable<Leav
 }
 
 /**
- * A row as the domain sees it.
+ * The steps a chain is stored as, written in one statement.
+ *
+ * The numbering comes from {@link stepsOf}, so a gap cannot be introduced from
+ * this side; `leave_type_approval_chain_is_whole` is the same rule for every
+ * other writer. Called on the handle {@link recording} gave, never on `this.db`,
+ * because the writer's name lives on that one connection.
+ */
+async function writeChain(
+  on: Kysely<Database>,
+  leaveTypeId: string,
+  chain: readonly ApproverRole[],
+): Promise<void> {
+  if (chain.length === 0) {
+    return;
+  }
+
+  await on
+    .insertInto('leave_type_approval_step')
+    .values(
+      stepsOf(chain).map((step) => ({
+        leave_type_id: leaveTypeId,
+        step_order: step.stepOrder,
+        approver_role: step.approverRole,
+      })),
+    )
+    .execute();
+}
+
+/**
+ * A chain read back out of its rows, in order.
+ *
+ * Ordered by {@link chainOf} rather than by the query, so that the one read which
+ * forgets an ORDER BY cannot silently reverse who signs off first. The roles come
+ * back as the strings the database holds, cast rather than parsed, for the reason
+ * the closed sets on `leave_type` are: `leave_type_approval_step_role_known` makes
+ * a value outside the set impossible on any connection.
+ */
+function toApprovalChain(steps: readonly ApprovalStepRow[]): ApproverRole[] {
+  return chainOf(
+    steps.map((step) => ({
+      stepOrder: step.step_order,
+      approverRole: step.approver_role as ApproverRole,
+    })),
+  );
+}
+
+/**
+ * A row as the domain sees it, without the chain, which is read separately and
+ * merged by the caller.
  *
  * The three closed sets come back as the strings the database holds, cast rather
  * than parsed. The CHECK constraints are what make that safe — a value outside
  * the set cannot be in the column on any connection — and a parse here would be a
  * second copy of the same list, drifting.
  */
-function toLeaveType(row: LeaveTypeRow): LeaveType {
+function toLeaveType(row: LeaveTypeRow): Omit<LeaveType, 'approvalChain'> {
   return {
     id: row.id,
     code: row.code,
