@@ -42,8 +42,8 @@ export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE';
 /**
  * The tables an entry can be about.
  *
- * The same six the audit-log migration attaches a trigger to, and the
- * integration suite asserts the two agree — a table given a trigger and not
+ * The same ones the migrations attach a trigger to, and the integration suite
+ * asserts the two agree — a table given a trigger and not
  * named here is a table whose history nothing can read, and a name here with no
  * trigger is a promise of history that was never recorded.
  *
@@ -57,6 +57,10 @@ export const AUDITED_ENTITIES = [
   'work_pattern_day',
   'app_user',
   'user_role',
+  /* LMS 201. Every change here changes what leave costs and who may take it, for
+     everybody, without touching a single employee record — which is the class of
+     change this log was built for rather than an afterthought to it. */
+  'leave_type',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];

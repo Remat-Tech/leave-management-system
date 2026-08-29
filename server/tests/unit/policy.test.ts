@@ -15,6 +15,7 @@ import {
   ROLE_CODES,
   SETS_UP_THE_ORGANISATION,
 } from '../../src/auth/roles.js';
+import { leaveTypePolicy } from '../../src/auth/leave-type-policy.js';
 import { signInPolicy } from '../../src/auth/sign-in-policy.js';
 import { workPatternPolicy } from '../../src/auth/work-pattern-policy.js';
 import { denialsNowhere } from '../../src/auth/denials.js';
@@ -341,6 +342,58 @@ describe('departments and working patterns', () => {
 
     expect(departmentPolicy.close(adwoa, 'operations').told).toMatch(/HR Administrator/);
     expect(workPatternPolicy.update(adwoa, 'standard').told).toMatch(/HR Administrator/);
+  });
+});
+
+describe('leave types, FR 21 and LMS 201', () => {
+  /* The third resource that is about the shape of the organisation rather than
+     about a person, and it runs like the other two. What is worth asserting
+     separately is the read, because the temptation with this one was to make the
+     whole resource an HR Administrator's — the story is theirs — and that would
+     have been wrong in the direction that matters. */
+  it('are readable by anybody signed in, because the rules are what people plan against', () => {
+    for (const [, roles] of EACH_ROLE) {
+      const them = employee('adwoa', roles);
+
+      expect(leaveTypePolicy.read(them, 'annual').allowed).toBe(true);
+      expect(leaveTypePolicy.list(them).allowed).toBe(true);
+    }
+  });
+
+  it('are written by an HR Administrator and nobody else', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      const them = employee('adwoa', roles);
+      const allowed = SETS_UP_THE_ORGANISATION.includes(code);
+
+      expect(leaveTypePolicy.create(them).allowed).toBe(allowed);
+      expect(leaveTypePolicy.update(them, 'annual').allowed).toBe(allowed);
+      expect(leaveTypePolicy.retire(them, 'annual').allowed).toBe(allowed);
+      expect(leaveTypePolicy.reinstate(them, 'annual').allowed).toBe(allowed);
+    }
+  });
+
+  /* An HR Officer is the one to be deliberate about. They create employee
+     records and hand out logins all day, and they still may not move a notice
+     window — because that is a decision about what leave costs everybody rather
+     than about one person's record. */
+  it("are not an HR Officer's to change, though almost everything else is", () => {
+    const officer = employee('efua', ['EMPLOYEE', 'HR_OFFICER']);
+
+    expect(leaveTypePolicy.read(officer, 'annual').allowed).toBe(true);
+    expect(leaveTypePolicy.update(officer, 'annual').allowed).toBe(false);
+    expect(leaveTypePolicy.update(officer, 'annual').told).toMatch(/HR Administrator/);
+  });
+
+  /* Retiring gets its own decision so the log says which of the two happened.
+     "Changed the maternity type" and "stopped anybody requesting maternity
+     leave" are not the same sentence. */
+  it('name retiring apart from editing, so the denial log does too', () => {
+    const adwoa = employee('adwoa');
+
+    expect(leaveTypePolicy.update(adwoa, 'annual').action).toBe('update');
+    expect(leaveTypePolicy.retire(adwoa, 'annual').action).toBe('retire');
+    expect(leaveTypePolicy.reinstate(adwoa, 'annual').action).toBe('reinstate');
+    expect(leaveTypePolicy.retire(adwoa, 'annual').resource).toBe('leave type');
   });
 });
 

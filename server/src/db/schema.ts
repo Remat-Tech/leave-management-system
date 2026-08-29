@@ -107,6 +107,85 @@ export interface WorkPatternDayTable {
 }
 
 /**
+ * A leave type and the rules it carries. FR 21, FR 31, FR 32, §5.5. LMS 201.
+ *
+ * Every column but the first three is a rule that differs between annual leave
+ * and maternity leave, held as data so that adding or changing a type is a row
+ * rather than a release. What each one means is ../domain/leave-type.ts; the
+ * constraints that make a nonsense row impossible are the leave-type-rules
+ * migration.
+ *
+ * `code` is a stable handle for reports and imports and is **not** a branch
+ * point. Nothing above the database may read it and decide anything: the rules
+ * are the columns, and a `WHEN code = 'MATERNITY'` anywhere is the bug the table
+ * exists to prevent.
+ */
+export interface LeaveTypeTable {
+  id: Generated<string>;
+  code: string;
+  name: string;
+  description: string | null;
+  /* FR 21 and FR 22. WORKING_DAYS | CALENDAR_DAYS. Whether the working pattern is
+     consulted when counting a request at all. */
+  counting_basis: string;
+  /* FR 32g. QUOTA | EVENT — the TDD's is_quota_based as a named pair. Whether the
+     year rollover opens a leave_balance row, or the grant arrives with the event.
+     The figure either way is leave_entitlement_rule, which carries the effective
+     dates FR 31 requires. */
+  entitlement_basis: string;
+  /* FALSE for unpaid leave and the unpaid maternity extension. Nothing in the
+     ledger turns on it yet; the report of FR 63 groups by it. */
+  is_paid: Generated<boolean>;
+  /* DAYS | WEEKS | MONTHS. How the allowance is expressed — "4 months, 120 days"
+     — never how it is counted. Everything is counted in whole days, FR 24. */
+  unit: Generated<string>;
+  /* FR 13. NOT_REQUIRED | ALWAYS | AFTER_DAYS, judged on the length of the
+     request. Not the sick leave rule; see exceedable_with_document. */
+  documentation: Generated<string>;
+  /* NOT NULL exactly when the rule is AFTER_DAYS, which
+     leave_type_documentation_agrees holds from both sides. Unset on every type
+     the migration ships. */
+  documentation_after_days: number | null;
+  /* FR 32a. TRUE for sick leave alone: exceeding the balance asks for a medical
+     certificate rather than refusing, so the allowance is a documentation
+     threshold and not a cap. §8.6b — sick balances go negative, and that is
+     correct. */
+  exceedable_with_document: Generated<boolean>;
+  /* FR 32e. Months after the qualifying event an unused grant lapses. Paternity's
+     six, and nothing else today. **Not carry over**: unused annual days rolling
+     forward is FR 36 and lives on leave_entitlement_rule. */
+  entitlement_expiry_months: number | null;
+  /* §8.6aa. Whether one grant may be drawn down by several requests. TRUE
+     everywhere today, maternity included — the column exists so a future type
+     that must be continuous can say so. */
+  may_be_split: Generated<boolean>;
+  /* FR 17. Calendar days, 14 for annual leave and 0 for everything else. A
+     threshold for a warning: short notice is acknowledged and allowed through. */
+  min_notice_calendar_days: Generated<number>;
+  /* FR 18. Calendar days after the fact, 7 everywhere. This one refuses; beyond
+     it only HR may enter the record, with a reason. */
+  max_backdate_calendar_days: Generated<number>;
+  /* FR 05. MALE | FEMALE, or null for a type open to everybody. The one place in
+     the schema that reads employee.gender, and the reason that column is
+     nullable rather than required. */
+  gender_restriction: string | null;
+  /* FR 33. Always false, and leave_type_never_deducts_from_annual makes that a
+     constraint rather than the TDD's comment. Nothing writes it. */
+  deducts_from_annual: ColumnType<boolean, never, never>;
+  /* §7.4 orders the balance read by it, so the order a form lists types in is a
+     decision rather than an alphabetical accident. */
+  display_order: Generated<number>;
+  /* Retired, never deleted: a type is the heading every request and ledger entry
+     is filed under. lms_app holds no DELETE on this table, which is what makes
+     that true for every writer rather than only for the service. */
+  is_active: Generated<boolean>;
+  created_at: Timestamp;
+  /* Maintained by the leave_type_set_updated_at trigger, which attaches to the
+     same set_updated_at() every other table uses. Never supplied by a writer. */
+  updated_at: Timestamp;
+}
+
+/**
  * The sign in account. NFR SEC 01, LMS 109.
  *
  * One row per employee who may sign in, and the address on it is that employee's
@@ -222,6 +301,7 @@ export interface Database {
   audit_log: AuditLogTable;
   department: DepartmentTable;
   employee: EmployeeTable;
+  leave_type: LeaveTypeTable;
   role: RoleTable;
   user_role: UserRoleTable;
   work_pattern: WorkPatternTable;

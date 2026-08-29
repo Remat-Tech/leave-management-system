@@ -379,6 +379,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Searching people by number or address | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | The organisation chart | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Departments and working patterns | anybody signed in | `HR_ADMIN` |
+| Leave types and the rules they carry | anybody signed in | `HR_ADMIN` |
 | A headcount on either | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
@@ -742,6 +743,9 @@ An append-only ledger is three triggers and no new machinery. See
 
 **Counting basis and approval chain vary by leave type.** Annual, sick and compassionate count working days; maternity and paternity count calendar days. Most types go manager then HR; unpaid leave goes HR then CEO. Both are configuration. If either appears as an `if` on a type code, that is a bug.
 
+Since LMS 201 the first half of that is a table, `leave_type`, and it is set out
+further down. The second half is FR 48 and is not built.
+
 **Dates are dates.** Leave dates are calendar dates with no time and no timezone. Everything else is UTC. Mixing these up is the most common source of off by one day bugs in leave systems.
 
 The two rules, said plainly, because almost every such bug is the two being
@@ -1054,6 +1058,92 @@ where they do not. FR 37a settles a leaver's final figure by counting days
 against the week they worked, so their pattern is still load bearing after they
 have gone.
 
+**Every rule that differs between annual leave and maternity leave is a column
+of `leave_type`.** FR 21, FR 31, FR 32 and §5.5. FR 31 puts it in the strongest
+terms the SRS uses — "No leave rule shall require a code change or a deployment"
+— and design principle 5 of the Technical Design Document says what happens if
+that is not honoured: "If either is written as an `if` on a type code, every
+future leave type becomes a code change."
+
+| Column | What it decides | Why it is not an assumption |
+|---|---|---|
+| `counting_basis` | WORKING_DAYS or CALENDAR_DAYS — whether the working pattern is consulted at all | a weekend inside a fortnight off is free for annual leave and is not for maternity. FR 21, FR 22 |
+| `entitlement_basis` | QUOTA or EVENT — whether the year rollover opens a `leave_balance` row | "you have three days left" means nothing about a bereavement. FR 32g |
+| `is_paid` | which column of the liability report it lands in | FR 63; the two unpaid types are the exception |
+| `unit` | DAYS, WEEKS or MONTHS — how the allowance is *said* | "4 months, 120 days" reads as months and is counted in days. FR 24 |
+| `documentation` + `documentation_after_days` | whether *this request* needs something attached, always or past a length | FR 13 |
+| `exceedable_with_document` | whether exceeding the *yearly balance* asks for evidence instead of refusing | FR 32a: sick leave's three days is "a documentation threshold, not a hard cap" |
+| `entitlement_expiry_months` | how long after the event an unused grant lapses | FR 32e; paternity's six months, and **not** carry over |
+| `may_be_split` | whether one grant may be drawn down by several requests | §8.6aa; true everywhere today, maternity included |
+| `min_notice_calendar_days` | how much notice is *expected* | FR 17; fourteen for annual leave, nothing elsewhere |
+| `max_backdate_calendar_days` | how late it may still be entered | FR 18; seven everywhere |
+| `gender_restriction` | who is eligible | FR 05, and the reason `employee.gender` is nullable rather than required |
+| `deducts_from_annual` | nothing, ever | FR 33, as a CHECK rather than the TDD's "must stay FALSE" comment |
+
+**`code` is a handle, never a branch.** It is what a report from last year and a
+staff import column join on, so it survives HR rewording "Annual Leave" to
+"Vacation". Nothing above the database may read it and decide anything.
+`unit/leave-type.test.ts` ends by configuring two types with the same code and
+opposite rules and asserting they behave oppositely, which is design principle 5
+stated as something that can fail.
+
+**Notice warns; backdating refuses.** The two windows look symmetrical and are
+not, and this is the pair most likely to be got backwards. FR 17: a short notice
+annual leave request is warned about, acknowledged, and *allowed through*,
+"since whether short notice is workable is a judgement for the approvers". FR 18:
+beyond the backdating window the employee may not enter the record at all and
+"only HR may enter the record, with a reason". So `noticeShortfall()` returns a
+number and `assertWithinBackdatingWindow()` throws. Annual leave carries both
+windows at once — fourteen days of notice and seven of backdating — so any rule
+holding them to be mutually exclusive would make the one type everybody uses
+unconfigurable.
+
+**A documentation threshold is not a balance threshold.** `AFTER_DAYS` asks for a
+document when *this request* is longer than n days. `exceedable_with_document`
+asks for one when the request would take the *yearly balance* past its allowance.
+Sick leave is the second: FR 32a makes its three days the point at which evidence
+is demanded rather than a cap, so a four day absence by somebody who has taken
+none all year needs nothing, and the ninth day of the year needs a certificate.
+§8.6b spells out the consequence — sick balances go negative, and that is correct.
+
+**One pair of fields may not disagree, and it is held twice.** `documentation`
+and `documentation_after_days` describe one rule between them, and either can be
+set without the other. The domain names the field and says what to do; the
+constraint makes the row impossible for every writer, including a migration and a
+psql prompt. Neither is redundant: one is a message and the other is a guarantee.
+
+**The seven types of FR 32 are reference data, inserted by the migration and not
+by the seed.** The same argument the standard Monday to Friday week settled: a
+production database is migrated and never seeded, and a leave system with no
+leave types is one where nobody can request anything at all. It is not the
+opposite of "never waits on a developer" — it is what makes it safe, because
+every column of every row is editable from the first minute. The guard is a
+`NOT EXISTS` on the name, so a database where HR has already reworded one keeps
+their version.
+
+**A type is retired, never deleted, and `lms_app` holds no DELETE on the table.**
+A type is the heading every request, ledger entry and report of either is filed
+under, so removing the row rewrites history in the way FR 06 refuses for an
+employee. There is no foreign key pointing at `leave_type` yet, which is exactly
+why the privilege matters now: once `leave_request` exists the key will refuse
+most deletions on its own, and the row nobody has used yet would still be
+deletable today.
+
+**Reading a type is open to anybody signed in; writing one is an HR
+Administrator's.** The temptation was to make the whole resource theirs, because
+the story is theirs. That would have been wrong in the direction that matters:
+the person who most needs to read a notice window is the one about to miss it.
+
+**What deliberately is not there.** The entitlement *figures* — twenty days of
+annual leave, a hundred and twenty of maternity, three of sick — are
+`leave_entitlement_rule`. FR 31 requires them versioned with an effective date and
+forbids them altering closed leave years, and a column has no date on it. The
+approval chain is FR 38a and `leave_type_approval_step`: an ordered list of steps
+with a role each, manager then HR for most and HR then the CEO for the two unpaid
+types. It is a child table rather than a column, so a nullable `approver_role`
+added now would be the wrong shape stored in the right place, which is harder to
+remove than nothing.
+
 **`department.parent_id` exists and nothing writes it.** A hierarchy does not
 exist rather than half existing. A story that exposes sub-departments needs what
 FR 03 and FR 04 gave reporting lines — a cycle check and a root count — because a
@@ -1246,6 +1336,19 @@ nobody has written yet: any column typed `timestamp without time zone`, any
 there. `unit/time.test.ts` covers the pure half, and `unit/migrations.test.ts`
 asks the same question of the SQL so the answer arrives in a second rather than a
 minute.
+
+**`unit/leave-type.test.ts` is where LMS 201 is proved and
+`integration/leave-type.test.ts` is what stops it being proved against itself.**
+The rules are pure functions, so what a threshold means and which fields may not
+disagree are settled without a database. What needs one is the half the database
+decides: that the seven types of FR 32 really are on a migrated database and
+really have the shapes §4.3.1 gives them, that the constraints refuse a row
+written straight to the table on the owner connection, that `lms_app` has no way
+to delete a type, and that every change is one audit entry naming the
+administrator who made it. That suite restores the table from a snapshot taken
+before any test touched it, rather than from a list written out in the file —
+otherwise the first assertion would be checking the migration against a copy of
+itself.
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than
