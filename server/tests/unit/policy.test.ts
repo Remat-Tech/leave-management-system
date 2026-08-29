@@ -15,6 +15,8 @@ import {
   ROLE_CODES,
   SETS_UP_THE_ORGANISATION,
 } from '../../src/auth/roles.js';
+import { entitlementRulePolicy } from '../../src/auth/entitlement-rule-policy.js';
+import type { EntitlementRule } from '../../src/domain/entitlement-rule.js';
 import { leaveTypePolicy } from '../../src/auth/leave-type-policy.js';
 import { signInPolicy } from '../../src/auth/sign-in-policy.js';
 import { workPatternPolicy } from '../../src/auth/work-pattern-policy.js';
@@ -75,6 +77,32 @@ function record(id: string, managerId: string | null = 'kwame'): Employee {
     gender: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+  };
+}
+
+/**
+ * An entitlement rule, with only the two fields the policy reads set honestly.
+ *
+ * The policy asks which of the three scopes a rule is on and nothing else — a
+ * figure is public unless it names a person — so everything else is filler.
+ */
+function entitlementRule(overrides: Partial<EntitlementRule> = {}): EntitlementRule {
+  return {
+    id: 'annual-2026',
+    leaveTypeId: 'annual',
+    employeeId: null,
+    departmentId: null,
+    entitlementDays: 20,
+    prorateOnJoin: false,
+    carriesOver: false,
+    carryoverMaxDays: null,
+    carryoverExpiryMonth: null,
+    effectiveFrom: '2026-01-01',
+    effectiveTo: null,
+    note: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
   };
 }
 
@@ -394,6 +422,95 @@ describe('leave types, FR 21 and LMS 201', () => {
     expect(leaveTypePolicy.retire(adwoa, 'annual').action).toBe('retire');
     expect(leaveTypePolicy.reinstate(adwoa, 'annual').action).toBe('reinstate');
     expect(leaveTypePolicy.retire(adwoa, 'annual').resource).toBe('leave type');
+  });
+});
+
+describe('entitlement figures, FR 31 and LMS 203', () => {
+  /* The first configuration table with a person-shaped field on it, so it is the
+     first one where "readable by anybody signed in" is not the whole answer. The
+     policy reads the row rather than the table. */
+  const companyWide = entitlementRule({ id: 'annual-2026' });
+  const forOperations = entitlementRule({ id: 'ops-2026', departmentId: 'operations' });
+  const forAdwoa = entitlementRule({ id: 'adwoa-2026', employeeId: 'adwoa' });
+
+  it('let anybody read a company figure, because it is what people plan against', () => {
+    for (const [, roles] of EACH_ROLE) {
+      const them = employee('kwame', roles);
+
+      expect(entitlementRulePolicy.read(them, companyWide).allowed).toBe(true);
+      expect(entitlementRulePolicy.read(them, forOperations).allowed).toBe(true);
+    }
+  });
+
+  /* "Kwame gets twenty five" is a fact about Kwame's contract, not a rule
+     everybody plans against, and the refusal says nothing — being told that rule
+     41 is not yours is being told rule 41 is somebody's. */
+  it('keep a figure naming a person to that person and to HR', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      const somebodyElse = employee('kwame', roles);
+      const allowed = READS_EVERY_RECORD.includes(code);
+
+      expect(entitlementRulePolicy.read(somebodyElse, forAdwoa).allowed).toBe(allowed);
+    }
+
+    expect(entitlementRulePolicy.read(employee('adwoa'), forAdwoa).allowed).toBe(true);
+    expect(entitlementRulePolicy.read(employee('kwame'), forAdwoa).told).toBeNull();
+  });
+
+  it('keep the whole list back, because a list of exceptions names who has one', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      const them = employee('kwame', roles);
+
+      expect(entitlementRulePolicy.list(them).allowed).toBe(READS_EVERY_RECORD.includes(code));
+    }
+  });
+
+  /* Somebody's own figure is theirs by right, their manager approves their leave
+     and cannot decide it blind, and everybody else is refused without being told
+     the person exists. Direct reports only, as everywhere else. */
+  it('let somebody, their manager and HR ask what they are entitled to', () => {
+    const adwoa = record('adwoa', 'kofi');
+
+    expect(entitlementRulePolicy.entitlementOf(employee('adwoa'), adwoa).allowed).toBe(true);
+    expect(entitlementRulePolicy.entitlementOf(manager('kofi'), adwoa).allowed).toBe(true);
+    expect(entitlementRulePolicy.entitlementOf(employee('abena'), adwoa).allowed).toBe(false);
+    expect(entitlementRulePolicy.entitlementOf(employee('abena'), adwoa).told).toBeNull();
+
+    for (const [code, roles] of EACH_ROLE) {
+      const them = employee('abena', roles);
+
+      expect(entitlementRulePolicy.entitlementOf(them, adwoa).allowed).toBe(
+        READS_EVERY_RECORD.includes(code),
+      );
+    }
+  });
+
+  it('are set by an HR Administrator and nobody else', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      const them = employee('kwame', roles);
+      const allowed = SETS_UP_THE_ORGANISATION.includes(code);
+
+      expect(entitlementRulePolicy.create(them).allowed).toBe(allowed);
+      expect(entitlementRulePolicy.correct(them, 'annual-2027').allowed).toBe(allowed);
+      expect(entitlementRulePolicy.withdraw(them, 'annual-2027').allowed).toBe(allowed);
+    }
+  });
+
+  /* Three decisions rather than one, so the denial log says which was attempted.
+     "Added a rule", "corrected next January's figure" and "withdrew it" are three
+     different sentences about somebody's pay. */
+  it('name adding, correcting and withdrawing apart, so the denial log does too', () => {
+    const adwoa = employee('adwoa');
+
+    expect(entitlementRulePolicy.create(adwoa).action).toBe('create');
+    expect(entitlementRulePolicy.correct(adwoa, '1').action).toBe('correct');
+    expect(entitlementRulePolicy.withdraw(adwoa, '1').action).toBe('withdraw');
+    expect(entitlementRulePolicy.create(adwoa).resource).toBe('entitlement rule');
+  });
+
+  it('refuse a write openly, because the company figures are not a secret', () => {
+    expect(entitlementRulePolicy.create(employee('adwoa')).told).toMatch(/HR Administrator/);
+    expect(entitlementRulePolicy.correct(employee('adwoa'), '1').told).toMatch(/HR Administrator/);
   });
 });
 

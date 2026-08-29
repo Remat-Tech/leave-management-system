@@ -380,6 +380,10 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | The organisation chart | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Departments and working patterns | anybody signed in | `HR_ADMIN` |
 | Leave types and the rules they carry | anybody signed in | `HR_ADMIN` |
+| A company or department entitlement figure | anybody signed in | `HR_ADMIN` |
+| An entitlement figure naming a person | that person, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` |
+| What one person is entitled to | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | — |
+| The whole list of entitlement figures | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | A headcount on either | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
@@ -1163,13 +1167,124 @@ the person who most needs to read a notice window is the one about to miss it.
 
 **What deliberately is not there.** The entitlement *figures* — twenty days of
 annual leave, a hundred and twenty of maternity, three of sick — are
-`leave_entitlement_rule`. FR 31 requires them versioned with an effective date and
-forbids them altering closed leave years, and a column has no date on it. The
-approval chain is FR 38a and `leave_type_approval_step`: an ordered list of steps
-with a role each, manager then HR for most and HR then the CEO for the two unpaid
-types. It is a child table rather than a column, so a nullable `approver_role`
-added now would be the wrong shape stored in the right place, which is harder to
-remove than nothing.
+`leave_entitlement_rule` and are set out below. FR 31 requires them versioned with
+an effective date and forbids them altering closed leave years, and a column has
+no date on it. The approval chain is FR 38a and `leave_type_approval_step`: an
+ordered list of steps with a role each, manager then HR for most and HR then the
+CEO for the two unpaid types. It is a child table rather than a column, so a
+nullable `approver_role` added now would be the wrong shape stored in the right
+place, which is harder to remove than nothing.
+
+### What a leave type is worth, and from when
+
+**Every figure carries two dates, and that is the whole of the difference between
+`leave_entitlement_rule` and `leave_type`.** FR 31, LMS 203. The type says what
+*kind* of arithmetic applies; the rule says what number goes into it, and from
+which day. The failure the dates prevent is silent: raise annual leave from twenty
+to twenty two next January without them and every balance ever calculated is now
+calculated against twenty two, last year's included, and nobody finds out until
+somebody with a payslip disagrees.
+
+**Changing a figure is adding a row.** HR writes "twenty two, effective from 1
+January 2027" and the twenty day rule stays exactly where it is, still answering
+every question about the days it covered. The old rule does not have to be closed
+off first — both are open ended, both cover 2027, and the later start wins — which
+matters because a second operation is one that can be forgotten, and a forgotten
+one leaves a year with no figure at all.
+
+**Resolution is most specific, then latest.** A rule naming this employee beats
+one naming their department, which beats one naming nobody; within a rung, the
+latest `effective_from` that has arrived wins. Three rungs, because nothing
+narrower than a person exists and nothing sits between a department and everybody.
+Naming both an employee and a department is refused rather than resolved — a
+person is already in exactly one department, so a rule naming both is either
+saying the same thing twice or contradicting itself.
+
+`leave_entitlement_rule_one_per_scope_and_day` is what makes that an answer rather
+than a preference: once the scope and the starting day are fixed there is at most
+one row, so the two sort keys cannot tie. It is a `NULLS NOT DISTINCT` index,
+which is doing real work — both scope columns are null on every company-wide rule,
+and under the default rule two nulls are not equal, so the scope that matters most
+would have been the one scope with no uniqueness at all.
+
+**It is implemented once, and the once is a pure function.**
+`resolve()` in `/domain/entitlement-rule.ts`. The repository fetches the
+candidates for a person and a type and orders nothing; there is no view, and
+`integration/entitlement-rule.test.ts` asserts there is none. The obvious query —
+narrow by day, order by specificity and date, take the first — is an `ORDER BY
+LIMIT 1` that looks like an optimisation and is a second copy of the rule, in the
+one place that cannot be unit tested. The cost of not writing it is a handful of
+rows crossing the wire.
+
+**Three things keep a closed year closed, and it takes all three.**
+
+*There is no undated question.* `resolve()` takes a day and there is no overload
+that does not, so a caller cannot hold "the figure" as a single number.
+
+*A rule that has taken effect is never rewritten.* Not by the service and not by
+anybody: `leave_entitlement_rule_in_effect_is_history` is a trigger, so a
+correction typed at a psql prompt at half past six is refused too. Two things may
+still happen to such a rule and nothing else may — its `note` may be improved,
+because explaining a figure does not change it, and its `effective_to` may be set
+or moved, but never to a day before today. Those last two look symmetrical and are
+not: ending a rule is how a standing policy stops, and ending it retroactively is
+the same silent rewrite by another route, because every day between the new end
+and today has already been counted against this figure.
+
+*A new rule may not reach back into a closed year.* This is the one the database
+cannot decide, because a closed leave year is a row in a table that arrives with
+LMS 205. It is held one level up as `assertDoesNotReachIntoAClosedYear`, which
+takes the boundary as an argument the way `worksOn` takes a weekday — the domain
+knows the rule, the caller brings the fact. Until `leave_year` exists the caller
+brings `NOTHING_IS_CLOSED_YET`, which is a truthful statement rather than a stub:
+on go live the whole of 2026 is open, and entering the current policy from 1
+January is exactly what HR has to be able to do.
+
+**A draft may be edited and deleted; this is the one configuration table with a
+`DELETE` grant.** A rule dated to start next January has produced nothing, heads
+nothing and has been calculated from by nobody, so fixing it in place is honest
+and removing one entered by mistake is better than leaving it to fire on the first
+of the month. The moment it starts applying the trigger refuses both, so the
+privilege is only ever exercised on drafts. That is the opposite of the decision
+`leave_type` and `employee` made, and the difference is that neither of those has
+a state in which deleting it is harmless.
+
+**Reading a company figure is open; reading a personal one is not.** This is the
+first configuration table with a person-shaped field on it, so the policy reads the
+row rather than the table. "Annual leave is twenty days" is what everybody plans
+against. "Kwame gets twenty five" is a fact about Kwame's contract, and the refusal
+says nothing at all — being told that rule 41 is not yours is being told rule 41 is
+somebody's. A department rule is open, deliberately: "the field staff get twenty
+five" is a policy about a job. The whole *list* is HR's, because a list of
+exceptions is a list of who has one, and somebody's own figure reaches them through
+their balance instead.
+
+**The figures on a migrated database.** Twenty working days of annual leave, three
+of sick, five of compassionate, a hundred and twenty calendar days of maternity,
+fourteen of paternity — all effective from 1 January 2026, the leave year the
+system goes live in. Everything before that date resolves to no rule at all, which
+is the honest answer: this system holds no entitlement history from before it
+existed. Annual leave is the only one that is pro rated for a joiner and the only
+one that carries over, uncapped and without expiry, which is FR 36a said as two
+unset columns rather than as a policy nobody wrote down.
+
+Two of the seven types have **no rule, which is not the same as a rule of zero**.
+Unpaid leave is agreed occasion by occasion rather than accrued, so a standing
+allowance would be a fiction. The unpaid maternity extension is "a further month",
+which the entitlement table does not give in days, and turning a month into thirty
+by arithmetic nobody signed off would be worse than leaving HR one row to write.
+Zero is a decision that something is worth nothing; no rule is the absence of one,
+and `resolve()` returns `undefined` rather than throwing so that every caller has
+to notice the difference.
+
+**The fixture seed clears this table and calls the migration to refill it.** A
+rule may name an employee, so the table has a foreign key to `employee`, and
+`TRUNCATE ... CASCADE` empties every referencing table wholesale rather than the
+rows that point at what was cleared — so the statutory figures would vanish on
+every fixture reload whether or not `seed.mjs` mentioned them. It names the table
+and calls `ensure_statutory_entitlement_rules()`, the same arrangement LMS 202
+made for the types. Nothing in that file knows what annual leave is worth, and
+nothing there should.
 
 **`department.parent_id` exists and nothing writes it.** A hierarchy does not
 exist rather than half existing. A story that exposes sub-departments needs what
@@ -1376,6 +1491,19 @@ administrator who made it. That suite restores the table from a snapshot taken
 before any test touched it, rather than from a list written out in the file —
 otherwise the first assertion would be checking the migration against a copy of
 itself.
+
+**`unit/entitlement-rule.test.ts` is where LMS 203 is proved, and it is the story's
+fourth criterion made good.** "Resolution logic implemented once and unit tested
+hard" has two halves: that there is one implementation, and that it is tested
+without a database. The resolution tests are written to fail if the rule is ever
+reduced to "the latest row wins" or "the narrowest row wins" alone — most of them
+carry a rule that would win under one key and lose under the other, and one has a
+company figure written *after* a personal one and still losing to it.
+`integration/entitlement-rule.test.ts` covers what the database decides: that the
+figures are on a migrated database with their dates, that a rule which has taken
+effect refuses to be rewritten by the owner connection as well as by the service,
+that the fixture reload puts the statutory figures back — and that no view has
+appeared to resolve the rule a second time.
 
 That snapshot earns its keep twice over in LMS 202. A type deleted and then put
 back by `ensure_statutory_leave_types()` is compared against it column by column,

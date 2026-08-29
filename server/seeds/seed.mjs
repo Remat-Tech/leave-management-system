@@ -44,8 +44,26 @@ export const SCENARIOS = ['base', 'lone-hr'];
  * behind would leave every integration run reading the previous run's history.
  * A production database is migrated and never seeded, so nothing here can reach
  * a real audit log.
+ *
+ * `leave_entitlement_rule` is here since LMS 203 and is not owned by this file at
+ * all, which is why it is named rather than left to happen.
+ *
+ * A rule may name an employee, so the table has a foreign key to `employee` — and
+ * TRUNCATE ... CASCADE empties every referencing table wholesale rather than the
+ * rows that actually point at what was cleared. The statutory figures would
+ * therefore disappear on every fixture reload whether or not this list mentioned
+ * them; naming it here makes that deliberate, and restoreReferenceData() below
+ * puts the figures back by calling the function the migration owns them with.
+ * Nothing in this file knows what annual leave is worth, and nothing here should.
  */
-const SEEDED_TABLES = ['audit_log', 'user_role', 'app_user', 'employee', 'department'];
+const SEEDED_TABLES = [
+  'audit_log',
+  'user_role',
+  'app_user',
+  'employee',
+  'department',
+  'leave_entitlement_rule',
+];
 
 /**
  * Loads the fixture set. Clears what it owns first, so running it twice gives
@@ -63,6 +81,8 @@ export async function seed(db, { scenario = 'base' } = {}) {
   try {
     await db.query(`TRUNCATE ${SEEDED_TABLES.join(', ')} RESTART IDENTITY CASCADE`);
 
+    await restoreReferenceData(db);
+
     const departments = await insertDepartments(db);
     const patterns = await insertWorkPatterns(db);
     const people = await insertEmployees(db, { departments, patterns, scenario });
@@ -74,6 +94,30 @@ export async function seed(db, { scenario = 'base' } = {}) {
     await db.query('ROLLBACK');
     throw error;
   }
+}
+
+/**
+ * Puts back the reference data the truncate above took with it. LMS 203.
+ *
+ * One call, and deliberately not a list of figures. The seven leave types and the
+ * figures they carry belong to the migrations — LMS 202 and LMS 203 — and a copy
+ * of "annual leave is twenty days" in this file would be a second source for a
+ * number that has to have exactly one. `ensure_statutory_entitlement_rules()`
+ * inserts what is missing and leaves alone anything HR has since set, so calling
+ * it on a database where nothing was lost does nothing at all.
+ *
+ * The leave types themselves survive the truncate — nothing this file clears is
+ * referenced by them — so they need no equivalent call. If that ever changes,
+ * `ensure_statutory_leave_types()` is the one to add beside this.
+ *
+ * This is an owner connection, which the function requires: EXECUTE on both is
+ * revoked from PUBLIC, because restoring reference data is an operator's job and
+ * not something the application should be able to do by being connected.
+ *
+ * @param {import('pg').Client} db
+ */
+async function restoreReferenceData(db) {
+  await db.query('SELECT ensure_statutory_entitlement_rules()');
 }
 
 async function insertDepartments(db) {

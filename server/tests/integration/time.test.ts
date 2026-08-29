@@ -139,15 +139,27 @@ describe('the columns', () => {
 
   /* A list rather than a rule, and it is meant to be edited. Every column here is
      a day somebody's leave is counted from, so a new one is a decision worth
-     making on purpose — the same reason AUDITED_ENTITIES is a list. Phase 2 and
-     Phase 3 will add the start and end of a leave request and the boundaries of a
-     leave year; adding them here is the moment to check each is a `date`. */
-  it('the two dates there are today are the ones expected', async () => {
+     making on purpose — the same reason AUDITED_ENTITIES is a list. Phase 3 will
+     add the start and end of a leave request; adding them here is the moment to
+     check each is a `date`.
+
+     The two from LMS 203 are also the two that the naming rule above would not
+     have caught: `effective_from` and `effective_to` are days without saying so in
+     their names, and this list is what stands behind them. They are days rather
+     than moments because an entitlement changes on a date — "twenty two days from
+     1 January" — and a `timestamptz` would carry a zone that moved it to the
+     second of January for anybody who set it from London. */
+  it('the four dates there are today are the ones expected', async () => {
     const dates = (await temporalColumns())
       .filter((column) => column.data_type === 'date')
       .map((column) => `${column.table_name}.${column.column_name}`);
 
-    expect(dates).toEqual(['employee.exit_date', 'employee.start_date']);
+    expect(dates).toEqual([
+      'employee.exit_date',
+      'employee.start_date',
+      'leave_entitlement_rule.effective_from',
+      'leave_entitlement_rule.effective_to',
+    ]);
   });
 });
 
