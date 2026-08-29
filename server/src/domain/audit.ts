@@ -61,6 +61,11 @@ export const AUDITED_ENTITIES = [
      everybody, without touching a single employee record — which is the class of
      change this log was built for rather than an afterthought to it. */
   'leave_type',
+  /* LMS 203. The figures, with the dates that keep last year's answers still. A
+     rule in effect cannot be rewritten at all, so most of what lands here is a
+     rule being added — which is exactly the entry a disputed balance is settled
+     against: who raised the allowance, when, and from what. */
+  'leave_entitlement_rule',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];

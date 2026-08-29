@@ -296,11 +296,66 @@ export interface AuditLogTable {
   actor_employee_id: ColumnType<string | null, never, never>;
 }
 
+/**
+ * What a leave type is worth, and from when. FR 31, §5.5. LMS 203.
+ *
+ * The figures the leave type deliberately does not carry, each with the two dates
+ * FR 31 requires. Changing one is a new row with a later `effective_from`, never
+ * an edit: the entitlement-rule-effective-dates migration has a trigger that
+ * refuses to let a rule which has already applied be rewritten by any writer,
+ * which is what makes a closed leave year safe from this morning's decision.
+ *
+ * Nothing here answers "what is annual leave worth" — only "what is annual leave
+ * worth on this day, to this person". The picking between rows is
+ * ../domain/entitlement-rule.ts and is written once; there is no view and no
+ * `ORDER BY ... LIMIT 1` in the repository doing it a second time.
+ */
+export interface LeaveEntitlementRuleTable {
+  id: Generated<string>;
+  leave_type_id: string;
+  /* The scope, and at most one of them is set — leave_entitlement_rule_scope_is_
+     one_thing refuses both, since an employee is already in one department. Both
+     null is the rule for everybody, which is what the statutory figures are. */
+  employee_id: string | null;
+  department_id: string | null;
+  /* Whole days, FR 24. Per leave year where the type is QUOTA and per qualifying
+     occurrence where it is EVENT — a hundred and twenty days of maternity is per
+     confinement. Zero is a decision that this is worth nothing; no rule at all is
+     the absence of one, which is what unpaid leave has. */
+  entitlement_days: number;
+  /* FR 29. Whether a joiner's first year is a proportion of the figure. Read only
+     for QUOTA types; the formula is LMS 013 and is applied by LMS 215. */
+  prorate_on_join: Generated<boolean>;
+  /* FR 36. Whether unused days survive the year end. Annual leave alone today,
+     and the column that keeps the rollover job from branching on a type code. */
+  carries_over: Generated<boolean>;
+  /* FR 36a. How many carried days survive, null for uncapped; the month whatever
+     carried lapses in, null for never. Both meaningless where nothing carries,
+     which leave_entitlement_rule_carryover_agrees holds from both sides. */
+  carryover_max_days: number | null;
+  carryover_expiry_month: number | null;
+  /* Inclusive both ends. `YYYY-MM-DD`, never an instant: an entitlement changes
+     on a day, and a moment would carry a zone that moves it. NFR DAT 03. */
+  effective_from: string;
+  /* Null for a standing rule with no end in sight, which is what an ordinary
+     policy looks like. */
+  effective_to: string | null;
+  /* Why the rule exists, in HR's words. The only field of a rule already in
+     effect that may still be edited: explaining a figure better does not change
+     it. */
+  note: string | null;
+  created_at: Timestamp;
+  /* Maintained by the leave_entitlement_rule_set_updated_at trigger, which
+     attaches to the same set_updated_at() every other table uses. */
+  updated_at: Timestamp;
+}
+
 export interface Database {
   app_user: AppUserTable;
   audit_log: AuditLogTable;
   department: DepartmentTable;
   employee: EmployeeTable;
+  leave_entitlement_rule: LeaveEntitlementRuleTable;
   leave_type: LeaveTypeTable;
   role: RoleTable;
   user_role: UserRoleTable;

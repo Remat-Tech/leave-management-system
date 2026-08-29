@@ -169,9 +169,16 @@ describe('the seven leave types are reference data', () => {
     expect(owner).not.toMatch(/ON\s+CONFLICT/i);
   });
 
+  /* The fixture seed may name these tables — since LMS 203 it has to, because it
+     truncates one of them and calls the migration's function to put the reference
+     data back — but it may never carry the data itself. A type or a figure written
+     out in that file is a second source for something that has to have exactly
+     one, and it would hold only on a machine somebody had seeded. */
   it('are not owned by the fixture seed, which no production database runs', () => {
     const fixtures = readFileSync(join(process.cwd(), 'server', 'seeds', 'seed.mjs'), 'utf8');
 
-    expect(fixtures).not.toMatch(/leave_type/i);
+    expect(fixtures).not.toMatch(/INSERT\s+INTO\s+leave_type\b/i);
+    expect(fixtures).not.toMatch(/INSERT\s+INTO\s+leave_entitlement_rule\b/i);
+    expect(fixtures).not.toMatch(/'(ANNUAL|SICK|COMPASSIONATE|MATERNITY|PATERNITY)'/);
   });
 });

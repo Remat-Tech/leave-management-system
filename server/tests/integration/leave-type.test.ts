@@ -133,6 +133,15 @@ async function restoreTheStatutorySet(): Promise<void> {
   const columns = Object.keys(statutory[0]).filter((column) => column !== 'updated_at');
   const placeholders = columns.map((_column, index) => `$${index + 1}`).join(', ');
 
+  /* Since LMS 203 the entitlement figures point at these rows, and the key has no
+     cascade — which is the guarantee that table gives leave_type, so they have to
+     go first. TRUNCATE rather than DELETE, for the same reason the fixture seed
+     truncates the audit log: a rule that has taken effect refuses to be deleted by
+     anybody, which is FR 31 working, and emptying a table on purpose on the owner
+     connection is not the thing that refusal exists to prevent. The figures are
+     put back at the foot of this function by the function that owns them, so no
+     figure in this suite comes from a copy written here. */
+  await admin.query('TRUNCATE leave_entitlement_rule RESTART IDENTITY');
   await admin.query('DELETE FROM leave_type');
 
   for (const row of statutory) {
@@ -143,6 +152,7 @@ async function restoreTheStatutorySet(): Promise<void> {
   }
 
   await admin.query(`SELECT setval('leave_type_id_seq', (SELECT max(id) FROM leave_type))`);
+  await admin.query('SELECT ensure_statutory_entitlement_rules()');
 }
 
 async function byCode(code: string): Promise<LeaveType> {
@@ -344,6 +354,16 @@ describe('putting the statutory set back, LMS 202', () => {
     return rows[0].inserted;
   }
 
+  /* What losing a type looks like since LMS 203: the figures go first, because
+     leave_entitlement_rule points at the type and the key has no cascade — the FK
+     now doing the job the withheld DELETE privilege was standing in for. They are
+     truncated rather than deleted because a rule that has taken effect refuses to
+     be deleted at all; see restoreTheStatutorySet above. */
+  async function loseTheType(code: string): Promise<void> {
+    await admin.query('TRUNCATE leave_entitlement_rule RESTART IDENTITY');
+    await admin.query('DELETE FROM leave_type WHERE code = $1', [code]);
+  }
+
   async function leaveTypeEntries(): Promise<{ action: string; actor: string }[]> {
     const { rows } = await admin.query<{ action: string; actor: string }>(
       `SELECT action, actor FROM audit_log WHERE entity = 'leave_type' ORDER BY occurred_at, id`,
@@ -371,7 +391,7 @@ describe('putting the statutory set back, LMS 202', () => {
      the same thing, and the repair for either is otherwise an INSERT typed at a
      psql prompt. */
   it('puts back a type that has gone missing, in the shape §4.3.1 gives it', async () => {
-    await admin.query(`DELETE FROM leave_type WHERE code = 'COMPASSIONATE'`);
+    await loseTheType('COMPASSIONATE');
 
     expect(await ensureTheStatutoryTypes()).toBe(1);
 
@@ -383,7 +403,7 @@ describe('putting the statutory set back, LMS 202', () => {
   });
 
   it('offers it again in its own place in the list rather than at the end', async () => {
-    await admin.query(`DELETE FROM leave_type WHERE code = 'MATERNITY'`);
+    await loseTheType('MATERNITY');
     await ensureTheStatutoryTypes();
 
     expect((await types.list(system)).map((type) => type.code)).toEqual([
@@ -433,7 +453,7 @@ describe('putting the statutory set back, LMS 202', () => {
   /* NFR AUD 01. A leave type reappearing is a configuration change, and "not
      named by the writer" is a true but thin answer to where it came from. */
   it('names itself in the audit log as the writer of a type it put back', async () => {
-    await admin.query(`DELETE FROM leave_type WHERE code = 'UNPAID'`);
+    await loseTheType('UNPAID');
     await ensureTheStatutoryTypes();
 
     expect(await leaveTypeEntries()).toEqual([
@@ -449,7 +469,7 @@ describe('putting the statutory set back, LMS 202', () => {
     await admin.query(`SET lms.audit.actor = 'Ama Mensah, at a psql prompt'`);
 
     try {
-      await admin.query(`DELETE FROM leave_type WHERE code = 'PATERNITY'`);
+      await loseTheType('PATERNITY');
       await ensureTheStatutoryTypes();
 
       expect((await leaveTypeEntries()).at(-1)).toEqual({

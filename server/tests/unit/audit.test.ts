@@ -63,6 +63,7 @@ describe('the entities an entry can be about', () => {
       'app_user',
       'user_role',
       'leave_type',
+      'leave_entitlement_rule',
     ]);
   });
 });
