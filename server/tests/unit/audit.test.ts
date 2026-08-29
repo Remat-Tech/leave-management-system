@@ -62,6 +62,7 @@ describe('the entities an entry can be about', () => {
       'work_pattern_day',
       'app_user',
       'user_role',
+      'leave_type',
     ]);
   });
 });
