@@ -1117,9 +1117,36 @@ by the seed.** The same argument the standard Monday to Friday week settled: a
 production database is migrated and never seeded, and a leave system with no
 leave types is one where nobody can request anything at all. It is not the
 opposite of "never waits on a developer" — it is what makes it safe, because
-every column of every row is editable from the first minute. The guard is a
-`NOT EXISTS` on the name, so a database where HR has already reworded one keeps
-their version.
+every column of every row is editable from the first minute.
+
+**Since LMS 202 the set has an owner as well as an origin.** The insert in the
+leave-type-rules migration ran against a table created four statements earlier
+and can never run again, so what it establishes is that a database migrated in
+order *started out* right. `ensure_statutory_leave_types()`, from the
+seven-leave-types migration, is the same seven rows as something with a name:
+run again, it inserts whatever is missing and returns how many. That matters in
+the three places reference data actually goes missing — a restore from a backup
+taken before the type existed, a row deleted by somebody holding the owner's
+password, a branch brought up from a partial dump — where the repair would
+otherwise be seven rows retyped at a psql prompt.
+
+Three things about it are load bearing. **It inserts and never updates**, because
+reconciling the rows back to the shipped values would take away exactly what
+FR 31 gives: HR's reworded name, HR's notice window and HR's retired type all
+survive it running. **It is guarded on the code as well as the name**, which the
+original insert was not and did not need to be — both identifiers are unique
+without regard to case, so a name-only guard is refused by
+`leave_type_code_unique` on the first database where somebody had reworded
+"Annual Leave" to "Vacation", which is the database that has been used the most.
+**It names itself in the audit log**, keeping a caller's name where one was given
+and putting the setting back afterwards, so that a type which reappeared says
+where it came from rather than "not named by the writer".
+
+`EXECUTE` is revoked from `PUBLIC`. `lms_app` holds `INSERT` on the table and
+could write these rows one at a time through the service, so this withholds no
+power it has elsewhere; it keeps seven rows from being one call away from
+anything that happens to be connected. Restoring reference data is an operator's
+job, done knowingly.
 
 **A type is retired, never deleted, and `lms_app` holds no DELETE on the table.**
 A type is the heading every request, ledger entry and report of either is filed
@@ -1349,6 +1376,16 @@ administrator who made it. That suite restores the table from a snapshot taken
 before any test touched it, rather than from a list written out in the file —
 otherwise the first assertion would be checking the migration against a copy of
 itself.
+
+That snapshot earns its keep twice over in LMS 202. A type deleted and then put
+back by `ensure_statutory_leave_types()` is compared against it column by column,
+which is the one comparison worth making: the reference set now exists in two
+migrations, and this is what stops the two quietly disagreeing about what a leave
+type is. The rest of that story is the things the function refuses to do — it
+leaves an edited notice window edited, a reworded name reworded, and a retired
+type retired — and `unit/migrations.test.ts` asks the cheap half of the question
+without a database, which is that the seven come from a migration rather than
+from the fixture seed no production database runs.
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than
