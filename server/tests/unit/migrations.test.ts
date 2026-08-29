@@ -119,3 +119,59 @@ describe('columns that hold a time', () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * Which side of the line reference data sits on. LMS 202, and LMS 106 before it.
+ *
+ * A production database is migrated and never seeded, so anything the system
+ * cannot run without belongs to a migration: the roles, the standard Monday to
+ * Friday week, and the seven leave types of FR 32. The fixture set in
+ * server/seeds is the opposite thing — an organisation with the awkward cases in
+ * it, reloaded and thrown away — and a leave type that arrived from there would
+ * be a leave system that worked on every machine except the real one.
+ *
+ * The story's third criterion is "seed runs as a migration, not by hand", and
+ * this is the half of it that can be checked without a database. That the seven
+ * are really on a migrated database, and really have the shapes §4.3.1 gives
+ * them, is ../integration/leave-type.test.ts.
+ */
+describe('the seven leave types are reference data', () => {
+  const migrations = files.map((file) => readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
+
+  /* An insert inside the file that creates the table proves a database started
+     out right and can never run again. The set has an owner as well: a function
+     that puts back whatever is missing, so that the repair for a lost type is a
+     call rather than seven rows retyped at a psql prompt. */
+  const owner = migrations.find((sql) =>
+    /CREATE\s+FUNCTION\s+ensure_statutory_leave_types/i.test(sql),
+  );
+
+  it('are inserted by a migration, and by one that can be run again', () => {
+    expect(migrations.some((sql) => /INSERT\s+INTO\s+leave_type\b/i.test(sql))).toBe(true);
+    expect(owner).toBeDefined();
+    expect(owner).toMatch(/INSERT\s+INTO\s+leave_type\b/i);
+  });
+
+  /* Guarded on both identifiers, because both are unique without regard to case
+     and either being taken means somebody already has this type under a spelling
+     of their own. A guard reading only the name is refused by
+     leave_type_code_unique on the first database where HR reworded one. */
+  it('are put back only where neither the name nor the code is already taken', () => {
+    expect(owner).toMatch(/lower\(\s*existing\.name\s*\)/i);
+    expect(owner).toMatch(/upper\(\s*existing\.code\s*\)/i);
+  });
+
+  /* It inserts and it never updates. Editing a type without waiting on a
+     developer is FR 31, so a repair that reconciled the rows back to the values
+     shipped here would take that away. */
+  it('are never rewritten by the migration that puts them back', () => {
+    expect(owner).not.toMatch(/UPDATE\s+leave_type\b/i);
+    expect(owner).not.toMatch(/ON\s+CONFLICT/i);
+  });
+
+  it('are not owned by the fixture seed, which no production database runs', () => {
+    const fixtures = readFileSync(join(process.cwd(), 'server', 'seeds', 'seed.mjs'), 'utf8');
+
+    expect(fixtures).not.toMatch(/leave_type/i);
+  });
+});

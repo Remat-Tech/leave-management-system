@@ -313,6 +313,172 @@ describe('the seven types of FR 32', () => {
   });
 });
 
+/**
+ * The set as something that can be put back, rather than something that was put
+ * there once. LMS 202.
+ *
+ * The insert in the leave-type-rules migration ran against a table created four
+ * statements earlier and can never run again, so what it proves is that a
+ * database migrated in order started out right. `ensure_statutory_leave_types()`
+ * is the same seven rows as a thing with a name, and what has to be true of it is
+ * mostly what it refuses to do: it puts back what is missing, it leaves every
+ * edit HR has made exactly where it is, and it does not fall over on the one
+ * database that has been used enough for somebody to have reworded a type.
+ */
+describe('putting the statutory set back, LMS 202', () => {
+  /* Everything except the three columns that are about the row rather than about
+     the rule. A repaired type is compared against the snapshot taken before any
+     test ran — that is, against what the *other* copy of this reference data
+     produced — so the two can never quietly disagree about what a leave type is. */
+  const ABOUT_THE_ROW = new Set(['id', 'created_at', 'updated_at']);
+
+  function theRuleItself(row: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(row).filter(([column]) => !ABOUT_THE_ROW.has(column)));
+  }
+
+  async function ensureTheStatutoryTypes(): Promise<number> {
+    const { rows } = await admin.query<{ inserted: number }>(
+      'SELECT ensure_statutory_leave_types() AS inserted',
+    );
+
+    return rows[0].inserted;
+  }
+
+  async function leaveTypeEntries(): Promise<{ action: string; actor: string }[]> {
+    const { rows } = await admin.query<{ action: string; actor: string }>(
+      `SELECT action, actor FROM audit_log WHERE entity = 'leave_type' ORDER BY occurred_at, id`,
+    );
+
+    return rows;
+  }
+
+  /* The state every already migrated database is in, and the state this file
+     leaves a fresh one in a statement after it ran. Doing nothing has to be
+     genuinely nothing: not a no-op insert, not an audit entry, not a bumped
+     updated_at on a row somebody is about to read a notice window off. */
+  it('does nothing at all where the seven are already there', async () => {
+    const before = await admin.query('SELECT * FROM leave_type ORDER BY id');
+
+    expect(await ensureTheStatutoryTypes()).toBe(0);
+
+    const after = await admin.query('SELECT * FROM leave_type ORDER BY id');
+    expect(after.rows).toEqual(before.rows);
+    expect(await leaveTypeEntries()).toEqual([]);
+  });
+
+  /* The case the story exists for. lms_app cannot do this — it holds no DELETE
+     on the table — but the owner can, a restore from an old backup amounts to
+     the same thing, and the repair for either is otherwise an INSERT typed at a
+     psql prompt. */
+  it('puts back a type that has gone missing, in the shape §4.3.1 gives it', async () => {
+    await admin.query(`DELETE FROM leave_type WHERE code = 'COMPASSIONATE'`);
+
+    expect(await ensureTheStatutoryTypes()).toBe(1);
+
+    const { rows } = await admin.query(`SELECT * FROM leave_type WHERE code = 'COMPASSIONATE'`);
+    const original = statutory.find((row) => row.code === 'COMPASSIONATE');
+
+    expect(rows).toHaveLength(1);
+    expect(theRuleItself(rows[0] as Record<string, unknown>)).toEqual(theRuleItself(original!));
+  });
+
+  it('offers it again in its own place in the list rather than at the end', async () => {
+    await admin.query(`DELETE FROM leave_type WHERE code = 'MATERNITY'`);
+    await ensureTheStatutoryTypes();
+
+    expect((await types.list(system)).map((type) => type.code)).toEqual([
+      'ANNUAL',
+      'SICK',
+      'COMPASSIONATE',
+      'MATERNITY',
+      'PATERNITY',
+      'UNPAID',
+      'MAT_EXT_UNPAID',
+    ]);
+  });
+
+  /* The reason the guard reads the code as well as the name, and the one failure
+     that would have arrived only on a database somebody had been using. HR
+     rewording 'Annual Leave' to 'Vacation' is the exact thing `code` exists to
+     survive; a guard that asked only about the name would find it free, offer the
+     row, and be refused by leave_type_code_unique. */
+  it('leaves a type HR has reworded alone rather than adding a second under its code', async () => {
+    await admin.query(`UPDATE leave_type SET name = 'Vacation' WHERE code = 'ANNUAL'`);
+
+    expect(await ensureTheStatutoryTypes()).toBe(0);
+
+    const { rows } = await admin.query<{ name: string }>(
+      `SELECT name FROM leave_type WHERE upper(code) = 'ANNUAL'`,
+    );
+
+    expect(rows).toEqual([{ name: 'Vacation' }]);
+  });
+
+  /* It inserts and it never updates. Editing a type without waiting on a
+     developer is the whole of FR 31, so reconciling the rows back to these values
+     would take away the thing the table exists to give. */
+  it('does not undo an edit an administrator made', async () => {
+    const ama = signedInAs(people.headOfHr, { roles: ['EMPLOYEE', 'HR_ADMIN'], isManager: false });
+    const annual = await byCode('ANNUAL');
+
+    await types.update(ama, annual.id, { minNoticeCalendarDays: 21 });
+    await types.retire(ama, (await byCode('UNPAID')).id);
+
+    expect(await ensureTheStatutoryTypes()).toBe(0);
+
+    expect((await byCode('ANNUAL')).minNoticeCalendarDays).toBe(21);
+    expect((await byCode('UNPAID')).isActive).toBe(false);
+  });
+
+  /* NFR AUD 01. A leave type reappearing is a configuration change, and "not
+     named by the writer" is a true but thin answer to where it came from. */
+  it('names itself in the audit log as the writer of a type it put back', async () => {
+    await admin.query(`DELETE FROM leave_type WHERE code = 'UNPAID'`);
+    await ensureTheStatutoryTypes();
+
+    expect(await leaveTypeEntries()).toEqual([
+      { action: 'DELETE', actor: 'not named by the writer' },
+      { action: 'CREATE', actor: 'ensure_statutory_leave_types()' },
+    ]);
+  });
+
+  /* And gives the name back when there was one. A caller who said who they were
+     is not overwritten, and the setting is left exactly as it was found — this
+     runs inside somebody else's transaction often enough for that to matter. */
+  it('keeps the name of a caller who gave one, and puts the setting back', async () => {
+    await admin.query(`SET lms.audit.actor = 'Ama Mensah, at a psql prompt'`);
+
+    try {
+      await admin.query(`DELETE FROM leave_type WHERE code = 'PATERNITY'`);
+      await ensureTheStatutoryTypes();
+
+      expect((await leaveTypeEntries()).at(-1)).toEqual({
+        action: 'CREATE',
+        actor: 'Ama Mensah, at a psql prompt',
+      });
+
+      const { rows } = await admin.query<{ actor: string }>(
+        `SELECT current_setting('lms.audit.actor', true) AS actor`,
+      );
+      expect(rows[0].actor).toBe('Ama Mensah, at a psql prompt');
+    } finally {
+      await admin.query(`RESET lms.audit.actor`);
+    }
+  });
+
+  /* Restoring reference data is an operator's, done knowingly. lms_app holds
+     INSERT on the table and could write these rows one at a time through the
+     service, so this withholds no power it has elsewhere — it keeps seven rows
+     from being one function call away from anybody who is merely connected. */
+  it('belongs to the owner rather than to the application', async () => {
+    const { rows } = await admin.query<{ may: boolean }>(
+      `SELECT has_function_privilege('lms_app', 'ensure_statutory_leave_types()', 'EXECUTE') AS may`,
+    );
+
+    expect(rows[0].may).toBe(false);
+  });
+});
+
 describe('adding a type, which is the story', () => {
   it('stores every rule and reads it back, offered from the moment it exists', async () => {
     /* Study leave is the type §5.5's own code comment lists and the seed does
