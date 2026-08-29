@@ -182,3 +182,79 @@ describe('the seven leave types are reference data', () => {
     expect(fixtures).not.toMatch(/'(ANNUAL|SICK|COMPASSIONATE|MATERNITY|PATERNITY)'/);
   });
 });
+
+/**
+ * Where the approval chains live. FR 38a, LMS 204.
+ *
+ * The same side of the same line as the seven types and the figures they carry:
+ * a production database is migrated and never seeded, and a leave system where
+ * nobody is set up to approve anything is one where every request waits forever.
+ *
+ * What is checked here is the half that can be checked without a database — that
+ * the chains are a migration's, that they have an owner that can put them back,
+ * and that the owner refuses to rewrite a chain HR has since changed. That the
+ * chains really are on a migrated database, and that unpaid leave really goes to
+ * HR and the Chief Executive, is ../integration/approval-chain.test.ts.
+ */
+describe('the approval chains of FR 38a are reference data', () => {
+  const migrations = files.map((file) => readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
+
+  const owner = migrations.find((sql) =>
+    /CREATE\s+FUNCTION\s+ensure_statutory_approval_chains/i.test(sql),
+  );
+
+  it('are written by a migration, and by one that can be run again', () => {
+    expect(owner).toBeDefined();
+    expect(owner).toMatch(/INSERT\s+INTO\s+leave_type_approval_step\b/i);
+  });
+
+  /* It gives a chain to a type that has none and never touches a type that has
+     one. FR 31 gives the chain to HR, so a repair that reconciled the rows back
+     to the shipped values would take that away the first time somebody added the
+     Chief Executive to the compassionate leave chain. */
+  it('are never rewritten by the migration that puts them back', () => {
+    expect(owner).not.toMatch(/UPDATE\s+leave_type_approval_step\b/i);
+    expect(owner).not.toMatch(/DELETE\s+FROM\s+leave_type_approval_step\b/i);
+    expect(owner).not.toMatch(/ON\s+CONFLICT/i);
+  });
+
+  /* The one place a leave type code may be read, and it is the same latitude
+     ensure_statutory_entitlement_rules() takes when it joins by code: this is
+     reference data being placed once, not a rule deciding where a request goes.
+     Nothing above the database may do it — that is design principle 5 — and the
+     rest of the tree is asserted to keep off it below. */
+  it('name the two unpaid types once, in the function that seeds them', () => {
+    expect(owner).toMatch(/'UNPAID'/);
+    expect(owner).toMatch(/'MAT_EXT_UNPAID'/);
+  });
+
+  /**
+   * And nothing above the database names one at all.
+   *
+   * Design principle 5, stated as a test rather than as a paragraph: "Counting
+   * basis and approval chain vary by leave type... Both are configuration. If
+   * either appears as an `if` on a type code, that is a bug." The two most
+   * tempting places for one are the leave calculator that does not exist yet and
+   * the routing that does not either, so the guard is worth having before either
+   * arrives rather than after.
+   *
+   * Comments are stripped first, because the source explains at length why a code
+   * may not be read and would otherwise fail its own rule.
+   */
+  it('are never a type code read by the application', () => {
+    const sources = readdirSync(join(process.cwd(), 'server', 'src'), {
+      recursive: true,
+      encoding: 'utf8',
+    }).filter((file) => file.endsWith('.ts'));
+
+    const naming = sources.filter((file) => {
+      const code = readFileSync(join(process.cwd(), 'server', 'src', file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/\/\/[^\n]*/g, ' ');
+
+      return /'(ANNUAL|SICK|COMPASSIONATE|MATERNITY|PATERNITY|UNPAID|MAT_EXT_UNPAID)'/.test(code);
+    });
+
+    expect(naming).toEqual([]);
+  });
+});

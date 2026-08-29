@@ -101,6 +101,11 @@ describe('a new type', () => {
       maxBackdateCalendarDays: 7,
       genderRestriction: null,
       displayOrder: 0,
+      /* FR 38a and LMS 204's second criterion. Manager then HR, applied here
+         rather than left to the writer, so that a type created through a form
+         that said nothing about approvals reads as the type it is straight away.
+         What a chain is and what makes one nonsense is ./approval-chain.test.ts. */
+      approvalChain: ['MANAGER', 'HR'],
     });
   });
 

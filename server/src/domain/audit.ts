@@ -66,6 +66,12 @@ export const AUDITED_ENTITIES = [
      rule being added — which is exactly the entry a disputed balance is settled
      against: who raised the allowance, when, and from what. */
   'leave_entitlement_rule',
+  /* LMS 204. Who approves each kind of leave, filed under the type rather than
+     under the step — nobody searches for the second stage of a chain. There is no
+     updated_at on a step to carry its history, so these entries are the whole of
+     it: "the administrator took the Chief Executive out of the unpaid leave
+     chain" is the sentence a dispute about an approval turns on. */
+  'leave_type_approval_step',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];

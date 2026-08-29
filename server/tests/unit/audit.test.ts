@@ -64,6 +64,9 @@ describe('the entities an entry can be about', () => {
       'user_role',
       'leave_type',
       'leave_entitlement_rule',
+      /* LMS 204. A step has no updated_at of its own, so these entries are the
+         whole of the history of who approves what. */
+      'leave_type_approval_step',
     ]);
   });
 });

@@ -26,8 +26,10 @@
  *   fifteen here would mean raising the allowance next January silently rewrote
  *   what last year's requests were counted against.
  *
- *   **No approval chain.** FR 48, and it is not a column. See the foot of the
- *   leave-type-rules migration.
+ *   **No approval routing.** Since LMS 204 a type says *who* approves it — an
+ *   ordered list of desks, {@link setApprovalChain} — and that is as far as this
+ *   file goes. Which person a desk resolves to, and what happens when the
+ *   request reaches them, is FR 48 and the request workflow of Phase 3.
  *
  *   **No deleting.** A type is the heading every request, ledger entry and report
  *   of either is filed under, so removing the row would rewrite history in the
@@ -44,9 +46,11 @@
 import type { Actor } from '../auth/actor.js';
 import { leaveTypePolicy } from '../auth/leave-type-policy.js';
 import type { Guard } from '../auth/policy.js';
+import { validateApprovalChain } from '../domain/approval-chain.js';
 import type { Employee } from '../domain/employee.js';
 import {
   assertEligible,
+  assertSomebodyApprovesIt,
   assertStillOffered,
   type LeaveType,
   type LeaveTypeChanges,
@@ -150,6 +154,48 @@ export class LeaveTypeService {
     return this.setActive(actor, id, false);
   }
 
+  /**
+   * Says who approves leave of this kind, in order. FR 38a.
+   *
+   * The story: unpaid leave goes to HR and the Chief Executive while everything
+   * else goes to the manager, and neither of those is a line of code. The chain is
+   * `['HR', 'CEO']`, it is three rows away from being anything else, and no part
+   * of the system reads a type code to work out where a request goes.
+   *
+   * Its own method rather than a field of {@link update}, for the reason
+   * {@link retire} is its own method: it is a decision about every request that
+   * will ever be raised against the type rather than a correction to what the type
+   * is. The policy names it separately too, so the denial log and the audit log
+   * both say which of the two happened — "changed the maternity type" and "changed
+   * who approves maternity leave" are not the same sentence, and only one of them
+   * would have somebody asking why their request never arrived.
+   *
+   * The chain replaces whatever was there. "HR as well" and "HR instead" are not
+   * distinguishable in a list of approvers, which is the same reason a working
+   * pattern's week is replaced rather than added to.
+   *
+   * Throws {@link InvalidApprovalChain} for a desk that is not one of the three,
+   * for a chain with nobody in it, and for one that asks the same desk twice.
+   *
+   * **It does not re-route requests already in flight.** There are none to route
+   * yet, and when there are, a request will carry the stage it has reached rather
+   * than recomputing it from the type — the same arrangement that makes a ledger
+   * entry the truth about what a day cost. Changing the chain decides where the
+   * next request goes.
+   */
+  async setApprovalChain(actor: Actor, id: string, chain: readonly string[]): Promise<LeaveType> {
+    this.guard.enforce(leaveTypePolicy.setApprovalChain(actor, id));
+
+    await this.require(id);
+
+    const updated = await this.types.setApprovalChain(actor, id, validateApprovalChain(chain));
+    if (updated === undefined) {
+      throw new LeaveTypeNotFound(id);
+    }
+
+    return updated;
+  }
+
   /** Offers it again. The correction for a type retired by mistake. */
   async reinstate(actor: Actor, id: string): Promise<LeaveType> {
     this.guard.enforce(leaveTypePolicy.reinstate(actor, id));
@@ -230,16 +276,23 @@ export class LeaveTypeService {
    * The type, checked as somewhere new leave may be filed. FR 21.
    *
    * What the request workflow of Phase 3 will call in place of {@link byId}: it
-   * establishes that the type exists, that it is still offered, and that this
-   * person is eligible for it, in that order and with a different refusal for
-   * each. The rules themselves are pure functions in ../domain/leave-type.ts;
-   * what is here is that all three are asked, once, in one place, so that no
-   * future caller can ask two of them.
+   * establishes that the type exists, that it is still offered, that somebody is
+   * set up to approve it, and that this person is eligible for it, in that order
+   * and with a different refusal for each. The rules themselves are pure functions
+   * in ../domain/leave-type.ts; what is here is that all four are asked, once, in
+   * one place, so that no future caller can ask three of them.
+   *
+   * The approval check is third rather than last, and the order is the order the
+   * answers are useful in. "Nobody approves this yet" is a fact about the type and
+   * is somebody's job to fix; "you are not eligible" is a fact about the person
+   * asking. Telling somebody they are ineligible for a type that was never
+   * finished being configured would send them away with the wrong problem.
    */
   async requestable(actor: Actor, id: string, employee: Employee): Promise<LeaveType> {
     const type = await this.byId(actor, id);
 
     assertStillOffered(type);
+    assertSomebodyApprovesIt(type);
     assertEligible(type, employee.gender);
 
     return type;

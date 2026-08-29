@@ -39,12 +39,18 @@
  * "decides policy"; a fifth role between officer and administrator would be a
  * change to ./roles.ts with an argument of its own, not something to invent here.
  *
- * ## Retiring is not an ordinary edit
+ * ## Retiring is not an ordinary edit, and neither is the approval chain
  *
- * It gets its own decision so that the log says which of the two happened. "The
- * administrator changed the maternity type" and "the administrator stopped
- * anybody requesting maternity leave" are not the same sentence, and a shared
- * `update` would have written the first for both.
+ * Each gets its own decision so that the log says which happened. "The
+ * administrator changed the maternity type", "the administrator stopped anybody
+ * requesting maternity leave" and "the administrator changed who approves
+ * maternity leave" are three different sentences, and a shared `update` would
+ * have written the first for all three.
+ *
+ * The chain is the one where that matters most, because it is the change whose
+ * effect nobody sees directly: a request that goes to the wrong desk does not
+ * fail, it waits. FR 38a, LMS 204. It is the same role as every other write here
+ * — an HR Administrator's — and it is named apart rather than guarded apart.
  */
 
 import { type Actor, holdsAny } from './actor.js';
@@ -92,6 +98,20 @@ export const leaveTypePolicy = {
           leaveTypeId,
           'holds no role that sets up the organisation',
           WRITES_ARE_ADMINISTRATIVE,
+        );
+  },
+
+  /** FR 38a. Saying who approves this kind of leave. Named apart, so the log is. */
+  setApprovalChain(actor: Actor, leaveTypeId: string): Decision {
+    return holdsAny(actor, ...SETS_UP_THE_ORGANISATION)
+      ? about.allow(actor, 'set approval chain', leaveTypeId)
+      : about.refuseOpenly(
+          actor,
+          'set approval chain',
+          leaveTypeId,
+          'holds no role that sets up the organisation',
+          'Who approves a kind of leave is set by an HR Administrator, because it ' +
+            'decides where every future request of that kind goes. Ask one.',
         );
   },
 
