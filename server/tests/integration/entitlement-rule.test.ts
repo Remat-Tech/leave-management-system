@@ -1,5 +1,5 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 import type { Kysely } from 'kysely';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
@@ -18,9 +18,11 @@ import { DepartmentRepository } from '../../src/repositories/department-reposito
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
 import { EntitlementRuleRepository } from '../../src/repositories/entitlement-rule-repository.js';
 import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
+import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
 import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
 import { EmployeeService } from '../../src/services/employee-service.js';
 import { EntitlementRuleService } from '../../src/services/entitlement-rule-service.js';
+import { earliestOpenDayFrom } from '../../src/services/leave-year-service.js';
 import { LeaveTypeService } from '../../src/services/leave-type-service.js';
 import { seed } from '../../seeds/seed.mjs';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
@@ -104,10 +106,11 @@ afterAll(async () => {
 /**
  * A service with a particular idea of what has been closed.
  *
- * The boundary is a constructor argument rather than a table read, because the
- * table is LMS 205. Building a second service with a fixed answer is how the rule
- * is tested today, and swapping {@link NOTHING_IS_CLOSED_YET} for the real reader
- * is the whole of what that story has to do here.
+ * The boundary is a constructor argument rather than a table read, which is what
+ * lets the rule itself be proved with a fixed answer and lets the real reader be
+ * proved separately — see "the boundary read from the leave years themselves"
+ * below, where LMS 205 hands it {@link earliestOpenDayFrom} and an administrator
+ * closes an actual year.
  */
 function ruleServiceWith(earliestOpenDay: EarliestOpenDay): EntitlementRuleService {
   return new EntitlementRuleService(new EntitlementRuleRepository(db), guard, earliestOpenDay);
@@ -531,10 +534,10 @@ describe('the rules the database holds as well as the domain', () => {
 });
 
 describe('a closed leave year, LMS 205', () => {
-  /* The boundary is the one rule the database cannot hold, because a closed year
-     is a row in a table that does not exist yet. Until it does, the service is
-     given a truthful "nothing is closed" — and this is the proof that swapping
-     that for the real reader is all LMS 205 has to do here. */
+  /* The boundary is the one rule no constraint on this table can hold, because a
+     closed year is a row in another one. A service built with a fixed answer is
+     how the rule itself is proved; that the answer now comes from `leave_year` is
+     the block below. */
   const closedUntil: EarliestOpenDay = async () => NEXT_YEAR;
 
   it('refuses a rule dated back into it', async () => {
@@ -569,6 +572,118 @@ describe('a closed leave year, LMS 205', () => {
         effectiveFrom: '2019-01-01',
       }),
     ).resolves.toMatchObject({ effectiveFrom: '2019-01-01' });
+  });
+});
+
+/**
+ * The seam this story left, joined from the side that reads it. LMS 205.
+ *
+ * This file used to say that swapping {@link NOTHING_IS_CLOSED_YET} for the real
+ * reader was all LMS 205 had to do here, and this is that swap being taken at its
+ * word: a service built with {@link earliestOpenDayFrom} rather than with a fixed
+ * answer, refusing a figure dated into a year an administrator actually closed.
+ *
+ * The years themselves are put back afterwards, because closing one is
+ * irreversible by design and every other test in this file expects an open 2026.
+ */
+describe('the boundary read from the leave years themselves', () => {
+  /**
+   * A rule service whose boundary is read from `leave_year`, built when a test
+   * runs rather than when the file is collected — `db` is opened in beforeAll,
+   * and a repository built out here would hold an undefined connection.
+   */
+  function ruleServiceReadingTheYears(): EntitlementRuleService {
+    return ruleServiceWith(earliestOpenDayFrom(new LeaveYearRepository(db)));
+  }
+
+  /** A year that has ended, so that closing it is a legal thing to do. */
+  async function closeAFinishedYear(): Promise<void> {
+    await admin.query(
+      `INSERT INTO leave_year (label, start_date, end_date)
+       VALUES ('2025', '2025-01-01', '2025-12-31')`,
+    );
+    await admin.query(`UPDATE leave_year SET is_closed = TRUE WHERE label = '2025'`);
+  }
+
+  afterEach(async () => {
+    await admin.query(`TRUNCATE leave_year`);
+    await admin.query('SELECT ensure_the_first_leave_years()');
+  });
+
+  /* Which is the state a database goes live in, and the reason it has to be
+     allowed: on the first morning the whole of 2026 is open, nothing has been
+     settled, and entering the current policy from a date already past is exactly
+     what HR has to be able to do. */
+  it('lets a figure be dated into the past while every year is open', async () => {
+    const live = ruleServiceReadingTheYears();
+
+    await expect(
+      live.create(system, {
+        leaveTypeId: await typeIdFor('COMPASSIONATE'),
+        entitlementDays: 6,
+        effectiveFrom: '2025-06-01',
+      }),
+    ).resolves.toMatchObject({ effectiveFrom: '2025-06-01' });
+  });
+
+  /* The whole story of LMS 205 in one assertion: an administrator closes 2025,
+     and a figure dated into it is refused — by a rule that read a row rather
+     than an argument somebody passed in. */
+  it('refuses a figure dated into a year somebody has closed', async () => {
+    const live = ruleServiceReadingTheYears();
+
+    await closeAFinishedYear();
+
+    await expect(
+      live.create(system, {
+        leaveTypeId: await typeIdFor('COMPASSIONATE'),
+        entitlementDays: 6,
+        effectiveFrom: '2025-06-01',
+      }),
+    ).rejects.toBeInstanceOf(ReachesIntoAClosedYear);
+  });
+
+  /* And the first open day is the day after the closed year ends. The statutory
+     figures already occupy the first of January 2026 for every type, so this is
+     dated a day later — which is the boundary being open rather than the whole
+     year being open, and is the sharper assertion of the two. */
+  it('accepts a figure from the day after the closed year ends', async () => {
+    const live = ruleServiceReadingTheYears();
+
+    await closeAFinishedYear();
+
+    await expect(
+      live.create(system, {
+        leaveTypeId: await typeIdFor('COMPASSIONATE'),
+        entitlementDays: 6,
+        effectiveFrom: '2026-01-02',
+      }),
+    ).resolves.toMatchObject({ effectiveFrom: '2026-01-02' });
+  });
+
+  /* Read fresh on every write, which is why the type is a function rather than a
+     date: the same service that accepted a figure a moment ago refuses it once a
+     year has been closed underneath it, with nothing rebuilt in between. */
+  it('moves under a service that is already running', async () => {
+    const live = ruleServiceReadingTheYears();
+
+    await expect(
+      live.create(system, {
+        leaveTypeId: await typeIdFor('SICK'),
+        entitlementDays: 4,
+        effectiveFrom: '2025-06-01',
+      }),
+    ).resolves.toMatchObject({ effectiveFrom: '2025-06-01' });
+
+    await closeAFinishedYear();
+
+    await expect(
+      live.create(system, {
+        leaveTypeId: await typeIdFor('COMPASSIONATE'),
+        entitlementDays: 6,
+        effectiveFrom: '2025-06-01',
+      }),
+    ).rejects.toBeInstanceOf(ReachesIntoAClosedYear);
   });
 });
 

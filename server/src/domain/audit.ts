@@ -72,6 +72,11 @@ export const AUDITED_ENTITIES = [
      it: "the administrator took the Chief Executive out of the unpaid leave
      chain" is the sentence a dispute about an approval turns on. */
   'leave_type_approval_step',
+  /* LMS 205. Mostly one entry per year and one that matters: closing it.
+     `closed_at` says when, and this says who — which is the pair a dispute about
+     a settled balance is answered with, since after that nothing about the year
+     can move. */
+  'leave_year',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];
