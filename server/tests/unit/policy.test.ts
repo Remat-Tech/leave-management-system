@@ -908,6 +908,39 @@ describe('moving a balance, FR 26 and LMS 212', () => {
     expect(ledgerPolicy.adjust(manager('akosua'), hers).allowed).toBe(false);
   });
 
+  /**
+   * Granting a year of entitlement. FR 30, LMS 214.
+   *
+   * The same rule as `adjust`, and not a copy of it by accident: a grant and an
+   * adjustment are the same act from the balance's point of view — days arriving with
+   * no request behind them and no way to take them back. What differs is who chose the
+   * figure, and writing the figure is `entitlementRulePolicy.create`, which is an HR
+   * Administrator's. Letting an Officer apply figures only an Administrator may write
+   * would put a year's entitlement one desk below the decision behind it.
+   */
+  it('is granted for a year only by an HR Administrator', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      expect(ledgerPolicy.grant(employee('adwoa', roles), hers).allowed).toBe(
+        SETS_UP_THE_ORGANISATION.includes(code),
+      );
+    }
+
+    expect(ledgerPolicy.grant(employee('ama'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.grant(manager('akosua'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.grant(theSystem('the annual grant'), hers).allowed).toBe(true);
+  });
+
+  /* And it agrees with the rule for an adjustment for every actor there is, which is
+     the claim the paragraph above makes and the thing that would silently stop being
+     true if one of them were widened. */
+  it('and by exactly the people who may move a balance by hand', () => {
+    for (const [, roles] of EACH_ROLE) {
+      const them = employee('adwoa', roles);
+
+      expect(ledgerPolicy.grant(them, hers).allowed).toBe(ledgerPolicy.adjust(them, hers).allowed);
+    }
+  });
+
   describe('holding days for leave that has been asked for', () => {
     it('is the asking person’s, and HR’s on their behalf', () => {
       expect(ledgerPolicy.reserve(employee('ama'), hers).allowed).toBe(true);

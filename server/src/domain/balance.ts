@@ -287,6 +287,68 @@ export function daysToReserve(balance: LeaveBalance, days: number, mayExceed: bo
 }
 
 /**
+ * A year's entitlement granted a second time. FR 30, LMS 214.
+ *
+ * The one refusal in this file that is not about arithmetic. Nothing about the figure
+ * is wrong: the days are right, the sign is right, and posting it would put a perfectly
+ * valid `GRANT` in the ledger. What is wrong is that it has happened already, and the
+ * balance would carry a year's entitlement twice.
+ *
+ * The realistic cause is the ordinary one — the annual job errored halfway through a
+ * January morning and somebody ran it again — which is exactly why this refuses rather
+ * than the job remembering.
+ */
+export class AlreadyGranted extends Error {
+  readonly grants: number;
+
+  constructor(grants: number) {
+    super(
+      `This leave year has already been granted for this balance${
+        grants > 1 ? `, ${grants} times` : ''
+      }. A year's entitlement is granted once; where the figure has changed since, the ` +
+        `difference is an adjustment with a reason on it, so that the balance still ` +
+        `explains itself. FR 30.`,
+    );
+    this.name = 'AlreadyGranted';
+    this.grants = grants;
+  }
+}
+
+/**
+ * How many days a year's entitlement grants. FR 30, LMS 214.
+ *
+ * Two rules, and the second is the whole of why this exists.
+ *
+ * **A grant is a positive number of days**, and unlike the three below it may carry a
+ * fraction: §8.6d pro rates a mid year joiner to 10.08 days, and what somebody has
+ * accrued is divisible even though what they may ask for is not. The precision is the
+ * ledger column's own — {@link validateNewLedgerEntry} refuses a third decimal place
+ * rather than rounding it away — so nothing is repeated here.
+ *
+ * **A balance is granted once for a year.** `grantsAlreadyPosted` is counted inside the
+ * lock, by `BalanceService.grantTheYear`, which is what makes running the annual job
+ * twice safe rather than merely unlikely. It is not a rule about the `GRANT` entry type
+ * in general: an event type's entitlement arrives with the event and a second
+ * confinement in one leave year is a second grant, correctly. This is the rule of the
+ * *annual* grant, which is why it is reached through the method of that name.
+ */
+export function daysToGrant(days: number, grantsAlreadyPosted: number): number {
+  if (grantsAlreadyPosted > 0) {
+    throw new AlreadyGranted(grantsAlreadyPosted);
+  }
+
+  if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
+    throw new InvalidBalanceMovement(
+      `A grant is a number of days somebody is given, and ${String(days)} is not one. A ` +
+        `leave type worth nothing to somebody is a rule saying so rather than a grant of ` +
+        `nought days, which would be a line in their history that explains nothing.`,
+    );
+  }
+
+  return days;
+}
+
+/**
  * How many days an approval may take out of what is held.
  *
  * Approval does not consume days again — the reserve already did — so this can only

@@ -388,6 +388,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | The public holiday calendar | anybody signed in | `HR_OFFICER`, `HR_ADMIN` |
 | Every movement in one person's balance | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` only, for an adjustment |
 | Every balance in the company, checked against the ledger | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
+| Granting a year's entitlement | | `HR_ADMIN` only |
 | Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
 | Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` — never yourself |
 | Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
@@ -433,6 +434,14 @@ that leaves the calendar a week behind the country by March, which charges someb
 a day of annual leave for an afternoon nobody worked. `SYS_ADMIN` is deliberately
 not on it either: keeping the calendar is HR's job, not a power that comes with
 being able to reach the database.
+
+**Granting a year is the same desk that writes the figures.** LMS 214. A grant and an
+adjustment are the same act from the balance's point of view — days arriving with no
+request behind them and no way to take them back — and what differs is that a rule
+written in advance chose the figure rather than somebody this morning. Writing that rule
+is `entitlementRulePolicy.create` and is an HR Administrator's, so applying it is too:
+letting an Officer apply figures only an Administrator may write would put a year's
+entitlement one desk below the decision behind it.
 
 **Moving a balance by hand is narrower than anything else in this system, and only
 an `HR_ADMIN` may.** §10's matrix has an ✗ against every other column including HR
@@ -796,6 +805,10 @@ from the ledger and alerts HR about anything that disagrees — deliberately wit
 correcting it, because the discrepancy is the only evidence of how it arose. See
 [Checking the cache against the
 record](#checking-the-cache-against-the-record).
+
+**Days first arrive from a rule.** LMS 214 grants a year's entitlement as a `GRANT`
+entry, once per balance per year, from the figure in force on the first day of that
+year. See [The annual grant](#the-annual-grant).
 
 Since LMS 210 the first half of that exists. `leave_ledger_entry` attaches to what
 LMS 113 already built, exactly as that story predicted it would: `refuse_update()`
@@ -2019,13 +2032,14 @@ of it.
 
 | | Posts | Checks | Locked? |
 |---|---|---|---|
+| `grantTheYear` | `GRANT` | the year has not been granted already | yes |
 | `reserve` | `RESERVATION` | the days are there, unless the type may be exceeded | yes |
 | `commit` | `DEDUCTION` | that many days are held | yes |
 | `release` | `RELEASE` | that many days are held | yes |
 | `adjust` | `ADJUSTMENT` | nothing — FR 37 moves days by fiat | no |
 | `correct` | `ADJUSTMENT` | nothing — it is the exact opposite of one entry | no |
 
-**Days are stated positive, in all five.** A reserve of five days is `5` and so is
+**Days are stated positive, in all six.** A reserve of five days is `5` and so is
 the release that gives them back; which way the balance moves is the method that was
 called. A caller that had to remember a reservation is −5 and a release is +5 would
 eventually get one backwards and post a perfectly valid entry meaning the opposite of
@@ -2135,6 +2149,67 @@ check this afternoon, which is why the policy allows a person as well as the job
 difference between no news and "the job has not run since Tuesday", and it is a table
 with a screen in it rather than part of this. Noticing that the alert itself has gone
 quiet is monitoring, and monitoring is Phase 6.
+
+---
+
+### The annual grant
+
+**A year's entitlement arrives as a `GRANT` ledger entry, once per balance.** FR 30,
+LMS 214. Everything before this could record days moving and add them up; nothing had
+put any there. This is where a balance stops being nought and somebody can plan a year.
+
+The figure is the entitlement rule in force **on the first day of the leave year**,
+resolved by `EntitlementRuleService.entitlementOn` — asking on any other day would
+grant a figure that was not in force when the year began, which is why that question
+has always taken a date. Nothing about the figure is decided in the job.
+
+**It needed a movement `BalanceService` did not have, so it added one there.** That is
+LMS 212's arrangement being taken up on its offer rather than worked around:
+`grantTheYear` sits where the lock, the rule and the policy already are, and
+`unit/one-writer.test.ts` still passes because there is still one door.
+
+**Running it twice is the design, not a caution.** The realistic failure of an annual
+job is not an accidental double invocation — it is failing at employee three hundred on
+a January morning, and somebody running it again. So each grant is its own transaction,
+the first two hundred and ninety-nine keep theirs, and a second grant against a balance
+that already has one is refused inside the lock by `daysToGrant`. Not by the job
+remembering: a job that remembers is a job that forgets.
+
+That once-a-year rule belongs to the *annual* grant rather than to `GRANT` entries in
+general, which is why the method is named for the year. An event type's entitlement
+arrives with the event — FR 32g — and a second confinement in one leave year is
+correctly a second grant. That story adds its own method rather than loosening this one.
+
+**Four ways somebody is passed over, and every one of them is reported.**
+
+| | Why | What happens next |
+|---|---|---|
+| Joined after the year began | owed a proportion, FR 29 and §8.6d | the pro rata story |
+| No entitlement rule | nobody has said what the type is worth to them | HR writes one, FR 31 |
+| A rule of nought days | HR has said it is worth nothing | nothing; it was answered |
+| Not eligible | FR 05's gender restriction | nothing |
+
+The last two look identical from a balance screen — nought days, no explanation — and
+telling them apart is most of what makes a support call two minutes rather than an
+afternoon. "The grant ran and Ama has nothing" needs to be a sentence somebody can read
+the reason for.
+
+**The joiner is the one to be careful about.** Somebody who started in July is passed
+over entirely rather than granted the year and corrected later, because the correction
+comes after they have planned a year around days they were never owed. Somebody who
+started *on* the first day of the year is not a joiner — the comparison is strictly
+after, and an off by one there would quietly deprive everybody who started on 1 January
+of a year of leave.
+
+**Only types with a yearly balance.** `hasRunningBalance`, FR 32g: a quota type's
+entitlement arrives with the year and an event type's with the event. A run that granted
+a hundred and twenty days of maternity leave to everybody would be a balance screen that
+lied to all of them.
+
+**And, as with the reconciliation, it is a class rather than a schedule** — "at the
+start of each leave year" is a line in something that runs on a timer, and there is
+nowhere yet to put one. An HR Administrator can run it by hand today, which is the same
+desk that writes the figures it applies.
 
 ---
 
@@ -2405,6 +2480,15 @@ its tests asserts that the domain exports nothing that turns ledger entries into
 balance — a `balanceFrom(entries)` would be twenty testable lines and a second
 implementation of the sum, which is the drift the cache exists to be checked against.
 Whoever adds one has to argue with that test first.
+
+**`unit/annual-grant.test.ts` is nearly all refusals, and that is the shape of the
+story rather than a bias in the file.** Granting twenty days to somebody owed twenty
+days is the easy half. The four ways somebody is passed over are where a run goes
+quietly wrong, and three of them look identical from a balance screen — nought days, no
+explanation. `integration/annual-grant.test.ts` covers the two halves arithmetic cannot
+have: that the grant lands as a ledger entry the cache follows by itself, and that
+running the job again grants nobody a second year while finishing anybody the first run
+did not reach.
 
 **`integration/reconciliation.test.ts` has to manufacture the fault it is about.** The
 cache follows the ledger by trigger, in one transaction, on every connection — so

@@ -719,12 +719,25 @@ export function balanceMayBeExceededWithDocument(type: LeaveType): boolean {
  * — see {@link NotEligibleForLeaveType}.
  */
 export function assertEligible(type: LeaveType, gender: Gender | null): void {
-  if (type.genderRestriction === null) {
-    return;
-  }
-  if (gender !== type.genderRestriction) {
+  if (!isEligible(type, gender)) {
     throw new NotEligibleForLeaveType(type, gender);
   }
+}
+
+/**
+ * The same question, answered rather than thrown. FR 05.
+ *
+ * {@link assertEligible} is what a request path wants, because there the answer is no
+ * and somebody has to be told why. A job granting entitlement to four hundred people
+ * wants the plain question — passing over a type somebody is not eligible for is an
+ * ordinary outcome it reports rather than an error it recovers from, and catching an
+ * exception to find that out would be control flow wearing a disguise.
+ *
+ * One rule, two shapes, and the assert is written in terms of this so they cannot
+ * drift.
+ */
+export function isEligible(type: LeaveType, gender: Gender | null): boolean {
+  return type.genderRestriction === null || gender === type.genderRestriction;
 }
 
 /**
