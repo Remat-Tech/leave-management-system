@@ -1926,6 +1926,38 @@ since LMS 106, with the reason written beside her: "The counting tests in Techni
 Design Document section 7.3 need a pattern that is not simply weekends off, or a bug
 that assumes Saturday and Sunday are the only non working days passes every test."
 
+**`unit/leave-calculator-cases.test.ts` proves the answers, which is not the same
+as proving the rules.** LMS 208. A calculator can obey every rule in its own
+description and still be a day out over Christmas, so this one is a single table of
+worked examples: seventeen rows, each carrying the period, the week, the calendar in
+force, the arithmetic written out in words, and both totals — what it costs as
+annual leave and what the same days cost as maternity leave. Any row can be checked
+against a wall calendar without running anything, which is the only kind of test
+that settles an argument about a number.
+
+The awkward cases are the point: a holiday that lands on a weekend (Boxing Day 2026
+is a Saturday, and a calculator that subtracted holidays from a weekday count would
+take it off twice), the same midweek holiday priced for somebody who works
+Wednesdays and somebody who does not, 31 December into 1 January, and February in a
+leap year against February in one that is not — one day more, both ways.
+
+Three sweeps run over the whole table, and each catches a class of error no single
+row can.
+
+| Sweep | Catches |
+|---|---|
+| invariants — counted days plus free days is the whole period | a day that fell out of the walk entirely, which any single wrong total can hide |
+| four process timezones | a `getDay()` where a `getUTCDay()` belongs — everybody's weekend a day out, quietly |
+| additivity — a year whole against a year month by month | an off by one at a period boundary, which twelve periods expose twelve times |
+
+**Two of the four zones are west of Greenwich, and that is load bearing rather than
+decorative.** Every date in `/domain/time.ts` is built at UTC midnight, which is
+still the same day everywhere east of Greenwich and the day before everywhere west
+of it. A sweep that only ran eastward would give a clean bill of health for exactly
+the bug it was written to find; the eastern two are kept because the opposite
+mistake — a date built at local midnight and read back at UTC — fails there and
+nowhere else.
+
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than
 sampled — a fifth role added without a decision about what it may do fails there.
