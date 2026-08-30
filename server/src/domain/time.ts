@@ -92,6 +92,68 @@ export function isCalendarDate(value: unknown): value is CalendarDate {
 }
 
 /**
+ * The day after this one. LMS 205.
+ *
+ * The only arithmetic this file does on a calendar date, and it is here rather
+ * than beside the one rule that wants it — `earliestOpenDayOf` in
+ * ./leave-year.ts, which reads the day after a closed year's last — because
+ * "what comes after the thirty first of December" is a fact about the calendar
+ * rather than about leave years.
+ *
+ * It round trips through UTC midnight for exactly the reason {@link isCalendarDate}
+ * does, and it is safe for the same statable reason rather than because it
+ * happens to work: a date built at UTC midnight and formatted back at UTC is the
+ * day it went in, so the zone cancels rather than being avoided. Nothing here is
+ * ever shown to anybody or stored as an instant — the `Date` exists for the
+ * length of the expression and what comes out is ten characters again.
+ *
+ * `Date` also knows about leap years and month lengths, which is the half nobody
+ * should write twice: the day after the twenty eighth of February 2028 is the
+ * twenty ninth, and after the twenty eighth of February 2027 it is the first of
+ * March.
+ *
+ * A value that is not a calendar date is refused rather than coerced. There is no
+ * sensible day after `31/07/2026`, and returning one would be inventing which of
+ * the two readings of it was meant.
+ */
+export function dayAfter(day: CalendarDate): CalendarDate {
+  return shift(day, 1);
+}
+
+/**
+ * The day before this one. LMS 205.
+ *
+ * The counterpart of {@link dayAfter}, and it exists because naming a gap needs
+ * both ends: the days between one leave year and the next run from the day after
+ * the first ends to the day before the second starts.
+ */
+export function dayBefore(day: CalendarDate): CalendarDate {
+  return shift(day, -1);
+}
+
+/**
+ * A calendar date moved by whole days, and the one place a `Date` is built from
+ * one.
+ *
+ * Both directions go through here rather than each doing the round trip, so there
+ * is one copy of the argument about why it is safe and one thing to read if it is
+ * ever doubted.
+ */
+function shift(day: CalendarDate, days: number): CalendarDate {
+  if (!isCalendarDate(day)) {
+    throw new Error(
+      `${String(day)} is not a calendar date. Days are written YYYY-MM-DD, which is ` +
+        'the one form that means the same thing to everybody reading it.',
+    );
+  }
+
+  const moved = new Date(`${day}T00:00:00Z`);
+  moved.setUTCDate(moved.getUTCDate() + days);
+
+  return moved.toISOString().slice(0, 10);
+}
+
+/**
  * A date a spreadsheet has decided is a datetime, with the midnight taken off.
  *
  * Excel and Google Sheets write `2026-09-01 00:00:00` for a cell they have typed

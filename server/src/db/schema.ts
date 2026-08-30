@@ -380,6 +380,41 @@ export interface LeaveEntitlementRuleTable {
   updated_at: Timestamp;
 }
 
+/**
+ * The leave year, and what closing one means. §5.4. LMS 205.
+ *
+ * Every balance is per person, per leave type, per leave year, and this is the
+ * third of those. The rules that make "which year is this day in" have exactly one
+ * answer are `leave_year_never_overlaps`, an exclusion constraint over the days
+ * each year covers, and `leave_year_leaves_no_gap`, a deferred trigger — see the
+ * leave-year-rules migration. What a year means is ../domain/leave-year.ts.
+ *
+ * A closed year is history: the flag never goes back, the dates never move, and
+ * the row is never deleted, on any connection. `keep_a_closed_leave_year_closed()`
+ * holds all three and stamps `closed_at` on the way past.
+ */
+export interface LeaveYearTable {
+  id: Generated<string>;
+  /* What HR calls it. '2026', or '2026/27' for a year running April to March —
+     which is why it is a column rather than derived from start_date. */
+  label: string;
+  /* The first and last day the year covers, inclusive both ends. `YYYY-MM-DD`,
+     never an instant: a year begins on a day. NFR DAT 03. */
+  start_date: string;
+  end_date: string;
+  /* Settled. The one column this story is about, and the one that never goes
+     back. There is no reopen anywhere in the tree. */
+  is_closed: Generated<boolean>;
+  /* Stamped by the trigger when the flag is set, so a year closed from a psql
+     prompt carries it too. Never supplied by a writer; who closed it is the audit
+     log rather than a column. */
+  closed_at: ColumnType<Date | null, never, never>;
+  created_at: Timestamp;
+  /* Maintained by the leave_year_set_updated_at trigger, which attaches to the
+     same set_updated_at() every other table uses. */
+  updated_at: Timestamp;
+}
+
 export interface Database {
   app_user: AppUserTable;
   audit_log: AuditLogTable;
@@ -388,6 +423,7 @@ export interface Database {
   leave_entitlement_rule: LeaveEntitlementRuleTable;
   leave_type: LeaveTypeTable;
   leave_type_approval_step: LeaveTypeApprovalStepTable;
+  leave_year: LeaveYearTable;
   role: RoleTable;
   user_role: UserRoleTable;
   work_pattern: WorkPatternTable;

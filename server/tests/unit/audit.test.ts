@@ -67,6 +67,10 @@ describe('the entities an entry can be about', () => {
       /* LMS 204. A step has no updated_at of its own, so these entries are the
          whole of the history of who approves what. */
       'leave_type_approval_step',
+      /* LMS 205. Mostly one entry that matters per year — closing it — and after
+         that nothing about the year can move, so the entry is the record of the
+         one decision that made that true. */
+      'leave_year',
     ]);
   });
 });

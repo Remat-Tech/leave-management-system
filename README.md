@@ -1231,14 +1231,15 @@ not: ending a rule is how a standing policy stops, and ending it retroactively i
 the same silent rewrite by another route, because every day between the new end
 and today has already been counted against this figure.
 
-*A new rule may not reach back into a closed year.* This is the one the database
-cannot decide, because a closed leave year is a row in a table that arrives with
-LMS 205. It is held one level up as `assertDoesNotReachIntoAClosedYear`, which
-takes the boundary as an argument the way `worksOn` takes a weekday — the domain
-knows the rule, the caller brings the fact. Until `leave_year` exists the caller
-brings `NOTHING_IS_CLOSED_YET`, which is a truthful statement rather than a stub:
-on go live the whole of 2026 is open, and entering the current policy from 1
-January is exactly what HR has to be able to do.
+*A new rule may not reach back into a closed year.* This is the one no constraint
+on that table can decide, because a closed leave year is a row in another one. It
+is held one level up as `assertDoesNotReachIntoAClosedYear`, which takes the
+boundary as an argument the way `worksOn` takes a weekday — the domain knows the
+rule, the caller brings the fact. Since LMS 205 the fact comes from `leave_year`,
+through `earliestOpenDayFrom()`; see [The leave year, and closing
+one](#the-leave-year-and-closing-one). On go live nothing is closed, the whole of
+2026 is open, and entering the current policy from 1 January is exactly what HR has
+to be able to do.
 
 **A draft may be edited and deleted; this is the one configuration table with a
 `DELETE` grant.** A rule dated to start next January has produced nothing, heads
@@ -1363,6 +1364,103 @@ The manager who raises their own leave and has to route upwards is FR 48b, and i
 about a reporting line rather than a leave type. Cover while an approver is
 themselves away is FR 49. Parallel approval is nothing the SRS asks for and is the
 one thing `step_order` refuses outright: two rows cannot share a number.
+
+### The leave year, and closing one
+
+**Every balance is per person, per leave type, per leave year, and `leave_year` is
+the third of those.** §5.4, LMS 205. 2026 and 2027 are seeded by the migration,
+running the calendar year, inclusive at both ends. 2026 is not an arbitrary
+starting point: the statutory entitlement figures were already dated from the
+first of January 2026, and `integration/leave-year.test.ts` asserts the two
+migrations still agree about it.
+
+**Two rules keep a day in exactly one leave year, and they are one rule from
+opposite sides.** "Which year is this day in" is every balance question there is,
+and it has to have exactly one answer.
+
+| | Refuses | Held by |
+|---|---|---|
+| overlap | two years sharing a day, so a balance drawn from two allowances | `leave_year_never_overlaps`, an `EXCLUDE USING gist` over `daterange(start_date, end_date, '[]')` |
+| gap | a day in no year at all, whose leave draws on a balance nobody opened | `leave_year_leaves_no_gap`, a deferred constraint trigger checking both sides of the row being written |
+
+The exclusion constraint is the tool the Stack table bought Postgres for. A unique
+index cannot express it: uniqueness is about equal values, and what this refuses is
+2026 against a "2026" somebody typed as running to the thirty first of January
+2027 — two different rows, overlapping by a month.
+
+A gap *after* the last year is not a gap. The database ships with 2026 and 2027
+and nothing after, and 2028 is not missing — it is next year's decision. The gap
+rule is about the space between two years that both exist, which is why it is
+checked from both sides of the new row: a year inserted before an existing one is
+judged against the one that now follows it, so the order years are created in does
+not matter.
+
+**Both rules are deferred, and here that is not the usual reason.** The
+intermediate state they permit is moving the boundary *between* two years — taking
+2027 from a January start to an April one moves 2026's end as well, and whichever
+statement runs first overlaps the other for the length of it. Nothing built so far
+performs that operation; the constraints are deferred so that the story which does
+is a service method rather than a migration.
+
+**A year may only be closed once it has ended.** That refuses the mistake that
+actually happens: it is the third of January, somebody is tidying up, and the year
+they reach for is the one that started two days ago. Whether a finished year is
+*settled* is HR's judgement and deliberately not a rule — FR 18 lets an absence be
+recorded a week late, so they will wait, and a fixed number of days here would be a
+policy nobody asked for.
+
+**Nothing reopens a closed year.** Not `LeaveYearService`, which has no method; not
+`lms_app`, which cannot write the flag back; not the owner at a psql prompt, which
+`keep_a_closed_leave_year_closed()` refuses. Its dates cannot move either — that
+would be reopening it by another route, since every figure in the year was
+calculated against those days — and it cannot be deleted. The only thing a closed
+year will still accept is a better label, which is the same exemption an
+entitlement rule in effect makes for its note.
+
+That is deliberate and it is the whole story: a flag the person who set it can turn
+back is a flag that says the year was settled until somebody decided otherwise. The
+way back is a migration with a reason attached, which is the price the audit log
+already charges for its own immutability. `unit/leave-year.test.ts`,
+`unit/policy.test.ts` and `integration/leave-year.test.ts` each assert that no
+surface anywhere offers a way, which is a strange-looking test and the right one:
+the absence is the feature.
+
+**`closed_at` is stamped by the trigger, not by a writer.** The same arrangement
+`updated_at` has, and it matters more here because the stamp is the record of the
+decision rather than of a housekeeping detail — a year closed from a psql prompt
+carries it too. Who closed it is the audit log, by the argument LMS 111 made when
+it left `user_role.granted_by` out.
+
+**Closing a year moves the boundary the entitlement rules are judged against, and
+that is the seam LMS 203 left.** That story wrote `EarliestOpenDay` as a function
+and passed it `NOTHING_IS_CLOSED_YET`, saying the real implementation would be "the
+day after the last closed year ends". It now is: `earliestOpenDayFrom()` in
+`/services/leave-year-service.ts`, one line over `earliestOpenDayOf()` in the
+domain. `NOTHING_IS_CLOSED_YET` survives rather than being deleted — it is still
+what a fresh database answers, and still what a caller with no leave years to read
+passes.
+
+It is read fresh on every write, which is why the type is a function rather than a
+date: the rollover of LMS 217 closes a year while the process is running, and a
+service holding a boundary read at start up would go on accepting figures into a
+year that had since been settled. `integration/entitlement-rule.test.ts` asserts
+exactly that — the same service accepts a figure, a year is closed underneath it,
+and the next write is refused with nothing rebuilt in between.
+
+**Reading the latest closed year, not the earliest open one.** The difference only
+shows if somebody closes 2027 while 2026 is still open. Nothing refuses that and it
+would be odd; reading the latest closed end means the boundary is the safe one
+either way, because a settled year cannot be reached back into through a hole left
+in front of it.
+
+**What closing does not do yet.** `leave_balance` and `leave_ledger_entry` arrive
+with LMS 210 and LMS 214, each carrying a `leave_year_id` and each refusing a write
+against a closed year — that is where "its balances cannot drift" stops being about
+one row and becomes a rule about a year of them. It is not stubbed here: a foreign
+key to a table that does not exist is not a thing, and a flag guarding nothing is a
+flag nobody trusts. Closing also does not perform the rollover of FR 36. "This year
+is settled" and "these days move" are two decisions, and a close that silently did
+both would be a close nobody could audit.
 
 **`department.parent_id` exists and nothing writes it.** A hierarchy does not
 exist rather than half existing. A story that exposes sub-departments needs what
@@ -1612,6 +1710,23 @@ restore that stopped at the types would hand every later suite a database full o
 types nobody can approve leave against. It calls
 `ensure_statutory_approval_chains()`, as it calls the function that owns the
 figures, so that nothing in a test file knows who approves unpaid leave.
+
+**`integration/leave-year.test.ts` carries most of LMS 205, because most of that
+story is in the database.** The rules that keep a day in exactly one year are an
+exclusion constraint and a deferred trigger, and the lock is a third trigger, so
+the assertions that matter are made against the owner connection: an overlap
+refused, a gap refused, a boundary moved in one transaction and the same move
+refused as two, and a closed year that will not reopen, will not move its dates
+and will not be deleted for anybody. `unit/leave-year.test.ts` proves the pure half
+— which year a day is in, what a gap looks like from either side, and the boundary
+a closed year sets — including the leap day, because a year boundary is exactly
+where day arithmetic goes wrong.
+
+Three suites assert that **nothing anywhere can reopen a closed year**, by looking
+for the absence rather than for a behaviour: the domain exports nothing that could,
+the policy offers no decision, and neither service nor repository has a method.
+That is an odd-looking test and the right one, because the absence is the feature —
+a lock with an undo is not a lock.
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than

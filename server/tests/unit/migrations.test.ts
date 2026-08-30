@@ -258,3 +258,54 @@ describe('the approval chains of FR 38a are reference data', () => {
     expect(naming).toEqual([]);
   });
 });
+
+/**
+ * Where the first leave years live. §5.4, LMS 205.
+ *
+ * The same side of the same line as the seven types, their figures and their
+ * approval chains: a production database is migrated and never seeded, and a
+ * leave system with no leave year is one where no balance can be opened at all.
+ *
+ * What is checked here is the half that needs no database — that 2026 and 2027
+ * are a migration's, that they have an owner that can put them back, and that the
+ * owner refuses to rewrite a year somebody has since moved. That they really are
+ * on a migrated database, and that a closed one cannot be reopened by anybody, is
+ * ../integration/leave-year.test.ts.
+ */
+describe('the first two leave years are reference data', () => {
+  const migrations = files.map((file) => readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
+
+  const owner = migrations.find((sql) =>
+    /CREATE\s+FUNCTION\s+ensure_the_first_leave_years/i.test(sql),
+  );
+
+  it('are written by a migration, and by one that can be run again', () => {
+    expect(owner).toBeDefined();
+    expect(owner).toMatch(/INSERT\s+INTO\s+leave_year\b/i);
+    expect(owner).toMatch(/'2026'/);
+    expect(owner).toMatch(/'2027'/);
+  });
+
+  /* It inserts what is missing and changes nothing that is there. A company that
+     has moved to an April start keeps theirs; reconciling the rows back to these
+     dates would take away the thing FR 31 gives. */
+  it('are never rewritten by the migration that puts them back', () => {
+    expect(owner).not.toMatch(/UPDATE\s+leave_year\b/i);
+    expect(owner).not.toMatch(/DELETE\s+FROM\s+leave_year\b/i);
+    expect(owner).not.toMatch(/ON\s+CONFLICT/i);
+  });
+
+  /* Nothing anywhere reopens a closed year. The refusal is a trigger so that it
+     holds on every connection, and the absence of a way back is the story rather
+     than an omission from it — so the migrations are asked whether one has
+     quietly appeared. */
+  it('offer nothing that turns a closed year back into an open one', () => {
+    const reopening = migrations.filter((sql) =>
+      /is_closed\s*=\s*FALSE|SET\s+is_closed\s*=\s*f\b/i.test(
+        sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' '),
+      ),
+    );
+
+    expect(reopening).toEqual([]);
+  });
+});

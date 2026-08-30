@@ -43,16 +43,15 @@
  *   trigger, so a correction typed at a psql prompt is refused the same way.
  *   {@link assertMayBeCorrected} is the message; the trigger is the guarantee.
  *
- *   **A new rule may not reach back into a closed year.** This is the one the
- *   database cannot decide, because a closed leave year is a row in a table that
- *   does not exist until LMS 205. It is held here as
- *   {@link assertDoesNotReachIntoAClosedYear}, which takes the boundary as an
- *   argument the way {@link worksOn} takes a weekday — the domain knows the rule,
- *   the caller brings the fact. Until `leave_year` arrives the caller brings
- *   {@link NOTHING_IS_CLOSED_YET}, which is a truthful statement about a system
- *   that has never closed a year rather than a stub: on go live the whole of 2026
- *   is open, and entering the current policy from 1 January is exactly what HR
- *   has to be able to do.
+ *   **A new rule may not reach back into a closed year.** This is the one no
+ *   constraint on this table can decide, because a closed leave year is a row in
+ *   another one. It is held here as {@link assertDoesNotReachIntoAClosedYear},
+ *   which takes the boundary as an argument the way {@link worksOn} takes a
+ *   weekday — the domain knows the rule, the caller brings the fact. Since
+ *   LMS 205 the fact comes from `leave_year`: {@link earliestOpenDayFrom} reads
+ *   the day after the last closed year ends. On go live the whole of 2026 is
+ *   open, nothing is closed, and entering the current policy from 1 January is
+ *   exactly what HR has to be able to do.
  *
  * ## What is deliberately not here
  *
@@ -66,8 +65,10 @@
  * half of why a closed year is safe: a grant is written once, with the amount it
  * was worth on the day it was written.
  *
- * **No leave year.** A rule covers days. Which days make a year, and whether that
- * year is closed, is LMS 205.
+ * **No leave year.** A rule covers days, and it goes on covering them whatever
+ * anybody draws around them. Which days make a year, and whether that year is
+ * closed, is ./leave-year.ts — read through {@link EarliestOpenDay} and nowhere
+ * else, so that this file still needs nothing but the rules in hand.
  */
 
 import { type CalendarDate, isCalendarDate } from './time.js';
@@ -170,14 +171,22 @@ export interface AsAt {
  * and a service holding a date read at start up would go on accepting rules into
  * it.
  *
- * LMS 205 brings `leave_year` and with it the real implementation — the day after
- * the last closed year ends. Until then {@link NOTHING_IS_CLOSED_YET} is the
- * honest answer rather than a placeholder: no year has been closed, because there
- * is nothing yet that could close one.
+ * LMS 205 brought `leave_year` and with it the real implementation:
+ * {@link earliestOpenDayFrom} in ../services/leave-year-service.ts, which is the
+ * day after the last closed year ends. That is what the composition root passes,
+ * and swapping it in was the whole of what this seam was left for.
  */
 export type EarliestOpenDay = () => Promise<CalendarDate | null>;
 
-/** No year has been closed. True until LMS 205, and true of a fresh database after it. */
+/**
+ * No year has been closed.
+ *
+ * Still true of a fresh database, and still the answer
+ * {@link earliestOpenDayOf} gives one — which is why this stayed after LMS 205
+ * rather than being deleted with the seam it filled. It is what a caller that has
+ * no leave years to read passes, and in this system that is a test asking what a
+ * rule does when nothing is settled.
+ */
 export const NOTHING_IS_CLOSED_YET: EarliestOpenDay = async () => null;
 
 /**

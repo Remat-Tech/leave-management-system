@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   calendarDateIn,
+  dayAfter,
+  dayBefore,
   DEFAULT_DISPLAY_TIMEZONE,
   displayTimezone,
   formatInstant,
@@ -89,6 +91,71 @@ describe('a calendar date', () => {
       expect(exitDate).toBe('2026-07-31');
     },
   );
+});
+
+/**
+ * The one piece of arithmetic this file does on a day. LMS 205.
+ *
+ * It exists for `earliestOpenDayOf` in ../../src/domain/leave-year.ts — the day
+ * after a closed year ends — and everything worth asserting about it is a
+ * boundary somebody would otherwise have written by hand and got wrong once.
+ *
+ * The process zone is moved under every case, because the round trip goes through
+ * a `Date` and the whole claim being made is that the zone cancels. A version
+ * built on local time rather than UTC passes in Accra and fails in Kiritimati,
+ * which is exactly the bug this file exists to catch.
+ */
+describe('the day either side of a day', () => {
+  it('is the next and the previous day, in the middle of a month', () => {
+    expect(dayAfter('2026-07-15')).toBe('2026-07-16');
+    expect(dayBefore('2026-07-15')).toBe('2026-07-14');
+  });
+
+  /* The boundary every leave year has, and the reason this function exists: 2026
+     is closed, and the first day still open is the first of January 2027. */
+  it('crosses the end of a year', () => {
+    expect(dayAfter('2026-12-31')).toBe('2027-01-01');
+    expect(dayBefore('2027-01-01')).toBe('2026-12-31');
+  });
+
+  it('crosses the end of a month', () => {
+    expect(dayAfter('2026-01-31')).toBe('2026-02-01');
+    expect(dayBefore('2026-04-01')).toBe('2026-03-31');
+  });
+
+  /* Month lengths and leap years are `Date`'s to know, which is the half nobody
+     should write twice. 2028 is a leap year and 2027 is not. */
+  it('knows which Februaries have twenty nine days', () => {
+    expect(dayAfter('2028-02-28')).toBe('2028-02-29');
+    expect(dayAfter('2028-02-29')).toBe('2028-03-01');
+    expect(dayAfter('2027-02-28')).toBe('2027-03-01');
+    expect(dayBefore('2028-03-01')).toBe('2028-02-29');
+  });
+
+  it.each(['Pacific/Kiritimati', 'Pacific/Niue', 'Asia/Tokyo', 'UTC'])(
+    'ignores the process, set here to %s',
+    (zone) => {
+      process.env.TZ = zone;
+
+      expect(dayAfter('2026-12-31')).toBe('2027-01-01');
+      expect(dayBefore('2026-01-01')).toBe('2025-12-31');
+    },
+  );
+
+  /* Refused rather than coerced. There is no sensible day after 31/07/2026, and
+     returning one would be inventing which of its two readings was meant. */
+  it('refuses anything that is not written as a date', () => {
+    expect(() => dayAfter('31/07/2026')).toThrow(/YYYY-MM-DD/);
+    expect(() => dayAfter('2026-02-30')).toThrow(/calendar date/);
+    expect(() => dayBefore('')).toThrow(/calendar date/);
+  });
+
+  /* And what comes out is ten characters again, never an instant. A function that
+     handed back a `Date` would put the zone straight back into the answer. */
+  it('hands back a calendar date, not a moment', () => {
+    expect(isCalendarDate(dayAfter('2026-12-31'))).toBe(true);
+    expect(isCalendarDate(dayBefore('2026-01-01'))).toBe(true);
+  });
 });
 
 describe('midnight from a spreadsheet', () => {

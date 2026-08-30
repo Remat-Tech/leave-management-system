@@ -18,6 +18,7 @@ import {
 import { entitlementRulePolicy } from '../../src/auth/entitlement-rule-policy.js';
 import type { EntitlementRule } from '../../src/domain/entitlement-rule.js';
 import { leaveTypePolicy } from '../../src/auth/leave-type-policy.js';
+import { leaveYearPolicy } from '../../src/auth/leave-year-policy.js';
 import { signInPolicy } from '../../src/auth/sign-in-policy.js';
 import { workPatternPolicy } from '../../src/auth/work-pattern-policy.js';
 import { denialsNowhere } from '../../src/auth/denials.js';
@@ -441,6 +442,57 @@ describe('leave types, FR 21 and LMS 201', () => {
        protect and a great deal for a clear one to explain. */
     expect(leaveTypePolicy.setApprovalChain(efua, 'unpaid').allowed).toBe(false);
     expect(leaveTypePolicy.setApprovalChain(efua, 'unpaid').told).toMatch(/HR Administrator/);
+  });
+});
+
+describe('leave years, §5.4 and LMS 205', () => {
+  /* Open to read, and it has to be. When the leave year ends is the single most
+     planned-around date in the system — it is when unused annual leave carries
+     over or is lost, FR 36 — and an employee who cannot find out when their year
+     ends is one who finds out by losing days. */
+  it('are readable by anybody signed in, because everybody plans around the year end', () => {
+    for (const [, roles] of EACH_ROLE) {
+      const them = employee('adwoa', roles);
+
+      expect(leaveYearPolicy.read(them, '2026').allowed).toBe(true);
+      expect(leaveYearPolicy.list(them).allowed).toBe(true);
+    }
+  });
+
+  it('are written by an HR Administrator and nobody else', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      const them = employee('adwoa', roles);
+      const allowed = SETS_UP_THE_ORGANISATION.includes(code);
+
+      expect(leaveYearPolicy.create(them).allowed).toBe(allowed);
+      expect(leaveYearPolicy.update(them, '2026').allowed).toBe(allowed);
+      expect(leaveYearPolicy.close(them, '2026').allowed).toBe(allowed);
+    }
+  });
+
+  /* Closing is named apart from editing, and it is the case where that matters
+     most: it is irreversible. There is no reopen in this system, so the denial
+     log has to be able to say which of the two somebody attempted. */
+  it('name closing apart from editing, because only one of them is final', () => {
+    const adwoa = employee('adwoa');
+
+    expect(leaveYearPolicy.update(adwoa, '2026').action).toBe('update');
+    expect(leaveYearPolicy.close(adwoa, '2026').action).toBe('close');
+    expect(leaveYearPolicy.close(adwoa, '2026').resource).toBe('leave year');
+  });
+
+  /* There is no reopen decision, and its absence is the story. A policy method
+     for it would be the first half of a route to undoing a lock. */
+  it('offer no decision that could undo a close', () => {
+    expect(Object.keys(leaveYearPolicy).filter((name) => /reopen|unclose/i.test(name))).toEqual([]);
+  });
+
+  it("are not an HR Officer's to close, though almost everything else is", () => {
+    const efua = employee('efua', ['EMPLOYEE', 'HR_OFFICER']);
+
+    expect(leaveYearPolicy.read(efua, '2026').allowed).toBe(true);
+    expect(leaveYearPolicy.close(efua, '2026').allowed).toBe(false);
+    expect(leaveYearPolicy.close(efua, '2026').told).toMatch(/HR Administrator/);
   });
 });
 

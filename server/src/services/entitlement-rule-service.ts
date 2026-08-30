@@ -19,10 +19,11 @@
  *   trigger, so a correction typed at a psql prompt is refused too.
  *
  *   **Nothing may reach back into a closed leave year.** The boundary comes from
- *   {@link EarliestOpenDay}, which LMS 205 will implement against `leave_year` and
- *   which is {@link NOTHING_IS_CLOSED_YET} until it does. Passed in rather than
- *   read here, so that this service does not become a second place that decides
- *   what a closed year is.
+ *   {@link EarliestOpenDay}, which since LMS 205 is {@link earliestOpenDayFrom}
+ *   reading `leave_year`. Passed in rather than read here, so that this service
+ *   does not become a second place that decides what a closed year is — and so
+ *   that it is asked again on every write, because the rollover of LMS 217 closes
+ *   a year while this process is running.
  *
  * ## What it does not do
  *
@@ -76,8 +77,8 @@ export class EntitlementRuleService {
     /* NFR SEC 02. Required rather than defaulted; see ../auth/policy.ts. */
     private readonly guard: Guard,
     /**
-     * Where a closed leave year ends. LMS 205 supplies the real one;
-     * {@link NOTHING_IS_CLOSED_YET} is the truthful answer until it exists.
+     * Where a closed leave year ends. {@link earliestOpenDayFrom} since LMS 205;
+     * {@link NOTHING_IS_CLOSED_YET} for a caller with no leave years to read.
      */
     private readonly earliestOpenDay: EarliestOpenDay,
   ) {}
