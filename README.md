@@ -762,6 +762,15 @@ An append-only ledger is three triggers and no new machinery. See
 
 Since LMS 201 the first half of that is a table, `leave_type`, and since LMS 204
 the second is `leave_type_approval_step` beside it. Both are set out further down.
+
+Since LMS 207 the first half is also *read* that way. `countLeaveDays()` is one
+walk over the days of a period with one branch inside it, and the branch asks
+`countsWorkingDays()` — never `type.code`, which the file does not import and which
+`unit/leave-calculator.test.ts` checks it does not mention. A leave type HR adds
+next year counts correctly the moment the row exists, which is the test of whether
+FR 31 was achieved rather than merely described. See [The day
+calculator](#the-day-calculator).
+
 What is still not built is the routing itself — which person a chain's desk
 resolves to, and what happens when the request reaches them — which is FR 48.
 
@@ -1565,6 +1574,67 @@ it is the audit entries — a recalculation nobody can explain is a recalculatio
 nobody accepts, and for a removed day the log is the only record the day was ever
 there.
 
+### The day calculator
+
+**Three tables were built for one function to read, and `countLeaveDays()` is
+where they meet.** FR 21, FR 22, §7.3, LMS 207. The working pattern of FR 23, the
+public holiday calendar of FR 22, and the `counting_basis` of the leave type. It is
+pure — no database, no clock, no environment — and the pattern and the calendar
+arrive as arguments, exactly as `worksOn()` takes a weekday.
+
+**One walk, one branch.** There is a single pass over the days of the period and a
+single question inside it: does this day cost a day. A `countWorkingDays()` beside
+a `countCalendarDays()` would be two implementations of "which days are in this
+period", and the drift would surface as a maternity leave a day longer than the
+annual leave over the same fortnight.
+
+| The type says | The pattern is | A holiday is | A fortnight over Christmas 2026 |
+|---|---|---|---|
+| `WORKING_DAYS` — annual, sick, compassionate | consulted | free, if it lands on a day worked | 9 days |
+| `CALENDAR_DAYS` — maternity, paternity | not consulted at all | inside the period like any other day | 12 days |
+
+**The pattern is asked before the calendar, and the order is the answer.** Boxing
+Day 2026 falls on a Saturday, so for somebody on a Monday to Friday week it is
+reported as a day not worked rather than as a public holiday — it was never going
+to cost anything and the gazette had nothing to do with it. That is also what makes
+FR 25's recalculation come out right: a holiday declared on a day somebody does not
+work gives back nothing.
+
+**Nothing at all is refused rather than returned.** `LeaveCountsNoDays`. A Saturday
+to Sunday request against a Monday to Friday pattern costs zero days of annual
+leave, and zero is not an answer to hand back: it is leave that deducts nothing from
+a balance, waits in an approval queue for a decision that changes nothing, and shows
+on a team calendar as an absence nobody paid for. There is no sensible thing for any
+caller downstream to do with it, so each of them would invent the same handling. The
+message names the free days and the way out — somebody who really did mean to record
+the whole period has chosen the wrong kind of leave, not the wrong dates.
+
+It can only happen to a working-day type. Every day counts for a calendar-day one
+and a period always holds at least one day, so a maternity leave costing nothing is
+not a state the function can produce.
+
+**The number moves only when the pattern or the calendar does.**
+`integration/leave-calculator.test.ts` closes the leave year underneath it, retires
+the leave type, and adds an entitlement figure, and asserts the answer does not
+budge — which is what "reads nothing else" means in the form that matters. What a
+period *costs* and whether somebody can *afford* it are two questions, and only the
+second one has a figure in it; that one is `leave_balance` and the ledger.
+
+**A period is inclusive at both ends, and a single day is a period.** Somebody
+taking Friday off writes the same date twice, which is the most common request there
+is. A period running backwards is refused by name rather than counted as nothing:
+that is a mistake in the dates, where a period whose days are all free is a mistake
+about the kind of leave, and one message for both would send half the people who hit
+it to correct the wrong field. A period over two years is refused as a mistyped year
+— the same "check the unit" guard `requireWindow()` applies to a notice window, not a
+policy about how long leave may be.
+
+**And the first of January 2027 costs a day.** Only 2026's gazette is seeded, so
+until HR transcribes 2027 New Year's Day is an ordinary Friday. That is the hazard
+[the holiday calendar](#the-public-holiday-calendar) left visible on purpose, seen
+from the counting end; `yearsAwaitingACalendar()` is what surfaces it in November,
+and entering the day fixes it with no release.
+
 **`department.parent_id` exists and nothing writes it.** A hierarchy does not
 exist rather than half existing. A story that exposes sub-departments needs what
 FR 03 and FR 04 gave reporting lines — a cycle check and a root count — because a
@@ -1839,6 +1909,22 @@ only as rules — `lms_app` really holds `DELETE` here, and a story that could n
 remove a day would be one where the first mistake is permanent.
 `unit/holiday.test.ts` proves the pure half: one row to a day, both ends of a move
 judged separately, and the leave years nobody has entered a calendar for.
+
+**`unit/leave-calculator.test.ts` is where LMS 207 is proved**, because the
+calculator is a pure function and every case is arithmetic. Two of its tests read
+the source rather than call it, and both are the story rather than cleverness: one
+asserts the file never mentions `.code`, which is design principle 5 as a check
+rather than a paragraph, and the other asserts its import list, which is "pure, with
+no database access beyond patterns and holidays" said in the only way that stays
+true. `integration/leave-calculator.test.ts` adds what a unit test cannot reach —
+the real seeded gazette, the real Monday to Friday week, the real part timer with
+Wednesdays off, and a fortnight over the actual Christmas coming out at the number
+somebody would get counting off a wall calendar.
+
+That part timer is not a fixture invented for that suite. The seed has carried her
+since LMS 106, with the reason written beside her: "The counting tests in Technical
+Design Document section 7.3 need a pattern that is not simply weekends off, or a bug
+that assumes Saturday and Sunday are the only non working days passes every test."
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than

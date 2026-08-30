@@ -39,6 +39,15 @@
  * {@link displayTimezone} reads the environment, and takes it as an argument for
  * the same reason `codeSettings` does. It is a function of what it is given.
  *
+ * Since LMS 207 there is also the small amount of calendar arithmetic the leave
+ * calculator needs — {@link isoWeekdayOf}, {@link eachDay} and
+ * {@link calendarDaysBetween}. They are here rather than beside the rule that wants
+ * them for the reason {@link dayAfter} is: which weekday the sixth of March falls
+ * on, and how many days there are between two dates, are facts about the calendar
+ * rather than about leave. Each builds a `Date` at UTC midnight and reads it back
+ * at UTC, so the zone cancels rather than being avoided — the same statable
+ * argument, made once, in the one file allowed to make it.
+ *
  * What is *not* here is the storage half of the rule, which is not code at all:
  * the columns are `timestamptz` and `date`, the session is pinned to UTC and
  * ISO dates by the timestamps-in-utc migration and by ../db/index.ts, and
@@ -140,6 +149,95 @@ export function dayBefore(day: CalendarDate): CalendarDate {
  * ever doubted.
  */
 function shift(day: CalendarDate, days: number): CalendarDate {
+  const moved = new Date(`${requireCalendarDate(day)}T00:00:00Z`);
+  moved.setUTCDate(moved.getUTCDate() + days);
+
+  return moved.toISOString().slice(0, 10);
+}
+
+/**
+ * Which day of the week that day is, numbered as this system numbers them.
+ * LMS 207.
+ *
+ * ISO: 1 is Monday and 7 is Sunday, which is what `work_pattern_day.day_of_week`
+ * holds and what {@link worksOn} takes. JavaScript numbers them from 0 for Sunday,
+ * so the conversion is here, once, rather than at each call site — an off by one
+ * in that arithmetic moves everybody's weekend by a day and does it silently.
+ *
+ * It round trips through UTC midnight for exactly the reason {@link dayAfter}
+ * does, and is safe for the same statable reason rather than because it happens to
+ * work: a date built at UTC midnight is read back at UTC, so the zone cancels. That
+ * matters more here than anywhere else in this file, because a `getDay()` on a
+ * local `Date` is how a Sunday in Accra becomes a Saturday on a server in New York
+ * — and every leave count in the system would then be a day out for half of it.
+ *
+ * A value that is not a calendar date is refused rather than coerced, as
+ * {@link dayAfter} refuses one: there is no weekday of `31/07/2026`, and returning
+ * one would be inventing which of its two readings was meant.
+ */
+export function isoWeekdayOf(day: CalendarDate): number {
+  if (!isCalendarDate(day)) {
+    throw new Error(
+      `${String(day)} is not a calendar date, so it has no day of the week. Days are ` +
+        'written YYYY-MM-DD, which is the one form that means the same thing to ' +
+        'everybody reading it.',
+    );
+  }
+
+  /* getUTCDay() is 0 for Sunday through 6 for Saturday. Shifting by six and
+     wrapping turns Sunday into 6 and Monday into 0, and the +1 makes it ISO. */
+  return ((new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
+}
+
+/**
+ * Every day from one to another, inclusive at both ends. LMS 207.
+ *
+ * What the leave calculator walks. Inclusive because that is how a person writes a
+ * period of leave — the first day off and the last day off, both of them days they
+ * are away — and a half open range here would silently make every request a day
+ * shorter than the one somebody typed.
+ *
+ * A generator rather than an array, so that the caller decides what to keep. The
+ * calculator keeps a count and the handful of days that cost nothing, which is
+ * usually fewer than six entries for a fortnight; materialising the whole run
+ * first would allocate a list whose only purpose was to be reduced.
+ *
+ * It yields nothing at all when `to` is before `from`. That is not this function's
+ * rule to enforce — a period that runs backwards is a fact about a leave request
+ * rather than about the calendar — and the calculator refuses it by name before
+ * ever getting here.
+ */
+export function* eachDay(from: CalendarDate, to: CalendarDate): Generator<CalendarDate> {
+  let day = from;
+
+  while (day <= to) {
+    yield day;
+    day = dayAfter(day);
+  }
+}
+
+/**
+ * How many days there are from one to another, inclusive at both ends. LMS 207.
+ *
+ * `2026-12-25` to `2026-12-26` is two days, not one, for the same reason
+ * {@link eachDay} is inclusive. Zero where the period runs backwards, which is the
+ * honest count of a run of days that does not exist.
+ *
+ * Arithmetic on the two instants rather than a walk, because the answer does not
+ * depend on which days those are and a caller asking only "how long is this" should
+ * not pay for the walk. Both are UTC midnights, so the difference is a whole number
+ * of days with no daylight saving in it to round — which is the second half of why
+ * a calendar date is never stored in a zone that has any.
+ */
+export function calendarDaysBetween(from: CalendarDate, to: CalendarDate): number {
+  const first = new Date(`${requireCalendarDate(from)}T00:00:00Z`).getTime();
+  const last = new Date(`${requireCalendarDate(to)}T00:00:00Z`).getTime();
+
+  return Math.max(0, Math.round((last - first) / 86_400_000) + 1);
+}
+
+/** A calendar date, or a refusal naming the value that was not one. */
+function requireCalendarDate(day: CalendarDate): CalendarDate {
   if (!isCalendarDate(day)) {
     throw new Error(
       `${String(day)} is not a calendar date. Days are written YYYY-MM-DD, which is ` +
@@ -147,10 +245,7 @@ function shift(day: CalendarDate, days: number): CalendarDate {
     );
   }
 
-  const moved = new Date(`${day}T00:00:00Z`);
-  moved.setUTCDate(moved.getUTCDate() + days);
-
-  return moved.toISOString().slice(0, 10);
+  return day;
 }
 
 /**

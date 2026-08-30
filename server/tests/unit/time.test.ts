@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   calendarDateIn,
+  calendarDaysBetween,
   dayAfter,
   dayBefore,
   DEFAULT_DISPLAY_TIMEZONE,
   displayTimezone,
+  eachDay,
   formatInstant,
   isCalendarDate,
   isKnownTimeZone,
+  isoWeekdayOf,
   withoutMidnight,
   type CalendarDate,
 } from '../../src/domain/time.js';
@@ -155,6 +158,138 @@ describe('the day either side of a day', () => {
   it('hands back a calendar date, not a moment', () => {
     expect(isCalendarDate(dayAfter('2026-12-31'))).toBe(true);
     expect(isCalendarDate(dayBefore('2026-01-01'))).toBe(true);
+  });
+});
+
+describe('which day of the week a day is', () => {
+  /* ISO, so that the answer can be handed straight to `worksOn` and compared with
+     `work_pattern_day.day_of_week`: 1 is Monday and 7 is Sunday. JavaScript numbers
+     them from 0 for Sunday, and the whole reason this function exists is that the
+     conversion happens once rather than at each call site. */
+  it('numbers Monday 1 and Sunday 7', () => {
+    expect(isoWeekdayOf('2026-03-02')).toBe(1);
+    expect(isoWeekdayOf('2026-03-03')).toBe(2);
+    expect(isoWeekdayOf('2026-03-04')).toBe(3);
+    expect(isoWeekdayOf('2026-03-05')).toBe(4);
+    expect(isoWeekdayOf('2026-03-06')).toBe(5);
+    expect(isoWeekdayOf('2026-03-07')).toBe(6);
+    expect(isoWeekdayOf('2026-03-08')).toBe(7);
+  });
+
+  /* The days the seeded calendar and every weekend test below turn on. Christmas
+     Day 2026 is a Friday and Boxing Day is the Saturday after it, which is the
+     case the whole leave calculator is most often asked about. */
+  it('agrees with the calendar on the days the system ships with', () => {
+    expect(isoWeekdayOf('2026-01-01')).toBe(4);
+    expect(isoWeekdayOf('2026-12-25')).toBe(5);
+    expect(isoWeekdayOf('2026-12-26')).toBe(6);
+    expect(isoWeekdayOf('2026-12-04')).toBe(5);
+  });
+
+  /**
+   * The one that would be silently wrong, and the reason the conversion goes
+   * through UTC.
+   *
+   * `new Date('2026-03-08').getDay()` on a host set to New York is the seventh of
+   * March, a Saturday, because midnight UTC is seven in the evening there. Half a
+   * company's weekend would move by a day, and nothing would announce it.
+   */
+  it.each(['Pacific/Kiritimati', 'Pacific/Niue', 'America/New_York', 'Asia/Tokyo'])(
+    'ignores the process, set here to %s',
+    (zone) => {
+      process.env.TZ = zone;
+
+      expect(isoWeekdayOf('2026-03-08')).toBe(7);
+      expect(isoWeekdayOf('2026-03-09')).toBe(1);
+    },
+  );
+
+  it('refuses anything that is not written as a date', () => {
+    expect(() => isoWeekdayOf('08/03/2026')).toThrow(/YYYY-MM-DD/);
+    expect(() => isoWeekdayOf('2026-02-30')).toThrow(/day of the week/);
+  });
+});
+
+describe('the run of days from one to another', () => {
+  /* Inclusive at both ends, because that is how a person writes a period of leave:
+     the first day off and the last day off, both of them days they are away. */
+  it('holds both of the days it names', () => {
+    expect([...eachDay('2026-12-24', '2026-12-27')]).toEqual([
+      '2026-12-24',
+      '2026-12-25',
+      '2026-12-26',
+      '2026-12-27',
+    ]);
+  });
+
+  it('is one day where both ends are the same day', () => {
+    expect([...eachDay('2026-07-31', '2026-07-31')]).toEqual(['2026-07-31']);
+  });
+
+  it('crosses a year end and a leap February', () => {
+    expect([...eachDay('2026-12-30', '2027-01-02')]).toEqual([
+      '2026-12-30',
+      '2026-12-31',
+      '2027-01-01',
+      '2027-01-02',
+    ]);
+
+    expect([...eachDay('2028-02-27', '2028-03-01')]).toEqual([
+      '2028-02-27',
+      '2028-02-28',
+      '2028-02-29',
+      '2028-03-01',
+    ]);
+  });
+
+  /* Nothing at all rather than a throw. A period that runs backwards is a fact
+     about a leave request rather than about the calendar, and the leave calculator
+     refuses it by name before ever getting here. */
+  it('yields nothing where the last day is before the first', () => {
+    expect([...eachDay('2026-12-27', '2026-12-24')]).toEqual([]);
+  });
+
+  it('counts a fortnight as fourteen days', () => {
+    expect([...eachDay('2026-12-21', '2027-01-03')].length).toBe(14);
+  });
+});
+
+describe('how many days there are between two days', () => {
+  /* Two, not one. The same inclusive rule, and the number a person gets counting
+     off a wall calendar. */
+  it('counts both ends', () => {
+    expect(calendarDaysBetween('2026-12-25', '2026-12-26')).toBe(2);
+    expect(calendarDaysBetween('2026-07-31', '2026-07-31')).toBe(1);
+  });
+
+  it('counts a whole year, and a leap one', () => {
+    expect(calendarDaysBetween('2026-01-01', '2026-12-31')).toBe(365);
+    expect(calendarDaysBetween('2028-01-01', '2028-12-31')).toBe(366);
+  });
+
+  /* Zero for a run of days that does not exist, which is the honest count of one.
+     The refusal belongs to whoever was told two dates that are not a period. */
+  it('is nothing where the last day is before the first', () => {
+    expect(calendarDaysBetween('2026-12-27', '2026-12-24')).toBe(0);
+  });
+
+  /**
+   * Arithmetic on two UTC midnights, which is why there is no daylight saving in
+   * it to round. The same subtraction over local midnights in a zone that shifts
+   * gives 364.958… days for a year, and `Math.round` hides that until the one year
+   * it does not.
+   */
+  it.each(['America/New_York', 'Europe/London', 'Pacific/Kiritimati'])(
+    'ignores the process, set here to %s',
+    (zone) => {
+      process.env.TZ = zone;
+
+      expect(calendarDaysBetween('2026-03-01', '2026-11-30')).toBe(275);
+    },
+  );
+
+  it('refuses anything that is not written as a date', () => {
+    expect(() => calendarDaysBetween('25/12/2026', '2026-12-26')).toThrow(/YYYY-MM-DD/);
   });
 });
 
