@@ -83,6 +83,7 @@ import {
   validateApprovalChain,
 } from './approval-chain.js';
 import type { Gender } from './employee.js';
+import { isWholeDays, WHOLE_DAYS_ONLY } from './whole-days.js';
 
 /**
  * FR 21. Whether a day inside the request that the person does not work still
@@ -670,8 +671,15 @@ export function grantExpires(type: LeaveType): boolean {
  * *balance*, not by the length of the request — see
  * {@link balanceMayBeExceededWithDocument} — so a four day absence by somebody
  * who has taken none all year needs nothing from this function.
+ *
+ * Half a day is refused rather than compared. FR 24, and it matters here because
+ * the comparison would otherwise succeed quietly: 2.5 days is past a two day
+ * threshold, so a caller that had miscounted would get a plausible answer and no
+ * indication that its number was never a number of days.
  */
 export function documentationRequired(type: LeaveType, days: number): boolean {
+  requireWholeDays('days', 'The length of a request', days);
+
   switch (type.documentation) {
     case 'ALWAYS':
       return true;
@@ -739,7 +747,7 @@ export function assertEligible(type: LeaveType, gender: Gender | null): void {
  * ordinary case for sick leave and short of nothing at all.
  */
 export function noticeShortfall(type: LeaveType, daysOfNotice: number): number {
-  requireWholeDays(daysOfNotice);
+  requireWholeDays('daysOfNotice', 'Notice', daysOfNotice);
 
   if (daysOfNotice < 0) {
     return type.minNoticeCalendarDays;
@@ -767,7 +775,7 @@ export function noticeShortfall(type: LeaveType, daysOfNotice: number): number {
  * day or ahead of it is not backdated at all.
  */
 export function assertWithinBackdatingWindow(type: LeaveType, daysOfNotice: number): void {
-  requireWholeDays(daysOfNotice);
+  requireWholeDays('daysOfNotice', 'Notice', daysOfNotice);
 
   if (daysOfNotice < 0 && -daysOfNotice > type.maxBackdateCalendarDays) {
     throw new TooLateToRecord(type, -daysOfNotice);
@@ -938,12 +946,17 @@ function optionalText(field: string, value: string | null | undefined): string |
  * a way no screen renders correctly, and "the grant lapses after zero months" is
  * "it lapses immediately". Both are somebody reaching for null and finding the
  * number nearest to it.
+ *
+ * The whole-number question is {@link isWholeDays}, asked here for a count of
+ * months as well as a count of days. One of the two this serves really is days —
+ * the documentation threshold of FR 13 — so a second copy of the test sitting a
+ * few lines from the first is exactly the drift ./whole-days.ts exists to stop.
  */
 function optionalCount(field: string, value: number | null | undefined): number | null {
   if (value == null) {
     return null;
   }
-  if (!Number.isInteger(value) || value < 1) {
+  if (!isWholeDays(value) || value < 1) {
     throw new InvalidLeaveType(
       field,
       `${field} is a whole number of at least 1, or nothing at all. ${String(value)} ` +
@@ -963,18 +976,18 @@ function optionalCount(field: string, value: number | null | undefined): number 
  * sick leave holds on purpose, not an unanswered question.
  */
 function requireWindow(field: string, value: number | undefined): number {
-  if (!Number.isInteger(value) || (value as number) < 0) {
+  if (!isWholeDays(value) || value < 0) {
     throw new InvalidLeaveType(
       field,
       `${field} is a whole number of calendar days, zero or more. ${String(value)} ` +
-        'is not; use 0 for a type with no window.',
+        `is not; use 0 for a type with no window. ${WHOLE_DAYS_ONLY}`,
     );
   }
 
   /* A window measured in years is a figure entered in the wrong unit far more
      often than it is a policy. Refused with the unit named, because the person
      who typed 365 meant days and the person who typed 12 meant months. */
-  if ((value as number) > 365) {
+  if (value > 365) {
     throw new InvalidLeaveType(
       field,
       `${field} is measured in calendar days, and ${String(value)} of them is over ` +
@@ -982,7 +995,7 @@ function requireWindow(field: string, value: number | undefined): number {
     );
   }
 
-  return value as number;
+  return value;
 }
 
 function requireOrder(value: number | undefined): number {
@@ -1016,12 +1029,20 @@ function requireOneOf<T extends string>(
   return value as T;
 }
 
-/** Notice is counted in whole days, and half a day of it is a caller with a bug. */
-function requireWholeDays(daysOfNotice: number): void {
-  if (!Number.isInteger(daysOfNotice)) {
+/**
+ * A count of days handed in by a caller, which is whole or is a bug. FR 24.
+ *
+ * The three functions that take one all get it the same way — a subtraction of two
+ * calendar dates, or {@link countLeaveDays} — and each of those produces a whole
+ * number by construction. So a fraction arriving here is not a person typing into a
+ * form; it is a caller that has computed something wrong, and the refusal names the
+ * argument rather than a field, because there is no field for it to appear beside.
+ */
+function requireWholeDays(field: string, noun: string, days: number): void {
+  if (!isWholeDays(days)) {
     throw new InvalidLeaveType(
-      'daysOfNotice',
-      `Notice is a whole number of calendar days, and ${String(daysOfNotice)} is not one.`,
+      field,
+      `${noun} is a whole number of days, and ${String(days)} is not one. ${WHOLE_DAYS_ONLY}`,
     );
   }
 }

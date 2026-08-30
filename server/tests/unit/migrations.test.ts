@@ -121,6 +121,126 @@ describe('columns that hold a time', () => {
 });
 
 /**
+ * How a column that counts something is declared. FR 24. LMS 209.
+ *
+ * The sibling of the check above, and the same argument: a rule about how columns
+ * are written can be read out of the SQL, so it fails on the afternoon somebody
+ * writes the column rather than the evening a balance comes out at 12.5.
+ *
+ * "Leave shall be recorded in whole days only." The Technical Design Document
+ * nonetheless specifies `NUMERIC(5,2)` for `leave_request.day_count` and
+ * `NUMERIC(6,2)` for every column of `leave_balance`, and says why: the type is
+ * "kept only so that a future policy change does not need a migration". This build
+ * declines that, and §7.3's own note is the reason — "`day_count` is always an
+ * integer despite its numeric type". A column that must never hold a fraction, in
+ * a type that permits one, is a rule with nothing enforcing it, and the migration
+ * to widen `INTEGER` on the day the policy actually changes is three lines.
+ *
+ * So the schema holds no fractional number at all. Not in a day count, not in a
+ * balance, not anywhere — which is a stronger and much simpler thing to check than
+ * a list of which columns are allowed to be `NUMERIC`.
+ *
+ * **The story that will argue with this, and should.** §8.6d pro rates a mid year
+ * joiner to 10.08 days and says plainly that "FR 24 governs how leave is requested,
+ * not how entitlement is held". That figure has nowhere to live in an integer, so
+ * when the ledger and the balance arrive — LMS 210 and LMS 214, and the pro rating
+ * of LMS 215 behind them — one column will genuinely need a scale.
+ *
+ * That is the point of failing here rather than not checking. The right outcome is
+ * not to delete this test; it is to name the one or two columns that hold an accrued
+ * figure, allow those, and leave every other column integral — so that the day
+ * somebody makes `day_count` a `NUMERIC` "for symmetry", it still fails. A leave
+ * *request* is whole days in every story there will ever be; only what somebody has
+ * accrued is divisible.
+ */
+describe('columns that count', () => {
+  /* Every numeric type Postgres offers, so that a new column is caught by what it
+     is rather than by whether somebody remembered to add it to a list. This picks
+     up plpgsql variables and RETURNS clauses too, and that is wanted: a function
+     that counts rows into a REAL is the same bug arriving by a different door. */
+  const NUMERIC_TYPE =
+    /\b([a-z_]+)\s+(smallint|integer|int|bigint|numeric|decimal|real|double\s+precision|float\d*|money)\b/gi;
+
+  /* The ones that can hold a fraction. MONEY is here because it holds two decimal
+     places and because a leave system has no business with a currency column. */
+  const FRACTIONAL = ['numeric', 'decimal', 'real', 'double precision', 'money'];
+
+  interface Declaration {
+    file: string;
+    name: string;
+    type: string;
+  }
+
+  const declarations: Declaration[] = files.flatMap((file) => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/--[^\n]*/g, ' ');
+
+    return [...sql.matchAll(NUMERIC_TYPE)].map(([, name, type]) => ({
+      file,
+      name: name.toLowerCase(),
+      type: type.toLowerCase().replace(/\s+/g, ' '),
+    }));
+  });
+
+  it('there are some to check', () => {
+    expect(declarations.length).toBeGreaterThan(0);
+  });
+
+  it('nothing in this schema can hold a fraction', () => {
+    const fractional = declarations.filter(
+      (declaration) =>
+        FRACTIONAL.includes(declaration.type) || /^float|^numeric|^decimal/.test(declaration.type),
+    );
+
+    expect(
+      fractional.map(
+        (declaration) => `${declaration.file}: ${declaration.name} ${declaration.type}`,
+      ),
+    ).toEqual([]);
+  });
+
+  /* And the columns that are explicitly a count of days really are among them,
+     so the check above cannot pass because the regex stopped matching anything
+     that matters. */
+  it('every column counting days is a whole number', () => {
+    const counting = declarations.filter((declaration) => declaration.name.endsWith('_days'));
+
+    expect(counting.length).toBeGreaterThan(0);
+    expect(
+      counting
+        .filter(
+          (declaration) => !['smallint', 'int', 'integer', 'bigint'].includes(declaration.type),
+        )
+        .map((declaration) => `${declaration.file}: ${declaration.name} ${declaration.type}`),
+    ).toEqual([]);
+  });
+
+  /**
+   * And no column is a flag saying half a day is permitted.
+   *
+   * `leave_type.allows_half_day` is in §5.5 and is deliberately not in this
+   * schema. FR 24 puts half days outside the system entirely — they "do not reduce
+   * any leave balance, and are out of scope" — so a column saying whether a type
+   * permits one is a switch with nothing behind it, and a switch with nothing
+   * behind it eventually gets wired up.
+   *
+   * Spelled out rather than matched as a bare `half`, because these files are
+   * mostly prose and say the word constantly. The API side of the same rule is
+   * ./whole-days.test.ts.
+   */
+  it('no column is a half day flag', () => {
+    const flagged = files.filter((file) =>
+      /\b(half_days?|is_half_day|allows_half_day)\b/.test(
+        readFileSync(join(MIGRATIONS_DIR, file), 'utf8'),
+      ),
+    );
+
+    expect(flagged).toEqual([]);
+  });
+});
+
+/**
  * Which side of the line reference data sits on. LMS 202, and LMS 106 before it.
  *
  * A production database is migrated and never seeded, so anything the system
