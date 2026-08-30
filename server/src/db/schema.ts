@@ -576,9 +576,73 @@ export interface LeaveBalanceTable {
   updated_at: Timestamp;
 }
 
+/**
+ * Every balance where the cache and the ledger do not say the same thing. §7.4.
+ * LMS 213.
+ *
+ * A view, not a table, and that is the third acceptance criterion in the type system:
+ * a reconciliation that reports rather than silently corrects has nothing to write to.
+ * Every column is `never` for insert and update because there is no row here to write
+ * — each one is a comparison, computed when it is asked for.
+ *
+ * The comparison itself is `what_the_ledger_says`, which is §5.7's projection lifted
+ * out of `rebuild_one_balance_from_the_ledger()` so that the writer and the checker
+ * read one definition. See the nightly-balance-reconciliation migration.
+ *
+ * **The two sides are not the same type, and the view does not pretend otherwise.**
+ * `cached_taken` is the `integer` column `leave_balance` declares; `ledger_taken` is a
+ * `numeric` sum. ../repositories/reconciliation-repository.ts turns both into numbers
+ * in one place, which is where every other `numeric` in this schema becomes one.
+ */
+export interface BalanceDisagreementView {
+  employee_id: ColumnType<string, never, never>;
+  /* The handle a person acts on. FR 08's imports and FR 63's reports use it, and an
+     alert naming three bigints is one somebody has to go and look up first. The
+     employee's *name* is deliberately absent: an alert may sit in a mailbox or be
+     forwarded, and it needs no staff details it does not use. */
+  employee_number: ColumnType<string, never, never>;
+  leave_type_id: ColumnType<string, never, never>;
+  leave_type_name: ColumnType<string, never, never>;
+  leave_year_id: ColumnType<string, never, never>;
+  leave_year_label: ColumnType<string, never, never>;
+  /* False where the ledger has movements and no balance row exists at all — the fault
+     a join from `leave_balance` could never find, and the one that shows every screen
+     nought days. Told apart from a genuine row of noughts, which reads the same. */
+  has_cached_row: ColumnType<boolean, never, never>;
+  cached_entitled: ColumnType<string, never, never>;
+  ledger_entitled: ColumnType<string, never, never>;
+  cached_carried_over: ColumnType<string, never, never>;
+  ledger_carried_over: ColumnType<string, never, never>;
+  cached_adjustment: ColumnType<string, never, never>;
+  ledger_adjustment: ColumnType<string, never, never>;
+  cached_taken: ColumnType<number, never, never>;
+  ledger_taken: ColumnType<string, never, never>;
+  cached_pending: ColumnType<number, never, never>;
+  ledger_pending: ColumnType<string, never, never>;
+}
+
+/**
+ * What the ledger says every balance is. §5.7's projection, as a view. LMS 213.
+ *
+ * Read here only to count how many balances a reconciliation compared. The figures
+ * themselves are read through {@link BalanceDisagreementView}, which is this beside
+ * the cache with the rows that agree left out.
+ */
+export interface WhatTheLedgerSaysView {
+  employee_id: ColumnType<string, never, never>;
+  leave_type_id: ColumnType<string, never, never>;
+  leave_year_id: ColumnType<string, never, never>;
+  entitled: ColumnType<string, never, never>;
+  carried_over: ColumnType<string, never, never>;
+  adjustment: ColumnType<string, never, never>;
+  taken: ColumnType<string, never, never>;
+  pending: ColumnType<string, never, never>;
+}
+
 export interface Database {
   app_user: AppUserTable;
   audit_log: AuditLogTable;
+  balances_that_disagree_with_the_ledger: BalanceDisagreementView;
   department: DepartmentTable;
   employee: EmployeeTable;
   holiday: HolidayTable;
@@ -590,6 +654,7 @@ export interface Database {
   leave_year: LeaveYearTable;
   role: RoleTable;
   user_role: UserRoleTable;
+  what_the_ledger_says: WhatTheLedgerSaysView;
   work_pattern: WorkPatternTable;
   work_pattern_day: WorkPatternDayTable;
 }
