@@ -774,6 +774,47 @@ calculator](#the-day-calculator).
 What is still not built is the routing itself — which person a chain's desk
 resolves to, and what happens when the request reaches them — which is FR 48.
 
+**Everything is a whole number of days.** FR 24. Half days are settled between an
+employee and their manager, come off no balance, and are not in this system at all.
+There is no fraction anywhere: not in a column, not in a field, not in an argument.
+
+Since LMS 209 that is a rule rather than a habit, and it is held up in three places
+because it can be broken in three ways.
+
+| | Holds | Checked by |
+|---|---|---|
+| `domain/whole-days.ts` | `isWholeDays()`, the one predicate every figure in days is asked | `unit/whole-days.test.ts`, over every entry point that takes one |
+| the migrations | no column of any table can hold a fraction, and none is a half day flag | `unit/migrations.test.ts`, read out of the SQL |
+| `server/src` | nothing in the API is named for a half day | `unit/whole-days.test.ts`, read out of the source |
+
+**A fraction is refused where it arrives, never rounded.** There is deliberately no
+`roundToWholeDays()`. Half a day rounded up is a day somebody did not take and is
+charged for; rounded down it is a day the company gives away; and neither announces
+itself — the number simply comes out slightly wrong, in a system whose whole claim
+is that the number can be explained. So `0.5` is refused at the boundary, while the
+person still has the form open and can say what they meant.
+
+**The schema holds no fractional type at all.** §5.5 and §5.7 of the Technical
+Design Document specify `NUMERIC(5,2)` for `day_count` and `NUMERIC(6,2)` for every
+balance column, "kept only so that a future policy change does not need a
+migration". This build declines that, and §7.3's own note is the reason: `day_count`
+"is always an integer despite its numeric type". A column that must never hold a
+fraction, in a type that permits one, is a rule with nothing enforcing it — and
+widening `INTEGER` on the day the policy actually changes is a three line migration.
+`leave_type.allows_half_day` from §5.5 is absent for the same reason: a switch with
+nothing behind it is a switch somebody eventually wires up.
+
+**The one figure FR 24 does not govern is a pro rated entitlement**, and it is worth
+knowing before you meet the failing test. §8.6d gives a 1 July joiner 10.08 days and
+says plainly that FR 24 "governs how leave is requested, not how entitlement is
+held". Nothing in the schema needs a scale for that yet — `entitlement_days` holds
+the rule's figure, which is always 20 or 3 or 120, and the fraction only appears when
+the grant is calculated. When the ledger and the balance arrive (LMS 210, LMS 214,
+LMS 215) one column will need one, and the migrations test will fail. The answer then
+is to allow that column by name and leave every other one integral, not to delete the
+check: a leave *request* is whole days in every story there will ever be, and only
+what somebody has accrued is divisible.
+
 **Dates are dates.** Leave dates are calendar dates with no time and no timezone. Everything else is UTC. Mixing these up is the most common source of off by one day bugs in leave systems.
 
 The two rules, said plainly, because almost every such bug is the two being

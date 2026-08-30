@@ -72,6 +72,7 @@
  */
 
 import { type CalendarDate, isCalendarDate } from './time.js';
+import { isWholeDays, WHOLE_DAYS_ONLY } from './whole-days.js';
 
 /**
  * How narrowly a rule is aimed, and therefore which one wins.
@@ -593,11 +594,10 @@ function optionalId(field: string, value: unknown): string | null {
  * differently from having no rule at all.
  */
 function requireDays(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+  if (!isWholeDays(value) || value < 0) {
     throw new InvalidEntitlementRule(
       'entitlementDays',
-      'An entitlement is a whole number of days and cannot be negative. Half days are ' +
-        'settled with a manager and are deliberately not in this system. FR 24.',
+      `An entitlement is a whole number of days and cannot be negative. ${WHOLE_DAYS_ONLY}`,
     );
   }
 
@@ -609,11 +609,12 @@ function optionalPositive(field: string, value: unknown): number | null {
     return null;
   }
 
-  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+  if (!isWholeDays(value) || value <= 0) {
     throw new InvalidEntitlementRule(
       field,
       `${labelFor(field)} is a whole number of days above zero, or nothing at all. ` +
-        'Carrying a maximum of no days is not carrying over; turn carrying over off instead.',
+        'Carrying a maximum of no days is not carrying over; turn carrying over off ' +
+        `instead. ${WHOLE_DAYS_ONLY}`,
     );
   }
 
