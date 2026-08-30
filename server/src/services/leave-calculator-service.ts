@@ -39,7 +39,7 @@
  * ## What it does not do
  *
  * **No balance.** Whether somebody has the days this returns is `leave_balance` and
- * the ledger, LMS 210 and LMS 214. "What does this cost" and "can they afford it"
+ * the ledger, LMS 210 and LMS 211. "What does this cost" and "can they afford it"
  * are two questions, and sick leave answers the second with yes while going
  * negative — §8.6b.
  *

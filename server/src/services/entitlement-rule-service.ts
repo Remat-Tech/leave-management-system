@@ -34,7 +34,7 @@
  * story states.
  *
  * **No granting.** A resolved rule is a figure, not days in somebody's balance.
- * Writing the grant is the ledger, LMS 210 and LMS 214, and it is the other half
+ * Writing the grant is the ledger, LMS 210 and LMS 211, and it is the other half
  * of why last year cannot move: a grant is an entry recording what the figure was
  * on the day it was written.
  *

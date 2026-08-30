@@ -62,7 +62,7 @@
  * ## What is deliberately not here
  *
  * **No balance.** Whether somebody *has* the days this returns is
- * `leave_balance` and the ledger, LMS 210 and LMS 214. This says what the leave
+ * `leave_balance` and the ledger, LMS 210 and LMS 211. This says what the leave
  * costs, not whether it can be afforded, and keeping those apart is what lets sick
  * leave go negative on purpose — §8.6b.
  *

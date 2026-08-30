@@ -36,7 +36,7 @@
  * ## What is not here
  *
  * **No balance.** Nothing sums these into "days available". §5.7's cached total,
- * its five buckets and the reconciliation job of §7.4 are LMS 214, and
+ * its five buckets and the reconciliation job of §7.4 are LMS 211, and
  * {@link LedgerEntry} deliberately offers no shortcut to them: see `BUCKETS` in
  * ../domain/ledger.ts for why a run of signed days is not a balance, and
  * `runningTotal` for the figure that is honestly available today.
@@ -113,7 +113,7 @@ export class LedgerService {
    * manager, FR 56 for HR.
    *
    * The running figure is `runningTotal`'s and is the sum of the signed movements —
-   * **not** the available balance, which is five figures and is LMS 214. The
+   * **not** the available balance, which is five figures and is LMS 211. The
    * distinction is kept in the name rather than in a comment on the call site,
    * because a field called `after` on a list of movements is what it says and a
    * field called `balance` would not be.

@@ -15,7 +15,7 @@
  * {@link runningTotal} is here because reading a history means seeing the figure
  * after each line, which is what makes a list of movements legible as an account.
  * The cached `leave_balance` of §5.7, its five buckets and the reconciliation job
- * that proves the two agree are LMS 214, and deliberately not here: see
+ * that proves the two agree are LMS 211, and deliberately not here: see
  * {@link BUCKETS} for the one part of that projection this file does settle, and
  * why it settles only that part.
  *
@@ -63,6 +63,7 @@
  * that builds the cache.
  */
 
+import type { BalanceBucket } from './balance.js';
 import { isWholeDays, WHOLE_DAYS_ONLY } from './whole-days.js';
 
 /**
@@ -132,7 +133,7 @@ export const ENTRY_SIGNS: Readonly<Record<LedgerEntryType, 'ADDS' | 'CONSUMES' |
 /**
  * Which of the cached balance's columns each type moves. §5.7's second table.
  *
- * Here rather than in LMS 214 for one reason: it is the fact that explains why
+ * Here rather than in LMS 211 for one reason: it is the fact that explains why
  * {@link runningTotal} is not a balance, and a reader who has just been told "these
  * do not sum to what is available" is owed the reason on the spot.
  *
@@ -142,11 +143,16 @@ export const ENTRY_SIGNS: Readonly<Record<LedgerEntryType, 'ADDS' | 'CONSUMES' |
  * once and not ten. Any projection that adds signed days into a single figure gets
  * that wrong, which is why there is no such function anywhere in this file.
  *
- * Nothing reads this yet. It is here as the statement of what LMS 214 has to
- * implement, in the file that knows what an entry means, rather than as an
- * assumption that story would otherwise have to make twice.
+ * Written here by LMS 210 as the statement of what LMS 211 would have to implement,
+ * in the file that knows what an entry means. LMS 211 implemented it in
+ * `rebuild_one_balance_from_the_ledger()`, in the cached-balance-table migration,
+ * and that is the only arithmetic — a second copy in this language would be the
+ * drift the cache exists to be checked against. So this stays a statement rather
+ * than becoming a function: ../../tests/integration/balance.test.ts posts one entry
+ * of each kind and asserts that exactly the columns named here moved, which is what
+ * makes the two agree rather than merely both existing.
  */
-export const BUCKETS: Readonly<Record<LedgerEntryType, readonly string[]>> = {
+export const BUCKETS: Readonly<Record<LedgerEntryType, readonly BalanceBucket[]>> = {
   GRANT: ['entitled'],
   CARRY_FORWARD: ['carriedOver'],
   ADJUSTMENT: ['adjustment'],
@@ -361,7 +367,7 @@ export function inOrderWritten(entries: readonly LedgerEntry[]): LedgerEntry[] {
  * "what may this person book" — a `RESERVATION` and the `DEDUCTION` that follows it
  * appear here as ten days consumed where five were. See {@link BUCKETS}: available
  * is five figures, `DEDUCTION` moves days between two of them, and that projection
- * is LMS 214's.
+ * is LMS 211's.
  *
  * Kept anyway, and named for what it is, because the history screen this story
  * makes possible needs a running figure and the alternative is every caller writing

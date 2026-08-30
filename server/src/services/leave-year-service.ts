@@ -23,7 +23,7 @@
  * ## What it does not do
  *
  * **No balances.** `leave_balance` and `leave_ledger_entry` arrive with LMS 210
- * and LMS 214, each carrying a `leave_year_id` and each refusing a write against a
+ * and LMS 211, each carrying a `leave_year_id` and each refusing a write against a
  * closed year. That is where "its balances cannot drift" stops being about one row
  * and becomes a rule about a year of them. Nothing here pretends to do it, because
  * a check that counts nothing reads as a rule and is not one.

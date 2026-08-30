@@ -53,7 +53,7 @@
  * rows rather than about an argument somebody passed.
  *
  * The balances themselves are `leave_balance` and `leave_ledger_entry`, which
- * arrive with LMS 210 and LMS 214 carrying a `leave_year_id` each. Not stubbed
+ * arrive with LMS 210 and LMS 211 carrying a `leave_year_id` each. Not stubbed
  * here: a flag guarding nothing is a flag nobody trusts, and what those stories
  * need from this one is a row to point at and a boolean to read.
  */
