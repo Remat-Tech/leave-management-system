@@ -123,12 +123,17 @@ afterAll(async () => {
  *
  * The ids come back with the rows because the audit log files its entries under
  * them.
+ *
+ * CASCADE since LMS 210. A leave year is now the heading a run of ledger entries is
+ * filed under, and Postgres will not truncate a referenced table without being told
+ * what to do about the rows pointing at it. Nothing references `holiday`, so the
+ * word is doing nothing on that call and is left in place rather than branched on.
  */
 async function restore(table: string, rows: Record<string, unknown>[]): Promise<void> {
   const columns = Object.keys(rows[0]).filter((column) => column !== 'updated_at');
   const placeholders = columns.map((_column, index) => `$${index + 1}`).join(', ');
 
-  await admin.query(`TRUNCATE ${table}`);
+  await admin.query(`TRUNCATE ${table} CASCADE`);
 
   for (const row of rows) {
     await admin.query(

@@ -451,6 +451,74 @@ export interface HolidayTable {
   updated_at: Timestamp;
 }
 
+/**
+ * The balance ledger. FR 27, §5.7, design principle 1. LMS 210.
+ *
+ * One row per movement in one balance, and the only way days may move at all. The
+ * cached total of §5.7 is LMS 214 and is rebuilt from these rows; if the two ever
+ * disagree, this wins. What an entry means is ../domain/ledger.ts.
+ *
+ * Append only, on every connection. `lms_app` holds SELECT and INSERT and nothing
+ * else, and `refuse_update()` and `refuse_delete()` — the audit log's, reused — say
+ * so to the owner too. A mistake is put right by a compensating ADJUSTMENT carrying
+ * `corrects_id`, never by an edit.
+ *
+ * `created_by`, `created_by_employee_id` and `created_at` are stamped by
+ * `stamp_the_writer_on_a_ledger_entry()` from the settings ../repositories/recording.ts
+ * sets, and are *overwritten* rather than defaulted: no writer may post an entry
+ * under another name or date one into a settled year.
+ */
+export interface LeaveLedgerEntryTable {
+  id: Generated<string>;
+  /* The three columns a balance is keyed by, and real foreign keys — unlike
+     `audit_log.actor_employee_id`. There an id is a handle for a join somebody may
+     choose to make; here it is the filing, and days that moved in nobody's balance
+     are days no balance can be rebuilt from. */
+  employee_id: string;
+  leave_type_id: string;
+  leave_year_id: string;
+  /* One of the eight of §5.7, held closed by leave_ledger_entry_type_known. The
+     domain's LEDGER_ENTRY_TYPES is the same list; the integration suite asserts the
+     two agree. */
+  entry_type: string;
+  /**
+   * How many days, signed. Positive adds to what somebody is owed, negative
+   * consumes it, and which way each type goes is a CHECK rather than a convention.
+   *
+   * Typed `string`, because that is what the driver returns for `numeric` and
+   * changing it globally would turn every future decimal into a double silently.
+   * `Number(row.days)` happens once, in ../repositories/ledger-repository.ts, where
+   * it is visible. Adding two of these as strings concatenates them, which is
+   * exactly the bug this type makes impossible to write by accident.
+   *
+   * It is the one fractional column in this schema. §8.6d pro rates a mid year
+   * joiner to 10.08 days, and "FR 24 governs how leave is requested, not how
+   * entitlement is held" — so the four request-shaped entry types are held to whole
+   * days by `leave_ledger_entry_requests_move_whole_days` and the four entitlement
+   * ones are not. See unit/migrations.test.ts, which permits this column by name.
+   *
+   * **Summing these in JavaScript is not how a balance is computed.** Postgres adds
+   * `numeric` exactly and doubles do not, and a RESERVATION and the DEDUCTION that
+   * follows it are not two consumptions of the same days. LMS 214.
+   */
+  days: string;
+  /* FR 27. Mandatory, not blank, no default anywhere: a reason that can be omitted
+     is omitted by the writer with the most to explain. */
+  reason: string;
+  /* The entry this one puts right. Only an ADJUSTMENT may carry one, and it must be
+     in the same balance — `refuse_a_correction_across_balances()`. */
+  corrects_id: string | null;
+  /* Who, in the two forms audit_log keeps them: the id to join on, the description
+     to read when the id belongs to nobody. A year rollover has no person behind it.
+     Both stamped by the trigger, never by the writer. */
+  created_by: ColumnType<string, never, never>;
+  created_by_employee_id: ColumnType<string | null, never, never>;
+  /* When, stamped by the same trigger rather than defaulted — a default applies
+     only when a writer says nothing, and a balance rebuilt in date order can be
+     rewritten by an entry dated backwards without any existing row changing. */
+  created_at: Timestamp;
+}
+
 export interface Database {
   app_user: AppUserTable;
   audit_log: AuditLogTable;
@@ -458,6 +526,7 @@ export interface Database {
   employee: EmployeeTable;
   holiday: HolidayTable;
   leave_entitlement_rule: LeaveEntitlementRuleTable;
+  leave_ledger_entry: LeaveLedgerEntryTable;
   leave_type: LeaveTypeTable;
   leave_type_approval_step: LeaveTypeApprovalStepTable;
   leave_year: LeaveYearTable;

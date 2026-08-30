@@ -136,22 +136,24 @@ describe('columns that hold a time', () => {
  * a type that permits one, is a rule with nothing enforcing it, and the migration
  * to widen `INTEGER` on the day the policy actually changes is three lines.
  *
- * So the schema holds no fractional number at all. Not in a day count, not in a
- * balance, not anywhere — which is a stronger and much simpler thing to check than
- * a list of which columns are allowed to be `NUMERIC`.
+ * So the schema holds no fractional number anywhere except where somebody has
+ * genuinely accrued one — which is a much simpler thing to check than a list of
+ * which columns are allowed to be `NUMERIC`, and leaves the exception somewhere it
+ * has to be argued for.
  *
- * **The story that will argue with this, and should.** §8.6d pro rates a mid year
- * joiner to 10.08 days and says plainly that "FR 24 governs how leave is requested,
- * not how entitlement is held". That figure has nowhere to live in an integer, so
- * when the ledger and the balance arrive — LMS 210 and LMS 214, and the pro rating
- * of LMS 215 behind them — one column will genuinely need a scale.
+ * **The story that argued with it, as this one predicted it would.** LMS 209 wrote
+ * the rule flat: nothing holds a fraction. It also wrote down what the answer would
+ * have to be when the ledger arrived, because §8.6d pro rates a mid year joiner to
+ * 10.08 days and says plainly that "FR 24 governs how leave is requested, not how
+ * entitlement is held".
  *
- * That is the point of failing here rather than not checking. The right outcome is
- * not to delete this test; it is to name the one or two columns that hold an accrued
- * figure, allow those, and leave every other column integral — so that the day
- * somebody makes `day_count` a `NUMERIC` "for symmetry", it still fails. A leave
- * *request* is whole days in every story there will ever be; only what somebody has
- * accrued is divisible.
+ * LMS 210 is that arrival, and the answer is {@link ACCRUED} below: one column,
+ * named by file, permitted a scale, with every other column in the schema still
+ * integral. So the day somebody makes a leave request's `day_count` a `NUMERIC` for
+ * symmetry, this still fails — which was the whole point of writing the rule down
+ * before there was anything to except from it. A leave *request* is whole days in
+ * every story there will ever be; only what somebody has accrued is divisible, and
+ * the ledger holds that line inside the column with a constraint of its own.
  */
 describe('columns that count', () => {
   /* Every numeric type Postgres offers, so that a new column is caught by what it
@@ -183,14 +185,44 @@ describe('columns that count', () => {
     }));
   });
 
+  /**
+   * The accrued figures, and the whole of the exception.
+   *
+   * The story above said what the answer would have to be when this test first
+   * failed: "name the one or two columns that hold an accrued figure, allow those,
+   * and leave every other column integral — so that the day somebody makes
+   * `day_count` a `NUMERIC` for symmetry, it still fails". LMS 210 is that day, and
+   * this list is that answer.
+   *
+   * `leave_ledger_entry.days` holds what somebody has accrued as well as what they
+   * have booked, and §8.6d pro rates a mid year joiner to 10.08 of them. It is
+   * permitted its scale, and the constraint
+   * `leave_ledger_entry_requests_move_whole_days` is the price: the four entry types
+   * that follow a leave request are held to whole days inside the column, so the
+   * exception buys a fractional *entitlement* and not fractional *leave*.
+   *
+   * Named by file and column rather than by column alone. A future `days` somewhere
+   * else is a different decision and should have to be argued for here.
+   */
+  const ACCRUED: readonly { file: RegExp; name: string }[] = [
+    { file: /immutable-leave-ledger/, name: 'days' },
+  ];
+
+  const isAccrued = (declaration: Declaration): boolean =>
+    ACCRUED.some(
+      (allowed) => allowed.file.test(declaration.file) && allowed.name === declaration.name,
+    );
+
   it('there are some to check', () => {
     expect(declarations.length).toBeGreaterThan(0);
   });
 
-  it('nothing in this schema can hold a fraction', () => {
+  it('nothing holds a fraction but the figures somebody has accrued', () => {
     const fractional = declarations.filter(
       (declaration) =>
-        FRACTIONAL.includes(declaration.type) || /^float|^numeric|^decimal/.test(declaration.type),
+        !isAccrued(declaration) &&
+        (FRACTIONAL.includes(declaration.type) ||
+          /^float|^numeric|^decimal/.test(declaration.type)),
     );
 
     expect(
@@ -198,6 +230,14 @@ describe('columns that count', () => {
         (declaration) => `${declaration.file}: ${declaration.name} ${declaration.type}`,
       ),
     ).toEqual([]);
+  });
+
+  /* And the exception is real rather than a list guarding nothing. A rule with an
+     allowance in it that never applies is a rule nobody has tested the shape of. */
+  it('and the exception names a column that is actually there', () => {
+    expect(declarations.filter(isAccrued).map((declaration) => declaration.type)).toEqual([
+      'numeric',
+    ]);
   });
 
   /* And the columns that are explicitly a count of days really are among them,

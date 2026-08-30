@@ -103,12 +103,18 @@ afterAll(async () => {
  *
  * The ids come back with the rows because the audit log files its entries under
  * them.
+ *
+ * CASCADE since LMS 210. A leave year is now the heading a run of ledger entries is
+ * filed under, and Postgres will not truncate a table something references without
+ * being told what to do about the referencing rows. Emptying those alongside is
+ * right rather than merely permitted: a ledger entry filed under a year that has
+ * been replaced is a movement in a balance nobody can reconstruct.
  */
 async function restoreTheSeededYears(): Promise<void> {
   const columns = Object.keys(seeded[0]).filter((column) => column !== 'updated_at');
   const placeholders = columns.map((_column, index) => `$${index + 1}`).join(', ');
 
-  await admin.query('TRUNCATE leave_year');
+  await admin.query('TRUNCATE leave_year CASCADE');
 
   for (const row of seeded) {
     await admin.query(

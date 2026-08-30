@@ -605,8 +605,11 @@ describe('the boundary read from the leave years themselves', () => {
     await admin.query(`UPDATE leave_year SET is_closed = TRUE WHERE label = '2025'`);
   }
 
+  /* CASCADE since LMS 210: a leave year is now the heading a run of ledger entries
+     is filed under, and Postgres will not truncate a referenced table without being
+     told what to do about the rows pointing at it. */
   afterEach(async () => {
-    await admin.query(`TRUNCATE leave_year`);
+    await admin.query(`TRUNCATE leave_year CASCADE`);
     await admin.query('SELECT ensure_the_first_leave_years()');
   });
 
