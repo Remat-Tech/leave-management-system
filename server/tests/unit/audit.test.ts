@@ -71,6 +71,10 @@ describe('the entities an entry can be about', () => {
          that nothing about the year can move, so the entry is the record of the
          one decision that made that true. */
       'leave_year',
+      /* LMS 206. The only record there is. A holiday added in March changes what a
+         request approved in February cost, and the row says only what the calendar
+         says today — so a removed day exists nowhere else at all. */
+      'holiday',
     ]);
   });
 });

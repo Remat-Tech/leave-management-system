@@ -309,3 +309,74 @@ describe('the first two leave years are reference data', () => {
     expect(reopening).toEqual([]);
   });
 });
+
+/**
+ * Where Ghana's public holidays live. FR 22, §5.4, LMS 206.
+ *
+ * The same side of the same line as the seven leave types, their figures, their
+ * approval chains and the first two leave years: a production database is migrated
+ * and never seeded, and a leave system that charges everybody a day for Christmas
+ * on its first December is one nobody trusts again.
+ *
+ * What is checked here is the half that needs no database — that the 2026 gazette
+ * is a migration's, that it has an owner that can put it back, and that the owner
+ * refuses to rewrite a day HR has since moved. That the fourteen really are on a
+ * migrated database, and that a settled leave year keeps its days against every
+ * writer, is ../integration/holiday.test.ts.
+ */
+describe("Ghana's public holidays are reference data", () => {
+  const migrations = files.map((file) => readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
+
+  const owner = migrations.find((sql) =>
+    /CREATE\s+FUNCTION\s+ensure_the_gazetted_holidays/i.test(sql),
+  );
+
+  it('are written by a migration, and by one that can be run again', () => {
+    expect(owner).toBeDefined();
+    expect(owner).toMatch(/INSERT\s+INTO\s+holiday\b/i);
+    expect(owner).toMatch(/'Independence Day'/);
+    expect(owner).toMatch(/'Christmas Day'/);
+  });
+
+  /* It inserts what is missing and changes nothing that is there. HR moves Eid
+     al-Fitr when the gazette says so, and a repair that reconciled the rows back
+     to the projected dates would undo that on the next restore. */
+  it('are never rewritten by the migration that puts them back', () => {
+    expect(owner).not.toMatch(/UPDATE\s+holiday\b/i);
+    expect(owner).not.toMatch(/DELETE\s+FROM\s+holiday\b/i);
+    expect(owner).not.toMatch(/ON\s+CONFLICT/i);
+  });
+
+  /* Guarded on the day and on the name, and the second half is what makes it safe
+     against a calendar somebody has corrected: a guard reading only the date would
+     put the projected Eid back beside the gazetted one, on a table whose whole rule
+     is one row per day. */
+  it('are put back only where neither the day nor the name is already taken', () => {
+    expect(owner).toMatch(/existing\.holiday_date\s*=\s*gazetted\.holiday_date/i);
+    expect(owner).toMatch(/lower\(\s*existing\.name\s*\)/i);
+  });
+
+  /**
+   * Only 2026, and the absence of 2027 is the decision rather than an oversight.
+   *
+   * Two of the fourteen — Eid al-Fitr and Eid al-Adha — are fixed by the Minister
+   * after the moon is sighted, so a seeded 2027 would be a calendar that is twelve
+   * thirteenths right. A nearly right calendar is worse than an empty one, because
+   * a wrong row is believed silently and an empty year is a screen with nothing on
+   * it. What makes the empty year safe is `yearsWithoutHolidays()`, which names it.
+   */
+  it('cover the year the system goes live in, and no year the gazette has not reached', () => {
+    expect(owner).toMatch(/DATE\s+'2026-/);
+    expect(owner).not.toMatch(/DATE\s+'2027-/);
+  });
+
+  /* The fixture seed may not carry them. A holiday written out in that file would
+     be a second source for a day that has to have exactly one, and it would hold
+     only on a machine somebody had seeded. */
+  it('are not owned by the fixture seed, which no production database runs', () => {
+    const fixtures = readFileSync(join(process.cwd(), 'server', 'seeds', 'seed.mjs'), 'utf8');
+
+    expect(fixtures).not.toMatch(/INSERT\s+INTO\s+holiday\b/i);
+    expect(fixtures).not.toMatch(/'(Christmas Day|Independence Day|Eid al-Fitr)'/);
+  });
+});

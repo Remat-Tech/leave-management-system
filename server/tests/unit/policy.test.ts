@@ -9,6 +9,7 @@ import { rolePolicy } from '../../src/auth/role-policy.js';
 import {
   ADMINISTERS_ACCESS,
   MAINTAINS_EMPLOYEE_RECORDS,
+  MAINTAINS_THE_CALENDAR,
   PROVIDES_LOGINS,
   READS_EVERY_RECORD,
   type RoleCode,
@@ -17,6 +18,7 @@ import {
 } from '../../src/auth/roles.js';
 import { entitlementRulePolicy } from '../../src/auth/entitlement-rule-policy.js';
 import type { EntitlementRule } from '../../src/domain/entitlement-rule.js';
+import { holidayPolicy } from '../../src/auth/holiday-policy.js';
 import { leaveTypePolicy } from '../../src/auth/leave-type-policy.js';
 import { leaveYearPolicy } from '../../src/auth/leave-year-policy.js';
 import { signInPolicy } from '../../src/auth/sign-in-policy.js';
@@ -493,6 +495,75 @@ describe('leave years, §5.4 and LMS 205', () => {
     expect(leaveYearPolicy.read(efua, '2026').allowed).toBe(true);
     expect(leaveYearPolicy.close(efua, '2026').allowed).toBe(false);
     expect(leaveYearPolicy.close(efua, '2026').told).toMatch(/HR Administrator/);
+  });
+});
+
+describe('the public holiday calendar, FR 22 and LMS 206', () => {
+  /* Open to read, and this one barely needs arguing: a public holiday is in the
+     national gazette and on the front page of every newspaper in Accra. There is
+     nothing to protect and a fortnight in December to plan around. */
+  it('is readable by anybody signed in, because it is published in the gazette', () => {
+    for (const [, roles] of EACH_ROLE) {
+      const them = employee('adwoa', roles);
+
+      expect(holidayPolicy.read(them, '25-dec').allowed).toBe(true);
+      expect(holidayPolicy.list(them).allowed).toBe(true);
+    }
+  });
+
+  /**
+   * The one that is different from every other table in §5.5, and the test is
+   * written against {@link MAINTAINS_THE_CALENDAR} rather than against a list of
+   * codes so that widening or narrowing it is one edit in ../../src/auth/roles.ts.
+   *
+   * Leave types, entitlement figures and leave years are all
+   * {@link SETS_UP_THE_ORGANISATION}, because each holds a decision about what
+   * leave costs everybody. This holds no decision at all — it is a transcription
+   * of the Public Holidays Act and of whatever the Minister gazetted this week —
+   * so it is HR's desk rather than an administrator's.
+   */
+  it('is kept by HR rather than by an administrator, which no other table here is', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      const them = employee('adwoa', roles);
+      const allowed = MAINTAINS_THE_CALENDAR.includes(code);
+
+      expect(holidayPolicy.create(them).allowed).toBe(allowed);
+      expect(holidayPolicy.update(them, '25-dec').allowed).toBe(allowed);
+      expect(holidayPolicy.remove(them, '25-dec').allowed).toBe(allowed);
+    }
+  });
+
+  /* The comparison worth making explicitly, because it is the one that looks like
+     an inconsistency until the reason is stated. The same officer who may not
+     move a notice window may add a day of national mourning to the calendar. */
+  it('is an HR Officer to write, where a leave year is not', () => {
+    const efua = employee('efua', ['EMPLOYEE', 'HR_OFFICER']);
+
+    expect(holidayPolicy.create(efua).allowed).toBe(true);
+    expect(leaveYearPolicy.create(efua).allowed).toBe(false);
+    expect(leaveTypePolicy.create(efua).allowed).toBe(false);
+  });
+
+  /* And a system administrator may not, which is the other end of the same
+     argument: keeping the calendar is HR's job rather than a power that comes with
+     being able to reach the database. */
+  it('is not a System Administrator to write, who runs the system rather than HR', () => {
+    const kofi = employee('kofi', ['EMPLOYEE', 'SYS_ADMIN']);
+
+    expect(holidayPolicy.read(kofi, '25-dec').allowed).toBe(true);
+    expect(holidayPolicy.create(kofi).allowed).toBe(false);
+    expect(holidayPolicy.create(kofi).told).toMatch(/HR Officer/);
+  });
+
+  /* Removing is named apart from editing, because only one of the two puts a
+     working day back into everybody's leave. "Moved Eid al-Fitr to the twenty
+     first" and "took Eid al-Fitr off the calendar" are not the same sentence. */
+  it('names removing apart from editing, so the denial log does too', () => {
+    const adwoa = employee('adwoa');
+
+    expect(holidayPolicy.update(adwoa, '25-dec').action).toBe('update');
+    expect(holidayPolicy.remove(adwoa, '25-dec').action).toBe('remove');
+    expect(holidayPolicy.remove(adwoa, '25-dec').resource).toBe('holiday');
   });
 });
 

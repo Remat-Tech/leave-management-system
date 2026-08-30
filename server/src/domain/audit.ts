@@ -77,6 +77,12 @@ export const AUDITED_ENTITIES = [
      a settled balance is answered with, since after that nothing about the year
      can move. */
   'leave_year',
+  /* LMS 206. The only record of who changed the calendar and when. A holiday
+     added in March changes what a request approved in February cost — FR 25's
+     recalculation — and the row itself says only what the calendar says today,
+     so "who added the twenty eighth of December" is answerable from here or
+     from nowhere. */
+  'holiday',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];

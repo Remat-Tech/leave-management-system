@@ -101,6 +101,31 @@ export const MAINTAINS_EMPLOYEE_RECORDS: readonly RoleCode[] = ['HR_OFFICER', 'H
 export const SETS_UP_THE_ORGANISATION: readonly RoleCode[] = ['HR_ADMIN'];
 
 /**
+ * The roles that keep the public holiday calendar. FR 22. LMS 206.
+ *
+ * The one configuration table that is not Remat's decision at all. What annual
+ * leave is worth, who approves unpaid leave and when the leave year ends are all
+ * things this company chose, and {@link SETS_UP_THE_ORGANISATION} is who chooses
+ * them. The gazetted holidays are the Republic's, published by the Ministry for
+ * the Interior, and HR is transcribing rather than deciding — so the desk that
+ * does it is the one people actually walk up to.
+ *
+ * The practical argument is the one {@link PROVIDES_LOGINS} makes. A holiday
+ * gazetted on a Tuesday for the Friday of the same week is a two minute job; make
+ * an HR Officer raise a ticket for it and the calendar is a week behind the
+ * country by March, which costs somebody a day of leave for an afternoon nobody
+ * worked.
+ *
+ * The same two codes as {@link MAINTAINS_EMPLOYEE_RECORDS}, and deliberately a
+ * separate constant rather than a reuse of it, exactly as
+ * {@link PROVIDES_LOGINS} is separate from {@link READS_EVERY_RECORD}. They agree
+ * today for unrelated reasons — one is about the records of the people here, this
+ * is about a calendar somebody else publishes — and the day one of them changes is
+ * the day a shared constant would have moved the other silently.
+ */
+export const MAINTAINS_THE_CALENDAR: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN'];
+
+/**
  * The roles that set a joiner up with a login and reset a forgotten password.
  * LMS 112.
  *

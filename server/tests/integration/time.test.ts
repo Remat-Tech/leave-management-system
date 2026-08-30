@@ -155,8 +155,14 @@ describe('the columns', () => {
      the thirty first of December for anybody reading it from London, and the day
      a balance is drawn from is decided by which side of that line a request falls
      on. `closed_at` is deliberately not among them: when somebody closed a year is
-     a moment, and it is a `timestamptz` a few lines above. */
-  it('the six dates there are today are the ones expected', async () => {
+     a moment, and it is a `timestamptz` a few lines above.
+
+     The one from LMS 206 is a public holiday, and it is the column where the off
+     by one day bug would be most visible to the most people: a Christmas Day held
+     as an instant is a Christmas Day that reads as the twenty fourth of December
+     from anywhere west of Accra, and everybody in the company is charged a day of
+     leave for it. */
+  it('the seven dates there are today are the ones expected', async () => {
     const dates = (await temporalColumns())
       .filter((column) => column.data_type === 'date')
       .map((column) => `${column.table_name}.${column.column_name}`);
@@ -164,6 +170,7 @@ describe('the columns', () => {
     expect(dates).toEqual([
       'employee.exit_date',
       'employee.start_date',
+      'holiday.holiday_date',
       'leave_entitlement_rule.effective_from',
       'leave_entitlement_rule.effective_to',
       'leave_year.end_date',
