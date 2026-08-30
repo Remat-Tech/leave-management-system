@@ -385,11 +385,12 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | What one person is entitled to | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | — |
 | The whole list of entitlement figures | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | A headcount on either | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
+| The public holiday calendar | anybody signed in | `HR_OFFICER`, `HR_ADMIN` |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
 
-Four of those lines are decisions rather than defaults, and each is argued in the
+Five of those lines are decisions rather than defaults, and each is argued in the
 policy file that holds it.
 
 **A line manager sees their reports because of the record, never because of a
@@ -415,6 +416,18 @@ a second account. The second stops "administrators appoint administrators" being
 "the lock can be picked from the next room". Neither breaks the bootstrap: the
 seed and the migrations run as `theSystem()`, which is nobody and so is never
 itself.
+
+**The holiday calendar is the one configuration table an HR Officer may write.**
+Leave types, entitlement figures and leave years are all `HR_ADMIN`, because each
+holds a decision about what leave costs everybody. The gazetted holidays are not
+Remat's decision at all — they are the Republic's, published in the national
+gazette — and HR is transcribing rather than deciding. The failure the wider rule
+would cause is the concrete one: a holiday declared on a Tuesday for the Friday of
+the same week is a two minute job, and behind an administrator it becomes a ticket
+that leaves the calendar a week behind the country by March, which charges somebody
+a day of annual leave for an afternoon nobody worked. `SYS_ADMIN` is deliberately
+not on it either: keeping the calendar is HR's job, not a power that comes with
+being able to reach the database.
 
 **Setting a joiner up is HR's, and closing an account is not.** An HR Officer
 creates the record on somebody's first morning and gives them the login in the
@@ -1017,7 +1030,8 @@ the symmetry.
 is `NOT NULL`, because a day count has to know which days somebody works. Abena
 Sarpong works Monday, Tuesday, Thursday and Friday: a week off costs her four
 days rather than five, and a public holiday on a Wednesday costs her nothing.
-FR 23.
+FR 23. Which Wednesdays those are is a table too, since LMS 206 — see [The public
+holiday calendar](#the-public-holiday-calendar).
 
 A pattern is stored as **seven `work_pattern_day` rows**, one per ISO weekday
 (1 is Monday), each saying whether it is worked — never as only the days that
@@ -1462,6 +1476,95 @@ flag nobody trusts. Closing also does not perform the rollover of FR 36. "This y
 is settled" and "these days move" are two decisions, and a close that silently did
 both would be a close nobody could audit.
 
+### The public holiday calendar
+
+**`holiday` is the one configuration table that holds somebody else's decisions.**
+FR 22, §5.4, LMS 206. Every other table in §5.5 holds what Remat Holdings decided:
+what annual leave is worth, who approves unpaid leave, when the year ends. This one
+holds what the Republic decided — the Public Holidays Act 2001 (Act 601) as amended
+by Act 1071 of 2019, and whatever the Minister for the Interior gazettes during the
+year. HR is transcribing, not deciding, and almost everything below follows from
+that.
+
+**Ghana's fourteen days for 2026 are seeded by the migration.** Reference data, by
+the same argument as the seven leave types and the first two leave years: a
+production database is migrated and never seeded, and a leave system that charges
+everybody a day for Christmas on its first December is one nobody trusts again.
+They divide into three kinds, and the difference is the whole reason a person
+maintains this table.
+
+| | Days | Why they are not generated |
+|---|---|---|
+| fixed by statute | New Year's Day, Constitution Day, Independence Day, May Day, African Union Day, Founders' Day, Kwame Nkrumah Memorial Day, Christmas Day, Boxing Day | they could be, and are the only nine that could |
+| computable | Good Friday, Easter Monday, Farmers' Day (first Friday of December) | arithmetic nobody should write twice for nine rows a year |
+| not computable at all | Eid al-Fitr, Eid al-Adha | fixed by the Minister after the moon is sighted |
+
+**Only 2026 is seeded, and the empty 2027 is the decision rather than an
+oversight.** Two of the fourteen cannot be known for a future year and the rest
+could be extrapolated, which would produce a calendar twelve thirteenths right — and
+a nearly right holiday calendar is worse than a visibly empty one, because a wrong
+row is believed silently while an empty year is a screen with nothing on it. What
+makes the empty year safe is that it can be seen: `yearsWithoutHolidays()` reads the
+leave years against this table and names any nobody has entered a calendar for, so
+somebody is told in November rather than complained to in January.
+
+**Add, edit and remove are all ordinary, which they are on no other configuration
+table here.** That is the transcription showing up as three verbs.
+
+*A day is added mid year* because the thing being transcribed changes after the
+year has started: a day of national mourning, an election day, a Monday declared in
+lieu of a Saturday Boxing Day. Boxing Day 2026 does fall on a Saturday, and nothing
+here moves it — the Act grants the Minister that power and does not oblige it, so a
+Monday this system invented would be a day off the payroll believed in and the
+country did not.
+
+*A day is moved* because the two Eids are projections until the gazette says
+otherwise, and they have been a day out before. This is why "edit" is an acceptance
+criterion rather than a courtesy.
+
+*A day is removed*, and it is a real delete — `lms_app` holds `DELETE` here, which
+it does on only one other table in this half of the schema. The argument that
+refused it to `leave_type` and `leave_year` is answered the other way round:
+those rows are headings a year of history is filed under, and nothing at all is
+filed under a holiday, because a request stores the days it cost rather than which
+days those were.
+
+**One holiday to a day.** `holiday_one_per_day` is a unique index on the date, and
+it is the load bearing constraint. "Was the office closed on this day" has one
+answer, and a day carrying two rows would be subtracted twice by any counter that
+joined on it — a request coming back a day cheaper than it was, on the one day of
+the year two feasts coincided. The gazette handles a coincidence by naming the day
+for both, which is a name and not a second row.
+
+**There is no `leave_year_id` on a holiday.** Which year a day falls in is the
+containment search `leave_year` already answers for every other day, and a stored
+answer would go wrong the morning somebody moved the company to an April start: the
+holiday does not move, the year around it does. `calendarFor(year)` is a range read
+over the year's own days.
+
+**A settled leave year keeps its days.** Adding, moving or clearing a holiday inside
+a closed year rewrites what every working-day request over it cost, after those
+figures were made final. `assertNotInASettledYear()` says so with the earliest day
+still open in the message, and `refuse_a_holiday_in_a_settled_year()` says it to
+every other writer — which matters here more than usual, because a holiday is
+exactly the kind of row somebody fixes by hand at six in the evening. It reads the
+same boundary the entitlement figures are judged against, `earliestOpenDayFrom()`,
+rather than a second idea of what settled means.
+
+Both ends of a move are judged. Dragging a stale day out of last year and dropping
+one into it are two different wrongs, and a check on the new date alone would permit
+the first — which is the likelier of the two, because it looks like tidying up.
+
+**What the calendar does not do yet.** It does not count anything: what a day off
+costs is the leave calculator of §7.3, reading a working pattern, the leave type's
+`counting_basis` and this table, and a `CALENDAR_DAYS` type like maternity leave
+does not skip a holiday at all. It does not recalculate: FR 25 gives a day back on
+an already approved request when a holiday is declared inside it, "only to working
+day leave types", and that needs requests, which is §8. What this story leaves for
+it is the audit entries — a recalculation nobody can explain is a recalculation
+nobody accepts, and for a removed day the log is the only record the day was ever
+there.
+
 **`department.parent_id` exists and nothing writes it.** A hierarchy does not
 exist rather than half existing. A story that exposes sub-departments needs what
 FR 03 and FR 04 gave reporting lines — a cycle check and a root count — because a
@@ -1727,6 +1830,15 @@ for the absence rather than for a behaviour: the domain exports nothing that cou
 the policy offers no decision, and neither service nor repository has a method.
 That is an odd-looking test and the right one, because the absence is the feature —
 a lock with an undo is not a lock.
+
+**`integration/holiday.test.ts` proves the two halves of LMS 206 a unit test
+cannot**: that Ghana's fourteen days for 2026 are on a database nothing has seeded,
+and that a settled leave year keeps its days against the owner connection as well as
+against the service. It also exercises the three verbs as privileges rather than
+only as rules — `lms_app` really holds `DELETE` here, and a story that could not
+remove a day would be one where the first mistake is permanent.
+`unit/holiday.test.ts` proves the pure half: one row to a day, both ends of a move
+judged separately, and the leave years nobody has entered a calendar for.
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than

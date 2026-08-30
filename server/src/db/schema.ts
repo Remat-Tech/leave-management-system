@@ -415,11 +415,48 @@ export interface LeaveYearTable {
   updated_at: Timestamp;
 }
 
+/**
+ * The gazetted public holiday calendar. FR 22, §5.4. LMS 206.
+ *
+ * One row per day the office was closed, and `holiday_one_per_day` makes that
+ * literal: the question is "was the office closed on this day", which has one
+ * answer, and a day carrying two rows would be subtracted twice by whatever
+ * counts it. What a holiday is and how a stretch of days is read against them is
+ * ../domain/holiday.ts.
+ *
+ * There is no `leave_year_id`. Which year a holiday falls in is the containment
+ * search `leave_year` already answers for every other day, and a column holding
+ * the answer would go wrong the morning somebody moves the company to an April
+ * start — the holiday does not move, the year around it does.
+ *
+ * It is the second table in the configuration half of the schema `lms_app` may
+ * delete from. Nothing is filed under a holiday: a request stores the days it
+ * cost, worked out against the calendar of the day it was counted. What a settled
+ * leave year keeps is held by `refuse_a_holiday_in_a_settled_year()` instead —
+ * see the public-holiday-calendar migration.
+ */
+export interface HolidayTable {
+  id: Generated<string>;
+  /* What the gazette calls it. Not a code, and deliberately not one: nothing
+     refers to a holiday, so a code would be a handle with no holder and the first
+     thing somebody would branch on. */
+  name: string;
+  /* The day the office was closed. `YYYY-MM-DD`, never an instant: a holiday is a
+     day, and a moment would carry a zone that moves it across midnight.
+     NFR DAT 03. */
+  holiday_date: string;
+  created_at: Timestamp;
+  /* Maintained by the holiday_set_updated_at trigger, which attaches to the same
+     set_updated_at() every other table uses. */
+  updated_at: Timestamp;
+}
+
 export interface Database {
   app_user: AppUserTable;
   audit_log: AuditLogTable;
   department: DepartmentTable;
   employee: EmployeeTable;
+  holiday: HolidayTable;
   leave_entitlement_rule: LeaveEntitlementRuleTable;
   leave_type: LeaveTypeTable;
   leave_type_approval_step: LeaveTypeApprovalStepTable;
