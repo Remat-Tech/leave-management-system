@@ -879,6 +879,11 @@ that FR 24 "governs how leave is requested, not how entitlement is held".
 3 or 120 — but `leave_ledger_entry.days` does, because the fraction appears when the
 grant is calculated and the ledger is where a grant is recorded.
 
+Since LMS 215 that calculation exists: `domain/pro-rata.ts`, and it is the one place in
+this system where rounding a number of days is right rather than refused. It rounds to
+the hundredth, which is the ledger column's own precision and the precision §8.6d quotes
+its example to. See [Pro rating a part year](#pro-rating-a-part-year).
+
 LMS 209 wrote the rule down before there was anything to except from it, and said
 what the answer would have to be: allow that column by name and leave every other
 one integral. LMS 210 is that answer, and it comes with a condition the ledger
@@ -2184,7 +2189,7 @@ correctly a second grant. That story adds its own method rather than loosening t
 
 | | Why | What happens next |
 |---|---|---|
-| Joined after the year began | owed a proportion, FR 29 and §8.6d | the pro rata story |
+| Not employed in the year at all | recorded before they start, or a year they had left before | nothing |
 | No entitlement rule | nobody has said what the type is worth to them | HR writes one, FR 31 |
 | A rule of nought days | HR has said it is worth nothing | nothing; it was answered |
 | Not eligible | FR 05's gender restriction | nothing |
@@ -2194,12 +2199,11 @@ telling them apart is most of what makes a support call two minutes rather than 
 afternoon. "The grant ran and Ama has nothing" needs to be a sentence somebody can read
 the reason for.
 
-**The joiner is the one to be careful about.** Somebody who started in July is passed
-over entirely rather than granted the year and corrected later, because the correction
-comes after they have planned a year around days they were never owed. Somebody who
-started *on* the first day of the year is not a joiner — the comparison is strictly
-after, and an off by one there would quietly deprive everybody who started on 1 January
-of a year of leave.
+**A part year is granted a part figure**, since LMS 215 — see [Pro rating a part
+year](#pro-rating-a-part-year). Somebody who started *on* the first day of the year is
+not a joiner, and gets the whole figure with no rule named on the entry: the comparison
+is strictly after, and an off by one there would quietly deprive everybody who started
+on 1 January of a year of leave.
 
 **Only types with a yearly balance.** `hasRunningBalance`, FR 32g: a quota type's
 entitlement arrives with the year and an event type's with the event. A run that granted
@@ -2209,7 +2213,73 @@ lied to all of them.
 **And, as with the reconciliation, it is a class rather than a schedule** — "at the
 start of each leave year" is a line in something that runs on a timer, and there is
 nowhere yet to put one. An HR Administrator can run it by hand today, which is the same
-desk that writes the figures it applies.
+desk that writes the figures it applies. A run may also name one employee, which is how
+a joiner is granted on their first morning rather than next January.
+
+---
+
+### Pro rating a part year
+
+**Somebody who was here for part of the year is granted part of the figure.** FR 29, FR
+29a, §8.6d, LMS 215. A joiner on 1 July gets 20 × 184/365 = 10.08 days, posted as an
+ordinary `GRANT` — so their balance is right on their first day rather than right after
+somebody notices.
+
+**The formula is behind a name, because the formula is not settled.** The story is
+marked blocked until LMS 013 delivers it. §8.6d gives the worked example above and it is
+the only formula this build has been given in writing, so `BY_CALENDAR_DAYS` implements
+it and `THE_RULE_IN_FORCE` points at it. **That is a default, not a decision.**
+
+The indirection buys three things and each is worth more than it costs:
+
+* **Changing the formula is one line.** `THE_RULE_IN_FORCE` moves; nothing that posts a
+  grant is edited.
+* **Every figure says which rule produced it.** The rule's name goes into the ledger
+  entry's reason — `pro rated for 2026-07-01 to 2026-12-31 by the calendar-days rule` —
+  so grants made under today's answer stay findable when a different one arrives. That
+  matters *because* this is blocked: the figures granted before LMS 013 lands are
+  exactly the ones somebody will have to go back to, and finding them should be a query
+  rather than an investigation.
+* **A second rule proves the seam is real.** `BY_COMPLETED_TWELFTHS` is not in force and
+  is not a recommendation. It answers 10 days where the rule in force answers 10.08, so
+  a test that swaps the rule proves something — the same argument the migration suite
+  makes about an exception that never applies.
+
+The name is in the reason rather than in a column of its own. The person asking "why
+have I got 10.08 days" is owed the answer in words they can see; a `pro_rata_rule`
+column answers a query instead. It is greppable either way, and the day a report needs
+to group by it, a column is a migration away and the reasons already say which rows to
+fill it from.
+
+**One formula, both ends of the year, and that falls out rather than being arranged.** A
+joiner and a leaver are the same question — what part of this leave year were you
+employed for — asked at the two ends. `employedPortionOf` clips the employment to the
+year, so a joiner moves the near end in, a leaver moves the far end in, and somebody who
+did both in one year moves both. Nothing in the decision or the job knows which of the
+three it is looking at, which is the story's second criterion held by there being one
+implementation rather than two that agree.
+
+**Whether to pro rate at all is a column, not a rule in code.**
+`leave_entitlement_rule.prorate_on_join`, FR 29. Annual leave is pro rated; the three
+days of sick leave are not, so a joiner in December gets all three — a sick day is not
+something anybody accrues. There is no leave type code compared to anything anywhere in
+this story.
+
+**Every day of the year counts the same, worked or not.** This is a proportion of a year
+rather than a count of days at a desk, so a part timer on a three day week is owed the
+same proportion as anybody else. What their working pattern changes is what a day of
+leave *costs* them — FR 23, and the day calculator's business.
+
+**A proportion is rounded to the hundredth of a day**, which is the ledger column's own
+precision and the precision §8.6d quotes its example to. A proportion that rounds to
+nothing is reported rather than posted, because a ledger entry of no days is not a
+movement.
+
+**What is not here.** The final settlement when somebody leaves — FR 37a, which compares
+what they were granted with what the part year they actually worked is worth and posts
+the difference. The formula it needs is the one above, called with the exit date, and
+the decision about what happens to the difference (paid, clawed back, forgiven) is that
+story's.
 
 ---
 
@@ -2480,6 +2550,13 @@ its tests asserts that the domain exports nothing that turns ledger entries into
 balance — a `balanceFrom(entries)` would be twenty testable lines and a second
 implementation of the sum, which is the drift the cache exists to be checked against.
 Whoever adds one has to argue with that test first.
+
+**`unit/pro-rata.test.ts` proves two different things and keeps them apart**, because
+LMS 215 is a story shipped under a block. One half is that §8.6d's formula is right —
+the 1 July joiner, a leap year, an April to March leave year — and that half will
+outlive whatever LMS 013 decides. The other is that swapping the rule works, which is
+what the block is being survived with: the candidate rule answers 10 where the rule in
+force answers 10.08, so a test that swaps them can tell whether the swap did anything.
 
 **`unit/annual-grant.test.ts` is nearly all refusals, and that is the shape of the
 story rather than a bias in the file.** Granting twenty days to somebody owed twenty

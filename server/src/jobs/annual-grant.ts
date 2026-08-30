@@ -26,6 +26,18 @@
  * The refusal is caught here and reported as an outcome rather than an error, because
  * on a re-run it is the *expected* outcome for almost every employee.
  *
+ * ## A part year is granted a part figure. LMS 215
+ *
+ * Somebody who joined in July is granted the proportion of the year they were employed
+ * for rather than passed over — FR 29, §8.6d — and the same call handles somebody who
+ * left in March, because both are "what part of this year were you employed for".
+ * ../domain/pro-rata.ts is the formula, behind a name, and the name reaches the ledger
+ * entry's reason.
+ *
+ * Whether a type is pro rated at all is `leave_entitlement_rule.prorate_on_join`, read
+ * off the figure rather than decided here: annual leave is, the three days of sick leave
+ * are not, and a December joiner gets all three of those.
+ *
  * ## What it passes over, and says it has
  *
  * Four reasons, and each is reported rather than skipped quietly. That matters more
@@ -33,17 +45,17 @@
  * difference between it being a two minute answer and an afternoon is whether the run
  * said why.
  *
- * The one worth naming here is the joiner. Somebody who started in July is owed a
- * proportion rather than the whole figure — FR 29, §8.6d — and that is a story with a
- * formula in it. Granting them the year and correcting it afterwards would mean
- * somebody planning a year around days they were never owed, which is the failure this
- * story exists to prevent rather than an approximation of success.
- *
  * ## It is a class, not a schedule
  *
  * As with ./balance-reconciliation.ts: "at the start of each leave year" is a line in
  * something that runs on a timer, and this build has no process to hang one on. What
  * this ships is the run.
+ *
+ * A run may name one employee, and that is what makes LMS 215's "right from my first
+ * day" reachable rather than theoretical: a joiner is granted when they are added
+ * rather than next January. Whichever story owns the joining flow calls it; until then
+ * a whole-company run picks them up, because a run grants only what has not been
+ * granted.
  */
 
 import type { Actor } from '../auth/actor.js';
@@ -52,11 +64,13 @@ import {
   decideTheGrant,
   type Granted,
   type NotGranted,
+  reasonFor,
   wasGranted,
 } from '../domain/annual-grant.js';
 import { AlreadyGranted } from '../domain/balance.js';
 import type { Employee } from '../domain/employee.js';
 import { hasRunningBalance, isEligible, type LeaveType } from '../domain/leave-type.js';
+import { employedPortionOf } from '../domain/pro-rata.js';
 import type { LeaveYear } from '../domain/leave-year.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
 import type { LeaveTypeRepository } from '../repositories/leave-type-repository.js';
@@ -95,14 +109,27 @@ export class AnnualGrant {
    * annual grant of entitlement)" and an HR Administrator's say who they are, which is
    * the difference somebody reading a balance in March needs.
    */
-  async run(actor: Actor, leaveYearId: string): Promise<AnnualGrantRun> {
+  async run(
+    actor: Actor,
+    leaveYearId: string,
+    /**
+     * One employee, for the joiner who should not wait until next January.
+     *
+     * The same run over a smaller set rather than a second path, so a person granted on
+     * their first morning is granted by exactly the code that grants everybody in
+     * January — including the refusal that stops them being granted twice.
+     */
+    only: { employeeId?: string } = {},
+  ): Promise<AnnualGrantRun> {
     const year = await this.years.byId(actor, leaveYearId);
     const grantedAt = new Date();
 
     const granted: Granted[] = [];
     const notGranted: NotGranted[] = [];
 
-    const everybody = await this.employees.list({ activeOnly: true });
+    const everybody = (await this.employees.list({ activeOnly: true })).filter(
+      (employee) => only.employeeId === undefined || employee.id === only.employeeId,
+    );
     const yearly = (await this.types.list({ offeredOnly: true })).filter(hasRunningBalance);
 
     for (const employee of everybody) {
@@ -139,6 +166,8 @@ export class AnnualGrant {
     employee: Employee,
     type: LeaveType,
   ): Promise<Granted | NotGranted> {
+    const yearDates = { startsOn: year.startDate, endsOn: year.endDate };
+
     const named = {
       employeeId: employee.id,
       employeeNumber: employee.employeeNumber,
@@ -146,19 +175,24 @@ export class AnnualGrant {
       leaveTypeName: type.name,
     };
 
-    /* Only asked for somebody who could be granted. A joiner is passed over whatever
-       the rule says, and reading a rule to answer a question already settled would be a
-       query per employee for nothing. */
+    const eligible = isEligible(type, employee.gender);
+    const employment = { startedOn: employee.startDate, leftOn: employee.exitDate };
+
+    /* Only asked for somebody who could be granted. Reading a rule to answer a question
+       already settled would be a query per employee for nothing. */
     const rule =
-      employee.startDate > year.startDate || !isEligible(type, employee.gender)
-        ? undefined
-        : await this.entitlements.entitlementOn(actor, employee, type.id, year.startDate);
+      eligible && employedPortionOf(yearDates, employment) !== undefined
+        ? await this.entitlements.entitlementOn(actor, employee, type.id, year.startDate)
+        : undefined;
 
     const decision = decideTheGrant({
-      startedOn: employee.startDate,
-      yearBeganOn: year.startDate,
+      year: yearDates,
+      employment,
       entitlementDays: rule?.entitlementDays,
-      eligible: isEligible(type, employee.gender),
+      /* FR 29, and the column HR sets per figure. Annual leave is pro rated; the three
+         days of sick leave are not, so a December joiner gets all three. */
+      proRateAPartYear: rule?.prorateOnJoin ?? false,
+      eligible,
     });
 
     if (!wasGranted(decision)) {
@@ -171,7 +205,7 @@ export class AnnualGrant {
         leaveTypeId: type.id,
         leaveYearId: year.id,
         days: decision.days,
-        reason: `${type.name} entitlement for ${year.label}`,
+        reason: reasonFor(type.name, year.label, decision),
       });
 
       return { ...named, days: decision.days, entryId: entry.id };

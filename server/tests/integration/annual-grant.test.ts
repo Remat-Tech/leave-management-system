@@ -248,6 +248,7 @@ describe('granting a leave year', () => {
         (one) => one.because !== 'NO_ENTITLEMENT_RULE' || one.leaveTypeName === 'Study Leave',
       ),
     ).toBe(true);
+    expect(passedOver(run).NOT_EMPLOYED_IN_THE_YEAR).toBe(0);
     expect(run.granted.some((grant) => grant.leaveTypeName === 'Study Leave')).toBe(false);
     expect(run.granted.length).toBeGreaterThan(0);
   });
@@ -268,61 +269,178 @@ describe('granting a leave year', () => {
   });
 });
 
-/* ------------------------------------------------------------------- the joiner */
+/* ------------------------------------------------------------- running it twice */
 
-describe('somebody who joined after the year began', () => {
-  beforeEach(async () => {
+/* ------------------------------------------- the joiner and the leaver. FR 29, LMS 215 */
+
+describe('somebody who was here for part of the year', () => {
+  /** What the annual leave rule is worth for a whole year on a migrated database. */
+  async function fullYear(): Promise<number> {
+    const { rows } = await admin.query(
+      `SELECT entitlement_days FROM leave_entitlement_rule
+        WHERE leave_type_id = $1 AND employee_id IS NULL AND department_id IS NULL
+        ORDER BY effective_from DESC LIMIT 1`,
+      [annualId],
+    );
+
+    return rows[0].entitlement_days as number;
+  }
+
+  async function reasonOn(employeeId: string, leaveTypeId = annualId): Promise<string> {
+    const { rows } = await admin.query(
+      'SELECT reason FROM leave_ledger_entry WHERE employee_id = $1 AND leave_type_id = $2',
+      [employeeId, leaveTypeId],
+    );
+
+    return rows[0].reason as string;
+  }
+
+  /**
+   * A joiner on 1 July is granted §8.6d's own worked example.
+   *
+   * 20 × 184/365 = 10.08 days, posted as a `GRANT` like any other. The story's "so
+   * that" is exactly this: their balance is right from the first day rather than right
+   * after somebody notices and corrects it.
+   */
+  it('is granted the proportion of it they worked', async () => {
     await admin.query("UPDATE employee SET start_date = '2026-07-01' WHERE id = $1", [
       people.officer,
     ]);
+
+    const run = await job.run(january, y2026Id);
+
+    expect(await fullYear()).toBe(20);
+    expect(grantFor(run, people.officer)?.days).toBe(10.08);
   });
 
   /**
-   * Gets nothing, and the run says so.
+   * And the entry carries the name of the rule that produced the figure.
    *
-   * FR 29 and §8.6d give them a proportion, and the formula is a different story.
-   * Granting them the whole year now and correcting it afterwards would put somebody's
-   * plans on days they were never owed — which is the failure this story exists to
-   * prevent rather than a rough version of success.
+   * The story's third criterion, and its answer to the fourth: LMS 013 has not settled
+   * the formula, so a grant made under today's says which one it was made under. When
+   * the answer lands, the figures to put right are a query rather than an
+   * investigation.
    */
-  it('is passed over rather than given the whole year', async () => {
-    const run = await job.run(january, y2026Id);
+  it('and the grant says which rule worked the figure out, and over what', async () => {
+    await admin.query("UPDATE employee SET start_date = '2026-07-01' WHERE id = $1", [
+      people.officer,
+    ]);
 
-    expect(grantFor(run, people.officer)).toBeUndefined();
-    expect(
-      run.notGranted.some(
-        (one) => one.employeeId === people.officer && one.because === 'JOINED_AFTER_THE_YEAR_BEGAN',
-      ),
-    ).toBe(true);
-  });
-
-  /* And no entry, and no balance row, so nothing shows them days they have not got. */
-  it('and has no ledger entry and no balance opened for them', async () => {
     await job.run(january, y2026Id);
 
-    const { rows } = await admin.query(
-      'SELECT count(*) FROM leave_ledger_entry WHERE employee_id = $1',
-      [people.officer],
+    expect(await reasonOn(people.officer)).toBe(
+      'Annual Leave entitlement for 2026, pro rated for 2026-07-01 to 2026-12-31 by the calendar-days rule',
     );
-
-    expect(Number(rows[0].count)).toBe(0);
   });
 
-  /* Somebody who started on the first day of the year is not a joiner. The comparison
-     is strictly after, and an off by one here would silently deprive everybody who
-     started on 1 January of a year of leave. */
-  it('and somebody who started on the first day of the year is granted the whole of it', async () => {
+  /**
+   * And a leaver is the same call with the other end moved in. FR 29a.
+   *
+   * The second acceptance criterion, proved where it costs something: nothing in the
+   * job or in the decision knows whether it is looking at a joiner or a leaver, and
+   * somebody whose last day is already on the record is granted the part of the year
+   * they will actually be here for.
+   */
+  it('and somebody whose last day is already known is granted only up to it', async () => {
+    await admin.query("UPDATE employee SET exit_date = '2026-03-31' WHERE id = $1", [
+      people.officer,
+    ]);
+
+    const run = await job.run(january, y2026Id);
+
+    expect(grantFor(run, people.officer)?.days).toBe(Math.round(((20 * 90) / 365) * 100) / 100);
+    expect(await reasonOn(people.officer)).toContain('pro rated for 2026-01-01 to 2026-03-31');
+  });
+
+  /* Somebody who started on the first day of the year is not a joiner: they get the
+     whole figure and the reason names no rule, because none was asked. An off by one
+     here would quietly deprive everybody who started on 1 January of a year of leave. */
+  it('and somebody who started on the first day of the year gets the whole of it', async () => {
     await admin.query("UPDATE employee SET start_date = '2026-01-01' WHERE id = $1", [
       people.officer,
     ]);
 
     const run = await job.run(january, y2026Id);
 
-    expect(grantFor(run, people.officer)?.days).toBeGreaterThan(0);
+    expect(grantFor(run, people.officer)?.days).toBe(await fullYear());
+    expect(await reasonOn(people.officer)).toBe('Annual Leave entitlement for 2026');
+  });
+
+  /**
+   * And a type nobody pro rates gives a July joiner the whole of it anyway.
+   *
+   * `leave_entitlement_rule.prorate_on_join`, FR 29: annual leave is pro rated and the
+   * three days of sick leave are not, because a sick day is not something anybody
+   * accrues. Read off the figure rather than decided anywhere — there is no leave type
+   * code compared to anything in this story.
+   */
+  it('and a type nobody pro rates gives a July joiner the whole of it', async () => {
+    await admin.query("UPDATE employee SET start_date = '2026-07-01' WHERE id = $1", [
+      people.officer,
+    ]);
+
+    const sickId = (await admin.query("SELECT id FROM leave_type WHERE code = 'SICK'")).rows[0]
+      .id as string;
+    const { rows } = await admin.query(
+      'SELECT entitlement_days, prorate_on_join FROM leave_entitlement_rule WHERE leave_type_id = $1',
+      [sickId],
+    );
+
+    const run = await job.run(january, y2026Id);
+    const sick = run.granted.find(
+      (grant) => grant.employeeId === people.officer && grant.leaveTypeId === sickId,
+    );
+
+    expect(rows[0].prorate_on_join).toBe(false);
+    expect(sick?.days).toBe(rows[0].entitlement_days);
+    expect(await reasonOn(people.officer, sickId)).toBe('Sick Leave entitlement for 2026');
+  });
+
+  /* Somebody recorded before they start has no part of this year at all, which is a
+     different answer from having a part worth nothing. */
+  it('and somebody not employed in the year at all is passed over', async () => {
+    await admin.query("UPDATE employee SET start_date = '2027-02-01' WHERE id = $1", [
+      people.officer,
+    ]);
+
+    const run = await job.run(january, y2026Id);
+
+    expect(grantFor(run, people.officer)).toBeUndefined();
+    expect(
+      run.notGranted.some(
+        (one) => one.employeeId === people.officer && one.because === 'NOT_EMPLOYED_IN_THE_YEAR',
+      ),
+    ).toBe(true);
+
+    const { rows } = await admin.query(
+      'SELECT count(*) FROM leave_ledger_entry WHERE employee_id = $1',
+      [people.officer],
+    );
+    expect(Number(rows[0].count)).toBe(0);
+  });
+
+  /**
+   * And a joiner can be granted on their first morning rather than next January.
+   *
+   * The story's "so that", taken literally. A run may name one employee, so whoever
+   * owns the joining flow grants them then and there — through exactly the code that
+   * grants everybody in January, including the refusal that stops them being granted
+   * twice.
+   */
+  it('and can be granted on their own, on the day they arrive', async () => {
+    await admin.query("UPDATE employee SET start_date = '2026-07-01' WHERE id = $1", [
+      people.officer,
+    ]);
+
+    const run = await job.run(january, y2026Id, { employeeId: people.officer });
+
+    expect(run.granted.every((grant) => grant.employeeId === people.officer)).toBe(true);
+    expect(grantFor(run, people.officer)?.days).toBe(10.08);
+
+    const { rows } = await admin.query('SELECT count(DISTINCT employee_id) FROM leave_balance');
+    expect(Number(rows[0].count)).toBe(1);
   });
 });
-
-/* ------------------------------------------------------------- running it twice */
 
 describe('running it again', () => {
   /**

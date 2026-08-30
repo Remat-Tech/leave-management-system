@@ -45,7 +45,16 @@
  * never sees a maternity leave type and has no opinion about one.
  */
 
-import type { CalendarDate } from './time.js';
+import {
+  coversTheWholeYear,
+  type EmployedPortion,
+  type Employment,
+  employedPortionOf,
+  type LeaveYearDates,
+  proRataDaysFor,
+  type ProRataRule,
+  THE_RULE_IN_FORCE,
+} from './pro-rata.js';
 
 /**
  * Why somebody was not granted, in the words a report uses.
@@ -55,7 +64,7 @@ import type { CalendarDate } from './time.js';
  */
 export const NOT_GRANTED = [
   'ALREADY_GRANTED',
-  'JOINED_AFTER_THE_YEAR_BEGAN',
+  'NOT_EMPLOYED_IN_THE_YEAR',
   'NO_ENTITLEMENT_RULE',
   'WORTH_NOTHING',
   'NOT_ELIGIBLE',
@@ -65,28 +74,50 @@ export type NotGrantedBecause = (typeof NOT_GRANTED)[number];
 
 /** One person, one leave type, and everything the decision turns on. */
 export interface GrantCandidate {
-  /** The day they joined. FR 29's pro rata question is entirely about this one. */
-  startedOn: CalendarDate;
-  /** The first day of the leave year being granted. */
-  yearBeganOn: CalendarDate;
+  /** The leave year being granted. */
+  year: LeaveYearDates;
+  /** Their employment, as far as it is known today. FR 29 and FR 29a are both this. */
+  employment: Employment;
   /**
-   * What the entitlement rule says this type is worth to them, or undefined where no
-   * rule reaches them.
+   * What the entitlement rule says this type is worth to them for a whole year, or
+   * undefined where no rule reaches them.
    *
    * Resolved by ./entitlement-rule.ts as at the first day of the year, which is the
    * day the grant is for. Asking on any other day would be granting a figure that was
    * not in force when the year began.
    */
   entitlementDays: number | undefined;
+  /**
+   * FR 29, and `leave_entitlement_rule.prorate_on_join`. Whether a part year is worth
+   * a part of the figure.
+   *
+   * Annual leave is pro rated and the three days of sick leave are not: a joiner in
+   * December gets all three, because a sick day is not something anybody accrues. That
+   * is a column HR sets per figure, and it is passed in for the reason every leave type
+   * rule in this system is a column — a `WHEN code = 'ANNUAL'` anywhere is the bug the
+   * table exists to prevent.
+   */
+  proRateAPartYear: boolean;
   /** FR 05. Whether the type is open to this person at all. */
   eligible: boolean;
 }
 
-/** Granted, and how much; or not, and why. */
-export type GrantDecision = { days: number } | { because: NotGrantedBecause };
+/**
+ * Granted, and how much; or not, and why.
+ *
+ * A granted decision carries the rule that produced it, or null where the whole year
+ * was granted and no rule was consulted. That is the story's third criterion on its way
+ * to the ledger: the name reaches the entry's reason, so a figure worked out under one
+ * formula stays distinguishable from a figure worked out under the next.
+ */
+export type GrantDecision =
+  | { days: number; proRatedBy: ProRataRule | null; portion: EmployedPortion }
+  | { because: NotGrantedBecause };
 
 /** Whether the decision was to grant. */
-export function wasGranted(decision: GrantDecision): decision is { days: number } {
+export function wasGranted(
+  decision: GrantDecision,
+): decision is { days: number; proRatedBy: ProRataRule | null; portion: EmployedPortion } {
   return 'days' in decision;
 }
 
@@ -105,9 +136,14 @@ export function wasGranted(decision: GrantDecision): decision is { days: number 
  * never owed, which is the failure this story exists to prevent rather than an
  * approximation of success.
  */
-export function decideTheGrant(candidate: GrantCandidate): GrantDecision {
-  if (candidate.startedOn > candidate.yearBeganOn) {
-    return { because: 'JOINED_AFTER_THE_YEAR_BEGAN' };
+export function decideTheGrant(
+  candidate: GrantCandidate,
+  rule: ProRataRule = THE_RULE_IN_FORCE,
+): GrantDecision {
+  const portion = employedPortionOf(candidate.year, candidate.employment);
+
+  if (portion === undefined) {
+    return { because: 'NOT_EMPLOYED_IN_THE_YEAR' };
   }
 
   if (!candidate.eligible) {
@@ -126,7 +162,49 @@ export function decideTheGrant(candidate: GrantCandidate): GrantDecision {
     return { because: 'WORTH_NOTHING' };
   }
 
-  return { days: candidate.entitlementDays };
+  /* A whole year, or a type nobody pro rates: the figure as written, and no rule name
+     on the entry because no rule was asked. */
+  if (!candidate.proRateAPartYear || coversTheWholeYear(candidate.year, portion)) {
+    return { days: candidate.entitlementDays, proRatedBy: null, portion };
+  }
+
+  const days = proRataDaysFor(
+    { fullYearDays: candidate.entitlementDays, year: candidate.year, portion },
+    rule,
+  );
+
+  /* A proportion so small it rounds to nothing — somebody who joined on the last day of
+     a year with three days of sick leave in it. There is no movement to post, and
+     saying the figure was worth nothing is the truthful answer: the rule was asked and
+     it said nought. */
+  return days <= 0 ? { because: 'WORTH_NOTHING' } : { days, proRatedBy: rule, portion };
+}
+
+/**
+ * What the ledger entry says, and the third acceptance criterion.
+ *
+ * FR 27 gives every movement a reason, and it is the sentence the person whose balance
+ * it is actually reads. A pro rated grant's has to carry three things: that it *is* pro
+ * rated, which part of the year it covers, and the name of the rule that produced it.
+ *
+ * The rule name is in the reason rather than in a column of its own, and that is a
+ * decision rather than an omission. The person asking "why have I got 10.08 days" is
+ * owed the answer in words they can see; a `pro_rata_rule` column holding
+ * `'calendar-days'` answers a query instead. It is greppable either way — the name is a
+ * stable handle for exactly that — and the day a report genuinely needs to group by it,
+ * a column is a migration away and the reasons already say which rows to fill it from.
+ */
+export function reasonFor(
+  leaveTypeName: string,
+  leaveYearLabel: string,
+  decision: { proRatedBy: ProRataRule | null; portion: EmployedPortion },
+): string {
+  const entitlement = `${leaveTypeName} entitlement for ${leaveYearLabel}`;
+
+  return decision.proRatedBy === null
+    ? entitlement
+    : `${entitlement}, pro rated for ${decision.portion.from} to ${decision.portion.to} ` +
+        `by the ${decision.proRatedBy.name} rule`;
 }
 
 /* ------------------------------------------------------------------- what a run did */
@@ -214,8 +292,8 @@ function sentenceFor(because: NotGrantedBecause): string {
   switch (because) {
     case 'ALREADY_GRANTED':
       return 'had already been granted, and were left exactly as they were.';
-    case 'JOINED_AFTER_THE_YEAR_BEGAN':
-      return 'joined after the year began, and are owed a proportion rather than the whole figure. FR 29.';
+    case 'NOT_EMPLOYED_IN_THE_YEAR':
+      return 'were not employed at any point in this leave year.';
     case 'NO_ENTITLEMENT_RULE':
       return 'have no entitlement rule saying what the type is worth to them.';
     case 'WORTH_NOTHING':

@@ -7,9 +7,11 @@ import {
   NOT_GRANTED,
   type NotGrantedBecause,
   passedOver,
+  reasonFor,
   summaryOf,
   wasGranted,
 } from '../../src/domain/annual-grant.js';
+import { BY_COMPLETED_TWELFTHS, type ProRataRule } from '../../src/domain/pro-rata.js';
 
 /**
  * The annual grant of entitlement. FR 30. LMS 214.
@@ -26,10 +28,13 @@ import {
  * no explanation.
  */
 
+const YEAR = { startsOn: '2026-01-01', endsOn: '2026-12-31' };
+
 const FULL_YEAR: GrantCandidate = {
-  startedOn: '2025-04-01',
-  yearBeganOn: '2026-01-01',
+  year: YEAR,
+  employment: { startedOn: '2025-04-01', leftOn: null },
   entitlementDays: 20,
+  proRateAPartYear: true,
   eligible: true,
 };
 
@@ -43,38 +48,156 @@ function because(overrides: Partial<GrantCandidate>): NotGrantedBecause | undefi
   return wasGranted(decision) ? undefined : decision.because;
 }
 
+function granted(one: GrantCandidate): number | undefined {
+  const decision = decideTheGrant(one);
+
+  return wasGranted(decision) ? decision.days : undefined;
+}
+
+function proRatedBy(one: GrantCandidate): ProRataRule | null | undefined {
+  const decision = decideTheGrant(one);
+
+  return wasGranted(decision) ? decision.proRatedBy : undefined;
+}
+
+/** The hundredth of a day the ledger's column holds, so a test can state the sum. */
+function round(days: number): number {
+  return Math.round(days * 100) / 100;
+}
+
 describe('what somebody is granted for a year', () => {
   /* The story's own criterion: the full year, at the start of the year. */
   it('is the whole figure the rule says the type is worth', () => {
-    expect(decideTheGrant(FULL_YEAR)).toEqual({ days: 20 });
+    expect(granted(FULL_YEAR)).toBe(20);
+    expect(proRatedBy(FULL_YEAR)).toBeNull();
   });
 
   it('and somebody who started on the first day of the year gets the whole of it', () => {
-    expect(decideTheGrant(candidate({ startedOn: '2026-01-01' }))).toEqual({ days: 20 });
+    expect(granted(candidate({ employment: { startedOn: '2026-01-01', leftOn: null } }))).toBe(20);
   });
 
   /**
-   * And somebody who joined after it began gets nothing here.
+   * And somebody who joined in July gets §8.6d's worked example. FR 29, LMS 215.
    *
-   * FR 29 and §8.6d: they are owed a proportion, and the formula is a different story.
-   * Granting them the whole figure now and correcting it later would have somebody
-   * planning a year around days they were never owed — which is the failure this story
-   * exists to prevent rather than a rough version of success.
-   *
-   * Asked before the figure is looked at, because it settles the question whatever the
-   * rule says.
+   * 20 × 184/365 = 10.08 days, which is the figure the Technical Design Document quotes
+   * and the reason this build's rule in force is the calendar day one. The entry says
+   * which rule produced it, which is what makes the figure correctable when LMS 013
+   * settles the formula.
    */
-  it('and somebody who joined in July gets none of it, and is reported', () => {
-    expect(because({ startedOn: '2026-07-01' })).toBe('JOINED_AFTER_THE_YEAR_BEGAN');
-    expect(because({ startedOn: '2026-07-01', entitlementDays: 25 })).toBe(
-      'JOINED_AFTER_THE_YEAR_BEGAN',
+  it('and somebody who joined in July gets the proportion of it they worked', () => {
+    const july = candidate({ employment: { startedOn: '2026-07-01', leftOn: null } });
+
+    expect(granted(july)).toBe(10.08);
+    expect(proRatedBy(july)?.name).toBe('calendar-days');
+  });
+
+  /* FR 29a, the same call with the other end moved in. Nothing in the decision knows
+     which of the two it is looking at, which is the second acceptance criterion. */
+  it('and somebody who left in March gets the proportion of it they worked', () => {
+    const march = candidate({ employment: { startedOn: '2020-01-01', leftOn: '2026-03-31' } });
+
+    expect(granted(march)).toBe(round((20 * 90) / 365));
+  });
+
+  it('and somebody who joined and left inside one year gets the part in between', () => {
+    const both = candidate({ employment: { startedOn: '2026-04-01', leftOn: '2026-06-30' } });
+
+    expect(granted(both)).toBe(round((20 * 91) / 365));
+  });
+
+  /**
+   * And a type nobody pro rates gives the whole figure whatever the dates say.
+   *
+   * `leave_entitlement_rule.prorate_on_join`, FR 29. The three days of sick leave are
+   * not accrued, so a joiner in December gets all three — and the entry carries no rule
+   * name, because no rule was asked.
+   */
+  it('and a type nobody pro rates gives the whole figure to a December joiner', () => {
+    const december = candidate({
+      employment: { startedOn: '2026-12-01', leftOn: null },
+      entitlementDays: 3,
+      proRateAPartYear: false,
+    });
+
+    expect(granted(december)).toBe(3);
+    expect(proRatedBy(december)).toBeNull();
+  });
+
+  /* Somebody who was not here at any point in the year is a different answer from
+     somebody who was here for a day: there is nothing to grant rather than nothing
+     granted. */
+  it('and somebody not employed in the year at all is passed over', () => {
+    expect(because({ employment: { startedOn: '2027-01-01', leftOn: null } })).toBe(
+      'NOT_EMPLOYED_IN_THE_YEAR',
     );
+    expect(because({ employment: { startedOn: '2020-01-01', leftOn: '2025-12-31' } })).toBe(
+      'NOT_EMPLOYED_IN_THE_YEAR',
+    );
+  });
+
+  /**
+   * A proportion so small it rounds to nothing is reported rather than posted.
+   *
+   * A ledger entry of no days is not a movement, so there is nothing to write down. It
+   * takes a one day entitlement and a one day portion to get there, which is the point:
+   * the branch exists because the ledger would otherwise refuse the entry, and the
+   * refusal would arrive as an error in a job rather than a line in a report.
+   */
+  it('and a proportion that rounds to nothing is not granted', () => {
+    expect(
+      because({
+        employment: { startedOn: '2026-12-31', leftOn: null },
+        entitlementDays: 1,
+      }),
+    ).toBe('WORTH_NOTHING');
+  });
+
+  /* And one that rounds to a hundredth of a day *is* granted, because that is what the
+     formula says they are owed. Rounding it away would be taking something; rounding it
+     up to a day would be giving. §8.6d quotes its own example to the hundredth. */
+  it('and a proportion of a hundredth of a day is still a grant', () => {
+    expect(
+      granted(
+        candidate({ employment: { startedOn: '2026-12-31', leftOn: null }, entitlementDays: 3 }),
+      ),
+    ).toBe(0.01);
+  });
+
+  /**
+   * And the formula is swappable, which is the first acceptance criterion.
+   *
+   * The same candidate under the candidate rule gives ten days rather than 10.08, and
+   * the decision says which one it used. When LMS 013 answers, that is the whole of the
+   * change.
+   */
+  it('and the same July joiner under a different rule gets a different figure', () => {
+    const july = candidate({ employment: { startedOn: '2026-07-01', leftOn: null } });
+    const decision = decideTheGrant(july, BY_COMPLETED_TWELFTHS);
+
+    expect(wasGranted(decision) && decision.days).toBe(10);
+    expect(wasGranted(decision) && decision.proRatedBy?.name).toBe('completed-twelfths');
   });
 
   /* FR 05, read off the type by the caller rather than decided here — this file has no
      leave type in it and no code being compared to anything. */
   it('and somebody the type is not open to gets none of it', () => {
     expect(because({ eligible: false })).toBe('NOT_ELIGIBLE');
+  });
+
+  /* The reason on the entry carries the rule name, which is the third criterion. A full
+     year says nothing about a rule, because none was asked. */
+  it('and the reason names the rule and the part of the year it covered', () => {
+    const july = decideTheGrant(
+      candidate({ employment: { startedOn: '2026-07-01', leftOn: null } }),
+    );
+    const whole = decideTheGrant(FULL_YEAR);
+
+    expect(wasGranted(july) && reasonFor('Annual Leave', '2026', july)).toBe(
+      'Annual Leave entitlement for 2026, pro rated for 2026-07-01 to 2026-12-31 by the calendar-days rule',
+    );
+    expect(wasGranted(whole) && reasonFor('Annual Leave', '2026', whole)).toBe(
+      'Annual Leave entitlement for 2026',
+    );
   });
 
   /**
@@ -103,7 +226,7 @@ describe('what somebody is granted for a year', () => {
      built a lock to close. `daysToGrant` in domain/balance.ts asks it inside that lock. */
   it('and has no opinion about whether it has been granted before', () => {
     expect(Object.keys(FULL_YEAR)).not.toContain('alreadyGranted');
-    expect(decideTheGrant(FULL_YEAR)).toEqual({ days: 20 });
+    expect(granted(FULL_YEAR)).toBe(20);
   });
 });
 
@@ -144,14 +267,14 @@ describe('what a run reports', () => {
     const counts = passedOver(
       run({
         notGranted: [
-          missed('JOINED_AFTER_THE_YEAR_BEGAN'),
-          missed('JOINED_AFTER_THE_YEAR_BEGAN'),
+          missed('NOT_EMPLOYED_IN_THE_YEAR'),
+          missed('NOT_EMPLOYED_IN_THE_YEAR'),
           missed('NO_ENTITLEMENT_RULE'),
         ],
       }),
     );
 
-    expect(counts.JOINED_AFTER_THE_YEAR_BEGAN).toBe(2);
+    expect(counts.NOT_EMPLOYED_IN_THE_YEAR).toBe(2);
     expect(counts.NO_ENTITLEMENT_RULE).toBe(1);
     expect(counts.ALREADY_GRANTED).toBe(0);
   });
@@ -173,13 +296,13 @@ describe('what a run reports', () => {
     const summary = summaryOf(
       run({
         granted: [granted(20)],
-        notGranted: [missed('JOINED_AFTER_THE_YEAR_BEGAN'), missed('ALREADY_GRANTED')],
+        notGranted: [missed('NOT_EMPLOYED_IN_THE_YEAR'), missed('ALREADY_GRANTED')],
       }),
     );
 
     expect(summary).toContain('2 were not granted');
     expect(summary).toContain('1 had already been granted, and were left exactly as they were.');
-    expect(summary).toContain('owed a proportion rather than the whole figure. FR 29.');
+    expect(summary).toContain('were not employed at any point in this leave year.');
   });
 
   /* A clean run says nothing about reasons rather than listing five noughts, because a
