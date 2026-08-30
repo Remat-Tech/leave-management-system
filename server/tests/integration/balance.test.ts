@@ -5,10 +5,17 @@ import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { available, type BalanceKey } from '../../src/domain/balance.js';
+import {
+  available,
+  type BalanceKey,
+  BalanceOverdrawn,
+  InvalidBalanceMovement,
+  NotEnoughHeld,
+} from '../../src/domain/balance.js';
 import { EmployeeNotFound } from '../../src/domain/employee.js';
 import {
   BUCKETS,
+  InvalidLedgerEntry,
   LEDGER_ENTRY_TYPES,
   type LedgerEntryType,
   validateNewLedgerEntry,
@@ -18,8 +25,8 @@ import { BalanceRepository } from '../../src/repositories/balance-repository.js'
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
 import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
 import { LedgerRepository } from '../../src/repositories/ledger-repository.js';
+import { Transactions } from '../../src/repositories/transaction.js';
 import { BalanceService } from '../../src/services/balance-service.js';
-import { LedgerService } from '../../src/services/ledger-service.js';
 import { LeaveYearService } from '../../src/services/leave-year-service.js';
 import { seed } from '../../seeds/seed.mjs';
 
@@ -63,7 +70,6 @@ let db: Kysely<Database>;
 let admin: Client;
 let balances: BalanceService;
 let repository: BalanceRepository;
-let ledger: LedgerService;
 let years: LeaveYearService;
 let people: Record<string, string>;
 let seededYears: Record<string, unknown>[];
@@ -81,8 +87,12 @@ beforeAll(async () => {
 
   repository = new BalanceRepository(db);
   years = new LeaveYearService(new LeaveYearRepository(db), guard);
-  balances = new BalanceService(repository, guard, new EmployeeRepository(db));
-  ledger = new LedgerService(new LedgerRepository(db), guard, new EmployeeRepository(db));
+  balances = new BalanceService(
+    repository,
+    guard,
+    new EmployeeRepository(db),
+    new Transactions(db),
+  );
 
   seededYears = (await admin.query('SELECT * FROM leave_year ORDER BY start_date')).rows;
 });
@@ -360,7 +370,7 @@ describe('every kind of movement lands where the domain says it does', () => {
      most needs told apart. */
   it('a manual adjustment never touches what the year granted', async () => {
     await post('GRANT', 20);
-    await ledger.adjust(asAdministrator(), {
+    await balances.adjust(asAdministrator(), {
       employeeId: people.officer,
       leaveTypeId: annualId,
       leaveYearId: y2026.id,
@@ -571,7 +581,7 @@ describe('the balance moves with the entry that caused it', () => {
     const y2025 = (await years.byLabel(system, '2025'))!;
     await years.close(asAdministrator(), y2025.id);
 
-    await ledger.adjust(asAdministrator(), {
+    await balances.adjust(asAdministrator(), {
       employeeId: people.officer,
       leaveTypeId: annualId,
       leaveYearId: y2025.id,
@@ -849,5 +859,346 @@ describe('the read a balance screen does', () => {
     expect(annualOnly.map((balance) => balance.entitled).sort((one, other) => one - other)).toEqual(
       [15, 20],
     );
+  });
+});
+
+/* --------------------------------------------- reserve, commit and release. LMS 212 */
+
+/**
+ * The three operations a leave request moves a balance through. FR 26, §8.2.
+ *
+ * The unit suite proves the arithmetic of the rules; what needs a server is that they
+ * are applied to a figure nobody else can be moving at the time, and that the movement
+ * and the cache land together. Every test below goes through `BalanceService`, because
+ * the story's first criterion is that there is nothing else to go through.
+ */
+describe('holding days, spending them, and giving them back', () => {
+  /** Twelve days of annual leave, which is what most of these are asked against. */
+  async function twelveDays(): Promise<void> {
+    await post('GRANT', 12);
+  }
+
+  function fiveDays(overrides: Partial<BalanceKey> & { days?: number } = {}) {
+    const { days = 5, ...key } = overrides;
+
+    return { ...theBalance(key), days, reason: 'Five days in December' };
+  }
+
+  it('holds days, and takes them out of what may be booked', async () => {
+    await twelveDays();
+
+    const { entry, balance } = await balances.reserve(asThemselves(), fiveDays());
+
+    expect(entry.entryType).toBe('RESERVATION');
+    expect(entry.days).toBe(-5);
+    expect(balance.pending).toBe(5);
+    expect(balance.taken).toBe(0);
+    expect(balance.available).toBe(7);
+  });
+
+  /* FR 26. The refusal carries the arithmetic, because a screen that says "you have 12
+     and asked for 15" is telling somebody what to ask for instead. */
+  it('and refuses days that are not there, saying how short it is', async () => {
+    await twelveDays();
+
+    await expect(balances.reserve(asThemselves(), fiveDays({ days: 15 }))).rejects.toBeInstanceOf(
+      BalanceOverdrawn,
+    );
+  });
+
+  /**
+   * And a refused reserve writes nothing at all.
+   *
+   * Two things could have been left behind and neither is: a ledger entry, which
+   * would be days held against a request that was refused, and a row of zeros in the
+   * cache, which is why `hold_one_balance_while_it_is_checked()` declines to open one.
+   */
+  it('and a refused reserve leaves no entry and no balance behind', async () => {
+    await expect(balances.reserve(asThemselves(), fiveDays())).rejects.toBeInstanceOf(
+      BalanceOverdrawn,
+    );
+
+    expect((await admin.query('SELECT count(*) FROM leave_ledger_entry')).rows[0].count).toBe('0');
+    expect((await admin.query('SELECT count(*) FROM leave_balance')).rows[0].count).toBe('0');
+  });
+
+  /* FR 32a and §8.6b. Sick leave is a documentation threshold rather than a cap, read
+     off `exceedable_with_document` — no leave type code is compared to anything. */
+  it('and lets a balance that may be exceeded go below nought', async () => {
+    await post('GRANT', 3, { leave_type_id: sickId });
+
+    const { balance } = await balances.reserve(
+      asThemselves(),
+      fiveDays({ leaveTypeId: sickId, days: 5 }),
+    );
+
+    expect(balance.available).toBe(-2);
+  });
+
+  it('and days already held count against the next request', async () => {
+    await twelveDays();
+    await balances.reserve(asThemselves(), fiveDays());
+
+    await expect(balances.reserve(asThemselves(), fiveDays({ days: 8 }))).rejects.toBeInstanceOf(
+      BalanceOverdrawn,
+    );
+
+    const { balance } = await balances.reserve(asThemselves(), fiveDays({ days: 7 }));
+    expect(balance.available).toBe(0);
+  });
+
+  /**
+   * Approval moves held days to taken days and spends nothing again.
+   *
+   * The case the whole design turns on. Available is unmoved by the commit, because
+   * the reserve already took the days out of it — anything that subtracted them a
+   * second time would be the double deduction this story is named after.
+   */
+  it('turns held days into taken days without spending them twice', async () => {
+    await twelveDays();
+    await balances.reserve(asThemselves(), fiveDays());
+
+    const { entry, balance } = await balances.commit(asTheirManager(), fiveDays());
+
+    expect(entry.entryType).toBe('DEDUCTION');
+    expect(balance.pending).toBe(0);
+    expect(balance.taken).toBe(5);
+    expect(balance.available).toBe(7);
+  });
+
+  /**
+   * And the second approval of the same five days is refused.
+   *
+   * The story's "so that", proved end to end. There is nothing held for the second
+   * commit to draw down, because the first one emptied it, and the refusal says how
+   * many days actually are held rather than failing obscurely.
+   */
+  it('and refuses to approve the same days a second time', async () => {
+    await twelveDays();
+    await balances.reserve(asThemselves(), fiveDays());
+    await balances.commit(asTheirManager(), fiveDays());
+
+    await expect(balances.commit(asTheirManager(), fiveDays())).rejects.toBeInstanceOf(
+      NotEnoughHeld,
+    );
+
+    const balance = await balances.forOne(asThemselves(), theBalance());
+    expect(balance.taken).toBe(5);
+    expect(balance.available).toBe(7);
+  });
+
+  it('gives held days back, and refuses to give back more than is held', async () => {
+    await twelveDays();
+    await balances.reserve(asThemselves(), fiveDays());
+
+    const { entry, balance } = await balances.release(asThemselves(), fiveDays({ days: 3 }));
+
+    expect(entry.entryType).toBe('RELEASE');
+    expect(balance.pending).toBe(2);
+    expect(balance.available).toBe(10);
+
+    await expect(balances.release(asThemselves(), fiveDays({ days: 3 }))).rejects.toBeInstanceOf(
+      NotEnoughHeld,
+    );
+  });
+
+  /* Days that were taken are not days that are held. Undoing an approved absence is
+     FR 25's recalculation or an adjustment, and neither of them is a release. */
+  it('and will not give back days that have already been taken', async () => {
+    await twelveDays();
+    await balances.reserve(asThemselves(), fiveDays());
+    await balances.commit(asTheirManager(), fiveDays());
+
+    await expect(balances.release(asThemselves(), fiveDays())).rejects.toBeInstanceOf(
+      NotEnoughHeld,
+    );
+  });
+
+  /* FR 24 and LMS 209, refused before the column ever sees it so the message names the
+     field. Which way the balance moves is the method that was called, never the sign. */
+  it('and refuses half a day, and a figure with a sign on it', async () => {
+    await twelveDays();
+
+    await expect(balances.reserve(asThemselves(), fiveDays({ days: 2.5 }))).rejects.toBeInstanceOf(
+      InvalidBalanceMovement,
+    );
+    await expect(balances.reserve(asThemselves(), fiveDays({ days: -5 }))).rejects.toBeInstanceOf(
+      InvalidBalanceMovement,
+    );
+  });
+
+  /* A settled year takes no new figures but an adjustment, which is the ledger's own
+     rule reaching an operation that knows nothing about it. §8.9. */
+  it('and a settled leave year takes no reservation', async () => {
+    await admin.query(
+      `INSERT INTO leave_year (label, start_date, end_date) VALUES ('2025', '2025-01-01', '2025-12-31')`,
+    );
+    const y2025 = (await years.byLabel(system, '2025'))!;
+    await post('GRANT', 12, { leave_year_id: y2025.id });
+    await years.close(asAdministrator(), y2025.id);
+
+    await expect(
+      balances.reserve(asThemselves(), fiveDays({ leaveYearId: y2025.id })),
+    ).rejects.toBeInstanceOf(InvalidLedgerEntry);
+  });
+
+  /* Every movement comes back with the balance it produced, read inside the same
+     transaction — so it is the figure this movement made rather than the figure at the
+     time of asking. */
+  it('and every movement hands back the balance it produced', async () => {
+    await twelveDays();
+
+    const held = await balances.reserve(asThemselves(), fiveDays());
+    const stored = await balances.forOne(asThemselves(), theBalance());
+
+    expect(held.balance).toEqual(stored);
+  });
+});
+
+/* --------------------------------------------------- the window, held open. §8.2 */
+
+describe('two screens asking for the same days', () => {
+  /**
+   * The story's fourth criterion, and the failure it exists to prevent.
+   *
+   * Five days available and two requests for five days, sent at the same instant.
+   * Without the lock both read five, both find five affordable, and both write — ten
+   * days held against a balance that covered five. With it, the second waits at
+   * `holdStill()` until the first commits, then re-reads a balance with nothing left
+   * in it.
+   *
+   * Exactly one succeeds, and the assertions say so from three directions: what each
+   * call returned, what the ledger holds, and what the cache says.
+   */
+  it('lets exactly one of them through', async () => {
+    await post('GRANT', 5);
+
+    const asking = () =>
+      balances.reserve(asThemselves(), {
+        ...theBalance(),
+        days: 5,
+        reason: 'Five days over Christmas',
+      });
+
+    const outcomes = await Promise.allSettled([asking(), asking()]);
+
+    expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === 'rejected')).toHaveLength(1);
+
+    const refused = outcomes.find((outcome) => outcome.status === 'rejected');
+    expect((refused as PromiseRejectedResult).reason).toBeInstanceOf(BalanceOverdrawn);
+
+    const { rows } = await admin.query(
+      "SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'RESERVATION'",
+    );
+    expect(rows[0].count).toBe('1');
+
+    const balance = await balances.forOne(asThemselves(), theBalance());
+    expect(balance.pending).toBe(5);
+    expect(balance.available).toBe(0);
+  });
+
+  /* And where there are days for both, both get them. A lock that made the second
+     caller wait and then refused them would be a lock that had stopped being about
+     the days. */
+  it('and lets both through when the days are there for both', async () => {
+    await post('GRANT', 12);
+
+    const asking = (days: number) =>
+      balances.reserve(asThemselves(), { ...theBalance(), days, reason: 'Some days off' });
+
+    await Promise.all([asking(5), asking(5)]);
+
+    const balance = await balances.forOne(asThemselves(), theBalance());
+    expect(balance.pending).toBe(10);
+    expect(balance.available).toBe(2);
+  });
+
+  /* The same window around approval. Two approvers pressing the button on one request
+     is the same race, and the loser is refused rather than deducting the days again. */
+  it('and lets only one of two approvals of one hold through', async () => {
+    await post('GRANT', 12);
+    await balances.reserve(asThemselves(), {
+      ...theBalance(),
+      days: 5,
+      reason: 'Five days in December',
+    });
+
+    const approving = () =>
+      balances.commit(asTheirManager(), {
+        ...theBalance(),
+        days: 5,
+        reason: 'Approved by the team lead',
+      });
+
+    const outcomes = await Promise.allSettled([approving(), approving()]);
+
+    expect(outcomes.filter((outcome) => outcome.status === 'rejected')).toHaveLength(1);
+
+    const balance = await balances.forOne(asThemselves(), theBalance());
+    expect(balance.taken).toBe(5);
+    expect(balance.pending).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------- who may move one, FR 26 */
+
+describe('who may move a balance', () => {
+  const fiveDays = () => ({ ...theBalance(), days: 5, reason: 'Five days in December' });
+
+  beforeEach(async () => {
+    await post('GRANT', 20);
+  });
+
+  it('is asked for by the person taking the leave', async () => {
+    await expect(balances.reserve(asThemselves(), fiveDays())).resolves.toMatchObject({
+      balance: { pending: 5 },
+    });
+  });
+
+  /* The one place a line manager's standing over a report does not carry. They may
+     read the balance and approve against it; asking for leave on somebody's behalf is
+     HR's, FR 18. */
+  it('and not asked for by their line manager', async () => {
+    await expect(balances.reserve(asTheirManager(), fiveDays())).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+  });
+
+  it('and approved by their line manager, never by themselves', async () => {
+    await balances.reserve(asThemselves(), fiveDays());
+
+    await expect(balances.commit(asThemselves(), fiveDays())).rejects.toBeInstanceOf(NotAuthorised);
+    await expect(balances.commit(asTheirManager(), fiveDays())).resolves.toMatchObject({
+      balance: { taken: 5 },
+    });
+  });
+
+  it('and never moved by a colleague, in any of the three ways', async () => {
+    await balances.reserve(asThemselves(), fiveDays());
+
+    for (const move of [
+      () => balances.reserve(asAColleague(), fiveDays()),
+      () => balances.commit(asAColleague(), fiveDays()),
+      () => balances.release(asAColleague(), fiveDays()),
+    ]) {
+      await expect(move()).rejects.toBeInstanceOf(NotAuthorised);
+    }
+  });
+
+  /* And a refusal costs no lock: the policy is asked before the transaction opens, so
+     a colleague guessing at ids cannot make anybody else wait. */
+  it('and a refused movement never opened a transaction to be refused in', async () => {
+    await expect(balances.reserve(asAColleague(), fiveDays())).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+
+    expect((await admin.query('SELECT count(*) FROM leave_ledger_entry')).rows[0].count).toBe('1');
+  });
+
+  it('and an id that is nobody is not a balance at all', async () => {
+    await expect(
+      balances.reserve(asAdministrator(), { ...fiveDays(), employeeId: '987654321' }),
+    ).rejects.toBeInstanceOf(EmployeeNotFound);
   });
 });

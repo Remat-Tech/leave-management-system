@@ -13,9 +13,12 @@ import {
   type LedgerEntryType,
 } from '../../src/domain/ledger.js';
 import type { LeaveYear } from '../../src/domain/leave-year.js';
+import { BalanceRepository } from '../../src/repositories/balance-repository.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
 import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
 import { LedgerRepository } from '../../src/repositories/ledger-repository.js';
+import { Transactions } from '../../src/repositories/transaction.js';
+import { type Adjustment, BalanceService } from '../../src/services/balance-service.js';
 import { LedgerService } from '../../src/services/ledger-service.js';
 import { LeaveYearService } from '../../src/services/leave-year-service.js';
 import { seed } from '../../seeds/seed.mjs';
@@ -57,6 +60,7 @@ const guard = new Guard();
 let db: Kysely<Database>;
 let admin: Client;
 let ledger: LedgerService;
+let balances: BalanceService;
 let repository: LedgerRepository;
 let yearRepository: LeaveYearRepository;
 let years: LeaveYearService;
@@ -77,6 +81,12 @@ beforeAll(async () => {
   yearRepository = new LeaveYearRepository(db);
   years = new LeaveYearService(yearRepository, guard);
   ledger = new LedgerService(repository, guard, new EmployeeRepository(db));
+  balances = new BalanceService(
+    new BalanceRepository(db),
+    guard,
+    new EmployeeRepository(db),
+    new Transactions(db),
+  );
 
   seededYears = (await admin.query('SELECT * FROM leave_year ORDER BY start_date')).rows;
 });
@@ -193,6 +203,25 @@ function asThemselves() {
   return signedInAs(people.officer, { roles: ['EMPLOYEE'], isManager: false });
 }
 
+/**
+ * The two writers this story shipped, which are `BalanceService`'s since LMS 212.
+ *
+ * That story's first criterion is that exactly one class posts a balance movement, so
+ * `LedgerService` reads the account and writes nothing. These two are shims and are
+ * named for what they were: everything below is about what the *table* does to an
+ * entry, and which service handed it over is not what any of it is testing.
+ *
+ * They unwrap `.entry`, because a movement now comes back with the balance it
+ * produced beside it.
+ */
+async function adjust(actor: ReturnType<typeof asAdministrator>, adjustment: Adjustment) {
+  return (await balances.adjust(actor, adjustment)).entry;
+}
+
+async function correct(actor: ReturnType<typeof asAdministrator>, entryId: string, reason: string) {
+  return (await balances.correct(actor, entryId, reason)).entry;
+}
+
 /** An adjustment posted by HR, which is the one writer this story ships. */
 function anAdjustment(days: number, reason = 'Opening balance at go live') {
   return { employeeId: people.officer, leaveTypeId: annualId, leaveYearId: y2026.id, days, reason };
@@ -287,7 +316,7 @@ describe('whole days, and the one place a fraction belongs', () => {
   });
 
   it('and what comes back out is a number rather than the text the driver sends', async () => {
-    await ledger.adjust(asAdministrator(), anAdjustment(10.08));
+    await adjust(asAdministrator(), anAdjustment(10.08));
 
     const [entry] = await ledger.history(asAdministrator(), people.officer);
 
@@ -300,7 +329,7 @@ describe('whole days, and the one place a fraction belongs', () => {
 
 describe('the writer and the time are stamped rather than supplied', () => {
   it('records the person the application named', async () => {
-    const posted = await ledger.adjust(asAdministrator(), anAdjustment(3, 'Goodwill day'));
+    const posted = await adjust(asAdministrator(), anAdjustment(3, 'Goodwill day'));
 
     expect(posted.createdByEmployeeId).toBe(people.headOfHr);
     expect(posted.createdBy).toContain(people.headOfHr);
@@ -431,9 +460,9 @@ describe('an entry cannot be changed or removed by anybody', () => {
 
 describe('a mistake is put right by a new entry', () => {
   it('posts the exact opposite, naming what it corrects', async () => {
-    const wrong = await ledger.adjust(asAdministrator(), anAdjustment(20, 'Opening balance'));
+    const wrong = await adjust(asAdministrator(), anAdjustment(20, 'Opening balance'));
 
-    const putRight = await ledger.correct(
+    const putRight = await correct(
       asAdministrator(),
       wrong.id,
       'Opening balance was posted against the wrong leave type',
@@ -443,9 +472,9 @@ describe('a mistake is put right by a new entry', () => {
   });
 
   it('leaves the entry it corrects exactly as it was', async () => {
-    const wrong = await ledger.adjust(asAdministrator(), anAdjustment(20, 'Opening balance'));
+    const wrong = await adjust(asAdministrator(), anAdjustment(20, 'Opening balance'));
 
-    await ledger.correct(asAdministrator(), wrong.id, 'posted twice');
+    await correct(asAdministrator(), wrong.id, 'posted twice');
 
     expect(await repository.findById(wrong.id)).toMatchObject({
       days: 20,
@@ -454,8 +483,8 @@ describe('a mistake is put right by a new entry', () => {
   });
 
   it('shows both, and in the order they were written', async () => {
-    const wrong = await ledger.adjust(asAdministrator(), anAdjustment(20, 'Opening balance'));
-    await ledger.correct(asAdministrator(), wrong.id, 'posted twice');
+    const wrong = await adjust(asAdministrator(), anAdjustment(20, 'Opening balance'));
+    await correct(asAdministrator(), wrong.id, 'posted twice');
 
     const account = await ledger.history(asAdministrator(), people.officer);
 
@@ -464,8 +493,8 @@ describe('a mistake is put right by a new entry', () => {
   });
 
   it('answers "is this the figure that counts" from either end', async () => {
-    const wrong = await ledger.adjust(asAdministrator(), anAdjustment(20));
-    const putRight = await ledger.correct(asAdministrator(), wrong.id, 'posted twice');
+    const wrong = await adjust(asAdministrator(), anAdjustment(20));
+    const putRight = await correct(asAdministrator(), wrong.id, 'posted twice');
 
     expect((await ledger.explain(asAdministrator(), wrong.id)).map((entry) => entry.id)).toEqual([
       wrong.id,
@@ -514,7 +543,7 @@ describe('a mistake is put right by a new entry', () => {
   });
 
   it('and the repository reports that as a problem with the entry, not a driver fault', async () => {
-    const wrong = await ledger.adjust(asAdministrator(), anAdjustment(20));
+    const wrong = await adjust(asAdministrator(), anAdjustment(20));
 
     await expect(
       repository.post(asAdministrator(), {
@@ -530,7 +559,7 @@ describe('a mistake is put right by a new entry', () => {
   });
 
   it('refuses to correct an entry that is not there', async () => {
-    await expect(ledger.correct(asAdministrator(), '987654321', 'x')).rejects.toBeInstanceOf(
+    await expect(correct(asAdministrator(), '987654321', 'x')).rejects.toBeInstanceOf(
       LedgerEntryNotFound,
     );
   });
@@ -571,7 +600,7 @@ describe('a settled leave year takes no new figures, with one exception', () => 
   it('permits an adjustment, because that is the only way to fix a settled figure', async () => {
     const y2025 = await aSettledYear();
 
-    const posted = await ledger.adjust(asAdministrator(), {
+    const posted = await adjust(asAdministrator(), {
       employeeId: people.officer,
       leaveTypeId: annualId,
       leaveYearId: y2025.id,
@@ -585,7 +614,7 @@ describe('a settled leave year takes no new figures, with one exception', () => 
   it('and a correction of an entry in one, which is the same thing', async () => {
     const y2025 = await aSettledYear();
 
-    const wrong = await ledger.adjust(asAdministrator(), {
+    const wrong = await adjust(asAdministrator(), {
       employeeId: people.officer,
       leaveTypeId: annualId,
       leaveYearId: y2025.id,
@@ -594,7 +623,7 @@ describe('a settled leave year takes no new figures, with one exception', () => 
     });
 
     await expect(
-      ledger.correct(asAdministrator(), wrong.id, 'that absence was 2026, not 2025'),
+      correct(asAdministrator(), wrong.id, 'that absence was 2026, not 2025'),
     ).resolves.toMatchObject({ days: 2 });
   });
 
@@ -619,7 +648,7 @@ describe('a settled leave year takes no new figures, with one exception', () => 
 
 describe('who may read a balance, FR 53, FR 55, FR 56', () => {
   beforeEach(async () => {
-    await ledger.adjust(asAdministrator(), anAdjustment(20, 'Opening balance at go live'));
+    await adjust(asAdministrator(), anAdjustment(20, 'Opening balance at go live'));
   });
 
   it('the person themselves', async () => {
@@ -661,7 +690,7 @@ describe('who may read a balance, FR 53, FR 55, FR 56', () => {
 
 describe('who may move a balance by hand, FR 37', () => {
   it('an HR Administrator, and that is the whole list', async () => {
-    await expect(ledger.adjust(asAdministrator(), anAdjustment(3))).resolves.toMatchObject({
+    await expect(adjust(asAdministrator(), anAdjustment(3))).resolves.toMatchObject({
       days: 3,
     });
   });
@@ -670,32 +699,28 @@ describe('who may move a balance by hand, FR 37', () => {
      moves days by fiat, with no request and no rule behind it, and can never be
      removed — only compensated. */
   it('and not an HR Officer, who may do almost everything else', async () => {
-    await expect(ledger.adjust(asOfficer(), anAdjustment(3))).rejects.toBeInstanceOf(NotAuthorised);
+    await expect(adjust(asOfficer(), anAdjustment(3))).rejects.toBeInstanceOf(NotAuthorised);
   });
 
   it('nor a manager, nor the person themselves', async () => {
-    await expect(ledger.adjust(asTheirManager(), anAdjustment(3))).rejects.toBeInstanceOf(
-      NotAuthorised,
-    );
-    await expect(ledger.adjust(asThemselves(), anAdjustment(3))).rejects.toBeInstanceOf(
-      NotAuthorised,
-    );
+    await expect(adjust(asTheirManager(), anAdjustment(3))).rejects.toBeInstanceOf(NotAuthorised);
+    await expect(adjust(asThemselves(), anAdjustment(3))).rejects.toBeInstanceOf(NotAuthorised);
   });
 
   it('and correcting an entry is decided by exactly the same rule', async () => {
-    const wrong = await ledger.adjust(asAdministrator(), anAdjustment(20));
+    const wrong = await adjust(asAdministrator(), anAdjustment(20));
 
-    await expect(ledger.correct(asOfficer(), wrong.id, 'x')).rejects.toBeInstanceOf(NotAuthorised);
+    await expect(correct(asOfficer(), wrong.id, 'x')).rejects.toBeInstanceOf(NotAuthorised);
   });
 
   it('refuses an adjustment against somebody who does not exist', async () => {
     await expect(
-      ledger.adjust(asAdministrator(), { ...anAdjustment(3), employeeId: '987654321' }),
+      adjust(asAdministrator(), { ...anAdjustment(3), employeeId: '987654321' }),
     ).rejects.toBeInstanceOf(EmployeeNotFound);
   });
 
   it('refuses one with no reason, before it reaches the database', async () => {
-    await expect(ledger.adjust(asAdministrator(), anAdjustment(3, '  '))).rejects.toBeInstanceOf(
+    await expect(adjust(asAdministrator(), anAdjustment(3, '  '))).rejects.toBeInstanceOf(
       InvalidLedgerEntry,
     );
   });
@@ -705,8 +730,8 @@ describe('who may move a balance by hand, FR 37', () => {
 
 describe('reading one balance', () => {
   it('is oldest first, with the figure each movement left behind it', async () => {
-    const first = await ledger.adjust(asAdministrator(), anAdjustment(20, 'Opening balance'));
-    const second = await ledger.adjust(asAdministrator(), anAdjustment(-5, 'Days taken in March'));
+    const first = await adjust(asAdministrator(), anAdjustment(20, 'Opening balance'));
+    const second = await adjust(asAdministrator(), anAdjustment(-5, 'Days taken in March'));
 
     const account = await ledger.history(asAdministrator(), people.officer);
 
@@ -774,7 +799,7 @@ describe('reading one balance', () => {
   });
 
   it('narrows to one leave type, one year, or one kind of movement', async () => {
-    await ledger.adjust(asAdministrator(), anAdjustment(20, 'Opening balance'));
+    await adjust(asAdministrator(), anAdjustment(20, 'Opening balance'));
     await writeDirectly({ entry_type: 'RESERVATION', days: '-5.00', reason: 'March request' });
 
     expect(

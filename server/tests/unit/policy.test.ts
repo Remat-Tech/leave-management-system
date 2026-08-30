@@ -20,6 +20,7 @@ import { entitlementRulePolicy } from '../../src/auth/entitlement-rule-policy.js
 import type { EntitlementRule } from '../../src/domain/entitlement-rule.js';
 import { holidayPolicy } from '../../src/auth/holiday-policy.js';
 import { leaveTypePolicy } from '../../src/auth/leave-type-policy.js';
+import { ledgerPolicy } from '../../src/auth/ledger-policy.js';
 import { leaveYearPolicy } from '../../src/auth/leave-year-policy.js';
 import { signInPolicy } from '../../src/auth/sign-in-policy.js';
 import { workPatternPolicy } from '../../src/auth/work-pattern-policy.js';
@@ -863,6 +864,166 @@ describe('the audit log', () => {
         READS_EVERY_RECORD.includes(code),
       );
     }
+  });
+});
+
+/**
+ * Moving a balance. FR 26, FR 37, §10. LMS 210, and the three that arrived with
+ * LMS 212.
+ *
+ * Five decisions about one table, and they are five rather than one because they are
+ * five different acts by different people. Reading your leave, moving it by fiat,
+ * asking for some, approving somebody else's, and giving days back are not the same
+ * question with a different verb on it.
+ *
+ * The two worth reading closely are `commit`, which is the only refusal in this
+ * system aimed at somebody's own record on purpose, and `reserve`, which is the only
+ * place a line manager's standing over a report does *not* carry.
+ */
+describe('moving a balance, FR 26 and LMS 212', () => {
+  /** Ama's balance. Akosua is her line manager. */
+  const hers = { employeeId: 'ama', managerId: 'akosua' };
+
+  it('is read by the same three standings the employee record has', () => {
+    expect(ledgerPolicy.read(employee('ama'), hers).allowed).toBe(true);
+    expect(ledgerPolicy.read(manager('akosua'), hers).allowed).toBe(true);
+
+    for (const [code, roles] of EACH_ROLE) {
+      expect(ledgerPolicy.read(employee('adwoa', roles), hers).allowed).toBe(
+        READS_EVERY_RECORD.includes(code),
+      );
+    }
+  });
+
+  /* §10 has an ✗ against every column but one, HR Officer included. An adjustment
+     moves days by fiat and can never be removed, only compensated. */
+  it('is moved by hand only by an HR Administrator', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      expect(ledgerPolicy.adjust(employee('adwoa', roles), hers).allowed).toBe(
+        SETS_UP_THE_ORGANISATION.includes(code),
+      );
+    }
+
+    expect(ledgerPolicy.adjust(employee('ama'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.adjust(manager('akosua'), hers).allowed).toBe(false);
+  });
+
+  describe('holding days for leave that has been asked for', () => {
+    it('is the asking person’s, and HR’s on their behalf', () => {
+      expect(ledgerPolicy.reserve(employee('ama'), hers).allowed).toBe(true);
+
+      for (const [code, roles] of EACH_ROLE) {
+        expect(ledgerPolicy.reserve(employee('adwoa', roles), hers).allowed).toBe(
+          MAINTAINS_EMPLOYEE_RECORDS.includes(code),
+        );
+      }
+    });
+
+    /**
+     * And a line manager's is the one standing that does not carry here.
+     *
+     * They may read the balance, because deciding a request needs it, and they may
+     * approve. Asking for leave on somebody's behalf is not a thing anybody has
+     * asked for, and a manager who could reserve a report's days could quietly
+     * reduce what that person may book without approving anything.
+     */
+    it('and not their line manager’s', () => {
+      expect(ledgerPolicy.read(manager('akosua'), hers).allowed).toBe(true);
+      expect(ledgerPolicy.reserve(manager('akosua'), hers).allowed).toBe(false);
+    });
+  });
+
+  describe('turning held days into taken days', () => {
+    /**
+     * Nobody approves their own leave, and this is the one refusal in the system
+     * aimed at somebody's own record deliberately.
+     *
+     * The seed fixtures are built to expose exactly this failure by name. A
+     * self-approval that reached the ledger would be indistinguishable afterwards
+     * from one somebody granted.
+     */
+    it('is refused to the person whose leave it is, and said out loud', () => {
+      const refusal = ledgerPolicy.commit(employee('ama'), hers);
+
+      expect(refusal.allowed).toBe(false);
+      expect(refusal.told).toMatch(/approver/);
+    });
+
+    it('is their line manager’s, and anybody who reads every record', () => {
+      expect(ledgerPolicy.commit(manager('akosua'), hers).allowed).toBe(true);
+
+      for (const [code, roles] of EACH_ROLE) {
+        expect(ledgerPolicy.commit(employee('adwoa', roles), hers).allowed).toBe(
+          READS_EVERY_RECORD.includes(code),
+        );
+      }
+    });
+
+    /* Being a manager is read off the record, never from a role — so somebody else's
+       manager is nobody here. */
+    it('and not somebody else’s manager', () => {
+      expect(ledgerPolicy.commit(manager('kofi'), hers).allowed).toBe(false);
+    });
+  });
+
+  describe('giving held days back', () => {
+    /* The widest of the three, and the same three standings as reading: yours to
+       withdraw, your manager's to refuse, HR's to cancel. Wide is the safe direction
+       for the one movement that cannot take anything from anybody. */
+    it('is any of the three standings that may read the balance', () => {
+      expect(ledgerPolicy.release(employee('ama'), hers).allowed).toBe(true);
+      expect(ledgerPolicy.release(manager('akosua'), hers).allowed).toBe(true);
+
+      for (const [code, roles] of EACH_ROLE) {
+        expect(ledgerPolicy.release(employee('adwoa', roles), hers).allowed).toBe(
+          READS_EVERY_RECORD.includes(code),
+        );
+      }
+    });
+
+    it('and nobody else', () => {
+      expect(ledgerPolicy.release(employee('adwoa'), hers).allowed).toBe(false);
+      expect(ledgerPolicy.release(manager('kofi'), hers).allowed).toBe(false);
+    });
+  });
+
+  /**
+   * Every one of the four movements says why it refused, and reading does not.
+   *
+   * The distinction ./policy.ts is built on. Somebody asking after a balance that is
+   * not theirs has not been shown that the person exists, so the refusal says
+   * nothing. Somebody who has been allowed to read a balance and is then refused a
+   * movement on it has already seen the record, so telling them which desk does it
+   * discloses nothing and is the difference between a boundary and a wall.
+   */
+  it('says which rule refused a movement, and nothing at all about a refused read', () => {
+    const adwoa = employee('adwoa');
+
+    expect(ledgerPolicy.read(adwoa, hers).told).toBeNull();
+
+    for (const decision of [
+      ledgerPolicy.adjust(adwoa, hers),
+      ledgerPolicy.reserve(adwoa, hers),
+      ledgerPolicy.commit(adwoa, hers),
+      ledgerPolicy.release(adwoa, hers),
+    ]) {
+      expect(decision.allowed).toBe(false);
+      expect(decision.told).not.toBeNull();
+      expect(decision.because).not.toBeNull();
+    }
+  });
+
+  /* The system is nobody, so it matches no owner and no manager — and holds every
+     role, so it passes every role check. Both halves matter: a rollover posting for
+     five hundred people is not any of them. */
+  it('lets the system through by its roles and never by being somebody', () => {
+    const job = theSystem('the year rollover');
+
+    expect(ledgerPolicy.adjust(job, hers).allowed).toBe(true);
+    expect(ledgerPolicy.commit(job, { employeeId: 'ama', managerId: null }).allowed).toBe(true);
+    expect(ledgerPolicy.commit(job, { employeeId: null as never, managerId: null }).allowed).toBe(
+      true,
+    );
   });
 });
 

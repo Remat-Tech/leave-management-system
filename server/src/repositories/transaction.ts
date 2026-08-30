@@ -28,8 +28,11 @@
 
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/index.js';
+import { BalanceRepository } from './balance-repository.js';
 import { DepartmentRepository } from './department-repository.js';
 import { EmployeeRepository } from './employee-repository.js';
+import { LeaveTypeRepository } from './leave-type-repository.js';
+import { LedgerRepository } from './ledger-repository.js';
 import { WorkPatternRepository } from './work-pattern-repository.js';
 
 /**
@@ -43,6 +46,24 @@ export interface Repositories {
   employees: EmployeeRepository;
   departments: DepartmentRepository;
   patterns: WorkPatternRepository;
+  /**
+   * The three a balance movement needs. LMS 212.
+   *
+   * `BalanceService` is the second caller this seam has, and it wants the same
+   * property the import does for a different reason. There it is four hundred rows
+   * that have to land together; here it is four statements that have to have nobody
+   * in between them — hold the balance still, read it, decide, write the movement —
+   * which is FR 26 and §8.2. A transaction is what makes a lock last longer than a
+   * statement, so the seam that owns transactions is where the lock has to be
+   * reachable from.
+   *
+   * `types` is here because the one rule that varies is a column on the leave type —
+   * whether the balance may be exceeded, FR 32a — and reading it outside the window
+   * would be reading it a moment before the decision it feeds.
+   */
+  balances: BalanceRepository;
+  entries: LedgerRepository;
+  types: LeaveTypeRepository;
 }
 
 export class Transactions {
@@ -70,6 +91,9 @@ export class Transactions {
         employees: new EmployeeRepository(trx),
         departments: new DepartmentRepository(trx),
         patterns: new WorkPatternRepository(trx),
+        balances: new BalanceRepository(trx),
+        entries: new LedgerRepository(trx),
+        types: new LeaveTypeRepository(trx),
       }),
     );
   }

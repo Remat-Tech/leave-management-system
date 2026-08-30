@@ -52,7 +52,24 @@
  * There is no `Math.max(0, …)` anywhere in this file and there should never be one:
  * a figure clamped at zero is a figure that has stopped explaining itself, which is
  * the whole thing design principle 1 is against.
+ *
+ * ## The three rules a movement has to pass. FR 26, LMS 212
+ *
+ * {@link daysToReserve}, {@link daysToCommit} and {@link daysToRelease} are what
+ * `BalanceService`'s three operations consult, and they are here rather than in the
+ * service for the reason every rule in `/domain` is: a rule that can be read on its
+ * own can be argued with on its own.
+ *
+ * Two of them are one rule seen from both ends — days can only be approved or given
+ * back out of days that were held — and that pair is the whole of the story's "my
+ * days cannot be deducted twice". The third is FR 26 with FR 32a's exception in it.
+ *
+ * **None of them is sound on a balance that was read without a lock.** They are
+ * arithmetic on a figure, and a figure somebody else is still moving is a figure that
+ * was true a moment ago. §8.2, and the reason `BalanceService` is their only caller.
  */
+
+import { isWholeDays, WHOLE_DAYS_ONLY } from './whole-days.js';
 
 /**
  * The five columns, named as the domain names them. §5.7.
@@ -188,6 +205,168 @@ export function isTheSameBalance(one: BalanceKey, other: BalanceKey): boolean {
     one.leaveTypeId === other.leaveTypeId &&
     one.leaveYearId === other.leaveYearId
   );
+}
+
+/* ------------------------------------------------- what a movement is allowed to be */
+
+/**
+ * A reserve that would take more days than there are. FR 26.
+ *
+ * Carries the arithmetic as well as the sentence, because a screen showing "you have
+ * 3 days left and asked for 5" is doing something a message cannot: telling somebody
+ * what to ask for instead.
+ */
+export class BalanceOverdrawn extends Error {
+  readonly requested: number;
+  readonly available: number;
+  /** Positive. How many days short the request is. */
+  readonly shortBy: number;
+
+  constructor(requested: number, availableDays: number) {
+    super(
+      `That is ${requested} days against a balance of ${availableDays}. ` +
+        `${round(requested - availableDays)} more days are being asked for than are left.`,
+    );
+    this.name = 'BalanceOverdrawn';
+    this.requested = requested;
+    this.available = availableDays;
+    this.shortBy = round(requested - availableDays);
+  }
+}
+
+/**
+ * A commit or a release of days that were never held.
+ *
+ * The error that makes "my days cannot be deducted twice" true rather than hoped
+ * for. Approving the same five days a second time asks to take five days out of a
+ * hold that has already been spent, and there is nothing there to take.
+ */
+export class NotEnoughHeld extends Error {
+  readonly requested: number;
+  readonly held: number;
+
+  constructor(what: string, requested: number, held: number) {
+    super(
+      `That is ${requested} days to ${what}, and only ${held} are being held for this ` +
+        `balance. Days can only be ${what === 'approve' ? 'approved' : 'given back'} once, ` +
+        `and only after they were reserved — so this is either a second attempt at ` +
+        `something that already happened or a figure that does not match the request.`,
+    );
+    this.name = 'NotEnoughHeld';
+    this.requested = requested;
+    this.held = held;
+  }
+}
+
+/**
+ * How many days a reserve may hold. FR 26.
+ *
+ * The first of the three rules that make this the only place a balance moves, and the
+ * one that has an exception. `mayExceed` is `leave_type.exceedable_with_document`,
+ * read from the type rather than decided here: FR 32a makes sick leave a
+ * documentation threshold rather than a cap, so exceeding it is a request for a
+ * medical certificate and not a refusal. §8.6b — "sick balances go negative, and that
+ * is correct".
+ *
+ * That flag is the *only* thing that varies, and it is a column. There is no
+ * `if (type.code === …)` here or anywhere above the database; see design principle 5.
+ *
+ * **This is only sound while the balance was read under a lock**, which is the whole
+ * of §8.2 and is why {@link BalanceService} is the one caller. Checked against a
+ * figure anybody else could still be moving, this is arithmetic on a number that was
+ * true a moment ago.
+ */
+export function daysToReserve(balance: LeaveBalance, days: number, mayExceed: boolean): number {
+  const wanted = wholeDaysToMove('reserve', days);
+
+  if (!mayExceed && wanted > available(balance)) {
+    throw new BalanceOverdrawn(wanted, available(balance));
+  }
+
+  return wanted;
+}
+
+/**
+ * How many days an approval may take out of what is held.
+ *
+ * Approval does not consume days again — the reserve already did — so this can only
+ * ever draw down `pending`, and it is refused where there is not enough of it. That
+ * refusal is the story's "so that", stated as arithmetic: five days approved twice is
+ * a second commit against a hold that the first one emptied.
+ */
+export function daysToCommit(balance: LeaveBalance, days: number): number {
+  return daysAlreadyHeld('approve', balance, days);
+}
+
+/**
+ * How many days a withdrawal, refusal or cancellation may give back.
+ *
+ * The same rule as {@link daysToCommit} and for the same reason from the other side:
+ * giving back days that were never held would credit somebody for leave nobody was
+ * holding, and doing it twice would credit them twice.
+ */
+export function daysToRelease(balance: LeaveBalance, days: number): number {
+  return daysAlreadyHeld('give back', balance, days);
+}
+
+function daysAlreadyHeld(what: string, balance: LeaveBalance, days: number): number {
+  const wanted = wholeDaysToMove(what, days);
+
+  if (wanted > balance.pending) {
+    throw new NotEnoughHeld(what, wanted, balance.pending);
+  }
+
+  return wanted;
+}
+
+/**
+ * A number of days somebody is asking to move, as the operations state it.
+ *
+ * Positive and whole, always, and both halves are deliberate.
+ *
+ * **Positive**, because the three operations are stated the way a person says them —
+ * "reserve five days" — and the ledger's signs are ./ledger.ts's business. A caller
+ * that has to remember that a reserve is −5 and a release is +5 is a caller that will
+ * eventually get one of them backwards, and the entry would still be valid.
+ *
+ * **Whole**, because FR 24, and because these are the four entry types LMS 209 held
+ * to it. Refused here as well as by the column so that the message names the field
+ * while somebody still has the form open. Nought is refused for the reason a ledger
+ * entry of nought days is: a movement of no days is not a movement.
+ */
+function wholeDaysToMove(what: string, days: unknown): number {
+  if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
+    throw new InvalidBalanceMovement(
+      `A ${what} is a number of days, and ${String(days)} is not one of them. It has to be ` +
+        `at least one: moving no days is not a movement, and which way the balance goes is ` +
+        `decided by the operation rather than by the sign of the figure.`,
+    );
+  }
+
+  if (!isWholeDays(days)) {
+    throw new InvalidBalanceMovement(
+      `${String(days)} is not a whole number of days to ${what}. ${WHOLE_DAYS_ONLY}`,
+    );
+  }
+
+  return days;
+}
+
+/**
+ * A figure that is not a number of days at all.
+ *
+ * Separate from {@link BalanceOverdrawn}, which is about a request the balance cannot
+ * afford: this one is about a request that is not a request. The first is answered by
+ * asking for fewer days and the second by typing something else, so telling them
+ * apart is what lets a screen say which.
+ */
+export class InvalidBalanceMovement extends Error {
+  readonly field = 'days';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidBalanceMovement';
+  }
 }
 
 /**
