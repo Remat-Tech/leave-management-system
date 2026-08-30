@@ -387,6 +387,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | A headcount on either | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | The public holiday calendar | anybody signed in | `HR_OFFICER`, `HR_ADMIN` |
 | Every movement in one person's balance | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` only, for an adjustment |
+| Every balance in the company, checked against the ledger | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
 | Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` — never yourself |
 | Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
@@ -789,6 +790,12 @@ Nothing else in the tree posts a ledger entry, and a unit test reads the source 
 keep that true. A story that needs a movement it does not offer adds a method there
 rather than a second way in. See [One place a balance
 changes](#one-place-a-balance-changes).
+
+**And the two are compared every night.** Since LMS 213 a job recomputes every balance
+from the ledger and alerts HR about anything that disagrees — deliberately without
+correcting it, because the discrepancy is the only evidence of how it arose. See
+[Checking the cache against the
+record](#checking-the-cache-against-the-record).
 
 Since LMS 210 the first half of that exists. `leave_ledger_entry` attaches to what
 LMS 113 already built, exactly as that story predicted it would: `refuse_update()`
@@ -2062,6 +2069,75 @@ everything.
 
 ---
 
+### Checking the cache against the record
+
+**Every balance is compared with the ledger, and anything that disagrees is reported
+rather than repaired.** §7.4, LMS 213. Three stories have taken design principle 1 on
+trust — the ledger is the truth, the balance is a cache, and since LMS 211 there is no
+way for an application to move one any other way. This is where "if they ever
+disagree" stops being a hypothetical.
+
+The failures it exists to catch cannot be reached through the application, which is
+the point of everything before it: a trigger disabled during a maintenance window, a
+restore from a backup taken between two statements, a migration moving rows with
+`session_replication_role` set. Each leaves a balance quietly wrong and a ledger
+quietly right, and nothing notices. What notices today is an employee looking at a
+figure they know is wrong, which is the sentence the story is written against.
+
+**Three shapes of disagreement, and only one of them is the obvious one.**
+
+| | Looks like | Found by |
+|---|---|---|
+| The figures have drifted | a cached column out of step with the movements behind it | comparing the five |
+| The ledger has movements and there is no cached row | every screen showing that person nought days | the `FULL OUTER JOIN` — a join from `leave_balance` never sees it |
+| A cached row has no movements behind it | figures with nothing to explain them | the same join from the other side |
+
+The second is caught even when all five figures happen to agree at nought — a
+reservation and the release that gave it back net to nothing, and the row should still
+exist because the trigger should have opened it. That is the mildest possible symptom
+of the most serious possible fault.
+
+**There is no second copy of the arithmetic.** `what_the_ledger_says` is §5.7's
+projection lifted out of `rebuild_one_balance_from_the_ledger()` and given a name, so
+the writer and the checker read one definition. A reconciliation that computed its own
+expected figures would be the second copy LMS 210 declined to write, with the special
+property of being able to agree only with itself — invisible in exactly the case where
+the writer's arithmetic was the thing that was wrong. `integration/reconciliation.test.ts`
+pins that down by rebuilding every balance the check complains about and asserting the
+complaint goes away.
+
+**It alerts and never corrects, and the design is arranged so it could not.** The
+comparison is a view, which cannot be written to; `ReconciliationRepository` has two
+reads and no writer; the job is handed that rather than the balance repository. The
+temptation is real rather than theoretical — the rebuild function is one call away and
+would empty the report every night — and giving in to it would destroy the evidence. A
+discrepancy is the only sign that something here does not work, and a job that erases
+that sign at two every morning guarantees nobody ever finds the cause. Putting a
+balance right is a person's decision made after reading the ledger.
+
+**The alert goes to whoever holds an HR role**, read from the roles table rather than
+from a configured address, so somebody joining HR starts being told and somebody
+leaving stops. A clean run sends nothing at all: a nightly email saying nothing is
+wrong is one nobody reads by March, and the one that matters arrives looking exactly
+like it. The subject carries the count, because "one balance is out by half a day" and
+"four hundred are" are a Monday morning job and a Sunday night phone call. `SYS_ADMIN`
+is deliberately not told — a wrong balance is somebody's leave, and a system that mails
+it to administrators as a matter of routine has stopped treating it as such.
+
+**Nightly is a cron line, and there is nowhere yet to put one.** This build has no
+server entry point, no route layer and no scheduler, so `BalanceReconciliation.run()`
+is written to be called by the first thing that runs on a timer and is not itself
+scheduled. When there is a process, the line is one call a night, out of hours, as
+`theSystem('the nightly balance reconciliation')` — and an HR Officer may run the same
+check this afternoon, which is why the policy allows a person as well as the job.
+
+**What is not here.** A record of the runs. "Checked at 02:00, found nothing" is the
+difference between no news and "the job has not run since Tuesday", and it is a table
+with a screen in it rather than part of this. Noticing that the alert itself has gone
+quiet is monitoring, and monitoring is Phase 6.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.
@@ -2329,6 +2405,17 @@ its tests asserts that the domain exports nothing that turns ledger entries into
 balance — a `balanceFrom(entries)` would be twenty testable lines and a second
 implementation of the sum, which is the drift the cache exists to be checked against.
 Whoever adds one has to argue with that test first.
+
+**`integration/reconciliation.test.ts` has to manufacture the fault it is about.** The
+cache follows the ledger by trigger, in one transaction, on every connection — so
+there is no way through the application to produce the drift the job exists to find,
+which is the point of the three stories before it. The suite makes it two ways, each a
+real failure wearing a costume: the trigger disabled while an entry is written, which
+is what a maintenance window does, and the cache written by hand through the seam the
+rebuild function uses, which is what a restore from a mid-statement backup leaves
+behind. The assertion the story turns on is a negative one and is repeated
+deliberately: after every run, the balance is exactly as wrong as it was. A
+reconciliation that quietly put things right would pass every other test in the file.
 
 **`unit/one-writer.test.ts` proves the criterion that cannot be proved by running
 anything.** "Only writer of balance movements" is a claim about code that does not

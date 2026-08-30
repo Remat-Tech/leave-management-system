@@ -988,6 +988,36 @@ describe('moving a balance, FR 26 and LMS 212', () => {
   });
 
   /**
+   * Checking every balance against the ledger. §7.4, LMS 213.
+   *
+   * The only decision in this file that names no record, because the reconciliation
+   * names none: it reads every balance there is, which is every employee's leave in one
+   * answer. The same rule `auditPolicy.browse` uses, for the same reason.
+   */
+  it('is checked against the ledger by anybody who may read every record', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      expect(ledgerPolicy.reconcile(employee('adwoa', roles)).allowed).toBe(
+        READS_EVERY_RECORD.includes(code),
+      );
+    }
+
+    /* Being somebody's manager is not a way in. A reconciliation is not their reports'
+       balances, it is everybody's. */
+    expect(ledgerPolicy.reconcile(manager('akosua')).allowed).toBe(false);
+    expect(ledgerPolicy.reconcile(theSystem('the nightly reconciliation')).allowed).toBe(true);
+  });
+
+  /* Refused openly, and it is the one refusal in this file where that needs no
+     argument: there is no record named, so there is no existence to disclose, and the
+     person meeting it is asking a reasonable question at the wrong desk. */
+  it('and tells somebody refused it which desk it belongs to', () => {
+    const refusal = ledgerPolicy.reconcile(employee('adwoa'));
+
+    expect(refusal.subject).toBeNull();
+    expect(refusal.told).toMatch(/whole company/);
+  });
+
+  /**
    * Every one of the four movements says why it refused, and reading does not.
    *
    * The distinction ./policy.ts is built on. Somebody asking after a balance that is

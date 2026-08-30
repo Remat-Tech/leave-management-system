@@ -249,6 +249,39 @@ export const ledgerPolicy = {
   },
 
   /**
+   * Checking every balance in the company against the ledger. §7.4, LMS 213.
+   *
+   * The only decision in this file that names no record, because the reconciliation
+   * names none: it reads every balance there is, which is every employee's leave in
+   * one answer. So it goes to the roles that may read every record — the same rule
+   * `auditPolicy.browse` uses for the same reason, that browsing without naming a
+   * record *is* every record at once.
+   *
+   * The nightly run passes as `theSystem`, which holds every role and is nobody. A
+   * person may run it too, and the story's "as an HR Officer" is why that is worth
+   * allowing rather than reserving to the job: somebody who suspects a figure is wrong
+   * should be able to ask the question this afternoon rather than wait for two in the
+   * morning.
+   *
+   * Refused openly. A reconciliation names nobody, so there is no existence to
+   * disclose, and the person meeting this refusal is asking a reasonable question at
+   * the wrong desk.
+   */
+  reconcile(actor: Actor): Decision {
+    return holdsAny(actor, ...READS_EVERY_RECORD)
+      ? about.allow(actor, 'reconcile', null)
+      : about.refuseOpenly(
+          actor,
+          'reconcile',
+          null,
+          'holds no role that reads every record',
+          'Checking every balance against the ledger reads the whole company’s leave at ' +
+            'once, so it is HR’s. Your own balance and its history are on your leave ' +
+            'page. §7.4.',
+        );
+  },
+
+  /**
    * Giving held days back, when a request is withdrawn, refused or cancelled.
    *
    * The widest of the three, and the same three standings as {@link ledgerPolicy.read}:
