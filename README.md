@@ -758,6 +758,13 @@ These are the load bearing decisions. The reasoning is in the Technical Design D
 
 **The ledger is the truth, balances are a cache.** Every day added to or removed from a balance is an immutable row in `leave_ledger_entry`. The `leave_balance` table is a running total kept alongside it for fast reads. If they ever disagree, the ledger wins and the balance is rebuilt. **Never update a balance directly.**
 
+Since LMS 211 that last sentence is not advice. `lms_app` holds SELECT on
+`leave_balance` and no INSERT, every column is `never` for insert and update in
+`db/schema.ts` so a write does not compile, and a trigger refuses one from the owner
+connection as well. The figures are recomputed from the ledger, in the transaction
+of the entry that moved them, by the one function that knows the projection. See
+[The cached balance](#the-cached-balance).
+
 Since LMS 210 the first half of that exists. `leave_ledger_entry` attaches to what
 LMS 113 already built, exactly as that story predicted it would: `refuse_update()`
 and `refuse_delete()` are named for the job rather than for the table, so an
@@ -834,6 +841,15 @@ enforces inside the column — the four entry types that follow a leave request 
 held to whole days by a constraint of their own. So the exception buys a fractional
 *entitlement*, never fractional *leave*, and the day somebody makes a request's day
 count a `NUMERIC` for symmetry it still fails.
+
+**And LMS 211 pays the same price in a different currency.** `leave_balance` is
+where those movements are added up, so three of its five columns inherit the
+fraction — `entitled` is a pro rated grant, `carried_over` is a proportion of one
+that survived a year end, `adjustment` is HR putting either right. The other two are
+`INTEGER`, where §5.7 asks for `NUMERIC(6,2)` on all five: `taken` and `pending` are
+sums of the four request-shaped entry types alone, which cannot be fractional. The
+line LMS 210 drew inside one column is drawn again between two columns, where the
+schema shows it rather than a constraint enforcing it out of sight.
 
 **Dates are dates.** Leave dates are calendar dates with no time and no timezone. Everything else is UTC. Mixing these up is the most common source of off by one day bugs in leave systems.
 
@@ -1548,8 +1564,10 @@ in front of it.
 and refuses a write against a closed year, which is where "its balances cannot
 drift" stops being about one row and becomes a rule about a year of them — with one
 exception, an `ADJUSTMENT`, which §8.9 names as the only way to put a settled figure
-right. See [The balance ledger](#the-balance-ledger). `leave_balance` and its
-rollover are still to come with LMS 214.
+right. See [The balance ledger](#the-balance-ledger). `leave_balance` follows the
+same rule since LMS 211, because it follows the ledger: an adjustment into a settled
+year moves the cached figure like any other entry, and nothing else can. What is
+still to come is the rollover that fills it.
 
 **What closing still does not do.** It does not perform the rollover of FR 36. "This
 year is settled" and "these days move" are two decisions, and a close that silently
@@ -1820,7 +1838,8 @@ once, not ten: the second moves them from held to taken. Available is five figur
 kind moves is `BUCKETS` in `domain/ledger.ts`. `runningTotal()` exists and is named
 `after` rather than `balance` for exactly this reason: it answers "what did these
 rows do", which is what a history screen shows, and not "what may this person
-book", which is `leave_balance` and LMS 214.
+book", which is `leave_balance` and LMS 211 — see [The cached
+balance](#the-cached-balance).
 
 **A correction is a new entry, always an `ADJUSTMENT`, and exactly the opposite of
 what it puts right.** `corrects_id` names the row. It has to be an `ADJUSTMENT`
@@ -1874,6 +1893,89 @@ expiry job posts `EXPIRY`, FR 25's recalculation posts `RECALCULATION` — and e
 is a decision about the operation that causes it, so each belongs to that
 operation's service and policy. A general `post(anything)` on `LedgerService` would
 be a way to reach all six without passing any of those checks.
+
+---
+
+### The cached balance
+
+**`leave_balance` is the sum, kept, so that opening the system is a glance rather
+than a wait.** §5.7, design principle 1, LMS 211. One row per employee, per leave
+type, per leave year — `leave_balance_one_per_year` makes that literal — holding the
+five figures a balance is made of. The ledger can answer "what have I got left" and
+is the only thing that can answer it *correctly*; answering it there means adding up
+somebody's whole history every time a screen shows a figure.
+
+| Column | Fed by | Type |
+|---|---|---|
+| `entitled` | `GRANT` | `NUMERIC` — §8.6d pro rates a 1 July joiner to 10.08 |
+| `carried_over` | `CARRY_FORWARD` less `EXPIRY` | `NUMERIC` — a proportion of a grant survives a year end |
+| `adjustment` | `ADJUSTMENT` | `NUMERIC`, and the only one that goes either way |
+| `taken` | `DEDUCTION` less `RECALCULATION` | `INTEGER` — FR 24, a request is whole days |
+| `pending` | `RESERVATION` less `RELEASE` and `DEDUCTION` | `INTEGER` — likewise |
+
+**Available is `entitled + carried_over + adjustment − taken − pending`, and is not
+a column.** It is a subtraction of the five rather than a sixth fact, it lives in
+`domain/balance.ts`, and a stored copy would put the formula in two languages.
+`taken` and `pending` are positive counts of movements the ledger records as
+negative — a `RESERVATION` is −5 days in the ledger and five days pending here —
+which is why this subtracts where a naive sum of signed movements would add. It may
+go below nought: §8.6b, sick leave, and there is no clamp anywhere.
+
+**The projection exists once, in SQL.** Which of the five columns each of the eight
+kinds of movement moves is `rebuild_one_balance_from_the_ledger()`, and nothing else
+anywhere computes a balance — not the service, not the domain, not a report. That is
+the rule the ledger migration set when it declined to write the first copy: "a total
+computed in two places is the drift the cached balance exists to be checked
+against". `BUCKETS` in `domain/ledger.ts` is the *statement* of the same projection
+in the language the screens are written in, and `integration/balance.test.ts` posts
+one entry of each kind and asserts that exactly the named columns moved, which is
+what keeps the two in step rather than merely both present.
+
+**The cache is recomputed, never nudged.** Posting an entry throws the five figures
+away and adds that balance's ledger rows up again. It costs an aggregate over a few
+dozen rows — `leave_ledger_entry_balance` is exactly this key — and it buys the
+property the story is named for: there is no arithmetic that could be wrong by a
+day, because nothing is carried forward from the previous value. A figure that was
+somehow wrong is corrected by the next entry posted against it, and §7.4's
+reconciliation becomes a call to the same function rather than a second
+implementation of the sum. The function takes the balance row's lock in one
+statement and computes the sums in the next, which is not fussiness: written as a
+single upsert with the aggregate inside it, two transactions posting against one
+balance would each read the ledger before either took the lock, and the second would
+overwrite the first's total with a sum that was missing a row.
+
+**Nothing above the database writes it, and the type system says so.** `lms_app`
+holds SELECT and had its INSERT revoked — the one table in this schema to give the
+default privileges back — every column is `never` for insert and update in
+`db/schema.ts`, and `refuse_a_balance_written_by_hand()` refuses the owner
+connection too, naming the way through rather than only locking the door. A balance
+changes because a ledger entry was posted, in that entry's transaction, or it does
+not change: there is no service to forget and no psql prompt that can move somebody's
+figures without leaving the row that explains them. That is the story's second
+acceptance criterion held as a property rather than as a convention, which matters
+because six of the eight entry types have no writer yet — a trigger cannot be
+forgotten by a story that has not been written.
+
+**There is no CHECK on any of the five figures, on purpose.** `pending >= 0` is true
+of every correct history and would still be wrong here: the write it refused would
+be the trigger's, and a rolled back trigger takes the *ledger entry* down with it. A
+movement that genuinely happened has to be recordable even when the cache of it
+looks impossible. That is what §7.4's reconciliation report is for, and §8.6b needs
+the latitude anyway.
+
+**It is not audited, and that is the same argument the ledger makes.** `audit_log`
+records that a row changed. This changes only because a ledger entry was written, and
+that entry is already the account — a trigger here would write a second copy of it
+that could disagree.
+
+**What is not here.** The reconciliation job of §7.4, which is the recompute above
+plus a schedule, a walk over every balance and somebody to tell. The writers that
+fill four of the five columns: the rollover posts `GRANT` and `CARRY_FORWARD`, the
+request state machine posts `RESERVATION`, `DEDUCTION` and `RELEASE`. And the list of
+leave types a balance screen should show — `BalanceService` returns the balances that
+exist, and which types apply to a person is `entitlement_basis` and FR 05's
+`gender_restriction`, which is a decision with policy in it and belongs to the story
+that builds the screen.
 
 ---
 
@@ -2125,6 +2227,24 @@ rather than a behaviour, which is the shape the closed-year suites already use: 
 module exports no verb that changes an entry, and `correctionFor()` takes no amount
 from the caller. Both are the feature. A ledger with an edit is not a ledger, and a
 correction somebody can size is one that can be the wrong size.
+
+**`integration/balance.test.ts` carries nearly all of LMS 211, for a reason that is
+not the ledger's.** There the central claim was one only a database can make; here
+the central *arithmetic* is one only a database performs. The projection is SQL,
+deliberately and once, so the only place it can be asked whether it is right is
+against a server: one entry of each of the eight kinds, and the columns that
+actually moved compared with the columns `BUCKETS` says should have. The same suite
+proves that the balance moves inside the entry's transaction and rolls back with it,
+that two transactions posting against one balance lose neither, that no connection
+writes a figure by hand, and that every figure can be deleted outright and comes
+back identical — which is what "the ledger is the truth, balances are a cache"
+means when it is a property rather than a slogan.
+
+`unit/balance.test.ts` is short, and its last test is the reason: it asserts that the
+domain exports nothing that turns ledger entries into a balance. A
+`balanceFrom(entries)` here would be twenty testable lines and a second
+implementation of the sum, which is the drift the cache exists to be checked
+against. Whoever adds one has to argue with that test first.
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than

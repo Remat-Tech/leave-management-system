@@ -201,11 +201,28 @@ describe('columns that count', () => {
    * that follow a leave request are held to whole days inside the column, so the
    * exception buys a fractional *entitlement* and not fractional *leave*.
    *
+   * **And LMS 211 pays the same price in a different currency.** `leave_balance` is
+   * where those movements are added up, so three of its five columns inherit the
+   * fraction: `entitled` is a pro rated grant, `carried_over` is a proportion of one
+   * that survived a year end, and `adjustment` is HR putting either of them right.
+   * The Technical Design Document specifies `NUMERIC(6,2)` for all five, and the
+   * other two are `INTEGER` here instead — `taken` and `pending` are sums of the
+   * four request-shaped entry types alone, which cannot be fractional, so the line
+   * LMS 210 drew inside one column is drawn between two columns where a reader can
+   * see it.
+   *
+   * That is the shape this exception is supposed to have. It is not "the balance
+   * tables are allowed to be numeric": it is five columns considered one at a time,
+   * of which three genuinely hold something somebody accrued and two do not.
+   *
    * Named by file and column rather than by column alone. A future `days` somewhere
    * else is a different decision and should have to be argued for here.
    */
   const ACCRUED: readonly { file: RegExp; name: string }[] = [
     { file: /immutable-leave-ledger/, name: 'days' },
+    { file: /cached-balance-table/, name: 'entitled' },
+    { file: /cached-balance-table/, name: 'carried_over' },
+    { file: /cached-balance-table/, name: 'adjustment' },
   ];
 
   const isAccrued = (declaration: Declaration): boolean =>
@@ -232,11 +249,36 @@ describe('columns that count', () => {
     ).toEqual([]);
   });
 
-  /* And the exception is real rather than a list guarding nothing. A rule with an
-     allowance in it that never applies is a rule nobody has tested the shape of. */
-  it('and the exception names a column that is actually there', () => {
-    expect(declarations.filter(isAccrued).map((declaration) => declaration.type)).toEqual([
-      'numeric',
+  /* And every part of the exception is real rather than a list guarding nothing. A
+     rule with an allowance in it that never applies is a rule nobody has tested the
+     shape of — and an allowance for a column somebody has since renamed is one that
+     would quietly stop covering the column it was written for. */
+  it('and every column the exception names is actually there, and is the type it excuses', () => {
+    for (const allowed of ACCRUED) {
+      const declared = declarations.filter(
+        (declaration) => allowed.file.test(declaration.file) && allowed.name === declaration.name,
+      );
+
+      expect(
+        declared.map((declaration) => declaration.type),
+        allowed.name,
+      ).toEqual(['numeric']);
+    }
+  });
+
+  /* The two columns of leave_balance that are deliberately not in it. They count
+     days out of a request, FR 24 says a request is whole days, and this is the half
+     of LMS 209's rule that the balance table is where it becomes visible. */
+  it('and the columns beside them that count taken and pending days are whole', () => {
+    const counts = declarations.filter(
+      (declaration) =>
+        /cached-balance-table/.test(declaration.file) &&
+        ['taken', 'pending'].includes(declaration.name),
+    );
+
+    expect(counts.map((declaration) => `${declaration.name} ${declaration.type}`)).toEqual([
+      'taken integer',
+      'pending integer',
     ]);
   });
 

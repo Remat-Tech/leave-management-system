@@ -61,7 +61,7 @@
  * rule.
  *
  * **No granting.** A resolved rule is a figure, not days somebody has. Turning it
- * into a balance is a ledger entry — LMS 210 and LMS 214 — and that is the other
+ * into a balance is a ledger entry — LMS 210 and LMS 211 — and that is the other
  * half of why a closed year is safe: a grant is written once, with the amount it
  * was worth on the day it was written.
  *

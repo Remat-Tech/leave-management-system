@@ -41,7 +41,7 @@ import {
  *   and every other type keeps a fixed one because of it.
  *
  *   A run of signed days is not a balance. {@link runningTotal} says what the rows
- *   did; available is five buckets and is LMS 214, and the gap between those two
+ *   did; available is five buckets and is LMS 211, and the gap between those two
  *   sentences is where a wrong figure would live.
  */
 
@@ -475,7 +475,7 @@ describe('reading a run of entries', () => {
    * once, not ten: the second moves them from held to taken. This total shows ten,
    * correctly, because it answers "what did these rows do" — and the test is here
    * so that nobody later reads it as the other question. Available is five buckets
-   * and is LMS 214.
+   * and is LMS 211.
    */
   it('and is deliberately not what the person may still book', () => {
     const account = runningTotal([

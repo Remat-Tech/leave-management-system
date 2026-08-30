@@ -455,7 +455,7 @@ export interface HolidayTable {
  * The balance ledger. FR 27, §5.7, design principle 1. LMS 210.
  *
  * One row per movement in one balance, and the only way days may move at all. The
- * cached total of §5.7 is LMS 214 and is rebuilt from these rows; if the two ever
+ * cached total of §5.7 is LMS 211 and is rebuilt from these rows; if the two ever
  * disagree, this wins. What an entry means is ../domain/ledger.ts.
  *
  * Append only, on every connection. `lms_app` holds SELECT and INSERT and nothing
@@ -499,7 +499,7 @@ export interface LeaveLedgerEntryTable {
    *
    * **Summing these in JavaScript is not how a balance is computed.** Postgres adds
    * `numeric` exactly and doubles do not, and a RESERVATION and the DEDUCTION that
-   * follows it are not two consumptions of the same days. LMS 214.
+   * follows it are not two consumptions of the same days. LMS 211.
    */
   days: string;
   /* FR 27. Mandatory, not blank, no default anywhere: a reason that can be omitted
@@ -519,12 +519,70 @@ export interface LeaveLedgerEntryTable {
   created_at: Timestamp;
 }
 
+/**
+ * The cached balance. §5.7, design principle 1. LMS 211.
+ *
+ * One row per employee, leave type and leave year — `leave_balance_one_per_year`
+ * makes that literal — holding the five figures of §5.7 so that "what have I got
+ * left" is a single-row read rather than a walk of somebody's whole history.
+ *
+ * **Every column is `never` for insert and update, and that is the table's whole
+ * shape said in the type system.** Nothing above the database writes here. The
+ * figures are recomputed from `leave_ledger_entry` by
+ * `rebuild_one_balance_from_the_ledger()`, in the transaction of the entry that
+ * caused them, and `refuse_a_balance_written_by_hand()` says the same thing to
+ * every other connection. `lms_app` holds SELECT and had its INSERT revoked — the
+ * one table in this schema to give the default privileges back.
+ *
+ * So `db.insertInto('leave_balance')` does not compile, and would not be permitted
+ * if it did. Moving a balance is posting a ledger entry; there is no second way.
+ *
+ * Available is `entitled + carried_over + adjustment − taken − pending` and is
+ * deliberately not a column. It is a subtraction rather than a sixth fact, it lives
+ * in ../domain/balance.ts, and §8.6b lets it go negative for sick leave on purpose.
+ */
+export interface LeaveBalanceTable {
+  id: ColumnType<string, never, never>;
+  employee_id: ColumnType<string, never, never>;
+  leave_type_id: ColumnType<string, never, never>;
+  leave_year_id: ColumnType<string, never, never>;
+  /**
+   * What the year granted, what survived last year end less what has lapsed, and
+   * what HR moved by hand. `numeric`, and typed `string` for the reason
+   * `leave_ledger_entry.days` is: that is what the driver returns, and `'20.00' +
+   * '5.00'` is `'20.005.00'`. ../repositories/balance-repository.ts is the one
+   * place they become numbers.
+   *
+   * Fractional because §8.6d pro rates a mid year joiner to 10.08 days. What
+   * somebody is owed may carry a fraction; what they have taken may not.
+   */
+  entitled: ColumnType<string, never, never>;
+  carried_over: ColumnType<string, never, never>;
+  adjustment: ColumnType<string, never, never>;
+  /**
+   * Days consumed by approved leave, and days held for leave not yet decided.
+   * Positive counts of movements the ledger records as negative.
+   *
+   * `integer` rather than `numeric`, and the difference from the three above is FR
+   * 24: these are sums of the four request-shaped entry types, which
+   * `leave_ledger_entry_requests_move_whole_days` holds to whole days. LMS 209's
+   * rule, drawn between two columns where it can be read.
+   */
+  taken: ColumnType<number, never, never>;
+  pending: ColumnType<number, never, never>;
+  created_at: Timestamp;
+  /* Maintained by the leave_balance_set_updated_at trigger. "When did this figure
+     last move" is the first question asked of a balance somebody disputes. */
+  updated_at: Timestamp;
+}
+
 export interface Database {
   app_user: AppUserTable;
   audit_log: AuditLogTable;
   department: DepartmentTable;
   employee: EmployeeTable;
   holiday: HolidayTable;
+  leave_balance: LeaveBalanceTable;
   leave_entitlement_rule: LeaveEntitlementRuleTable;
   leave_ledger_entry: LeaveLedgerEntryTable;
   leave_type: LeaveTypeTable;
