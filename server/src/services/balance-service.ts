@@ -1,5 +1,5 @@
 /**
- * The one place a balance changes. FR 26, FR 37, §5.7, §8.2. LMS 211 and LMS 212.
+ * The one place a balance changes. FR 26, FR 30, FR 37, §5.7, §8.2. LMS 211 to LMS 214.
  *
  * LMS 211 built the cache and this class read it. LMS 212 is the story that gives it
  * the other half, and the story's own sentence is the design: "one place responsible
@@ -12,15 +12,27 @@
  *
  * There is no other writer. `LedgerService` reads the account and posts nothing;
  * every other service that will one day move days — the rollover, the request state
- * machine, the expiry job — will call one of the five methods here rather than
- * reaching for `LedgerRepository`. ../../tests/unit/one-writer.test.ts is what keeps
- * that true, by reading the source and failing on a second caller.
+ * machine, the expiry job — calls a method here rather than reaching for
+ * `LedgerRepository`. ../../tests/unit/one-writer.test.ts is what keeps that true, by
+ * reading the source and failing on a second caller.
+ *
+ * LMS 214 is the first story to take that arrangement up on its offer. The annual
+ * grant needed a movement this file did not have, so it added
+ * {@link BalanceService.grantTheYear} — where the lock, the rule and the policy already
+ * are — rather than a second way in.
  *
  * That is worth a rule rather than a habit because of what the second writer looks
  * like when it arrives. It is not a rogue `UPDATE leave_balance` — the database has
  * refused those since LMS 211 — it is an honest service posting an honest
  * `DEDUCTION` and skipping the one check that made it safe. Days deducted twice, by
  * two files that each looked correct.
+ *
+ * ## Days arrive from a rule, and leave through a request
+ *
+ * {@link BalanceService.grantTheYear} is the only movement that puts days in from
+ * nowhere — FR 30, a year's entitlement, granted once and refused a second time inside
+ * the lock. Everything else moves days that are already there, or is HR moving them by
+ * hand under FR 37.
  *
  * ## Not deducted twice. Held days can only be spent once
  *
@@ -66,6 +78,7 @@ import {
   available,
   type BalanceKey,
   daysToCommit,
+  daysToGrant,
   daysToRelease,
   daysToReserve,
   type LeaveBalance,
@@ -244,6 +257,55 @@ export class BalanceService {
   }
 
   /**
+   * Grants a year's entitlement. FR 30, LMS 214.
+   *
+   * The first movement that puts days *into* a balance rather than moving days already
+   * there, and the one an employee sees first: this is what you have for the year.
+   *
+   * **Once per balance per year**, checked inside the lock and refused with
+   * {@link AlreadyGranted}. That is what makes the annual job safe to run twice — which
+   * is not a hypothetical, it is what happens when it errors halfway through a January
+   * morning and somebody runs it again. The alternative is a job that remembers, and a
+   * job that remembers is a job that forgets.
+   *
+   * Named for the year rather than called `grant`, and the name is the rule. An event
+   * type's entitlement arrives with the event — FR 32g — and a second confinement in
+   * one leave year is correctly a second `GRANT`. That story adds its own method here
+   * rather than loosening this one, because "once a year" is true of the annual grant
+   * and false of the ledger's `GRANT` entries in general.
+   *
+   * **The figure is not this method's to choose.** It comes from the entitlement rule
+   * in force on the first day of the year — `EntitlementRuleService.entitlementOn` —
+   * and arrives here already resolved. A service that looked the figure up as well as
+   * posting it would be the place a future story quietly added a second way of working
+   * out what somebody is owed.
+   *
+   * No pro rata. FR 29's proportion for a mid year joiner is a different story with a
+   * formula in it; ../jobs/annual-grant.ts passes such a person over and reports that it
+   * did.
+   */
+  async grantTheYear(actor: Actor, grant: BalanceMovement): Promise<BalanceMoved> {
+    const owner = await this.ownerOf(grant.employeeId);
+
+    this.guard.enforce(ledgerPolicy.grant(actor, owner));
+
+    return this.moving(actor, grant, async (_held, repositories) => ({
+      entryType: 'GRANT' as const,
+      days: daysToGrant(
+        grant.days,
+        (
+          await repositories.entries.entriesFor({
+            employeeId: grant.employeeId,
+            leaveTypeId: grant.leaveTypeId,
+            leaveYearId: grant.leaveYearId,
+            entryTypes: ['GRANT'],
+          })
+        ).length,
+      ),
+    }));
+  }
+
+  /**
    * Turns held days into taken days, which is what approval does. FR 26.
    *
    * **This does not consume days a second time.** The reservation already did that;
@@ -405,7 +467,7 @@ export class BalanceService {
     decide: (
       held: LeaveBalance,
       repositories: Repositories,
-    ) => Promise<{ entryType: 'RESERVATION' | 'DEDUCTION' | 'RELEASE'; days: number }>,
+    ) => Promise<{ entryType: 'GRANT' | 'RESERVATION' | 'DEDUCTION' | 'RELEASE'; days: number }>,
   ): Promise<BalanceMoved> {
     const key = keyOf(movement);
 

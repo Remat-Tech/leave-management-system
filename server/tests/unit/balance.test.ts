@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AlreadyGranted,
   available,
   BALANCE_BUCKETS,
   type BalanceBucket,
@@ -7,6 +8,7 @@ import {
   BalanceOverdrawn,
   committed,
   daysToCommit,
+  daysToGrant,
   daysToRelease,
   daysToReserve,
   hasMoved,
@@ -206,6 +208,47 @@ describe('holding days for leave that has been asked for', () => {
   });
 });
 
+/**
+ * A year's entitlement. FR 30, LMS 214.
+ *
+ * The first movement that puts days into a balance rather than moving days already
+ * there, and the only rule about it that is not the ledger's own: it happens once.
+ */
+describe('granting a year of entitlement', () => {
+  it('grants what the rule says the type is worth', () => {
+    expect(daysToGrant(20, 0)).toBe(20);
+  });
+
+  /* §8.6d. Unlike the three below it, a grant may carry a fraction — what somebody has
+     accrued is divisible even though what they may ask for is not — and the precision
+     is the ledger column's own rather than a second rule here. */
+  it('and a pro rated figure to the hundredth of a day', () => {
+    expect(daysToGrant(10.08, 0)).toBe(10.08);
+  });
+
+  /**
+   * And refuses a second grant of the same year.
+   *
+   * The rule that makes the annual job safe to run twice, which is not a hypothetical:
+   * it is what happens when the job errors halfway through a January morning and
+   * somebody runs it again. The count comes from the ledger, read inside the lock, so
+   * the answer is still true when the entry is written.
+   */
+  it('and refuses a year that has already been granted', () => {
+    expect(() => daysToGrant(20, 1)).toThrow(AlreadyGranted);
+    expect(() => daysToGrant(20, 1)).toThrow(/granted once/);
+    expect(() => daysToGrant(20, 2)).toThrow(/2 times/);
+  });
+
+  /* A leave type worth nothing to somebody is a rule saying so, not a grant of nought
+     days — which would be a line in their history that explains nothing and has to be
+     skipped by every reader of it. */
+  it('and refuses a grant of nothing, or of a negative figure', () => {
+    expect(() => daysToGrant(0, 0)).toThrow(InvalidBalanceMovement);
+    expect(() => daysToGrant(-5, 0)).toThrow(InvalidBalanceMovement);
+  });
+});
+
 describe('approving and giving back days that were held', () => {
   const holding = balanceOf({ entitled: 20, pending: 5 });
 
@@ -336,6 +379,7 @@ describe('the five columns, as the ledger names them', () => {
     const balance: Record<string, unknown> = await import('../../src/domain/balance.js');
 
     expect(Object.keys(balance).sort()).toEqual([
+      'AlreadyGranted',
       'BALANCE_BUCKETS',
       'BalanceOverdrawn',
       'InvalidBalanceMovement',
@@ -343,6 +387,7 @@ describe('the five columns, as the ledger names them', () => {
       'available',
       'committed',
       'daysToCommit',
+      'daysToGrant',
       'daysToRelease',
       'daysToReserve',
       'hasMoved',

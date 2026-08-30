@@ -249,6 +249,40 @@ export const ledgerPolicy = {
   },
 
   /**
+   * Granting a year's entitlement. FR 30, LMS 214.
+   *
+   * The same rule as {@link ledgerPolicy.adjust}, an HR Administrator's, and it is
+   * worth saying why rather than leaving it to look like a copy.
+   *
+   * A grant and an adjustment are the same act from the balance's point of view: days
+   * arriving with no request behind them and no way to take them back afterwards. What
+   * differs is who chose the figure — a rule, written in advance and applying to
+   * everybody, rather than a person deciding this morning — and that difference is
+   * already protected, because writing the rule is `entitlementRulePolicy.create` and
+   * is an HR Administrator's too. Letting an HR Officer *apply* figures only an
+   * Administrator may *write* would put the whole of a year's entitlement one desk
+   * lower than the decision behind it.
+   *
+   * The annual run passes as `theSystem`, which holds every role and is nobody.
+   *
+   * Refused openly, because anybody reaching this can already read the balance and
+   * telling them which desk grants a year discloses nothing.
+   */
+  grant(actor: Actor, owner: BalanceOwner): Decision {
+    return holdsAny(actor, ...SETS_UP_THE_ORGANISATION)
+      ? about.allow(actor, 'grant', owner.employeeId)
+      : about.refuseOpenly(
+          actor,
+          'grant',
+          owner.employeeId,
+          'holds no role that grants a year of entitlement',
+          'A year’s entitlement arrives from the rule that says what a leave type is ' +
+            'worth, and applying it is the same desk that writes it — an HR ' +
+            'Administrator’s. FR 30.',
+        );
+  },
+
+  /**
    * Checking every balance in the company against the ledger. §7.4, LMS 213.
    *
    * The only decision in this file that names no record, because the reconciliation
