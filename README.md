@@ -386,11 +386,12 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | The whole list of entitlement figures | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | A headcount on either | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | The public holiday calendar | anybody signed in | `HR_OFFICER`, `HR_ADMIN` |
+| Every movement in one person's balance | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` only |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
 
-Five of those lines are decisions rather than defaults, and each is argued in the
+Six of those lines are decisions rather than defaults, and each is argued in the
 policy file that holds it.
 
 **A line manager sees their reports because of the record, never because of a
@@ -428,6 +429,17 @@ that leaves the calendar a week behind the country by March, which charges someb
 a day of annual leave for an afternoon nobody worked. `SYS_ADMIN` is deliberately
 not on it either: keeping the calendar is HR's job, not a power that comes with
 being able to reach the database.
+
+**Moving a balance by hand is narrower than anything else in this system, and only
+an `HR_ADMIN` may.** §10's matrix has an ✗ against every other column including HR
+Officer, and it is right: an adjustment moves days by fiat, with no request and no
+rule behind it, and it can never be removed — only compensated by another entry
+that is itself permanent. Correcting an earlier entry is decided by the same rule
+rather than a separate one, because whoever can post an adjustment can already post
+its opposite, and a split would suggest somebody might hold one and not the other.
+Reading a balance follows the employee record's rule exactly: yours, your direct
+reports', or a role that reads everybody — a ledger is somebody's history, not a
+published calendar.
 
 **Setting a joiner up is HR's, and closing an account is not.** An HR Officer
 creates the record on somebody's first morning and gives them the login in the
@@ -746,11 +758,15 @@ These are the load bearing decisions. The reasoning is in the Technical Design D
 
 **The ledger is the truth, balances are a cache.** Every day added to or removed from a balance is an immutable row in `leave_ledger_entry`. The `leave_balance` table is a running total kept alongside it for fast reads. If they ever disagree, the ledger wins and the balance is rebuilt. **Never update a balance directly.**
 
-When it arrives it attaches to what LMS 113 already built: `refuse_update()` and
-`refuse_delete()` are named for the job rather than for the table, and
-`record_in_audit_log()` takes the table it is attached to from `TG_TABLE_NAME`.
-An append-only ledger is three triggers and no new machinery. See
-[The audit log](#the-audit-log).
+Since LMS 210 the first half of that exists. `leave_ledger_entry` attaches to what
+LMS 113 already built, exactly as that story predicted it would: `refuse_update()`
+and `refuse_delete()` are named for the job rather than for the table, so an
+append-only ledger was two triggers and no new machinery. See
+[The audit log](#the-audit-log) and [The balance ledger](#the-balance-ledger).
+
+What is still not built is `leave_balance`, the cache the first sentence is about.
+Nothing yet computes what somebody may book — see the ledger section for why a run
+of signed days is not that figure.
 
 **Policy is data, not code.** Every entitlement figure, threshold and notice period lives in a table with an effective date. Nobody should ever ship a release because HR changed an allowance.
 
@@ -805,15 +821,19 @@ widening `INTEGER` on the day the policy actually changes is a three line migrat
 nothing behind it is a switch somebody eventually wires up.
 
 **The one figure FR 24 does not govern is a pro rated entitlement**, and it is worth
-knowing before you meet the failing test. §8.6d gives a 1 July joiner 10.08 days and
-says plainly that FR 24 "governs how leave is requested, not how entitlement is
-held". Nothing in the schema needs a scale for that yet — `entitlement_days` holds
-the rule's figure, which is always 20 or 3 or 120, and the fraction only appears when
-the grant is calculated. When the ledger and the balance arrive (LMS 210, LMS 214,
-LMS 215) one column will need one, and the migrations test will fail. The answer then
-is to allow that column by name and leave every other one integral, not to delete the
-check: a leave *request* is whole days in every story there will ever be, and only
-what somebody has accrued is divisible.
+and it is the one exception. §8.6d gives a 1 July joiner 10.08 days and says plainly
+that FR 24 "governs how leave is requested, not how entitlement is held".
+`entitlement_days` still holds no fraction — that is the rule's figure, always 20 or
+3 or 120 — but `leave_ledger_entry.days` does, because the fraction appears when the
+grant is calculated and the ledger is where a grant is recorded.
+
+LMS 209 wrote the rule down before there was anything to except from it, and said
+what the answer would have to be: allow that column by name and leave every other
+one integral. LMS 210 is that answer, and it comes with a condition the ledger
+enforces inside the column — the four entry types that follow a leave request are
+held to whole days by a constraint of their own. So the exception buys a fractional
+*entitlement*, never fractional *leave*, and the day somebody makes a request's day
+count a `NUMERIC` for symmetry it still fails.
 
 **Dates are dates.** Leave dates are calendar dates with no time and no timezone. Everything else is UTC. Mixing these up is the most common source of off by one day bugs in leave systems.
 
@@ -887,10 +907,17 @@ Three things enforce that, and it is worth knowing which covers what:
 The trigger calls `refuse_delete()`, which like `set_updated_at()` is named for
 the job rather than the table and reads `TG_TABLE_NAME` for its message. LMS 113
 took it at its word: `audit_log` attaches to the same function rather than
-declaring its own `RAISE`, and gained a sibling, `refuse_update()`. The Phase 2
-ledger should do the same. Both raise `restrict_violation` (SQLSTATE `23001`), so
-a caller can tell a refused write from a genuine fault without reading the message
+declaring its own `RAISE`, and gained a sibling, `refuse_update()`. LMS 210's
+ledger attaches to both. Both raise `restrict_violation` (SQLSTATE `23001`), so a
+caller can tell a refused write from a genuine fault without reading the message
 text.
+
+**The hint is the caller's, since LMS 210.** `refuse_delete()` used to hard code the
+employee sentence — "deactivate the record instead" — which was right while
+`employee` was the only table refusing a delete and was quietly wrong on `audit_log`
+from the day it attached. It now takes `TG_ARGV[0]` with that sentence as the
+default, the shape `refuse_update()` has always had, so each table says what to do
+instead of its own accord: post a compensating entry, on the ledger.
 
 If a hard delete is ever genuinely needed, drop the trigger in a migration,
 delete the row, and restore the trigger in the same migration. That makes it a
@@ -1517,14 +1544,16 @@ would be odd; reading the latest closed end means the boundary is the safe one
 either way, because a settled year cannot be reached back into through a hole left
 in front of it.
 
-**What closing does not do yet.** `leave_balance` and `leave_ledger_entry` arrive
-with LMS 210 and LMS 214, each carrying a `leave_year_id` and each refusing a write
-against a closed year — that is where "its balances cannot drift" stops being about
-one row and becomes a rule about a year of them. It is not stubbed here: a foreign
-key to a table that does not exist is not a thing, and a flag guarding nothing is a
-flag nobody trusts. Closing also does not perform the rollover of FR 36. "This year
-is settled" and "these days move" are two decisions, and a close that silently did
-both would be a close nobody could audit.
+**What closing does since LMS 210.** `leave_ledger_entry` carries a `leave_year_id`
+and refuses a write against a closed year, which is where "its balances cannot
+drift" stops being about one row and becomes a rule about a year of them — with one
+exception, an `ADJUSTMENT`, which §8.9 names as the only way to put a settled figure
+right. See [The balance ledger](#the-balance-ledger). `leave_balance` and its
+rollover are still to come with LMS 214.
+
+**What closing still does not do.** It does not perform the rollover of FR 36. "This
+year is settled" and "these days move" are two decisions, and a close that silently
+did both would be a close nobody could audit.
 
 ### The public holiday calendar
 
@@ -1769,6 +1798,85 @@ anything the repositories guard against, not less.
 
 ---
 
+### The balance ledger
+
+**Every movement in a balance is a row, and no row ever changes.** FR 27, §5.7,
+design principle 1, LMS 210. `leave_ledger_entry` is what makes "why do I have
+twelve days rather than fifteen" answerable with a list rather than an assertion:
+a date, an amount, a reason, and a name against each line.
+
+**Eight kinds of movement, in two families**, and the division runs through every
+rule the table has.
+
+| | Kinds | Sign | Whole days? | Into a settled year? |
+|---|---|---|---|---|
+| What somebody is owed | `GRANT`, `CARRY_FORWARD`, `ADJUSTMENT`, `EXPIRY` | `+`, `+`, either, `−` | no — §8.6d pro rates to 10.08 | only `ADJUSTMENT`, see below |
+| What a request moved | `RESERVATION`, `DEDUCTION`, `RELEASE`, `RECALCULATION` | `−`, `−`, `+`, `+` | yes — FR 24 | never |
+
+**A run of signed days is not the available balance, and nothing sums them into
+one.** `RESERVATION -5` followed on approval by `DEDUCTION -5` is five days gone
+once, not ten: the second moves them from held to taken. Available is five figures
+— `entitled + carriedOver + adjustment − taken − pending` — and which of them each
+kind moves is `BUCKETS` in `domain/ledger.ts`. `runningTotal()` exists and is named
+`after` rather than `balance` for exactly this reason: it answers "what did these
+rows do", which is what a history screen shows, and not "what may this person
+book", which is `leave_balance` and LMS 214.
+
+**A correction is a new entry, always an `ADJUSTMENT`, and exactly the opposite of
+what it puts right.** `corrects_id` names the row. It has to be an `ADJUSTMENT`
+because that is the only kind whose sign is free — putting right a `GRANT` of +20
+means −20, which is not a grant — and routing every correction through it is what
+lets the other seven keep a fixed sign, and what makes a correction findable as a
+correction rather than disguised as an ordinary movement. `LedgerService.correct()`
+takes no amount from the caller: a correction somebody could size is one that can
+be the wrong size, and "−18 correcting a grant of 20" is a row that looks
+reconciled and leaves two days behind.
+
+**A settled leave year takes no new figures — except an adjustment.** §8.9: "If HR
+genuinely needs to change a closed year, that is a manual `ADJUSTMENT` entry with a
+reason, not a rule edit." This is the one table in the schema whose settled-year
+rule has an exception, and it is deliberate. What a closed year refuses is being
+*recalculated* — quietly, by a rule or a job, with nobody's name on it. A
+deliberate, attributed, permanent correction is not that, and forbidding it would
+leave a psql prompt as the only way to fix a settled figure.
+
+**Who wrote it and when are not the writer's to say.** `created_by`,
+`created_by_employee_id` and `created_at` are overwritten by a trigger from the
+settings `repositories/recording.ts` puts on the transaction — the same seam the
+audit log reads. A `DEFAULT` would only apply to a writer that said nothing, which
+is the honest writer; the value of "who posted this" is that nobody could have
+chosen it. Dating is the sharper half: a balance is rebuilt in the order the rows
+were written, so an entry dated backwards rewrites a settled figure without
+changing any existing row, which is the one door the immutability triggers do not
+cover.
+
+**It is not the audit log, and is not audited.** `audit_log` records that a row
+changed and exists because rows change. This records that days moved and exists
+because they cannot be moved any other way. A trigger here would write one entry
+per ledger row carrying facts the row already carries — a second copy of an account
+whose whole value is that there is one, and a copy that could disagree.
+
+**The one fractional column in the schema.** `days` is `NUMERIC(6,2)`, because
+§8.6d pro rates a joiner on 1 July to 20 × 184/365 = 10.08 days and "FR 24 governs
+how leave is requested, not how entitlement is held". `unit/migrations.test.ts`
+permits it by name and by file, on the condition the table enforces inside the
+column: the four request-shaped kinds are held to whole days by
+`leave_ledger_entry_requests_move_whole_days`. So the exception buys a fractional
+*entitlement*, never fractional *leave*. It comes back from the driver as a string
+and becomes a number once, in the repository — `'20.00' + '5.00'` is `'20.005.00'`,
+and the typed row makes that impossible to write by accident.
+
+**What is not here.** `leave_request_id` from §5.7, because `leave_request` is §8
+and a nullable id with no key behind it is a column nothing can check. Six of the
+eight kinds have no writer yet — the rollover posts `GRANT` and `CARRY_FORWARD`,
+the request state machine posts `RESERVATION`, `DEDUCTION` and `RELEASE`, the
+expiry job posts `EXPIRY`, FR 25's recalculation posts `RECALCULATION` — and each
+is a decision about the operation that causes it, so each belongs to that
+operation's service and policy. A general `post(anything)` on `LedgerService` would
+be a way to reach all six without passing any of those checks.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.
@@ -1800,7 +1908,9 @@ There are two connections and they are not interchangeable.
 | owner (`neondb_owner` on Neon) | migrations, nothing else | ownership of every object |
 | `lms_app` | the running application | `CONNECT`, `USAGE` on the schema, and `SELECT`/`INSERT` on tables |
 
-**The application never runs as the owner.** An application connected as the owner can `UPDATE` or `DELETE` rows in `audit_log` and `leave_ledger_entry`, which is precisely the thing an audit trail exists to make impossible. NFR AUD 02.
+**The application never runs as the owner.** An application connected as the owner could reach `audit_log` and `leave_ledger_entry` in ways nothing else can, which is precisely what an audit trail exists to make impossible. NFR AUD 02.
+
+Both tables also refuse an `UPDATE` or a `DELETE` by trigger, which holds against the owner too — so the owner's real power is not the write itself but dropping the trigger first. That is a deliberate act in a migration with an author and a review on it, which is the most a database can offer. The two protections are layers rather than duplicates: the privileges stop the writer an attacker actually reaches, and the triggers stop the honest mistake at a psql prompt.
 
 **`lms_app` gets `SELECT` and `INSERT` on new tables and nothing else.** This is set once, as a default privilege, so it applies to every table a future migration creates. A table that genuinely needs `UPDATE` or `DELETE` must be granted it explicitly in the migration that creates it:
 
@@ -1998,6 +2108,23 @@ of it. A sweep that only ran eastward would give a clean bill of health for exac
 the bug it was written to find; the eastern two are kept because the opposite
 mistake — a date built at local midnight and read back at UTC — fails there and
 nowhere else.
+
+**`integration/ledger.test.ts` carries most of LMS 210, because the story's central
+claim is one only a database can make.** That an entry cannot be changed or removed
+is not a property of the application declining to try: the assertions that matter
+are run on the *owner* connection, because an immutability the migration user can
+step around is a convention and FR 27 asks for a property. The same suite proves
+that a writer supplying `created_by` or `created_at` is overruled by the trigger,
+that the eight kinds the domain knows are the eight the column accepts, and that a
+settled leave year takes an `ADJUSTMENT` and nothing else — §8.9's exception, which
+is the one rule in this schema most likely to be tidied away by somebody who has
+read the holiday rules and assumed this table works the same way.
+
+`unit/ledger.test.ts` proves the pure half, and two of its tests look for an absence
+rather than a behaviour, which is the shape the closed-year suites already use: the
+module exports no verb that changes an entry, and `correctionFor()` takes no amount
+from the caller. Both are the feature. A ledger with an edit is not a ledger, and a
+correction somebody can size is one that can be the wrong size.
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than

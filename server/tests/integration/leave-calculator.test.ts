@@ -120,7 +120,10 @@ async function restore(table: string, rows: Record<string, unknown>[]): Promise<
   const columns = Object.keys(rows[0]).filter((column) => column !== 'updated_at');
   const placeholders = columns.map((_column, index) => `$${index + 1}`).join(', ');
 
-  await admin.query(`TRUNCATE ${table}`);
+  /* CASCADE since LMS 210, for the reason ./holiday.test.ts gives: a leave year is
+     the heading a run of ledger entries is filed under, and a referenced table
+     cannot be truncated without saying what happens to the rows pointing at it. */
+  await admin.query(`TRUNCATE ${table} CASCADE`);
 
   for (const row of rows) {
     await admin.query(
