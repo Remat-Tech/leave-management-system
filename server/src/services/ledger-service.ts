@@ -1,25 +1,32 @@
 /**
- * Posting to and reading the balance ledger. FR 27, FR 37, §5.7. LMS 210.
+ * Reading the balance ledger. FR 27, §5.7. LMS 210, and narrowed by LMS 212.
  *
  * The story's "so that" is one sentence and this file is where it becomes usable:
- * any figure can be explained rather than taken on trust. Two verbs and two reads,
- * and each of the four is one part of that.
+ * any figure can be explained rather than taken on trust. Two reads, and each is one
+ * part of that.
  *
  *   **{@link LedgerService.history}.** Every movement in one balance, oldest first,
  *   with the figure each one left behind it. The explanation itself.
  *
- *   **{@link LedgerService.adjust}.** FR 37: HR posts a movement by hand, with a
- *   mandatory reason. The one writer this story ships, because it is the only one
- *   that needs nothing that does not exist yet.
- *
- *   **{@link LedgerService.correct}.** The fourth acceptance criterion. A mistake
- *   is put right by an exact compensating entry naming the one it reverses, never
- *   by an edit — and there is no method here that edits, because the table would
- *   refuse it and a method that always throws is a worse way of saying so.
- *
  *   **{@link LedgerService.explain}.** One entry with whatever put it right, both
  *   directions, because "is this the figure that counts" is unanswerable from
  *   either end alone.
+ *
+ * ## It used to write, and LMS 212 is why it does not
+ *
+ * `adjust` and `correct` were here, because FR 37's manual movement was the one
+ * writer LMS 210 could ship. They are `BalanceService` now, along with the reserve,
+ * commit and release that arrived with them, because that story's first acceptance
+ * criterion is that there is exactly one writer of balance movements — and two
+ * services that can each post an entry is the arrangement in which the second one
+ * skips a check the first one makes.
+ *
+ * The move is not a tidy-up. It is the difference between "the ledger is written
+ * carefully in two places" and "the ledger has one door", and only the second of
+ * those is a property somebody can check. ../../tests/unit/one-writer.test.ts checks
+ * it.
+ *
+ * What is left here is the account being read, which is what a ledger is for.
  *
  * ## Whose balance it is, and why that costs a read
  *
@@ -41,13 +48,11 @@
  * ../domain/ledger.ts for why a run of signed days is not a balance, and
  * `runningTotal` for the figure that is honestly available today.
  *
- * **No other writers.** Six of the eight entry types have no caller here — the
- * rollover posts GRANT and CARRY_FORWARD, the request state machine posts
- * RESERVATION, DEDUCTION and RELEASE, the expiry job posts EXPIRY, FR 25's
- * recalculation posts RECALCULATION. Each is a decision about the operation that
- * causes it, so each belongs to that operation's service and its own policy. A
- * general `post(anything)` here would be a way to reach all six without passing any
- * of those checks, which is the hole ../auth/ledger-policy.ts declines to open.
+ * **No writers at all.** Not the six entry types nobody posts yet — the rollover's
+ * GRANT and CARRY_FORWARD, the expiry job's EXPIRY, FR 25's RECALCULATION — and not
+ * the three a request causes either. All of them are `BalanceService`'s, because
+ * moving days and reading the account of days having moved are different jobs, and
+ * the first one has to have exactly one door.
  */
 
 import type { Actor } from '../auth/actor.js';
@@ -56,12 +61,10 @@ import type { Guard } from '../auth/policy.js';
 import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
 import {
-  correctionFor,
   type LedgerEntry,
   LedgerEntryNotFound,
   type LedgerEntryType,
   runningTotal,
-  validateNewLedgerEntry,
 } from '../domain/ledger.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
 import type { LedgerRepository } from '../repositories/ledger-repository.js';
@@ -74,17 +77,6 @@ export interface HistoryOptions {
   leaveYearId?: string;
   /** Only these kinds of movement. For FR 32b's certified sick days, and reports. */
   entryTypes?: readonly LedgerEntryType[];
-}
-
-/** What HR supplies to move a balance by hand. FR 37. */
-export interface Adjustment {
-  employeeId: string;
-  leaveTypeId: string;
-  leaveYearId: string;
-  /** Signed. Positive gives days, negative takes them away. Never zero. */
-  days: number;
-  /** Mandatory, and the whole point. FR 27. */
-  reason: string;
 }
 
 export class LedgerService {
@@ -150,68 +142,6 @@ export class LedgerService {
     await this.mayRead(actor, entry.employeeId);
 
     return this.entries.correctionsAround(entryId);
-  }
-
-  /**
-   * Moves a balance by hand. FR 37.
-   *
-   * An HR Administrator's, and nobody else's — see ../auth/ledger-policy.ts. The
-   * reason is mandatory and there is no default for it anywhere in the tree,
-   * because a reason that can be omitted is omitted by the writer with the most to
-   * explain.
-   *
-   * Throws {@link InvalidLedgerEntry} for a figure that is not a movement, a reason
-   * that is blank, or a leave year that has been closed — with the exception §8.9
-   * names: an adjustment *may* be posted into a settled year, and is the only kind
-   * of entry that may. What a closed year refuses is being recalculated quietly by
-   * a rule or a job; a deliberate, attributed, permanent correction is not that,
-   * and taking it away would leave HR with a psql prompt as the only way to fix a
-   * settled figure.
-   */
-  async adjust(actor: Actor, adjustment: Adjustment): Promise<LedgerEntry> {
-    const owner = await this.ownerOf(adjustment.employeeId);
-
-    this.guard.enforce(ledgerPolicy.adjust(actor, owner));
-
-    return this.entries.post(
-      actor,
-      validateNewLedgerEntry({
-        employeeId: adjustment.employeeId,
-        leaveTypeId: adjustment.leaveTypeId,
-        leaveYearId: adjustment.leaveYearId,
-        entryType: 'ADJUSTMENT',
-        days: adjustment.days,
-        reason: adjustment.reason,
-      }),
-    );
-  }
-
-  /**
-   * Puts an earlier entry right, by posting its exact opposite. The story's fourth
-   * criterion.
-   *
-   * The amount is the negation of what was posted and is not the caller's to
-   * choose. A correction somebody could size is a correction that can be the wrong
-   * size, and "an adjustment of −18 correcting a grant of 20" is a row that looks
-   * reconciled and leaves two days behind. Anybody who wants a different figure
-   * wants an ordinary {@link LedgerService.adjust}, which is a different thing and
-   * reads as one in the history.
-   *
-   * Decided by the same rule as any other adjustment, because that is what it is.
-   * The one thing the caller must supply is what went wrong.
-   */
-  async correct(actor: Actor, entryId: string, reason: string): Promise<LedgerEntry> {
-    const wrong = await this.entries.findById(entryId);
-
-    if (wrong === undefined) {
-      throw new LedgerEntryNotFound(entryId);
-    }
-
-    const owner = await this.ownerOf(wrong.employeeId);
-
-    this.guard.enforce(ledgerPolicy.adjust(actor, owner));
-
-    return this.entries.post(actor, validateNewLedgerEntry(correctionFor(wrong, reason)));
   }
 
   /** Enforces the read rule, having found out whose balance this is. */

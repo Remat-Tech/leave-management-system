@@ -19,6 +19,17 @@
  * that six of the eight entry types have no writer yet — a trigger cannot be
  * forgotten by a story that has not been written.
  *
+ * ## One of the reads takes a lock, and it is a different act
+ *
+ * {@link BalanceRepository.holdStill} is the ordinary read with a row lock in front
+ * of it, held until the transaction ends. FR 26 and §8.2: checking whether five days
+ * are there and writing down that they have been taken is one act, and anything that
+ * gets in between them is two screens spending the same days.
+ *
+ * It is still not a write. The lock is taken by a database function rather than by a
+ * `FOR UPDATE` here, because this application could not write one if it wanted to —
+ * see the method.
+ *
  * ## An absent row is a balance of nought, not a missing record
  *
  * {@link BalanceRepository.forOne} never returns `undefined`. A row appears the
@@ -37,7 +48,7 @@
  * becomes a number this file's callers can add.
  */
 
-import type { Kysely, Selectable } from 'kysely';
+import { type Kysely, type Selectable, sql } from 'kysely';
 import type { Database } from '../db/index.js';
 import type { LeaveBalanceTable } from '../db/schema.js';
 import { type BalanceKey, type LeaveBalance, noMovementsYet } from '../domain/balance.js';
@@ -63,6 +74,42 @@ export class BalanceRepository {
       .where('leave_type_id', '=', key.leaveTypeId)
       .where('leave_year_id', '=', key.leaveYearId)
       .executeTakeFirst();
+
+    return row === undefined ? noMovementsYet(key) : toBalance(row);
+  }
+
+  /**
+   * One balance, held still until the transaction ends. §8.2, FR 26. LMS 212.
+   *
+   * The same read as {@link BalanceRepository.forOne} with a row lock in front of
+   * it, and the two are separate methods on purpose: a read that locks is a
+   * different act from a read that looks, and a caller should have to say which one
+   * it is doing.
+   *
+   * **This must be called inside a transaction, and there is exactly one caller that
+   * can be.** A row lock outside one is taken and released by the same statement,
+   * which would leave a check that reads like it is protected and is not.
+   * `BalanceService` reaches this only through `Transactions.allOrNothing`, which is
+   * the seam that owns the transaction; nothing else should start calling it.
+   *
+   * The lock is taken by `hold_one_balance_while_it_is_checked()` rather than by a
+   * `FOR UPDATE` written here, because `lms_app` cannot write one: every row locking
+   * clause Postgres offers requires UPDATE on the table, and this application holds
+   * SELECT on `leave_balance` and nothing else. See the
+   * hold-a-balance-while-it-is-checked migration for why that stays true rather than
+   * being granted around.
+   *
+   * A balance nothing has moved yet has no row to lock and comes back as nought, the
+   * same as it does from an ordinary read. That is safe rather than a gap: where
+   * there is no row there is no limit to race for. The migration argues it in full.
+   */
+  async holdStill(key: BalanceKey): Promise<LeaveBalance> {
+    const held = await sql<BalanceRow>`
+      SELECT * FROM hold_one_balance_while_it_is_checked(
+        ${key.employeeId}, ${key.leaveTypeId}, ${key.leaveYearId})
+    `.execute(this.db);
+
+    const row = held.rows[0];
 
     return row === undefined ? noMovementsYet(key) : toBalance(row);
   }

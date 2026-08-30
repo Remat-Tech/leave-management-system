@@ -386,7 +386,10 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | The whole list of entitlement figures | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | A headcount on either | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | The public holiday calendar | anybody signed in | `HR_OFFICER`, `HR_ADMIN` |
-| Every movement in one person's balance | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` only |
+| Every movement in one person's balance | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` only, for an adjustment |
+| Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
+| Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` — never yourself |
+| Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
@@ -440,6 +443,21 @@ its opposite, and a split would suggest somebody might hold one and not the othe
 Reading a balance follows the employee record's rule exactly: yours, your direct
 reports', or a role that reads everybody — a ledger is somebody's history, not a
 published calendar.
+
+**The three movements a leave request causes are three decisions, not one.** LMS 212.
+Asking for leave is yours, and HR's on your behalf where FR 18 says somebody was off
+sick and could not ask; a line manager is deliberately not on it, and it is the one
+place their standing over a report does not carry — a manager who could reserve a
+report's days could quietly reduce what that person may book without approving
+anything. Approving is the mirror image: their manager's or HR's, and **never the
+person whose leave it is**, which is the only refusal in this system aimed at
+somebody's own record on purpose. Giving days back is any of the three, because it is
+the one movement that cannot take anything from anybody.
+
+None of those decides whether the request itself is legitimate — the notice period,
+the documentation, whether this is the approver FR 38a's chain is waiting on. Those
+belong to the request and approval stories and are asked first. What the balance asks
+of anybody moving it is the narrower question: have you any standing here at all.
 
 **Setting a joiner up is HR's, and closing an account is not.** An HR Officer
 creates the record on somebody's first morning and gives them the login in the
@@ -764,6 +782,13 @@ Since LMS 211 that last sentence is not advice. `lms_app` holds SELECT on
 connection as well. The figures are recomputed from the ledger, in the transaction
 of the entry that moved them, by the one function that knows the projection. See
 [The cached balance](#the-cached-balance).
+
+**And there is one place that moves days.** `BalanceService`, since LMS 212 — reserve,
+commit, release, adjust and correct, each of them locking the balance while it decides.
+Nothing else in the tree posts a ledger entry, and a unit test reads the source to
+keep that true. A story that needs a movement it does not offer adds a method there
+rather than a second way in. See [One place a balance
+changes](#one-place-a-balance-changes).
 
 Since LMS 210 the first half of that exists. `leave_ledger_entry` attaches to what
 LMS 113 already built, exactly as that story predicted it would: `refuse_update()`
@@ -1970,12 +1995,70 @@ that could disagree.
 
 **What is not here.** The reconciliation job of §7.4, which is the recompute above
 plus a schedule, a walk over every balance and somebody to tell. The writers that
-fill four of the five columns: the rollover posts `GRANT` and `CARRY_FORWARD`, the
-request state machine posts `RESERVATION`, `DEDUCTION` and `RELEASE`. And the list of
-leave types a balance screen should show — `BalanceService` returns the balances that
-exist, and which types apply to a person is `entitlement_basis` and FR 05's
-`gender_restriction`, which is a decision with policy in it and belongs to the story
-that builds the screen.
+fill two of the five columns: the rollover posts `GRANT` and `CARRY_FORWARD`. And the
+list of leave types a balance screen should show — `BalanceService` returns the
+balances that exist, and which types apply to a person is `entitlement_basis` and FR
+05's `gender_restriction`, which is a decision with policy in it and belongs to the
+story that builds the screen.
+
+---
+
+### One place a balance changes
+
+**`BalanceService` is the only writer of balance movements.** FR 26, §8.2, LMS 212.
+Five methods, and nothing else in the tree posts a ledger entry — `LedgerService`
+reads the account and writes nothing, which is why `adjust` and `correct` moved out
+of it.
+
+| | Posts | Checks | Locked? |
+|---|---|---|---|
+| `reserve` | `RESERVATION` | the days are there, unless the type may be exceeded | yes |
+| `commit` | `DEDUCTION` | that many days are held | yes |
+| `release` | `RELEASE` | that many days are held | yes |
+| `adjust` | `ADJUSTMENT` | nothing — FR 37 moves days by fiat | no |
+| `correct` | `ADJUSTMENT` | nothing — it is the exact opposite of one entry | no |
+
+**Days are stated positive, in all five.** A reserve of five days is `5` and so is
+the release that gives them back; which way the balance moves is the method that was
+called. A caller that had to remember a reservation is −5 and a release is +5 would
+eventually get one backwards and post a perfectly valid entry meaning the opposite of
+what happened. `adjust` is the exception, because FR 37 is signed by nature.
+
+**Approval spends nothing again.** `commit` moves days from `pending` to `taken` and
+leaves available exactly where it was — the reserve already took them out. A second
+approval of the same five days is refused, because there is nothing held for it to
+draw down, and the refusal says how many days actually are held. That is the story's
+"my days cannot be deducted twice", and it is a rule rather than a hope: `release`
+draws down the same hold and is refused the same way.
+
+**The row is held still for the duration of reserve and validate.** §8.2. Two screens
+asking for five days against a balance of five: without the lock both read five, both
+find five affordable, both write, and ten days are held. `holdStill()` takes a row
+lock before the figure is read and the transaction holds it until the movement is
+written, so the second request waits and then re-reads a balance with nothing left in
+it. `integration/balance.test.ts` sends both at once and asserts exactly one gets
+through — and the test really does fail without the lock, which is worth knowing
+about a concurrency test.
+
+The lock is a database function, `hold_one_balance_while_it_is_checked()`, and not a
+`FOR UPDATE` in the repository. It cannot be: **every row locking clause Postgres
+offers requires UPDATE on the table**, `FOR KEY SHARE` included, and `lms_app` holds
+SELECT on `leave_balance` and nothing else. Granting it UPDATE so that it could take a
+lock it is never allowed to use would put a privilege in the grant table that exists
+to be unused. So the privilege stays off, and the one thing the application
+legitimately needs — hold this still while I look at it — has a name.
+
+A balance nothing has moved has no row to lock, and the function opens none. That is
+safe rather than a gap: with no row the balance is nought, so either the reserve is
+refused, and two refusals do not race, or the type may be exceeded and there is no cap
+to race for.
+
+**What decides whether the operation should happen is not here.** This service asks
+two questions of every movement — has the actor any standing on this balance, and are
+the days there. Whether the request behind it is a valid request is FR 17's notice
+period, FR 13's documentation and FR 38a's approval chain, and those belong to the
+stories that own requests. Putting them here would make this the service that knows
+everything.
 
 ---
 
@@ -2240,11 +2323,21 @@ writes a figure by hand, and that every figure can be deleted outright and comes
 back identical — which is what "the ledger is the truth, balances are a cache"
 means when it is a property rather than a slogan.
 
-`unit/balance.test.ts` is short, and its last test is the reason: it asserts that the
-domain exports nothing that turns ledger entries into a balance. A
-`balanceFrom(entries)` here would be twenty testable lines and a second
-implementation of the sum, which is the drift the cache exists to be checked
-against. Whoever adds one has to argue with that test first.
+`unit/balance.test.ts` carries the arithmetic of both stories: the five figures and
+what they add up to, and since LMS 212 the three rules a movement has to pass. One of
+its tests asserts that the domain exports nothing that turns ledger entries into a
+balance — a `balanceFrom(entries)` would be twenty testable lines and a second
+implementation of the sum, which is the drift the cache exists to be checked against.
+Whoever adds one has to argue with that test first.
+
+**`unit/one-writer.test.ts` proves the criterion that cannot be proved by running
+anything.** "Only writer of balance movements" is a claim about code that does not
+exist, so it is checked by reading the source: nothing outside three named files
+posts a ledger entry, nothing else holds a `LedgerRepository`, `LedgerService` writes
+nothing, and nothing but the one writer consults the three rules. The failure it
+guards against is not a rogue `UPDATE` — the database has refused those since LMS 211
+— it is an honest second service posting an honest `DEDUCTION` without the lock that
+made the first one safe.
 
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than

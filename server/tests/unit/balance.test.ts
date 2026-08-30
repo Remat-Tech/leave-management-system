@@ -4,11 +4,17 @@ import {
   BALANCE_BUCKETS,
   type BalanceBucket,
   type BalanceKey,
+  BalanceOverdrawn,
   committed,
+  daysToCommit,
+  daysToRelease,
+  daysToReserve,
   hasMoved,
+  InvalidBalanceMovement,
   isTheSameBalance,
   type LeaveBalance,
   noMovementsYet,
+  NotEnoughHeld,
   owed,
 } from '../../src/domain/balance.js';
 import { BUCKETS, LEDGER_ENTRY_TYPES } from '../../src/domain/ledger.js';
@@ -126,6 +132,126 @@ describe('what a balance adds up to', () => {
   });
 });
 
+/**
+ * The three rules a movement has to pass. FR 26, LMS 212.
+ *
+ * These are the arithmetic behind "my days cannot be deducted twice", and they are
+ * pure functions, so this is where that claim is actually proved. What
+ * ../integration/balance.test.ts adds is the half arithmetic cannot have: that the
+ * figure they are handed was read under a lock, so it is still true when the movement
+ * is written.
+ */
+describe('holding days for leave that has been asked for', () => {
+  const twelve = balanceOf({ entitled: 12 });
+
+  it('holds days there are', () => {
+    expect(daysToReserve(twelve, 5, false)).toBe(5);
+  });
+
+  it('and refuses days there are not, saying how short it is', () => {
+    const refused = (): number => daysToReserve(twelve, 15, false);
+
+    expect(refused).toThrow(BalanceOverdrawn);
+    expect(refused).toThrow(/15 days against a balance of 12/);
+
+    try {
+      refused();
+    } catch (error) {
+      expect((error as BalanceOverdrawn).shortBy).toBe(3);
+    }
+  });
+
+  /* Days already held count against the next request, which is the whole reason
+     `pending` is subtracted rather than merely recorded. Two requests for eight days
+     each against twelve is the story's "deducted twice" seen from the front. */
+  it('counts days already held against what is left', () => {
+    const held = balanceOf({ entitled: 12, pending: 8 });
+
+    expect(daysToReserve(held, 4, false)).toBe(4);
+    expect(() => daysToReserve(held, 5, false)).toThrow(BalanceOverdrawn);
+  });
+
+  /**
+   * FR 32a and §8.6b, and the one flag that changes the answer.
+   *
+   * Sick leave is a documentation threshold rather than a cap, so exceeding it asks
+   * for a medical certificate rather than refusing. The flag is read from the leave
+   * type by the caller — there is no leave type in this file at all, and no code
+   * being compared to anything, which is design principle 5.
+   */
+  it('lets a balance that may be exceeded go past nought', () => {
+    expect(daysToReserve(twelve, 15, true)).toBe(15);
+    expect(daysToReserve(balanceOf({ entitled: 0 }), 3, true)).toBe(3);
+  });
+
+  /* FR 24, and the four request-shaped entry types LMS 209 held to it. Refused here
+     as well as by the column, so the message names the field while the form is open. */
+  it('refuses half a day, and a figure that is not days at all', () => {
+    expect(() => daysToReserve(twelve, 0.5, false)).toThrow(InvalidBalanceMovement);
+    expect(() => daysToReserve(twelve, 0, false)).toThrow(InvalidBalanceMovement);
+    expect(() => daysToReserve(twelve, -5, false)).toThrow(InvalidBalanceMovement);
+  });
+
+  /**
+   * And a negative figure is refused rather than quietly meaning its opposite.
+   *
+   * The operations state days the way a person says them — "reserve five days" — and
+   * which way the balance moves is decided by the method that was called. A caller
+   * passing −5 has either misunderstood or is carrying a ledger sign into a place
+   * that does not take one, and both are worth a refusal rather than a reserve of
+   * five days that happened to work.
+   */
+  it('and never reads a sign as an instruction', () => {
+    expect(() => daysToReserve(twelve, -5, false)).toThrow(/at least one/);
+  });
+});
+
+describe('approving and giving back days that were held', () => {
+  const holding = balanceOf({ entitled: 20, pending: 5 });
+
+  it('approves days that are held', () => {
+    expect(daysToCommit(holding, 5)).toBe(5);
+    expect(daysToCommit(holding, 3)).toBe(3);
+  });
+
+  it('and gives back days that are held', () => {
+    expect(daysToRelease(holding, 5)).toBe(5);
+  });
+
+  /**
+   * The story's "so that", as arithmetic.
+   *
+   * Approving the same five days twice is a second commit against a hold the first
+   * one emptied. The balance it would be checked against has `pending` at nought, so
+   * there is nothing to take, and the refusal says how many days are actually held —
+   * which is what tells somebody it has already happened rather than that something
+   * is broken.
+   */
+  it('and refuses a second approval of days the first one spent', () => {
+    const spent = balanceOf({ entitled: 20, pending: 0, taken: 5 });
+
+    expect(() => daysToCommit(spent, 5)).toThrow(NotEnoughHeld);
+    expect(() => daysToCommit(spent, 5)).toThrow(/only 0 are being held/);
+  });
+
+  it('and refuses giving back more than was held', () => {
+    expect(() => daysToRelease(holding, 6)).toThrow(NotEnoughHeld);
+  });
+
+  /* Days that were taken are not days that are held. Undoing an approved absence is
+     a different act with a different entry behind it — FR 25's recalculation, or an
+     adjustment — and neither of them is a release. */
+  it('and will not give back days that have already been taken', () => {
+    expect(() => daysToRelease(balanceOf({ entitled: 20, taken: 5 }), 5)).toThrow(NotEnoughHeld);
+  });
+
+  /* An entitlement is not a hold. Somebody with twenty days and nothing pending has
+     nothing to approve, which is what stops an approval arriving without a request. */
+  it('and refuses to approve out of an entitlement nobody reserved from', () => {
+    expect(() => daysToCommit(balanceOf({ entitled: 20 }), 5)).toThrow(NotEnoughHeld);
+  });
+});
+
 describe('a balance nothing has moved yet', () => {
   it('is nought rather than an absence', () => {
     const balance = noMovementsYet(KEY);
@@ -201,16 +327,24 @@ describe('the five columns, as the ledger names them', () => {
    * immutable-leave-ledger migration said in the sentence that declined to write the
    * first one.
    *
-   * So the domain exports nothing that takes a ledger entry. If that changes, this
-   * fails, and whoever changed it has to argue here.
+   * So the domain exports nothing that takes a ledger entry. Every function here
+   * takes a *balance* — the three LMS 212 added included, which decide what may
+   * happen to one rather than what one adds up to. If that changes, this fails, and
+   * whoever changed it has to argue here.
    */
   it('and nothing in the domain turns movements into a balance', async () => {
     const balance: Record<string, unknown> = await import('../../src/domain/balance.js');
 
     expect(Object.keys(balance).sort()).toEqual([
       'BALANCE_BUCKETS',
+      'BalanceOverdrawn',
+      'InvalidBalanceMovement',
+      'NotEnoughHeld',
       'available',
       'committed',
+      'daysToCommit',
+      'daysToRelease',
+      'daysToReserve',
       'hasMoved',
       'isTheSameBalance',
       'noMovementsYet',
