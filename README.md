@@ -2041,7 +2041,7 @@ of it.
 | `reserve` | `RESERVATION` | the days are there, unless the type may be exceeded | yes |
 | `commit` | `DEDUCTION` | that many days are held | yes |
 | `release` | `RELEASE` | that many days are held | yes |
-| `adjust` | `ADJUSTMENT` | nothing — FR 37 moves days by fiat | no |
+| `adjust` | `ADJUSTMENT` | nothing about the days — FR 37 moves them by fiat — but the three ids it was given are real ones | no |
 | `correct` | `ADJUSTMENT` | nothing — it is the exact opposite of one entry | no |
 
 **Days are stated positive, in all six.** A reserve of five days is `5` and so is
@@ -2280,6 +2280,65 @@ what they were granted with what the part year they actually worked is worth and
 the difference. The formula it needs is the one above, called with the exit date, and
 the decision about what happens to the difference (paid, clawed back, forgiven) is that
 story's.
+
+---
+
+### Moving a balance by hand
+
+**HR corrects a wrong figure by posting a new entry, never by editing an old one.** FR
+37, §8.9, LMS 216. `BalanceService.adjust()` writes an `ADJUSTMENT` with a signed figure
+and a written reason; `BalanceService.correct()` writes the exact opposite of one named
+entry. Between them they are the whole of "a mistake is a new row", which is what FR 27
+asks for and the reason nothing anywhere in this system updates a ledger entry.
+
+**The figure is signed, and it is the only movement in the system that is.** FR 37 asks
+for "positive or negative" by name. A reserve of five days is `5` and so is the release
+that gives them back — which way those move is the method that was called — but an
+adjustment has no request and no rule behind it to decide a direction from, only
+somebody's judgement, so the caller states it. `ADJUSTMENT` is the one entry type whose
+sign the ledger leaves free, which is what makes that possible and is why every
+correction is routed through it.
+
+**It checks nothing about what is already there, and that is the difference rather than
+an omission.** No lock, no limit, no refusal for a balance that would go below nought.
+There is nothing for a lock to protect when there is no limit to race for, and where HR
+means to put somebody eight days in arrears — days taken that were never recorded — they
+mean to do it. Refusing would leave the true figure unrecordable, which is a worse
+outcome than a negative number somebody chose.
+
+**A reason is mandatory in three places, and none of them is redundant.** The domain
+refuses a blank one with the field name on the message, which is what a form can put
+beside an input (NFR USA 03). The column refuses one from a writer that never came
+through the service. And there is no default for it anywhere in the tree — a reason that
+can be omitted is omitted by the writer with the most to explain. What it may *say* is
+unconstrained on purpose: a reason nobody can write freely is a reason everybody writes
+"correction" in.
+
+**The three ids are resolved before the entry is written, and only here.** An adjustment
+is the one movement whose employee, leave type and leave year are typed by a person —
+the annual run and the request story hold records they have already resolved, and
+`correct()` takes its key off the row it is putting right. So this is the only place a
+mistyped id would otherwise reach a foreign key, and `insert or update on table
+"leave_ledger_entry" violates foreign key constraint` is not a sentence a form can show.
+`BalanceService.filedUnder()` answers with `LeaveTypeNotFound` or `LeaveYearNotFound`
+instead; the employee was already answered by `ownerOf()`, before the transaction, so a
+refusal costs nothing.
+
+**A settled leave year accepts it, and accepts nothing else.** §8.9, enforced by
+`refuse_a_recalculation_of_a_settled_year()` rather than by a second check in the
+service. It is the only way to put a settled figure right, and taking it away would
+leave a psql prompt as the alternative.
+
+**The story says HR Officer and the code says HR Administrator.** LMS 216 is written "as
+an HR Officer"; §10's authorisation matrix has an ✗ against that column and every other
+one. The matrix is what `ledgerPolicy.adjust` follows, for the reason argued under [Who
+may do what](#who-may-do-what): an adjustment moves days by fiat and can never be
+removed, only compensated by another permanent entry. **This is a real disagreement
+between the story and the specification, not a reading of it, and it is worth settling
+deliberately rather than by whichever file somebody edits first.** What an Officer meets
+meanwhile is an *open* refusal naming the desk that can post one — they can already read
+the balance, so the sentence discloses nothing, and somebody asked to fix a figure needs
+to know where to take it rather than only that they may not.
 
 ---
 
@@ -2550,6 +2609,20 @@ its tests asserts that the domain exports nothing that turns ledger entries into
 balance — a `balanceFrom(entries)` would be twenty testable lines and a second
 implementation of the sum, which is the drift the cache exists to be checked against.
 Whoever adds one has to argue with that test first.
+
+**`integration/adjustment.test.ts` is LMS 216 read end to end, and is deliberately
+thin where the two suites above are thick.** That an entry can never be changed or
+removed is `integration/ledger.test.ts`'s, and that an `ADJUSTMENT` moves the
+`adjustment` column and no other is `integration/balance.test.ts`'s against `BUCKETS`;
+repeating either here would be two suites that could disagree. What is left is the
+story as somebody in HR meets it — a positive and a negative in one balance netting to
+what they add up to, a reason that survives trimmed to the screen the employee reads
+it on, an adjustment picked out of a history that also has a grant in it, and a
+correction that leaves both rows standing so the figure is still explained. It also
+holds the two things the story changed: that a mistyped leave type or leave year is
+answered with a sentence rather than a foreign key and writes nothing, and that an HR
+Officer is refused *openly* and told which desk can — which is where the story's own
+"as an HR Officer" and §10's matrix disagree, asserted rather than left as prose.
 
 **`unit/pro-rata.test.ts` proves two different things and keeps them apart**, because
 LMS 215 is a story shipped under a block. One half is that §8.6d's formula is right —
