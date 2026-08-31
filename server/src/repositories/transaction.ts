@@ -32,6 +32,7 @@ import { BalanceRepository } from './balance-repository.js';
 import { DepartmentRepository } from './department-repository.js';
 import { EmployeeRepository } from './employee-repository.js';
 import { LeaveTypeRepository } from './leave-type-repository.js';
+import { LeaveYearRepository } from './leave-year-repository.js';
 import { LedgerRepository } from './ledger-repository.js';
 import { WorkPatternRepository } from './work-pattern-repository.js';
 
@@ -60,10 +61,15 @@ export interface Repositories {
    * `types` is here because the one rule that varies is a column on the leave type —
    * whether the balance may be exceeded, FR 32a — and reading it outside the window
    * would be reading it a moment before the decision it feeds.
+   *
+   * `years` arrived with LMS 216, and for a plainer reason: a manual adjustment is
+   * the one movement whose three ids are typed by a person, so it is the one that
+   * has to say "no leave year with id 41" rather than let a foreign key say it.
    */
   balances: BalanceRepository;
   entries: LedgerRepository;
   types: LeaveTypeRepository;
+  years: LeaveYearRepository;
 }
 
 export class Transactions {
@@ -94,6 +100,7 @@ export class Transactions {
         balances: new BalanceRepository(trx),
         entries: new LedgerRepository(trx),
         types: new LeaveTypeRepository(trx),
+        years: new LeaveYearRepository(trx),
       }),
     );
   }

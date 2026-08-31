@@ -1,5 +1,5 @@
 /**
- * The one place a balance changes. FR 26, FR 30, FR 37, §5.7, §8.2. LMS 211 to LMS 214.
+ * The one place a balance changes. FR 26, FR 30, FR 37, §5.7, §8.2. LMS 211 to LMS 216.
  *
  * LMS 211 built the cache and this class read it. LMS 212 is the story that gives it
  * the other half, and the story's own sentence is the design: "one place responsible
@@ -33,6 +33,20 @@
  * nowhere — FR 30, a year's entitlement, granted once and refused a second time inside
  * the lock. Everything else moves days that are already there, or is HR moving them by
  * hand under FR 37.
+ *
+ * ## And one movement is nobody's rule at all
+ *
+ * {@link BalanceService.adjust} is FR 37 and LMS 216: HR putting a figure right by
+ * hand, signed, with a written reason, and no request or rule behind it. It is the
+ * only method here that takes a negative figure from its caller and the only one that
+ * checks nothing about what is already in the balance, because there is nothing to
+ * check it against — which is also why it is the narrowest decision in
+ * ../auth/ledger-policy.ts.
+ *
+ * {@link BalanceService.correct} is the same act aimed at one row: the exact opposite
+ * of an entry, naming it. Between them they are the whole of "a mistake is a new row",
+ * which is the property FR 27 asks for and the reason nothing in this class updates
+ * anything.
  *
  * ## Not deducted twice. Held days can only be spent once
  *
@@ -86,6 +100,7 @@ import {
 import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
 import { LeaveTypeNotFound } from '../domain/leave-type.js';
+import { LeaveYearNotFound } from '../domain/leave-year.js';
 import {
   correctionFor,
   type LedgerEntry,
@@ -125,11 +140,31 @@ export interface BalanceMovement extends BalanceKey {
   reason: string;
 }
 
-/** What HR supplies to move a balance by hand. FR 37. */
+/**
+ * What HR supplies to move a balance by hand. FR 37, LMS 216.
+ *
+ * Deliberately the same three keys and the same two fields as
+ * {@link BalanceMovement} rather than something shaped for a form. An adjustment is a
+ * movement in a balance like any other, and a type that said otherwise would be the
+ * first place it stopped being one.
+ */
 export interface Adjustment extends BalanceKey {
-  /** Signed, and the only movement that is. Positive gives days, negative takes. */
+  /**
+   * Signed, and the only movement in this class that is. Positive gives days,
+   * negative takes them, and FR 37 asks for both by name.
+   *
+   * Not zero, and not finer than the hundredth of a day: `validateNewLedgerEntry`
+   * refuses both, the first because a movement of no days is a line in somebody's
+   * history that explains nothing, the second because §8.6d holds an accrued figure
+   * to two places and a third would be rounded away without saying so.
+   */
   days: number;
-  /** Mandatory, and the whole point. FR 27. */
+  /**
+   * Mandatory, and the whole point of the story. FR 27.
+   *
+   * Trimmed, never defaulted, and unconstrained beyond being something: a reason
+   * nobody can write freely is a reason everybody writes 'correction' in.
+   */
   reason: string;
 }
 
@@ -359,23 +394,53 @@ export class BalanceService {
   }
 
   /**
-   * Moves a balance by hand. FR 37. Moved here from `LedgerService` by LMS 212.
+   * Moves a balance by hand. FR 37, and the whole of LMS 216. Moved here from
+   * `LedgerService` by LMS 212.
    *
-   * An HR Administrator's, and nobody else's — see ../auth/ledger-policy.ts. The
-   * reason is mandatory and there is no default for it anywhere in the tree, because
-   * a reason that can be omitted is omitted by the writer with the most to explain.
+   * The story is a genuine mistake being fixed without editing history or losing the
+   * explanation, and all three of its parts are already true of the table this writes
+   * to. What is left for the method is to be the door: signed days, a mandatory
+   * reason, and an entry that reads in the history like any other movement.
+   *
+   * **Signed, and it is the only movement that is.** FR 37 says "positive or
+   * negative" and `ADJUSTMENT` is the one entry type free in its sign, so a caller
+   * that wants to give three days passes `3` and one that wants to take two passes
+   * `-2`. The other five methods take a positive figure and decide the direction
+   * themselves; here there is nothing to decide it from, because there is no request
+   * and no rule behind an adjustment — only somebody's judgement.
+   *
+   * **An HR Administrator's, and nobody else's** — see ../auth/ledger-policy.ts. The
+   * story says HR Officer and §10's matrix has an ✗ against that column; the matrix
+   * is what the code follows, for the reason the policy file gives at length. An
+   * Officer meets an open refusal naming the desk that can, rather than a silent one.
+   *
+   * **The reason is mandatory** and there is no default for it anywhere in the tree,
+   * because a reason that can be omitted is omitted by the writer with the most to
+   * explain. `validateNewLedgerEntry` trims it and refuses a blank one with the field
+   * name on the message, which is what a form needs; the column refuses one too, for
+   * the writer that never came through here.
    *
    * **No lock, and no check against what is there.** That is the difference between
-   * an adjustment and the three above rather than an omission: an adjustment moves
-   * days by fiat, with no request and no rule behind it, so there is no limit to
-   * check and nothing for a lock to protect. It may take a balance negative, and
-   * where HR means to do that they mean to do it.
+   * an adjustment and the three request movements rather than an omission: it moves
+   * days by fiat, so there is no limit to check and nothing for a lock to protect. It
+   * may take a balance negative, and where HR means to do that they mean to do it.
    *
-   * Throws {@link InvalidLedgerEntry} for a figure that is not a movement, a reason
-   * that is blank, or a leave year that has been closed — with the exception §8.9
-   * names: an adjustment *may* be posted into a settled year, and is the only kind of
-   * entry that may. What a closed year refuses is being recalculated quietly by a
-   * rule or a job; a deliberate, attributed, permanent correction is not that.
+   * **The three ids are checked, which they are nowhere else.** This is the one
+   * movement whose employee, leave type and leave year come straight from a person
+   * filling in a form — the other five are called by the annual run or by the request
+   * story, each holding records it has already resolved, and `correct` takes its key
+   * off the row it is putting right. So this is the one that would otherwise answer a
+   * mistyped id with a foreign key violation, which is the `check_violation` that
+   * ../domain/ledger.ts argues is no use to a screen. See
+   * {@link BalanceService.filedUnder}.
+   *
+   * Throws {@link InvalidLedgerEntry} for a figure that is not a movement or a reason
+   * that is blank, and {@link EmployeeNotFound}, {@link LeaveTypeNotFound} or
+   * {@link LeaveYearNotFound} for an id that is nobody's. A **closed** leave year is
+   * not among them: §8.9 makes an adjustment the one kind of entry a settled year
+   * accepts, and it is the only way to put a settled figure right. What a closed year
+   * refuses is being recalculated quietly by a rule or a job; a deliberate,
+   * attributed, permanent correction is not that.
    */
   async adjust(actor: Actor, adjustment: Adjustment): Promise<BalanceMoved> {
     const owner = await this.ownerOf(adjustment.employeeId);
@@ -384,18 +449,22 @@ export class BalanceService {
 
     const key = keyOf(adjustment);
 
-    return this.transactions.allOrNothing(async (repositories) => ({
-      entry: await repositories.entries.post(
-        actor,
-        validateNewLedgerEntry({
-          ...key,
-          entryType: 'ADJUSTMENT',
-          days: adjustment.days,
-          reason: adjustment.reason,
-        }),
-      ),
-      balance: withAvailable(await repositories.balances.forOne(key)),
-    }));
+    return this.transactions.allOrNothing(async (repositories) => {
+      await this.filedUnder(key, repositories);
+
+      return {
+        entry: await repositories.entries.post(
+          actor,
+          validateNewLedgerEntry({
+            ...key,
+            entryType: 'ADJUSTMENT',
+            days: adjustment.days,
+            reason: adjustment.reason,
+          }),
+        ),
+        balance: withAvailable(await repositories.balances.forOne(key)),
+      };
+    });
   }
 
   /**
@@ -508,6 +577,43 @@ export class BalanceService {
     }
 
     return { employeeId: employee.id, managerId: employee.managerId };
+  }
+
+  /**
+   * That the leave type and the leave year a movement names are real ones. LMS 216.
+   *
+   * The immutable-leave-ledger migration puts it well: a leave type and a leave year
+   * are headings things are filed under, and the ledger is the table doing the
+   * filing. Both are real foreign keys there, so a mistyped id is already refused —
+   * the question this answers is what the person who mistyped it is told.
+   *
+   * Without this they are told `insert or update on table "leave_ledger_entry"
+   * violates foreign key constraint`, which is exactly the `check_violation`
+   * ../domain/ledger.ts says a screen cannot use. With it they are told which of the
+   * two fields is wrong, in a sentence, which is NFR USA 03.
+   *
+   * **Only {@link BalanceService.adjust} calls this**, and the reason is in that
+   * method: it is the one movement whose ids are typed rather than carried in from a
+   * record something upstream already resolved. Adding it to the four locked
+   * movements would put two reads in front of a lock to improve a message nobody is
+   * going to see, and `reserve` reads the leave type inside the window regardless —
+   * it needs the row rather than its existence, for FR 32a.
+   *
+   * The employee is not checked here because {@link BalanceService.ownerOf} has
+   * already checked it, before the transaction, so that a refusal costs nothing.
+   *
+   * A **closed** leave year passes deliberately. §8.9 makes an adjustment the one
+   * entry a settled year accepts, and the trigger that enforces that is the right
+   * place for it; a check here would be a second copy that could disagree.
+   */
+  private async filedUnder(key: BalanceKey, repositories: Repositories): Promise<void> {
+    if ((await repositories.types.findById(key.leaveTypeId)) === undefined) {
+      throw new LeaveTypeNotFound(key.leaveTypeId);
+    }
+
+    if ((await repositories.years.findById(key.leaveYearId)) === undefined) {
+      throw new LeaveYearNotFound(key.leaveYearId);
+    }
   }
 }
 
