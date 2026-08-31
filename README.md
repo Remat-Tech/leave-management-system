@@ -399,7 +399,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
 
-Six of those lines are decisions rather than defaults, and each is argued in the
+Nine of those lines are decisions rather than defaults, and each is argued in the
 policy file that holds it.
 
 **A line manager sees their reports because of the record, never because of a

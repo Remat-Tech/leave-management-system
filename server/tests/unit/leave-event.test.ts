@@ -17,6 +17,14 @@ import {
   validateNewLeaveEvent,
   wasLapsed,
 } from '../../src/domain/leave-event.js';
+import {
+  daysLapsed,
+  type EntitlementExpiryRun,
+  type Lapsed,
+  type NotLapsed,
+  notLapsedCounts,
+  summaryOf,
+} from '../../src/jobs/entitlement-expiry.js';
 import { monthsAfter } from '../../src/domain/time.js';
 
 /**
@@ -348,5 +356,148 @@ describe('an event has to have happened', () => {
   it('and a birth told to HR three weeks late is recorded, not refused', () => {
     expect(() => assertHasHappened('2026-03-04', '2026-03-25')).not.toThrow();
     expect(() => assertHasHappened('2025-03-04', '2026-03-04')).not.toThrow();
+  });
+});
+
+/* ------------------------------------------------ what the nightly run reports */
+
+/**
+ * The account the expiry job gives of a night. FR 32e.
+ *
+ * Pure functions over a finished run, so they belong here rather than in the
+ * integration suite that watches the job actually take days back. The same division
+ * `summaryOf` gets in ../unit/annual-grant.test.ts and ../unit/year-rollover.test.ts.
+ *
+ * What is being protected is not arithmetic. It is that the two outcomes somebody may
+ * need to act on — a grant stranded by a closed year, and one held back because
+ * another is still live — are *said*, and that the ordinary quiet night is not padded
+ * with lines about nothing having happened. A nightly report with four zero counts in
+ * it is a nightly report nobody reads by March, and the one night it matters is the
+ * night it is skimmed.
+ */
+describe('the account of a night’s expiry run', () => {
+  const lapsed = (days: number, overrides: Partial<Lapsed> = {}): Lapsed => ({
+    leaveEventId: 'event-1',
+    employeeId: 'kofi',
+    leaveTypeId: 'paternity',
+    leaveTypeName: 'Paternity Leave',
+    occurredOn: '2026-03-04',
+    expiresOn: '2026-09-04',
+    days,
+    entryId: 'entry-1',
+    ...overrides,
+  });
+
+  const notLapsed = (because: NotLapsedBecause): NotLapsed => ({
+    leaveEventId: 'event-2',
+    employeeId: 'ama',
+    leaveTypeId: 'paternity',
+    leaveTypeName: 'Paternity Leave',
+    occurredOn: '2026-03-04',
+    expiresOn: '2026-09-04',
+    because,
+  });
+
+  const run = (over: Partial<EntitlementExpiryRun> = {}): EntitlementExpiryRun => ({
+    asAt: '2026-09-05',
+    ranAt: new Date('2026-09-05T02:00:00Z'),
+    lapsed: [],
+    notLapsed: [],
+    ...over,
+  });
+
+  describe('how many days it took back', () => {
+    it('is the sum of what it lapsed', () => {
+      expect(daysLapsed(run({ lapsed: [lapsed(14), lapsed(3)] }))).toBe(17);
+    });
+
+    it('and nothing at all on a night when nothing ran out', () => {
+      expect(daysLapsed(run())).toBe(0);
+    });
+
+    /* Half days are real — §8.2 holds two decimal places — and floating point addition
+       of them is not exact. A total of 0.30000000000000004 in a report is the kind of
+       thing that makes somebody doubt the figure beside it. */
+    it('and adds half days without the arithmetic showing', () => {
+      expect(daysLapsed(run({ lapsed: [lapsed(0.1), lapsed(0.2)] }))).toBe(0.3);
+      expect(daysLapsed(run({ lapsed: [lapsed(0.5), lapsed(1.5), lapsed(2.25)] }))).toBe(4.25);
+    });
+  });
+
+  describe('what it left alone', () => {
+    it('counts each reason separately', () => {
+      const counts = notLapsedCounts(
+        run({
+          notLapsed: [
+            notLapsed('ANOTHER_GRANT_IS_LIVE'),
+            notLapsed('ANOTHER_GRANT_IS_LIVE'),
+            notLapsed('THE_YEAR_IS_CLOSED'),
+          ],
+        }),
+      );
+
+      expect(counts.ANOTHER_GRANT_IS_LIVE).toBe(2);
+      expect(counts.THE_YEAR_IS_CLOSED).toBe(1);
+      expect(counts.NOTHING_LEFT).toBe(0);
+      expect(counts.ALREADY_LAPSED).toBe(0);
+    });
+
+    /* Tied to the domain's list rather than to the four somebody wrote out here. A
+       fifth reason added to NOT_LAPSED without a counter would otherwise increment a
+       key that does not exist and be reported as nothing at all. */
+    it('and has a counter for every reason there is', () => {
+      expect(Object.keys(notLapsedCounts(run())).sort()).toEqual([...NOT_LAPSED].sort());
+    });
+  });
+
+  describe('the summary somebody reads', () => {
+    it('says which day the deadlines were judged against, and when it ran', () => {
+      const said = summaryOf(run({ lapsed: [lapsed(14)] }));
+
+      expect(said).toContain('as at 2026-09-05');
+      expect(said).toContain('2026-09-05T02:00:00.000Z');
+    });
+
+    it('and how many grants went, and how many days with them', () => {
+      expect(summaryOf(run({ lapsed: [lapsed(14), lapsed(3)] }))).toContain(
+        '2 grants lapsed, 17 days in total',
+      );
+    });
+
+    /* The line that stops somebody chasing a figure that is not wrong. Nothing is lost
+       when a grant is held back for a live one — the later deadline takes it — and the
+       summary says so rather than leaving the reader to work it out. */
+    it('and names a grant held back because another is still live', () => {
+      const said = summaryOf(run({ notLapsed: [notLapsed('ANOTHER_GRANT_IS_LIVE')] }));
+
+      expect(said).toContain('1 were left alone because another grant');
+      expect(said).toContain('Nothing is lost');
+    });
+
+    /* And the line that is worth acting on. A closed year takes no new figures, so
+       these days sit past their deadline with nothing able to move them. */
+    it('and names a grant its leave year has closed over', () => {
+      const said = summaryOf(run({ notLapsed: [notLapsed('THE_YEAR_IS_CLOSED')] }));
+
+      expect(said).toContain('closed');
+      expect(said).toContain('§8.9');
+    });
+
+    /* The property the whole shape of the function exists for: a quiet night is three
+       lines, not seven with four zeroes in them. */
+    it('and says nothing about the outcomes that did not happen', () => {
+      const quiet = summaryOf(run({ lapsed: [lapsed(14)] }));
+
+      expect(quiet).not.toContain('left alone');
+      expect(quiet).not.toContain('§8.9');
+      expect(quiet).not.toContain('nothing left to lapse');
+    });
+
+    it('and reads as an honest account of a night on which nothing ran out', () => {
+      const nothing = summaryOf(run());
+
+      expect(nothing).toContain('0 grants lapsed, 0 days in total');
+      expect(nothing.split('\n').filter((line) => line !== '')).toHaveLength(2);
+    });
   });
 });

@@ -941,6 +941,87 @@ describe('moving a balance, FR 26 and LMS 212', () => {
     }
   });
 
+  /**
+   * Carrying last year's unused days into the new one. FR 36, LMS 217.
+   *
+   * The same desk as a grant, for the reason the policy gives: whether a type carries
+   * at all is `leave_entitlement_rule.carries_over`, and writing that rule is an HR
+   * Administrator's. It is a decision of its own rather than a reuse so that the two
+   * sentences are separable in the log, which is why it is enumerated separately here.
+   */
+  it('is carried into a new year only by an HR Administrator', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      expect(ledgerPolicy.carryForward(employee('adwoa', roles), hers).allowed).toBe(
+        SETS_UP_THE_ORGANISATION.includes(code),
+      );
+    }
+
+    expect(ledgerPolicy.carryForward(employee('ama'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.carryForward(manager('akosua'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.carryForward(theSystem('the year rollover'), hers).allowed).toBe(true);
+  });
+
+  /**
+   * Recording something that happened, and the entitlement it brings. FR 32g, LMS 218.
+   *
+   * The one grant in this file that is **not** an Administrator's alone, so it is the
+   * one worth enumerating rather than sampling. The argument is that this desk is not
+   * applying a policy to the company — it is recording one fact about one person, told
+   * to whoever in HR answered the telephone — and the figure it produces still comes
+   * from an entitlement rule only an Administrator may write.
+   *
+   * SYS_ADMIN failing here is the half that would go unnoticed. Being able to reach the
+   * database is not the same as keeping the employee records, and a grant is days.
+   */
+  it('is granted for an event by either HR desk, and by nobody else', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      expect(ledgerPolicy.grantForAnEvent(employee('adwoa', roles), hers).allowed).toBe(
+        MAINTAINS_EMPLOYEE_RECORDS.includes(code),
+      );
+    }
+
+    expect(ledgerPolicy.grantForAnEvent(employee('ama'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.grantForAnEvent(manager('akosua'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.grantForAnEvent(theSystem('a staff import'), hers).allowed).toBe(true);
+  });
+
+  /**
+   * Lapsing an event grant that was not used in time. FR 32e, LMS 218.
+   *
+   * Back to an Administrator's, and the line between this and the recording above is
+   * the line the policy keeps everywhere: recording that something happened to one
+   * person is the employee-record desk, and applying a rule that takes days *off*
+   * people is the desk that writes the rule.
+   */
+  it('is lapsed only by an HR Administrator', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      expect(ledgerPolicy.lapse(employee('adwoa', roles), hers).allowed).toBe(
+        SETS_UP_THE_ORGANISATION.includes(code),
+      );
+    }
+
+    expect(ledgerPolicy.lapse(employee('ama'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.lapse(manager('akosua'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.lapse(theSystem('the entitlement expiry'), hers).allowed).toBe(true);
+  });
+
+  /**
+   * And the two are a different desk from each other, for every actor there is.
+   *
+   * The story's authorisation decision, said as the one property that would not
+   * survive somebody quietly aligning them: there is an actor — the HR Officer — who
+   * may record a birth and may not lapse what it granted. Widen `lapse` to
+   * MAINTAINS_EMPLOYEE_RECORDS, or narrow `grantForAnEvent` to
+   * SETS_UP_THE_ORGANISATION, and this is what fails.
+   */
+  it('and an HR Officer may record an event without being able to lapse one', () => {
+    const officer = employee('efua', ['EMPLOYEE', 'HR_OFFICER']);
+
+    expect(ledgerPolicy.grantForAnEvent(officer, hers).allowed).toBe(true);
+    expect(ledgerPolicy.lapse(officer, hers).allowed).toBe(false);
+    expect(ledgerPolicy.grant(officer, hers).allowed).toBe(false);
+  });
+
   describe('holding days for leave that has been asked for', () => {
     it('is the asking person’s, and HR’s on their behalf', () => {
       expect(ledgerPolicy.reserve(employee('ama'), hers).allowed).toBe(true);
@@ -1051,13 +1132,18 @@ describe('moving a balance, FR 26 and LMS 212', () => {
   });
 
   /**
-   * Every one of the four movements says why it refused, and reading does not.
+   * Every movement says why it refused, and reading does not.
    *
    * The distinction ./policy.ts is built on. Somebody asking after a balance that is
    * not theirs has not been shown that the person exists, so the refusal says
    * nothing. Somebody who has been allowed to read a balance and is then refused a
    * movement on it has already seen the record, so telling them which desk does it
    * discloses nothing and is the difference between a boundary and a wall.
+   *
+   * The list is every movement rather than the four it started as, because a movement
+   * added without a sentence on its refusal is the failure this test exists to catch:
+   * somebody meeting the generic refusal on their own balance has no idea which desk
+   * to walk to.
    */
   it('says which rule refused a movement, and nothing at all about a refused read', () => {
     const adwoa = employee('adwoa');
@@ -1069,6 +1155,10 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       ledgerPolicy.reserve(adwoa, hers),
       ledgerPolicy.commit(adwoa, hers),
       ledgerPolicy.release(adwoa, hers),
+      ledgerPolicy.grant(adwoa, hers),
+      ledgerPolicy.carryForward(adwoa, hers),
+      ledgerPolicy.grantForAnEvent(adwoa, hers),
+      ledgerPolicy.lapse(adwoa, hers),
     ]) {
       expect(decision.allowed).toBe(false);
       expect(decision.told).not.toBeNull();

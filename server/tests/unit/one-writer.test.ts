@@ -39,10 +39,20 @@ import { describe, expect, it } from 'vitest';
 
 const SOURCE = join(process.cwd(), 'server', 'src');
 
+/**
+ * The paths are normalised to forward slashes as they are read, once.
+ *
+ * `readdirSync` hands back the separator the platform uses, so on Windows every path
+ * here arrives as `services\balance-service.ts`. Comparing that against a list written
+ * with forward slashes silently matches nothing — which for a test shaped like this one
+ * means the exemptions stop applying and the assertions fail on a developer's machine
+ * while passing in continuous integration. Normalising at the point of reading is the
+ * only place it cannot be forgotten by the next comparison somebody adds.
+ */
 const sources = readdirSync(SOURCE, { recursive: true, encoding: 'utf8' })
   .filter((file) => file.endsWith('.ts'))
   .map((file) => ({
-    file,
+    file: file.replaceAll('\\', '/'),
     code: readFileSync(join(SOURCE, file), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, ' ')
       .replace(/\/\/[^\n]*/g, ' '),
@@ -73,8 +83,7 @@ describe('one writer of balance movements', () => {
      and however carefully it was written. */
   it('and nothing outside those three posts a ledger entry', () => {
     const posting = sources.filter(
-      ({ file, code }) =>
-        !MAY_POST.includes(file.replace(/\\/g, '/')) && /\.postAll?\s*\(/.test(code),
+      ({ file, code }) => !MAY_POST.includes(file) && /\.postAll?\s*\(/.test(code),
     );
 
     expect(posting.map(({ file }) => file)).toEqual([]);
@@ -85,7 +94,7 @@ describe('one writer of balance movements', () => {
   it('and nothing outside those three holds a ledger repository', () => {
     const holding = sources.filter(
       ({ file, code }) =>
-        !MAY_POST.includes(file.replace(/\\/g, '/')) &&
+        !MAY_POST.includes(file) &&
         file !== 'services/ledger-service.ts' &&
         /LedgerRepository/.test(code),
     );
@@ -102,9 +111,7 @@ describe('one writer of balance movements', () => {
    * post an entry is asserted not to.
    */
   it('and the ledger service reads the account without writing to it', () => {
-    const ledger = sources.find(
-      ({ file }) => file.replace(/\\/g, '/') === 'services/ledger-service.ts',
-    );
+    const ledger = sources.find(({ file }) => file === 'services/ledger-service.ts');
 
     expect(ledger).toBeDefined();
     expect(ledger?.code).toMatch(/entriesFor|correctionsAround/);
@@ -121,9 +128,7 @@ describe('one writer of balance movements', () => {
    * proves the lock works; this notices if it stops being asked for.
    */
   it('and the one writer holds the balance still before it checks one', () => {
-    const service = sources.find(
-      ({ file }) => file.replace(/\\/g, '/') === 'services/balance-service.ts',
-    );
+    const service = sources.find(({ file }) => file === 'services/balance-service.ts');
 
     expect(service?.code).toMatch(/holdStill\(/);
     expect(service?.code).toMatch(/allOrNothing\(/);
@@ -135,8 +140,8 @@ describe('one writer of balance movements', () => {
   it('and nothing else decides whether the days are there', () => {
     const deciding = sources.filter(
       ({ file, code }) =>
-        file.replace(/\\/g, '/') !== 'services/balance-service.ts' &&
-        file.replace(/\\/g, '/') !== 'domain/balance.ts' &&
+        file !== 'services/balance-service.ts' &&
+        file !== 'domain/balance.ts' &&
         /daysTo(Reserve|Commit|Release)\s*\(/.test(code),
     );
 
