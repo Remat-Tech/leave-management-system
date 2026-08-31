@@ -379,6 +379,7 @@ describe('the five columns, as the ledger names them', () => {
     const balance: Record<string, unknown> = await import('../../src/domain/balance.js');
 
     expect(Object.keys(balance).sort()).toEqual([
+      'AlreadyCarried',
       'AlreadyGranted',
       'BALANCE_BUCKETS',
       'BalanceOverdrawn',
@@ -386,6 +387,7 @@ describe('the five columns, as the ledger names them', () => {
       'NotEnoughHeld',
       'available',
       'committed',
+      'daysToCarry',
       'daysToCommit',
       'daysToGrant',
       'daysToRelease',

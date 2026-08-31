@@ -1,5 +1,6 @@
 /**
- * The one place a balance changes. FR 26, FR 30, FR 37, §5.7, §8.2. LMS 211 to LMS 216.
+ * The one place a balance changes. FR 26, FR 30, FR 36, FR 37, §5.7, §8.2. LMS 211 to
+ * LMS 217.
  *
  * LMS 211 built the cache and this class read it. LMS 212 is the story that gives it
  * the other half, and the story's own sentence is the design: "one place responsible
@@ -29,10 +30,17 @@
  *
  * ## Days arrive from a rule, and leave through a request
  *
- * {@link BalanceService.grantTheYear} is the only movement that puts days in from
- * nowhere — FR 30, a year's entitlement, granted once and refused a second time inside
- * the lock. Everything else moves days that are already there, or is HR moving them by
- * hand under FR 37.
+ * Two movements put days into a balance from outside it, and both are a rule being
+ * applied rather than anybody deciding this morning.
+ *
+ * {@link BalanceService.grantTheYear} is FR 30: a year's entitlement, granted once and
+ * refused a second time inside the lock. {@link BalanceService.carryForward} is FR 36 and
+ * LMS 217: what was left of the year before, carried across the boundary once and refused
+ * a second time by the same arrangement. They are deliberately the same shape, because
+ * "safely re-runnable" is one property held twice rather than two pieces of care.
+ *
+ * Everything else moves days that are already there, or is HR moving them by hand under
+ * FR 37.
  *
  * ## And one movement is nobody's rule at all
  *
@@ -91,6 +99,7 @@ import type { Guard } from '../auth/policy.js';
 import {
   available,
   type BalanceKey,
+  daysToCarry,
   daysToCommit,
   daysToGrant,
   daysToRelease,
@@ -341,6 +350,58 @@ export class BalanceService {
   }
 
   /**
+   * Carries last year's unused days into this one. FR 36, LMS 217.
+   *
+   * The second movement that puts days into a balance from outside it, and the sibling of
+   * {@link BalanceService.grantTheYear} in every respect — same shape, same lock, same
+   * once-per-balance refusal, same desk. What differs is where the figure comes from: a
+   * grant's is the entitlement rule for the year, and a carry's is what was left of the
+   * year before.
+   *
+   * **Once per balance**, checked inside the lock and refused with {@link AlreadyCarried}.
+   * That is the story's "safely re-runnable", and it is the same argument the annual grant
+   * makes: the rollover that failed at employee three hundred on a January morning is run
+   * again by somebody who does not know how far it got.
+   *
+   * **The figure is not this method's to choose.** It is `available` on the closing year's
+   * balance, decided by `decideTheCarry` in ../domain/year-rollover.ts and arriving here
+   * already resolved — including whether the type carries at all and FR 36a's cap. A
+   * service that worked the figure out as well as posting it would be the second place
+   * this system decided what carries.
+   *
+   * **The source balance is read outside this lock, and that is safe because it is
+   * closed.** ../jobs/year-rollover.ts closes the year before it reads a single figure out
+   * of it, which is what makes the number final: after that the ledger's settled-year
+   * trigger refuses every entry type but an `ADJUSTMENT`, so nothing can move it except a
+   * deliberate correction with somebody's name on it. The lock here is on the
+   * *destination*, which is the balance being written and the one two runs could collide
+   * over.
+   *
+   * Nothing is subtracted from the year that closed; see ../domain/year-rollover.ts for
+   * why that is the design rather than an omission.
+   */
+  async carryForward(actor: Actor, carry: BalanceMovement): Promise<BalanceMoved> {
+    const owner = await this.ownerOf(carry.employeeId);
+
+    this.guard.enforce(ledgerPolicy.carryForward(actor, owner));
+
+    return this.moving(actor, carry, async (_held, repositories) => ({
+      entryType: 'CARRY_FORWARD' as const,
+      days: daysToCarry(
+        carry.days,
+        (
+          await repositories.entries.entriesFor({
+            employeeId: carry.employeeId,
+            leaveTypeId: carry.leaveTypeId,
+            leaveYearId: carry.leaveYearId,
+            entryTypes: ['CARRY_FORWARD'],
+          })
+        ).length,
+      ),
+    }));
+  }
+
+  /**
    * Turns held days into taken days, which is what approval does. FR 26.
    *
    * **This does not consume days a second time.** The reservation already did that;
@@ -536,7 +597,10 @@ export class BalanceService {
     decide: (
       held: LeaveBalance,
       repositories: Repositories,
-    ) => Promise<{ entryType: 'GRANT' | 'RESERVATION' | 'DEDUCTION' | 'RELEASE'; days: number }>,
+    ) => Promise<{
+      entryType: 'GRANT' | 'CARRY_FORWARD' | 'RESERVATION' | 'DEDUCTION' | 'RELEASE';
+      days: number;
+    }>,
   ): Promise<BalanceMoved> {
     const key = keyOf(movement);
 

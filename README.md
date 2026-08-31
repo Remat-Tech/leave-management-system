@@ -389,6 +389,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Every movement in one person's balance | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` only, for an adjustment |
 | Every balance in the company, checked against the ledger | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Granting a year's entitlement | | `HR_ADMIN` only |
+| Carrying last year's unused days forward | | `HR_ADMIN` only |
 | Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
 | Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` — never yourself |
 | Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
@@ -435,13 +436,17 @@ a day of annual leave for an afternoon nobody worked. `SYS_ADMIN` is deliberatel
 not on it either: keeping the calendar is HR's job, not a power that comes with
 being able to reach the database.
 
-**Granting a year is the same desk that writes the figures.** LMS 214. A grant and an
-adjustment are the same act from the balance's point of view — days arriving with no
-request behind them and no way to take them back — and what differs is that a rule
-written in advance chose the figure rather than somebody this morning. Writing that rule
-is `entitlementRulePolicy.create` and is an HR Administrator's, so applying it is too:
-letting an Officer apply figures only an Administrator may write would put a year's
-entitlement one desk below the decision behind it.
+**Granting a year is the same desk that writes the figures, and so is carrying one
+forward.** LMS 214 and LMS 217. A grant and an adjustment are the same act from the
+balance's point of view — days arriving with no request behind them and no way to take
+them back — and what differs is that a rule written in advance chose the figure rather
+than somebody this morning. Writing that rule is `entitlementRulePolicy.create` and is
+an HR Administrator's, so applying it is too: letting an Officer apply figures only an
+Administrator may write would put a year's entitlement one desk below the decision
+behind it. `ledgerPolicy.carryForward` is the same argument about
+`leave_entitlement_rule.carries_over`, and it is its own decision rather than a reuse of
+`grant` for the reason the file has no `post` at all — "carried 2026 forward" and
+"granted 2027" are two sentences somebody may need to find separately.
 
 **Moving a balance by hand is narrower than anything else in this system, and only
 an `HR_ADMIN` may.** §10's matrix has an ✗ against every other column including HR
@@ -1616,12 +1621,14 @@ drift" stops being about one row and becomes a rule about a year of them — wit
 exception, an `ADJUSTMENT`, which §8.9 names as the only way to put a settled figure
 right. See [The balance ledger](#the-balance-ledger). `leave_balance` follows the
 same rule since LMS 211, because it follows the ledger: an adjustment into a settled
-year moves the cached figure like any other entry, and nothing else can. What is
-still to come is the rollover that fills it.
+year moves the cached figure like any other entry, and nothing else can.
 
-**What closing still does not do.** It does not perform the rollover of FR 36. "This
-year is settled" and "these days move" are two decisions, and a close that silently
-did both would be a close nobody could audit.
+**Closing still does not perform the rollover, and since LMS 217 there is a rollover
+for it not to perform.** "This year is settled" and "these days move" are two
+decisions, and a close that silently did both would be a close nobody could audit.
+What changed is the direction of the dependency: `YearRollover` calls `close()` as its
+first act, because you can only carry what is settled. See [Rolling a year
+over](#rolling-a-year-over).
 
 ### The public holiday calendar
 
@@ -2019,8 +2026,9 @@ that entry is already the account — a trigger here would write a second copy o
 that could disagree.
 
 **What is not here.** The reconciliation job of §7.4, which is the recompute above
-plus a schedule, a walk over every balance and somebody to tell. The writers that
-fill two of the five columns: the rollover posts `GRANT` and `CARRY_FORWARD`. And the
+plus a schedule, a walk over every balance and somebody to tell — LMS 213. The
+writers that fill two of the five columns: `GRANT` is LMS 214's annual run and
+`CARRY_FORWARD` is LMS 217's rollover, and both arrived. And the
 list of leave types a balance screen should show — `BalanceService` returns the
 balances that exist, and which types apply to a person is `entitlement_basis` and FR
 05's `gender_restriction`, which is a decision with policy in it and belongs to the
@@ -2031,20 +2039,23 @@ story that builds the screen.
 ### One place a balance changes
 
 **`BalanceService` is the only writer of balance movements.** FR 26, §8.2, LMS 212.
-Five methods, and nothing else in the tree posts a ledger entry — `LedgerService`
+Seven methods, and nothing else in the tree posts a ledger entry — `LedgerService`
 reads the account and writes nothing, which is why `adjust` and `correct` moved out
-of it.
+of it. Every story since has taken the arrangement up on its offer rather than
+opening a second door: LMS 214 added `grantTheYear`, LMS 217 added `carryForward`,
+and both went where the lock, the rule and the policy already are.
 
 | | Posts | Checks | Locked? |
 |---|---|---|---|
 | `grantTheYear` | `GRANT` | the year has not been granted already | yes |
+| `carryForward` | `CARRY_FORWARD` | the balance has not been carried into already | yes |
 | `reserve` | `RESERVATION` | the days are there, unless the type may be exceeded | yes |
 | `commit` | `DEDUCTION` | that many days are held | yes |
 | `release` | `RELEASE` | that many days are held | yes |
 | `adjust` | `ADJUSTMENT` | nothing about the days — FR 37 moves them by fiat — but the three ids it was given are real ones | no |
 | `correct` | `ADJUSTMENT` | nothing — it is the exact opposite of one entry | no |
 
-**Days are stated positive, in all six.** A reserve of five days is `5` and so is
+**Days are stated positive, in all seven.** A reserve of five days is `5` and so is
 the release that gives them back; which way the balance moves is the method that was
 called. A caller that had to remember a reservation is −5 and a release is +5 would
 eventually get one backwards and post a perfectly valid entry meaning the opposite of
@@ -2342,6 +2353,95 @@ to know where to take it rather than only that they may not.
 
 ---
 
+### Rolling a year over
+
+**Leave somebody did not get round to taking is not lost on the first of January.**
+FR 36, FR 36a, §11, LMS 217. `jobs/year-rollover.ts` closes the year that ended, carries
+what is left of it into the next one as a `CARRY_FORWARD`, and grants the new year.
+It is the last piece of Phase 2 and the point at which a balance stops being a thing that
+happens once and starts being a thing that continues.
+
+**The order is the argument, not a sequence of convenience.** Closing comes first
+*because* you can only carry what is settled: a figure read out of an open year is one
+that something can still move — an approval landing on the second of January against
+December's balance — and a carry computed from it would be right when it was read and
+wrong when it was written. After the close, the ledger's settled-year trigger refuses
+every entry type but an `ADJUSTMENT`, so the number cannot change except by a deliberate
+correction with somebody's name on it. Carrying then comes before granting, so that a
+balance screen never shows the new year's entitlement with last year's days still
+missing; both land in the same balance and the order changes nothing but what somebody
+sees if they look while the job is running, and on the first working day of January
+somebody will.
+
+**Nothing is subtracted from the year that closed, and that is deliberate.** 2026 goes on
+saying twenty granted, sixteen taken, four left, forever, and the four appear again in
+2027 as `carriedOver`. That is not double counting — the days exist once, in the year they
+may now be booked against, the way a bank statement closes a month at a figure and opens
+the next at the same one. Posting an `EXPIRY` back into the old year to zero it would be
+recalculating a settled year, which is the one thing closing one forbids, and by then it
+is impossible anyway. What must never happen is a caller summing `available` across leave
+years, which has never been sound: `leave_balance_one_per_year` makes each year its own
+balance.
+
+**What carries is a column, read once.** `decideTheCarry()` sees how much is left,
+whether the type carries at all, and whether there is a cap — and no leave type code
+anywhere. Sick leave does not carry because `carries_over` is false on the statutory sick
+figure. Event based types never reach the decision: the job filters on
+`hasRunningBalance` before a candidate is built, exactly as the annual grant does, because
+FR 32g means a maternity allowance arrives with the confinement and has no year end to
+survive.
+
+**Carry over is uncapped and does not expire, which is two unset columns rather than a
+rule in code.** `carryover_max_days` and `carryover_expiry_month` are null on every
+statutory figure — FR 36a said as data. The job honours a cap where HR sets one, and the
+entry says so in words (`capped at 5 of 20 days`), because a column the code ignores is a
+setting that lies to whoever fills it in. Expiring carried days is a *second* job on a
+second schedule and is not built: it would post `EXPIRY` entries in a named month, which
+is why `EXPIRY` moves the `carriedOver` bucket rather than `entitled`, and no figure in
+this system sets a month for it to run on.
+
+**The rule that decides is the one that covered the days.** `carries_over` is resolved as
+at the **last day of the year being closed**, not the first day of the new one, and FR 31
+is why: days earned under a policy that said they carry must not be stripped by a rule
+written to take effect after that year ended. Changing the figure for next year is an
+insert; changing what last year was worth is not a thing this system permits.
+
+**Two outcomes need a person, and the run names both.** A balance in arrears is neither
+carried — a `CARRY_FORWARD` of negative days is refused, because a carry forward adds —
+nor quietly written off, which would be the same failure as losing somebody's unused days
+pointed the other way. And days still held for a request nobody decided cannot carry
+(they are spoken for rather than unused) *and* can never be approved (the ledger refuses a
+`DEDUCTION` into a settled year), so the run reports them for somebody to release or
+adjust. `needsAttention()` is those two and nothing else; everything else in a rollover was
+always going to happen.
+
+**Running it twice does nothing, and says line by line that it did nothing.** The story
+asks for it and the first of January is why: the realistic failure is not somebody running
+it by accident, it is the run that stopped at employee three hundred and the person who
+has to start it again without knowing how far it got. None of the three acts is guarded by
+the job remembering anything — the close is refused by `LeaveYearAlreadyClosed`, each
+carry by `AlreadyCarried` inside the lock, each grant by `AlreadyGranted` — and all three
+refusals are caught and reported as outcomes. That is stronger than "no harm done":
+somebody can run it, read the report, and know whether the first run finished.
+
+**It refuses three things before anything is written.** A year that has not ended (the
+mistake that actually happens, on the third of January, with the year that started two
+days ago); a year with no year after it, refused *before* the close, because closing one
+and then finding nowhere to put the days would strand them in a year nobody can reopen;
+and one whose successor is already closed, which would otherwise be four hundred
+settled-year refusals from the ledger instead of one sentence.
+
+**Granting the new year is `AnnualGrant`, whole and unmodified.** FR 30 is already a job
+that grants a year to everybody owed one and refuses to grant one twice. A rollover that
+reimplemented it would be a second answer to "what is somebody owed this year" living one
+directory away from the first.
+
+**It is a class, not a schedule**, as `annual-grant.ts` and `balance-reconciliation.ts`
+are. §11 puts it on the first of January and this build has no process to hang a timer on;
+the line to call is `new YearRollover(...).run(theSystem('the year rollover'), closingYearId)`.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.
@@ -2609,6 +2709,22 @@ its tests asserts that the domain exports nothing that turns ledger entries into
 balance — a `balanceFrom(entries)` would be twenty testable lines and a second
 implementation of the sum, which is the drift the cache exists to be checked against.
 Whoever adds one has to argue with that test first.
+
+**`unit/year-rollover.test.ts` proves what carries and `integration/year-rollover.test.ts`
+proves that it survives a boundary.** LMS 217 splits along the same line the annual grant
+does, for the same reason: what carries is a pure function of three facts and none of them
+needs a server, while the two criteria the job exists for are claims a database has to
+make. That the three acts happen in *that order* is only visible in the rows afterwards —
+a settled year, a `CARRY_FORWARD` in the year ahead of it, a `GRANT` beside it — and
+"safely re-runnable" is a property of a lock rather than of care: the suite runs the whole
+job twice and asserts the ledger and every balance are byte for byte what they were, then
+asserts the second run *said* it did nothing, which is the half that lets somebody find out
+whether the first one finished. It also holds the two things only a real database can
+settle: that a rule taking effect in the new year does not strip last year's days (FR 31,
+and the reason the resolution date is the last day of the closing year), and that a
+half-finished run is finished rather than repeated. Its fixture defines a 2025 with
+entitlement figures of its own, because a year can only be closed once it has ended — which
+turns out to be the only shape in which the resolution date is visible at all.
 
 **`integration/adjustment.test.ts` is LMS 216 read end to end, and is deliberately
 thin where the two suites above are thick.** That an entry can never be changed or

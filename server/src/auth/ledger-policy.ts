@@ -283,6 +283,45 @@ export const ledgerPolicy = {
   },
 
   /**
+   * Carrying last year's unused days into the new one. FR 36, LMS 217.
+   *
+   * The same rule as {@link ledgerPolicy.grant}, an HR Administrator's, and it is its own
+   * decision rather than a reuse for the reason this file has no `post`: these are
+   * different acts, and each belongs to the operation that causes it. The audit trail is
+   * the practical half of that — "carried 2026 forward" and "granted 2027" are two
+   * sentences somebody may need to find separately, and a shared decision would log them
+   * as one.
+   *
+   * Why the same *desk*, though, is worth saying rather than leaving to look like a
+   * copy. A carry forward is days arriving with no request behind them, chosen by a rule
+   * written in advance — which is a grant in everything but where the figure came from.
+   * The rule that decides whether a type carries at all is
+   * `leave_entitlement_rule.carries_over`, and writing that rule is
+   * `entitlementRulePolicy.create` and an HR Administrator's. Letting an Officer apply a
+   * decision only an Administrator may write would put a whole company's unused leave one
+   * desk below the policy behind it, which is exactly the argument {@link ledgerPolicy.grant}
+   * makes about a year's entitlement.
+   *
+   * The rollover run passes as `theSystem`, which holds every role and is nobody.
+   *
+   * Refused openly, because anybody reaching this can already read the balance and
+   * telling them which desk rolls a year over discloses nothing.
+   */
+  carryForward(actor: Actor, owner: BalanceOwner): Decision {
+    return holdsAny(actor, ...SETS_UP_THE_ORGANISATION)
+      ? about.allow(actor, 'carryForward', owner.employeeId)
+      : about.refuseOpenly(
+          actor,
+          'carryForward',
+          owner.employeeId,
+          'holds no role that carries a year forward',
+          'Carrying unused days into a new year applies the rule that says whether a ' +
+            'leave type carries at all, and applying it is the same desk that writes ' +
+            'it — an HR Administrator’s. FR 36.',
+        );
+  },
+
+  /**
    * Checking every balance in the company against the ledger. §7.4, LMS 213.
    *
    * The only decision in this file that names no record, because the reconciliation
