@@ -9,6 +9,7 @@ import { EmployeeNotFound } from '../../src/domain/employee.js';
 import {
   InvalidLedgerEntry,
   LEDGER_ENTRY_TYPES,
+  REQUEST_MOVEMENTS,
   LedgerEntryNotFound,
   type LedgerEntryType,
 } from '../../src/domain/ledger.js';
@@ -159,7 +160,7 @@ async function aSettledYear(): Promise<LeaveYear> {
 async function writeDirectly(
   overrides: Record<string, unknown> = {},
 ): Promise<Record<string, unknown>> {
-  const row = {
+  const row: Record<string, unknown> = {
     employee_id: people.officer,
     leave_type_id: annualId,
     leave_year_id: y2026.id,
@@ -170,6 +171,31 @@ async function writeDirectly(
     ...overrides,
   };
 
+  /* LMS 301: a RESERVATION, DEDUCTION, RELEASE or RECALCULATION has to name a request,
+     and a request has to hold days — so a suite writing one of these straight to the
+     table builds the request too. It is the same rule from the other side of the door as
+     everything else in this file: what the database refuses is refused whoever asked.
+
+     The two cases differ in which entry does the holding. A RESERVATION *is* the hold,
+     so it goes in the same transaction as the request it holds days for and nothing else
+     is written. The other three draw one down, so a request already holding days is set
+     up first and they name it. */
+  const movesForARequest =
+    (REQUEST_MOVEMENTS as readonly string[]).includes(row.entry_type as string) &&
+    row.leave_request_id === undefined;
+
+  if (movesForARequest && row.entry_type === 'RESERVATION') {
+    return withARequestOfItsOwn(row);
+  }
+
+  if (movesForARequest) {
+    row.leave_request_id = await aRequestHoldingDays(row);
+  }
+
+  return insertEntry(row);
+}
+
+async function insertEntry(row: Record<string, unknown>): Promise<Record<string, unknown>> {
   const columns = Object.keys(row);
   const placeholders = columns.map((_column, index) => `$${index + 1}`).join(', ');
 
@@ -179,6 +205,66 @@ async function writeDirectly(
   );
 
   return rows[0] as Record<string, unknown>;
+}
+
+/** A RESERVATION and the request whose days it holds, in one transaction. */
+async function withARequestOfItsOwn(
+  row: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  await admin.query('BEGIN');
+  try {
+    const written = await insertEntry({ ...row, leave_request_id: await insertRequest(row, 1) });
+    await admin.query('COMMIT');
+
+    return written;
+  } catch (error) {
+    await admin.query('ROLLBACK');
+    throw error;
+  }
+}
+
+/**
+ * A request and the RESERVATION that holds its days, written together.
+ *
+ * `leave_request_holds_its_days` is deferred and judged at COMMIT, so the pair has to
+ * be one transaction — which is exactly the shape `BalanceService.reserveForRequest`
+ * writes them in. The period runs from the first day of the leave year so that any
+ * figure is a period the table accepts.
+ */
+async function aRequestHoldingDays(key: Record<string, unknown>): Promise<string> {
+  await admin.query('BEGIN');
+  try {
+    const id = await insertRequest(key, 1);
+
+    await admin.query(
+      `INSERT INTO leave_ledger_entry (
+          employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+       VALUES ($1, $2, $3, 'RESERVATION', '-1.00', 'held for the suite', $4)`,
+      [key.employee_id, key.leave_type_id, key.leave_year_id, id],
+    );
+
+    await admin.query('COMMIT');
+    return id;
+  } catch (error) {
+    await admin.query('ROLLBACK');
+    throw error;
+  }
+}
+
+/** The request row alone, for a caller that has a transaction open. */
+async function insertRequest(key: Record<string, unknown>, days: number): Promise<string> {
+  const { rows } = await admin.query<{ id: string }>(
+    `INSERT INTO leave_request (
+        employee_id, leave_type_id, leave_year_id,
+        start_date, end_date, reason, counting_basis, days, calendar_days, status)
+     SELECT $1, $2, $3, y.start_date, y.start_date + ($4::int - 1), 'a request for the suite',
+            'CALENDAR_DAYS', $4, $4, 'SUBMITTED'
+       FROM leave_year y WHERE y.id = $3
+     RETURNING id`,
+    [key.employee_id, key.leave_type_id, key.leave_year_id, days],
+  );
+
+  return rows[0].id;
 }
 
 function asAdministrator() {
@@ -554,6 +640,7 @@ describe('a mistake is put right by a new entry', () => {
         days: -20,
         reason: 'wrong balance',
         correctsId: wrong.id,
+        leaveRequestId: null,
       }),
     ).rejects.toBeInstanceOf(InvalidLedgerEntry);
   });
@@ -639,6 +726,7 @@ describe('a settled leave year takes no new figures, with one exception', () => 
         days: 20,
         reason: 'late grant',
         correctsId: null,
+        leaveRequestId: null,
       }),
     ).rejects.toMatchObject({ name: 'InvalidLedgerEntry', field: 'leaveYearId' });
   });
@@ -758,6 +846,7 @@ describe('reading one balance', () => {
         days: 3,
         reason: 'Carried from 2025',
         correctsId: null,
+        leaveRequestId: null,
       },
       {
         employeeId: people.officer,
@@ -767,6 +856,7 @@ describe('reading one balance', () => {
         days: 20,
         reason: 'Annual entitlement for 2026',
         correctsId: null,
+        leaveRequestId: null,
       },
     ]);
 
@@ -789,6 +879,7 @@ describe('reading one balance', () => {
       days: 20,
       reason: 'Annual entitlement',
       correctsId: null,
+      leaveRequestId: null,
     };
 
     await expect(

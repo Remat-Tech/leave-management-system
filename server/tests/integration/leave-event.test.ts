@@ -179,6 +179,56 @@ function aBirthFor(employeeId: string, leaveTypeId: string, occurredOn = A_BIRTH
   return events.record(asOfficer(), { employeeId, leaveTypeId, occurredOn, note });
 }
 
+/**
+ * Days taken, the way they are actually taken since LMS 301.
+ *
+ * A RESERVATION has to name a request and a request has to hold days, so "five days
+ * gone" is no longer one call — it is a request that holds them and an approval that
+ * turns the hold into days taken. The period runs from the first day of the leave year
+ * so that any figure is a period the table accepts; what these tests are about is the
+ * balance rather than the counting.
+ */
+async function takeDays(movement: {
+  employeeId: string;
+  leaveTypeId: string;
+  leaveYearId: string;
+  days: number;
+  reason: string;
+}): Promise<void> {
+  const { request } = await holdDays(movement);
+
+  await balances.commit(asAdministrator(), { ...movement, leaveRequestId: request.id });
+}
+
+/** The holding half of {@link takeDays}, for leave nobody has decided yet. */
+async function holdDays(movement: {
+  employeeId: string;
+  leaveTypeId: string;
+  leaveYearId: string;
+  days: number;
+  reason: string;
+}) {
+  const { rows } = await admin.query<{ start_date: string; end_date: string }>(
+    `SELECT start_date, start_date + ($2::int - 1) AS end_date FROM leave_year WHERE id = $1`,
+    [movement.leaveYearId, movement.days],
+  );
+
+  return balances.reserveForRequest(asAdministrator(), {
+    request: {
+      employeeId: movement.employeeId,
+      leaveTypeId: movement.leaveTypeId,
+      leaveYearId: movement.leaveYearId,
+      from: rows[0].start_date,
+      to: rows[0].end_date,
+      reason: movement.reason,
+      countingBasis: 'CALENDAR_DAYS' as const,
+      days: movement.days,
+      calendarDays: movement.days,
+      status: 'SUBMITTED' as const,
+    },
+    reason: movement.reason,
+  });
+}
 function balanceOf(employeeId: string, leaveTypeId: string) {
   return balances.forOne(asAdministrator(), { employeeId, leaveTypeId, leaveYearId: y2026.id });
 }
@@ -491,8 +541,7 @@ describe('the expiry job lapses whatever remains', () => {
       days: 10,
       reason: 'Ten of the fourteen days, taken in March',
     };
-    await balances.reserve(asAdministrator(), movement);
-    await balances.commit(asAdministrator(), movement);
+    await takeDays(movement);
 
     const run = await expiry.run(nightly, '2026-09-05');
 
@@ -550,8 +599,7 @@ describe('the expiry job lapses whatever remains', () => {
       days: 14,
       reason: 'All fourteen days, taken in March',
     };
-    await balances.reserve(asAdministrator(), movement);
-    await balances.commit(asAdministrator(), movement);
+    await takeDays(movement);
 
     const run = await expiry.run(nightly, '2026-09-05');
 

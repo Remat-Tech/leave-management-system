@@ -96,6 +96,16 @@ export const AUDITED_ENTITIES = [
      column: the expiry job closing it off. So it is audited for the ordinary
      reason every other table here is. */
   'leave_entitlement_event',
+  /* LMS 301. The first table in this schema whose rows are written by the subject
+     of the record rather than about them, which is why it is audited even though
+     almost everything on it is frozen the moment it is written.
+
+     What can move is `status` and `reason`, and both are what a dispute is about:
+     a manager and an employee remembering a fortnight differently is answered by
+     when it was submitted, what it said then, and who moved it since.
+     `submitted_at` answers the first, `refuse_rewriting_what_a_request_cost()`
+     makes the second unanswerable any other way, and this answers the third. */
+  'leave_request',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];

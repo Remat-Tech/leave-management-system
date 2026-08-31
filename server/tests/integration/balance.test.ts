@@ -18,6 +18,7 @@ import {
   InvalidLedgerEntry,
   LEDGER_ENTRY_TYPES,
   type LedgerEntryType,
+  REQUEST_MOVEMENTS,
   validateNewLedgerEntry,
 } from '../../src/domain/ledger.js';
 import type { LeaveYear } from '../../src/domain/leave-year.js';
@@ -103,8 +104,11 @@ beforeEach(async () => {
      `leave_ledger_entry` refuses one too — and no row trigger fires on TRUNCATE,
      which is the door both migrations leave open for exactly this. */
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request');
   await restoreYears();
+
+  /* LMS 301: the requests went with the entries, so the next test builds its own. */
+  currentRequest = undefined;
 
   people = (await seed(admin)) as Record<string, string>;
 
@@ -117,7 +121,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request');
   await restoreYears();
 
   await db?.destroy();
@@ -148,27 +152,52 @@ async function restoreYears(): Promise<void> {
 }
 
 /**
- * A ledger entry written straight to the table, bypassing every layer above it.
+ * The request the request-shaped entries of this test are filed under. LMS 301.
  *
- * Most of this file posts entries this way rather than through `LedgerService`,
- * because six of the eight kinds have no service writer and because what is being
- * proved is that the balance follows a *ledger entry* rather than a service call.
+ * Since the create-and-submit-a-leave-request migration a RESERVATION, DEDUCTION,
+ * RELEASE or RECALCULATION has to name a request —
+ * `leave_ledger_entry_request_movements_name_a_request` — and a request has to hold
+ * days, judged at COMMIT by `leave_request_holds_its_days`. So a suite writing these
+ * directly has to build the pair rather than the entry alone.
+ *
+ * The pattern below is the real one rather than a fixture convenience: a RESERVATION
+ * brings a request of its own, and the DEDUCTION or RELEASE that follows draws down the
+ * same one. Reset for each test by `beforeEach`.
  */
-async function post(
-  entryType: LedgerEntryType,
-  days: number,
-  overrides: Record<string, unknown> = {},
-): Promise<Record<string, unknown>> {
-  const row = {
-    employee_id: people.officer,
-    leave_type_id: annualId,
-    leave_year_id: y2026.id,
-    entry_type: entryType,
-    days: days.toFixed(2),
-    reason: `a ${entryType.toLowerCase()} for the suite`,
-    ...overrides,
-  };
+let currentRequest: string | undefined;
 
+function movesForARequest(entryType: LedgerEntryType): boolean {
+  return (REQUEST_MOVEMENTS as readonly string[]).includes(entryType);
+}
+
+/**
+ * A request row, inside whatever transaction the caller has open.
+ *
+ * The period starts on the first day of its leave year and runs `days` days, which is
+ * the one shape that satisfies every CHECK on the table for any figure a test asks
+ * for: inside the year, ending on or after it starts, and spanning at least as many
+ * days as it costs.
+ */
+async function insertRequest(
+  key: { employee_id: unknown; leave_type_id: unknown; leave_year_id: unknown },
+  days: number,
+): Promise<string> {
+  const { rows } = await admin.query<{ id: string }>(
+    `INSERT INTO leave_request (
+        employee_id, leave_type_id, leave_year_id,
+        start_date, end_date, reason, counting_basis, days, calendar_days, status)
+     SELECT $1, $2, $3,
+            y.start_date, y.start_date + ($4::int - 1),
+            'a request for the suite', 'CALENDAR_DAYS', $4, $4, 'SUBMITTED'
+       FROM leave_year y WHERE y.id = $3
+     RETURNING id`,
+    [key.employee_id, key.leave_type_id, key.leave_year_id, days],
+  );
+
+  return rows[0].id;
+}
+
+async function insertEntry(row: Record<string, unknown>): Promise<Record<string, unknown>> {
   const columns = Object.keys(row);
   const placeholders = columns.map((_column, index) => `$${index + 1}`).join(', ');
 
@@ -178,6 +207,64 @@ async function post(
   );
 
   return rows[0] as Record<string, unknown>;
+}
+
+/**
+ * A ledger entry written straight to the table, bypassing every layer above it.
+ *
+ * Most of this file posts entries this way rather than through `BalanceService`,
+ * because six of the nine kinds have no service writer and because what is being proved
+ * is that the balance follows a *ledger entry* rather than a service call.
+ *
+ * Since LMS 301 the four request-shaped kinds cannot be written alone — see
+ * {@link currentRequest} — so this builds the request they name.
+ */
+async function post(
+  entryType: LedgerEntryType,
+  days: number,
+  overrides: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+  const row: Record<string, unknown> = {
+    employee_id: people.officer,
+    leave_type_id: annualId,
+    leave_year_id: y2026.id,
+    entry_type: entryType,
+    days: days.toFixed(2),
+    reason: `a ${entryType.toLowerCase()} for the suite`,
+    ...overrides,
+  };
+
+  if (!movesForARequest(entryType) || row.leave_request_id !== undefined) {
+    return insertEntry(row);
+  }
+
+  /* A reservation and the request it holds days for are one act, so they go in one
+     transaction — which is the only way the deferred check can pass. */
+  if (entryType === 'RESERVATION') {
+    await admin.query('BEGIN');
+    try {
+      currentRequest = await insertRequest(
+        row as { employee_id: unknown; leave_type_id: unknown; leave_year_id: unknown },
+        Math.abs(days),
+      );
+      const written = await insertEntry({ ...row, leave_request_id: currentRequest });
+      await admin.query('COMMIT');
+      return written;
+    } catch (error) {
+      await admin.query('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /* Anything else draws down a hold, so there has to be one. Most tests reserve first
+     and this reuses that request; the few that do not are asking about a column rather
+     than about arithmetic, and a reservation of the same size in front of them changes
+     nothing they assert. */
+  if (currentRequest === undefined) {
+    await post('RESERVATION', -Math.abs(days), overrides);
+  }
+
+  return insertEntry({ ...row, leave_request_id: currentRequest ?? null });
 }
 
 /** The balance this file's default entry lands in. */
@@ -209,6 +296,60 @@ function asThemselves() {
 }
 
 /** Somebody with no standing at all towards the officer's balance. */
+/**
+ * Somebody asking for days, through the door LMS 301 put in front of them.
+ *
+ * `reserve` was replaced by `reserveForRequest` because a RESERVATION now has to name a
+ * request and a request has to hold days — so there is no way to write one without the
+ * other, which is the point rather than an inconvenience.
+ *
+ * The period starts on the first day of the leave year and runs as many days as are
+ * being asked for, counted as calendar days, so that any figure a test wants is a period
+ * the table accepts. What the tests below are about is the balance rather than the
+ * counting; ./leave-request.test.ts is where the counting is proved.
+ */
+async function askFor(
+  overrides: Partial<BalanceKey> & { days?: number } = {},
+  who = asThemselves(),
+) {
+  const { days = 5, ...key } = overrides;
+  const balance = theBalance(key);
+  const span = Math.max(1, Math.trunc(Math.abs(days)) || 1);
+
+  const { rows } = await admin.query<{ start_date: string; end_date: string }>(
+    `SELECT start_date, start_date + ($2::int - 1) AS end_date FROM leave_year WHERE id = $1`,
+    [balance.leaveYearId, span],
+  );
+
+  return balances.reserveForRequest(who, {
+    request: {
+      ...balance,
+      from: rows[0].start_date,
+      to: rows[0].end_date,
+      reason: 'Five days in December',
+      countingBasis: 'CALENDAR_DAYS' as const,
+      days,
+      calendarDays: span,
+      status: 'SUBMITTED' as const,
+    },
+    reason: 'Five days in December',
+  });
+}
+
+/**
+ * A movement drawing down a hold, which since LMS 301 has to name the request the days
+ * are held for.
+ *
+ * `leave_ledger_entry_request_movements_name_a_request` refuses a DEDUCTION or a RELEASE
+ * without one, and `RequestMovement` refuses it a statement earlier — so every one of
+ * these carries the id `askFor` handed back.
+ */
+function against(requestId: string, overrides: Partial<BalanceKey> & { days?: number } = {}) {
+  const { days = 5, ...key } = overrides;
+
+  return { ...theBalance(key), days, reason: 'Five days in December', leaveRequestId: requestId };
+}
+
 function asAColleague() {
   return signedInAs(people.engineer, { roles: ['EMPLOYEE'], isManager: false });
 }
@@ -300,6 +441,14 @@ describe('a balance is opened by the first movement in it', () => {
  */
 describe('every kind of movement lands where the domain says it does', () => {
   it.each(LEDGER_ENTRY_TYPES)('%s moves exactly the columns BUCKETS names', async (entryType) => {
+    /* Since LMS 301 a DEDUCTION, RELEASE or RECALCULATION has to name a request that
+       is already holding days, so the hold is set up before the reading is taken —
+       what is being measured is what *this* entry moved. A RESERVATION brings its own
+       request, which is why it is not in this list: it is the hold. */
+    if (movesForARequest(entryType) && entryType !== 'RESERVATION') {
+      await post('RESERVATION', -5);
+    }
+
     const before = await repository.forOne(theBalance());
 
     await post(entryType, signFor(entryType) * 5);
@@ -878,16 +1027,10 @@ describe('holding days, spending them, and giving them back', () => {
     await post('GRANT', 12);
   }
 
-  function fiveDays(overrides: Partial<BalanceKey> & { days?: number } = {}) {
-    const { days = 5, ...key } = overrides;
-
-    return { ...theBalance(key), days, reason: 'Five days in December' };
-  }
-
   it('holds days, and takes them out of what may be booked', async () => {
     await twelveDays();
 
-    const { entry, balance } = await balances.reserve(asThemselves(), fiveDays());
+    const { entry, balance } = await askFor();
 
     expect(entry.entryType).toBe('RESERVATION');
     expect(entry.days).toBe(-5);
@@ -901,9 +1044,7 @@ describe('holding days, spending them, and giving them back', () => {
   it('and refuses days that are not there, saying how short it is', async () => {
     await twelveDays();
 
-    await expect(balances.reserve(asThemselves(), fiveDays({ days: 15 }))).rejects.toBeInstanceOf(
-      BalanceOverdrawn,
-    );
+    await expect(askFor({ days: 15 })).rejects.toBeInstanceOf(BalanceOverdrawn);
   });
 
   /**
@@ -914,9 +1055,7 @@ describe('holding days, spending them, and giving them back', () => {
    * cache, which is why `hold_one_balance_while_it_is_checked()` declines to open one.
    */
   it('and a refused reserve leaves no entry and no balance behind', async () => {
-    await expect(balances.reserve(asThemselves(), fiveDays())).rejects.toBeInstanceOf(
-      BalanceOverdrawn,
-    );
+    await expect(askFor()).rejects.toBeInstanceOf(BalanceOverdrawn);
 
     expect((await admin.query('SELECT count(*) FROM leave_ledger_entry')).rows[0].count).toBe('0');
     expect((await admin.query('SELECT count(*) FROM leave_balance')).rows[0].count).toBe('0');
@@ -927,23 +1066,18 @@ describe('holding days, spending them, and giving them back', () => {
   it('and lets a balance that may be exceeded go below nought', async () => {
     await post('GRANT', 3, { leave_type_id: sickId });
 
-    const { balance } = await balances.reserve(
-      asThemselves(),
-      fiveDays({ leaveTypeId: sickId, days: 5 }),
-    );
+    const { balance } = await askFor({ leaveTypeId: sickId, days: 5 });
 
     expect(balance.available).toBe(-2);
   });
 
   it('and days already held count against the next request', async () => {
     await twelveDays();
-    await balances.reserve(asThemselves(), fiveDays());
+    await askFor();
 
-    await expect(balances.reserve(asThemselves(), fiveDays({ days: 8 }))).rejects.toBeInstanceOf(
-      BalanceOverdrawn,
-    );
+    await expect(askFor({ days: 8 })).rejects.toBeInstanceOf(BalanceOverdrawn);
 
-    const { balance } = await balances.reserve(asThemselves(), fiveDays({ days: 7 }));
+    const { balance } = await askFor({ days: 7 });
     expect(balance.available).toBe(0);
   });
 
@@ -956,9 +1090,9 @@ describe('holding days, spending them, and giving them back', () => {
    */
   it('turns held days into taken days without spending them twice', async () => {
     await twelveDays();
-    await balances.reserve(asThemselves(), fiveDays());
+    const { request } = await askFor();
 
-    const { entry, balance } = await balances.commit(asTheirManager(), fiveDays());
+    const { entry, balance } = await balances.commit(asTheirManager(), against(request.id));
 
     expect(entry.entryType).toBe('DEDUCTION');
     expect(balance.pending).toBe(0);
@@ -975,10 +1109,10 @@ describe('holding days, spending them, and giving them back', () => {
    */
   it('and refuses to approve the same days a second time', async () => {
     await twelveDays();
-    await balances.reserve(asThemselves(), fiveDays());
-    await balances.commit(asTheirManager(), fiveDays());
+    const { request } = await askFor();
+    await balances.commit(asTheirManager(), against(request.id));
 
-    await expect(balances.commit(asTheirManager(), fiveDays())).rejects.toBeInstanceOf(
+    await expect(balances.commit(asTheirManager(), against(request.id))).rejects.toBeInstanceOf(
       NotEnoughHeld,
     );
 
@@ -989,27 +1123,30 @@ describe('holding days, spending them, and giving them back', () => {
 
   it('gives held days back, and refuses to give back more than is held', async () => {
     await twelveDays();
-    await balances.reserve(asThemselves(), fiveDays());
+    const { request } = await askFor();
 
-    const { entry, balance } = await balances.release(asThemselves(), fiveDays({ days: 3 }));
+    const { entry, balance } = await balances.release(
+      asThemselves(),
+      against(request.id, { days: 3 }),
+    );
 
     expect(entry.entryType).toBe('RELEASE');
     expect(balance.pending).toBe(2);
     expect(balance.available).toBe(10);
 
-    await expect(balances.release(asThemselves(), fiveDays({ days: 3 }))).rejects.toBeInstanceOf(
-      NotEnoughHeld,
-    );
+    await expect(
+      balances.release(asThemselves(), against(request.id, { days: 3 })),
+    ).rejects.toBeInstanceOf(NotEnoughHeld);
   });
 
   /* Days that were taken are not days that are held. Undoing an approved absence is
      FR 25's recalculation or an adjustment, and neither of them is a release. */
   it('and will not give back days that have already been taken', async () => {
     await twelveDays();
-    await balances.reserve(asThemselves(), fiveDays());
-    await balances.commit(asTheirManager(), fiveDays());
+    const { request } = await askFor();
+    await balances.commit(asTheirManager(), against(request.id));
 
-    await expect(balances.release(asThemselves(), fiveDays())).rejects.toBeInstanceOf(
+    await expect(balances.release(asThemselves(), against(request.id))).rejects.toBeInstanceOf(
       NotEnoughHeld,
     );
   });
@@ -1019,12 +1156,8 @@ describe('holding days, spending them, and giving them back', () => {
   it('and refuses half a day, and a figure with a sign on it', async () => {
     await twelveDays();
 
-    await expect(balances.reserve(asThemselves(), fiveDays({ days: 2.5 }))).rejects.toBeInstanceOf(
-      InvalidBalanceMovement,
-    );
-    await expect(balances.reserve(asThemselves(), fiveDays({ days: -5 }))).rejects.toBeInstanceOf(
-      InvalidBalanceMovement,
-    );
+    await expect(askFor({ days: 2.5 })).rejects.toBeInstanceOf(InvalidBalanceMovement);
+    await expect(askFor({ days: -5 })).rejects.toBeInstanceOf(InvalidBalanceMovement);
   });
 
   /* A settled year takes no new figures but an adjustment, which is the ledger's own
@@ -1037,9 +1170,7 @@ describe('holding days, spending them, and giving them back', () => {
     await post('GRANT', 12, { leave_year_id: y2025.id });
     await years.close(asAdministrator(), y2025.id);
 
-    await expect(
-      balances.reserve(asThemselves(), fiveDays({ leaveYearId: y2025.id })),
-    ).rejects.toBeInstanceOf(InvalidLedgerEntry);
+    await expect(askFor({ leaveYearId: y2025.id })).rejects.toBeInstanceOf(InvalidLedgerEntry);
   });
 
   /* Every movement comes back with the balance it produced, read inside the same
@@ -1048,7 +1179,7 @@ describe('holding days, spending them, and giving them back', () => {
   it('and every movement hands back the balance it produced', async () => {
     await twelveDays();
 
-    const held = await balances.reserve(asThemselves(), fiveDays());
+    const held = await askFor();
     const stored = await balances.forOne(asThemselves(), theBalance());
 
     expect(held.balance).toEqual(stored);
@@ -1073,12 +1204,7 @@ describe('two screens asking for the same days', () => {
   it('lets exactly one of them through', async () => {
     await post('GRANT', 5);
 
-    const asking = () =>
-      balances.reserve(asThemselves(), {
-        ...theBalance(),
-        days: 5,
-        reason: 'Five days over Christmas',
-      });
+    const asking = () => askFor();
 
     const outcomes = await Promise.allSettled([asking(), asking()]);
 
@@ -1104,8 +1230,7 @@ describe('two screens asking for the same days', () => {
   it('and lets both through when the days are there for both', async () => {
     await post('GRANT', 12);
 
-    const asking = (days: number) =>
-      balances.reserve(asThemselves(), { ...theBalance(), days, reason: 'Some days off' });
+    const asking = (days: number) => askFor({ days });
 
     await Promise.all([asking(5), asking(5)]);
 
@@ -1118,18 +1243,9 @@ describe('two screens asking for the same days', () => {
      is the same race, and the loser is refused rather than deducting the days again. */
   it('and lets only one of two approvals of one hold through', async () => {
     await post('GRANT', 12);
-    await balances.reserve(asThemselves(), {
-      ...theBalance(),
-      days: 5,
-      reason: 'Five days in December',
-    });
+    const { request } = await askFor();
 
-    const approving = () =>
-      balances.commit(asTheirManager(), {
-        ...theBalance(),
-        days: 5,
-        reason: 'Approved by the team lead',
-      });
+    const approving = () => balances.commit(asTheirManager(), against(request.id));
 
     const outcomes = await Promise.allSettled([approving(), approving()]);
 
@@ -1144,14 +1260,12 @@ describe('two screens asking for the same days', () => {
 /* ------------------------------------------------------- who may move one, FR 26 */
 
 describe('who may move a balance', () => {
-  const fiveDays = () => ({ ...theBalance(), days: 5, reason: 'Five days in December' });
-
   beforeEach(async () => {
     await post('GRANT', 20);
   });
 
   it('is asked for by the person taking the leave', async () => {
-    await expect(balances.reserve(asThemselves(), fiveDays())).resolves.toMatchObject({
+    await expect(askFor()).resolves.toMatchObject({
       balance: { pending: 5 },
     });
   });
@@ -1160,27 +1274,27 @@ describe('who may move a balance', () => {
      read the balance and approve against it; asking for leave on somebody's behalf is
      HR's, FR 18. */
   it('and not asked for by their line manager', async () => {
-    await expect(balances.reserve(asTheirManager(), fiveDays())).rejects.toBeInstanceOf(
-      NotAuthorised,
-    );
+    await expect(askFor({}, asTheirManager())).rejects.toBeInstanceOf(NotAuthorised);
   });
 
   it('and approved by their line manager, never by themselves', async () => {
-    await balances.reserve(asThemselves(), fiveDays());
+    const { request } = await askFor();
 
-    await expect(balances.commit(asThemselves(), fiveDays())).rejects.toBeInstanceOf(NotAuthorised);
-    await expect(balances.commit(asTheirManager(), fiveDays())).resolves.toMatchObject({
+    await expect(balances.commit(asThemselves(), against(request.id))).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+    await expect(balances.commit(asTheirManager(), against(request.id))).resolves.toMatchObject({
       balance: { taken: 5 },
     });
   });
 
   it('and never moved by a colleague, in any of the three ways', async () => {
-    await balances.reserve(asThemselves(), fiveDays());
+    const { request } = await askFor();
 
     for (const move of [
-      () => balances.reserve(asAColleague(), fiveDays()),
-      () => balances.commit(asAColleague(), fiveDays()),
-      () => balances.release(asAColleague(), fiveDays()),
+      () => askFor({}, asAColleague()),
+      () => balances.commit(asAColleague(), against(request.id)),
+      () => balances.release(asAColleague(), against(request.id)),
     ]) {
       await expect(move()).rejects.toBeInstanceOf(NotAuthorised);
     }
@@ -1189,16 +1303,15 @@ describe('who may move a balance', () => {
   /* And a refusal costs no lock: the policy is asked before the transaction opens, so
      a colleague guessing at ids cannot make anybody else wait. */
   it('and a refused movement never opened a transaction to be refused in', async () => {
-    await expect(balances.reserve(asAColleague(), fiveDays())).rejects.toBeInstanceOf(
-      NotAuthorised,
-    );
+    await expect(askFor({}, asAColleague())).rejects.toBeInstanceOf(NotAuthorised);
 
     expect((await admin.query('SELECT count(*) FROM leave_ledger_entry')).rows[0].count).toBe('1');
+    expect((await admin.query('SELECT count(*) FROM leave_request')).rows[0].count).toBe('0');
   });
 
   it('and an id that is nobody is not a balance at all', async () => {
-    await expect(
-      balances.reserve(asAdministrator(), { ...fiveDays(), employeeId: '987654321' }),
-    ).rejects.toBeInstanceOf(EmployeeNotFound);
+    await expect(askFor({ employeeId: '987654321' }, asAdministrator())).rejects.toBeInstanceOf(
+      EmployeeNotFound,
+    );
   });
 });

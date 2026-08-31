@@ -55,15 +55,46 @@ const SOUND: NewLedgerEntry = {
   reason: 'Annual entitlement for 2026',
 };
 
-/** A written entry, built from the same validation a real one goes through. */
+/**
+ * SOUND, plus the request id LMS 301 requires of the four request-shaped kinds.
+ *
+ * The rule itself is asserted once, in its own block below. Everywhere else a
+ * RESERVATION is a convenient example of something else — a sign, a size, a zero — and
+ * this keeps those cases about what they are about.
+ */
+function soundFor(entryType: LedgerEntryType): NewLedgerEntry {
+  return {
+    ...SOUND,
+    entryType,
+    ...((REQUEST_MOVEMENTS as readonly string[]).includes(entryType)
+      ? { leaveRequestId: '77' }
+      : {}),
+  };
+}
+
+/**
+ * A written entry, built from the same validation a real one goes through.
+ *
+ * Since LMS 301 the four request-shaped kinds have to name the request that caused
+ * them, so one is supplied here for any test that asks about one. That keeps the rule
+ * asserted in the one place below that is about it, rather than repeated in every case
+ * that merely happens to use a RESERVATION to say something else.
+ */
 function stored(
   overrides: Partial<NewLedgerEntry> & { id?: string; at?: string } = {},
 ): LedgerEntry {
   const { id = '1', at = '2026-01-01T00:00:00Z', ...input } = overrides;
+  const entryType = input.entryType ?? SOUND.entryType;
 
   return {
     id,
-    ...validateNewLedgerEntry({ ...SOUND, ...input }),
+    ...validateNewLedgerEntry({
+      ...SOUND,
+      ...((REQUEST_MOVEMENTS as readonly string[]).includes(entryType)
+        ? { leaveRequestId: '77' }
+        : {}),
+      ...input,
+    }),
     createdBy: 'Ama in HR',
     createdByEmployeeId: '9',
     createdAt: new Date(at),
@@ -227,7 +258,7 @@ describe('how many days moved', () => {
   it('is refused the wrong way round for its type', () => {
     expect(refusedField(() => validateNewLedgerEntry({ ...SOUND, days: -20 }))).toBe('days');
     expect(
-      refusedField(() => validateNewLedgerEntry({ ...SOUND, entryType: 'RESERVATION', days: 5 })),
+      refusedField(() => validateNewLedgerEntry({ ...soundFor('RESERVATION'), days: 5 })),
     ).toBe('days');
     expect(
       refusedField(() => validateNewLedgerEntry({ ...SOUND, entryType: 'EXPIRY', days: 3 })),
@@ -243,7 +274,7 @@ describe('how many days moved', () => {
      history that explains nothing and has to be skipped by every reader of it. */
   it('is never nothing', () => {
     for (const entryType of LEDGER_ENTRY_TYPES) {
-      expect(refusedField(() => validateNewLedgerEntry({ ...SOUND, entryType, days: 0 }))).toBe(
+      expect(refusedField(() => validateNewLedgerEntry({ ...soundFor(entryType), days: 0 }))).toBe(
         'days',
       );
     }
@@ -275,13 +306,73 @@ describe('how many days moved', () => {
  * column is allowed a scale at all — see ./migrations.test.ts, which permits it by
  * name on this condition.
  */
+/**
+ * Which request a movement is about. LMS 301.
+ *
+ * The column the immutable-leave-ledger migration refused to add until there was a
+ * table to put behind it, and the rule it named when it did: "the four request-shaped
+ * entry types must carry one".
+ *
+ * **It is an equivalence rather than a requirement, and the second half is the half
+ * that matters.** A reservation with no request is days held for nothing anybody can
+ * find, which is the obvious failure. A *grant* with a request is a year's entitlement
+ * filed under a fortnight in March — which is what a method copied from `reserve`
+ * produces, looks entirely reasonable, and nothing downstream would question.
+ */
+describe('which request a movement is about', () => {
+  it.each(REQUEST_MOVEMENTS)('%s has to name the request that caused it', (entryType) => {
+    const days = ENTRY_SIGNS[entryType] === 'ADDS' ? 5 : -5;
+
+    expect(validateNewLedgerEntry({ ...soundFor(entryType), days }).leaveRequestId).toBe('77');
+    expect(refusedField(() => validateNewLedgerEntry({ ...SOUND, entryType, days }))).toBe(
+      'leaveRequestId',
+    );
+  });
+
+  it.each(LEDGER_ENTRY_TYPES.filter((type) => !REQUEST_MOVEMENTS.includes(type)))(
+    '%s moves what somebody is owed, so it cannot name one',
+    (entryType) => {
+      const days = ENTRY_SIGNS[entryType] === 'CONSUMES' ? -5 : 5;
+
+      expect(validateNewLedgerEntry({ ...SOUND, entryType, days }).leaveRequestId).toBeNull();
+      expect(
+        refusedField(() =>
+          validateNewLedgerEntry({ ...SOUND, entryType, days, leaveRequestId: '77' }),
+        ),
+      ).toBe('leaveRequestId');
+    },
+  );
+
+  /* The line runs exactly along REQUEST_MOVEMENTS, which is the same list FR 24's whole
+     days rule runs along — because they are the same distinction seen twice. A request
+     is whole days and names a request; what somebody has accrued is divisible and names
+     nothing. */
+  it('and the line is the same one whole days are held to', () => {
+    for (const entryType of LEDGER_ENTRY_TYPES) {
+      const needsARequest = (REQUEST_MOVEMENTS as readonly string[]).includes(entryType);
+
+      expect(isARequestMovement(entryType), entryType).toBe(needsARequest);
+    }
+  });
+
+  /* And a correction of a reservation is an ADJUSTMENT, so it names no request — which
+     is right rather than an oversight: the adjustment is HR moving days by fiat, and
+     what it puts right is an entry rather than a request. */
+  it('and the correction of a request movement names no request', () => {
+    const held = stored({ entryType: 'RESERVATION', days: -5 });
+
+    expect(correctionFor(held, 'wrong person').leaveRequestId).toBeUndefined();
+    expect(validateNewLedgerEntry(correctionFor(held, 'wrong person')).leaveRequestId).toBeNull();
+  });
+});
+
 describe('whole days, and the one place a fraction belongs', () => {
   it.each(REQUEST_MOVEMENTS)('%s follows a request, so it moves whole days', (entryType) => {
     const whole = ENTRY_SIGNS[entryType] === 'ADDS' ? 5 : -5;
     const half = ENTRY_SIGNS[entryType] === 'ADDS' ? 5.5 : -5.5;
 
-    expect(validateNewLedgerEntry({ ...SOUND, entryType, days: whole }).days).toBe(whole);
-    expect(refusedField(() => validateNewLedgerEntry({ ...SOUND, entryType, days: half }))).toBe(
+    expect(validateNewLedgerEntry({ ...soundFor(entryType), days: whole }).days).toBe(whole);
+    expect(refusedField(() => validateNewLedgerEntry({ ...soundFor(entryType), days: half }))).toBe(
       'days',
     );
   });

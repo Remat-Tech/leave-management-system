@@ -81,6 +81,12 @@ describe('the entities an entry can be about', () => {
          question asked if it turns out not to have, and `created_at` answers only
          half of it. */
       'leave_entitlement_event',
+      /* LMS 301. The first table whose rows are written by the subject of the record
+         rather than about them. Almost everything on it is frozen the moment it is
+         written; what can move is the status and the reason, and both are what a
+         manager and an employee remembering a fortnight differently are arguing
+         about. */
+      'leave_request',
     ]);
   });
 });

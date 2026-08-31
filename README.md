@@ -392,6 +392,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Carrying last year's unused days forward | | `HR_ADMIN` only |
 | Recording an event and granting what it brings | | `HR_OFFICER`, `HR_ADMIN` |
 | Lapsing an unused event grant | | `HR_ADMIN` only |
+| A leave request | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | yourself, `HR_OFFICER`, `HR_ADMIN` — and only the person who asked may reword one |
 | Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
 | Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` — never yourself |
 | Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
@@ -399,7 +400,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
 
-Nine of those lines are decisions rather than defaults, and each is argued in the
+Ten of those lines are decisions rather than defaults, and each is argued in the
 policy file that holds it.
 
 **A line manager sees their reports because of the record, never because of a
@@ -488,6 +489,18 @@ None of those decides whether the request itself is legitimate — the notice pe
 the documentation, whether this is the approver FR 38a's chain is waiting on. Those
 belong to the request and approval stories and are asked first. What the balance asks
 of anybody moving it is the narrower question: have you any standing here at all.
+
+**A request is read by three people, asked for by two, and reworded by one.** LMS 301,
+and the three widths are the decision. Reading follows the balance exactly — yours, your
+line manager's, or a role that reads everybody — because a request is *why* a figure is
+what it is, and standing to see one without the other is standing to see half an
+explanation. Asking is narrower: yours, and HR's on your behalf under FR 18, and
+deliberately not your line manager's, for the reason `ledgerPolicy.reserve` gives about
+somebody who could reduce what you may book without ever approving anything. Rewording
+is narrower still and is the author's alone, which is the one place in this system where
+being able to create something does not carry the right to edit it — the reason is the
+account an approver decides on, and unlike every figure on the row no trigger can refuse
+a change to it, because the field is deliberately editable.
 
 **Setting a joiner up is HR's, and closing an account is not.** An HR Officer
 creates the record on somebody's first morning and gives them the login in the
@@ -2559,6 +2572,111 @@ about any of them, which is also the only way a test watches six months pass.
 
 ---
 
+### Asking for leave
+
+**Quoted before it is charged, and the same number twice.** FR 10, FR 11, §8, LMS 301.
+`LeaveRequestService.quote()` says what a period would cost and writes nothing;
+`submit()` asks the same question again, inside the transaction that holds the days,
+and stores what it counted. Counting twice looks like waste and is the point — the
+alternative is a figure handed back to the caller and passed in again at submission, and
+a caller that can supply a figure can supply a smaller one. **The day count is never an
+input.**
+
+What is between the two calls is a person reading a screen, which is exactly the window
+a public holiday could be gazetted in. If one is, the second count is the one that is
+charged, and that is the honest behaviour rather than a race: a quote is not a promise.
+
+**A quote is the number and the reason for it.** `LeaveRequestQuote` carries the day
+count, the calendar span, the counting basis *in words*, every day inside the period
+that cost nothing and why, what the balance holds now and would hold afterwards, who
+would decide it, and anything worth saying that is not a refusal. "Nine days off cost
+you six" is an assertion; "the sixth of March is Independence Day and the two days after
+it are a weekend" is the explanation, and NFR USA 03 asks for the second.
+
+**The counting basis is copied onto the request, and that is the whole of FR 11.** An HR
+Administrator may change a leave type's `counting_basis` — it is one dropdown. Without
+the copy, every request ever made under the old rule silently restates itself the next
+time a screen renders it: last March's fortnight begins reading as fourteen days rather
+than ten, beside a ledger still saying ten, and nothing anywhere says which is right. So
+`counting_basis`, `days` and `calendar_days` are written at submission and
+`refuse_rewriting_what_a_request_cost()` refuses to let any of them move, on the owner
+connection too. **Read the request's basis when rendering a request, never the type's.**
+They agree today and the whole reason the column exists is the day they do not.
+
+That is the same argument three other tables already make. `leave_entitlement_event`
+stores `expires_on` so a type's expiry months cannot move a deadline already given;
+`leave_ledger_entry` stores `days` so an entitlement figure cannot restate a grant;
+`leave_balance` is a cache checked nightly against the rows it was built from. In each
+case it is design principle 1 — **what was recorded is what happened**, and configuration
+describes what happens next. The one thing left editable is the `reason`, which explains
+rather than decides, exactly as an entitlement event's `note` does.
+
+**Submitting holds the days.** The README has said since Phase 1 that "pending days are
+reserved: submitting a request writes a `RESERVATION` entry immediately, and this is what
+stops somebody with five days left having three separate five day requests in flight."
+`BalanceService.reserve` was built for that in LMS 212 and left unused until now; it is
+`reserveForRequest` today, and the request row and its `RESERVATION` are one act.
+
+The two rows are written in the opposite order to a birth and its grant, and which way
+round is decided by which way the key points: an event names the grant it caused, so the
+entry goes first; a request is *named by* the movements it causes, so the request goes
+first. There is deliberately no `reserved_entry_id` on `leave_request` pointing back —
+two NOT NULL keys between two tables is a pair neither row can be written first. What
+holds the pair together instead is the same division of labour "exactly one default" and
+"exactly one root" already have:
+
+| | Covers | Does not cover |
+|---|---|---|
+| `leave_request_reserves_once`, a unique partial index | a second `RESERVATION` against one request, immediately, on every connection | a request holding nothing |
+| `leave_request_holds_its_days`, a deferred constraint trigger | a request that reserved nothing, at `COMMIT` | `TRUNCATE`, which no row trigger sees |
+
+**Deferred is the whole point of the second one.** The request has to exist before an
+entry can name it, so between the two statements there is a request holding nothing — a
+legitimate intermediate state a per-row check would refuse and a check at commit judges
+correctly, because the only state it ever sees is the one that will actually be stored.
+
+**And the ledger finally learned which request a movement is about.** The
+immutable-leave-ledger migration refused `leave_request_id` and said why — "a nullable id
+with no foreign key behind it would be a column nothing could populate and nothing could
+check" — and named the three things it wanted instead: a column, a foreign key, and the
+rule that the four request-shaped entry types carry one. All three arrived here, and the
+rule is an **equivalence** rather than a requirement: a request movement must have one
+and everything else must not. The second half is the one that catches a `GRANT` posted
+against a request id because a method was copied from `reserve` — a year's entitlement
+filed under a fortnight in March, which looks entirely reasonable.
+
+**Leave over a year end is refused, not split.** A request is one period against one
+balance and a balance belongs to one leave year, so the twenty-eighth of December to the
+fifth of January is two balances; reserving all ten days against either would be a figure
+that reconciles and is wrong. The refusal names both years so the person at the form
+knows what to do. `leave_type.may_be_split` and `assertMayBeSplit()` have been in the
+domain since LMS 201 and are what a story offering the split would use — it is two
+requests with one approval between them, which is a decision rather than an arithmetic.
+
+**Notice and documentation warn; they do not refuse.** FR 17 is advisory by design —
+leave is sometimes needed at short notice, and a system that refused it is a system people
+work around — so a short-notice request is submitted and the quote says by how much. FR
+13's documentation is an attachment and there is nowhere to attach one until Phase 4.
+
+**What this story deliberately does not bring**, each named so it is inherited rather
+than rediscovered:
+
+* **No state machine.** `leave_request_status_known` holds one value, and that is LMS
+  209's rule applied honestly rather than an oversight papered over: a CHECK listing six
+  states of which one is reachable is a promise the schema cannot keep. The approval story
+  extends the list in its own migration, exactly as LMS 218 extended
+  `leave_ledger_entry_type_known` to admit `LAPSE`. The README's "only the state machine
+  moves a request" is what that story inherits; what this one guarantees is that nothing
+  else has moved one first.
+* **No overlap constraint.** The baseline enabled `btree_gist` for the GiST exclusion
+  constraint that refuses two requests over the same fortnight. It is not here because it
+  is a rule about two requests and this story is about one — and because the constraint
+  has to know which statuses count as live, which is the state machine's list.
+* **No approval, withdrawal or cancellation.** All three move `status` and two of them
+  release days. `ledgerPolicy.release` is already written and waiting for them.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.
@@ -2660,6 +2778,17 @@ nobody has written yet: any column typed `timestamp without time zone`, any
 there. `unit/time.test.ts` covers the pure half, and `unit/migrations.test.ts`
 asks the same question of the SQL so the answer arrives in a second rather than a
 minute.
+
+**`integration/leave-request.test.ts` carries the half of LMS 301 that a pure
+function cannot reach**, and the test it exists for is one: submit a request,
+change the leave type's counting basis underneath it, and read the request back
+unchanged. FR 11 is a claim about what happens to yesterday's records when
+somebody edits configuration today, so it cannot be proved without a real leave
+type to edit and a real row to re-read. The same suite is where the request and
+its `RESERVATION` are shown to be one act — a foreign key, a deferred trigger and
+a rollback are not properties any pure function has.
+`unit/leave-request.test.ts` covers what a quote says and what a request has to
+carry, and neither file names a leave type by its code.
 
 **`unit/leave-type.test.ts` is where LMS 201 is proved and
 `integration/leave-type.test.ts` is what stops it being proved against itself.**

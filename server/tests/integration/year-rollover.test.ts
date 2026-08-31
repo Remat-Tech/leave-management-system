@@ -230,13 +230,12 @@ async function takes(days: number): Promise<void> {
     reason: `${days} days of 2025 annual leave`,
   };
 
-  await balances.reserve(asAdministrator(), movement);
-  await balances.commit(asAdministrator(), movement);
+  await takeDays(movement);
 }
 
 /** Holds `days` without approving them, so a request is still pending when the year ends. */
 async function asksFor(days: number): Promise<void> {
-  await balances.reserve(asAdministrator(), {
+  await holdDays({
     employeeId: people.partTimer,
     leaveTypeId: annualId,
     leaveYearId: y2025.id,
@@ -245,6 +244,56 @@ async function asksFor(days: number): Promise<void> {
   });
 }
 
+/**
+ * Days taken, the way they are actually taken since LMS 301.
+ *
+ * A RESERVATION has to name a request and a request has to hold days, so "five days
+ * gone" is no longer one call — it is a request that holds them and an approval that
+ * turns the hold into days taken. The period runs from the first day of the leave year
+ * so that any figure is a period the table accepts; what these tests are about is the
+ * balance rather than the counting.
+ */
+async function takeDays(movement: {
+  employeeId: string;
+  leaveTypeId: string;
+  leaveYearId: string;
+  days: number;
+  reason: string;
+}): Promise<void> {
+  const { request } = await holdDays(movement);
+
+  await balances.commit(asAdministrator(), { ...movement, leaveRequestId: request.id });
+}
+
+/** The holding half of {@link takeDays}, for leave nobody has decided yet. */
+async function holdDays(movement: {
+  employeeId: string;
+  leaveTypeId: string;
+  leaveYearId: string;
+  days: number;
+  reason: string;
+}) {
+  const { rows } = await admin.query<{ start_date: string; end_date: string }>(
+    `SELECT start_date, start_date + ($2::int - 1) AS end_date FROM leave_year WHERE id = $1`,
+    [movement.leaveYearId, movement.days],
+  );
+
+  return balances.reserveForRequest(asAdministrator(), {
+    request: {
+      employeeId: movement.employeeId,
+      leaveTypeId: movement.leaveTypeId,
+      leaveYearId: movement.leaveYearId,
+      from: rows[0].start_date,
+      to: rows[0].end_date,
+      reason: movement.reason,
+      countingBasis: 'CALENDAR_DAYS' as const,
+      days: movement.days,
+      calendarDays: movement.days,
+      status: 'SUBMITTED' as const,
+    },
+    reason: movement.reason,
+  });
+}
 function balanceOf(employeeId: string, leaveTypeId: string, leaveYearId: string) {
   return balances.forOne(asAdministrator(), { employeeId, leaveTypeId, leaveYearId });
 }

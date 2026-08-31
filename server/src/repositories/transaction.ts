@@ -32,6 +32,7 @@ import { BalanceRepository } from './balance-repository.js';
 import { DepartmentRepository } from './department-repository.js';
 import { EmployeeRepository } from './employee-repository.js';
 import { LeaveEventRepository } from './leave-event-repository.js';
+import { LeaveRequestRepository } from './leave-request-repository.js';
 import { LeaveTypeRepository } from './leave-type-repository.js';
 import { LeaveYearRepository } from './leave-year-repository.js';
 import { LedgerRepository } from './ledger-repository.js';
@@ -72,12 +73,21 @@ export interface Repositories {
    * names the event and the event names the grant — so both rows land in one
    * transaction or neither does. An event that granted nothing and a grant with
    * nothing behind it are both halves of something that did not happen.
+   *
+   * `requests` arrived with LMS 301 and is the same shape as `events` with one
+   * difference that decides the order the two rows are written in. An event names the
+   * grant it caused; a *request* is named by the movements it causes, so the request
+   * row goes first and the RESERVATION follows naming it. What holds the pair together
+   * is `leave_request_holds_its_days`, a deferred constraint trigger that judges at
+   * COMMIT — the only point at which a request with no reservation is distinguishable
+   * from a request whose reservation has not been written yet.
    */
   balances: BalanceRepository;
   entries: LedgerRepository;
   types: LeaveTypeRepository;
   years: LeaveYearRepository;
   events: LeaveEventRepository;
+  requests: LeaveRequestRepository;
 }
 
 export class Transactions {
@@ -110,6 +120,7 @@ export class Transactions {
         types: new LeaveTypeRepository(trx),
         years: new LeaveYearRepository(trx),
         events: new LeaveEventRepository(trx),
+        requests: new LeaveRequestRepository(trx),
       }),
     );
   }

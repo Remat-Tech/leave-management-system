@@ -170,7 +170,7 @@ describe('the columns', () => {
      being told their fourteen days had run out. `expires_on` is nullable, which is
      the only one of the nine that carries a real absence: most event types never run
      out at all. */
-  it('the nine dates there are today are the ones expected', async () => {
+  it('the eleven dates there are today are the ones expected', async () => {
     const dates = (await temporalColumns())
       .filter((column) => column.data_type === 'date')
       .map((column) => `${column.table_name}.${column.column_name}`);
@@ -183,6 +183,8 @@ describe('the columns', () => {
       'leave_entitlement_event.occurred_on',
       'leave_entitlement_rule.effective_from',
       'leave_entitlement_rule.effective_to',
+      'leave_request.end_date',
+      'leave_request.start_date',
       'leave_year.end_date',
       'leave_year.start_date',
     ]);
