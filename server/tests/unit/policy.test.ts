@@ -19,6 +19,7 @@ import {
 import { entitlementRulePolicy } from '../../src/auth/entitlement-rule-policy.js';
 import type { EntitlementRule } from '../../src/domain/entitlement-rule.js';
 import { holidayPolicy } from '../../src/auth/holiday-policy.js';
+import { leaveRequestPolicy } from '../../src/auth/leave-request-policy.js';
 import { leaveTypePolicy } from '../../src/auth/leave-type-policy.js';
 import { ledgerPolicy } from '../../src/auth/ledger-policy.js';
 import { leaveYearPolicy } from '../../src/auth/leave-year-policy.js';
@@ -1164,6 +1165,118 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       expect(decision.told).not.toBeNull();
       expect(decision.because).not.toBeNull();
     }
+  });
+
+  /**
+   * Asking for leave, and seeing what somebody asked for. FR 10, LMS 301.
+   *
+   * Three decisions with three different widths, and the widths are the story: reading
+   * is the balance's three standings, asking is narrower than reading, and rewording is
+   * narrower still.
+   */
+  describe('a leave request', () => {
+    it('is read by exactly the people who may read the balance it moves', () => {
+      expect(leaveRequestPolicy.read(employee('ama'), hers).allowed).toBe(true);
+      expect(leaveRequestPolicy.read(manager('akosua'), hers).allowed).toBe(true);
+
+      for (const [code, roles] of EACH_ROLE) {
+        expect(leaveRequestPolicy.read(employee('adwoa', roles), hers).allowed).toBe(
+          READS_EVERY_RECORD.includes(code),
+        );
+      }
+    });
+
+    /* And it agrees with the ledger for every actor there is, which is the claim the
+       policy file makes: a request is why a figure is what it is, and standing to see
+       one without the other would be standing to see half an explanation. */
+    it('and agrees with the ledger about that, for everybody', () => {
+      for (const [, roles] of EACH_ROLE) {
+        const them = employee('adwoa', roles);
+
+        expect(leaveRequestPolicy.read(them, hers).allowed).toBe(
+          ledgerPolicy.read(them, hers).allowed,
+        );
+      }
+
+      expect(leaveRequestPolicy.read(manager('akosua'), hers).allowed).toBe(
+        ledgerPolicy.read(manager('akosua'), hers).allowed,
+      );
+    });
+
+    /* FR 18 puts HR on it: somebody who was away and could not ask is entered
+       afterwards. Everybody else asks only for themselves. */
+    it('is asked for by the person taking it, and by HR on their behalf', () => {
+      expect(leaveRequestPolicy.submit(employee('ama'), hers).allowed).toBe(true);
+
+      for (const [code, roles] of EACH_ROLE) {
+        expect(leaveRequestPolicy.submit(employee('adwoa', roles), hers).allowed).toBe(
+          MAINTAINS_EMPLOYEE_RECORDS.includes(code),
+        );
+      }
+    });
+
+    /**
+     * And never by their line manager, which is the one place their standing over a
+     * report does not carry.
+     *
+     * The same rule `ledgerPolicy.reserve` holds and for the same reason: a manager who
+     * could ask for leave on somebody's behalf could reduce what that person may book
+     * without ever approving anything. They may read it, and that pair — read yes, ask
+     * no — is what would quietly stop being true if somebody widened this to the three
+     * standings the read has.
+     */
+    it('and never by their line manager, who may nonetheless read it', () => {
+      expect(leaveRequestPolicy.read(manager('akosua'), hers).allowed).toBe(true);
+      expect(leaveRequestPolicy.submit(manager('akosua'), hers).allowed).toBe(false);
+      expect(leaveRequestPolicy.submit(manager('akosua'), hers).told).toMatch(/FR 18/);
+    });
+
+    /**
+     * And the reason is the author's alone, which is narrower than submitting.
+     *
+     * The one place in this file where being able to create something does not carry
+     * the right to edit it. The reason is what an approver decides on, and unlike every
+     * figure on the row no trigger can refuse a change to it — the field is
+     * deliberately editable — so this decision is the whole of the protection.
+     */
+    it('and is reworded only by the person who asked for it', () => {
+      expect(leaveRequestPolicy.reword(employee('ama'), hers).allowed).toBe(true);
+      expect(leaveRequestPolicy.reword(manager('akosua'), hers).allowed).toBe(false);
+
+      for (const [, roles] of EACH_ROLE) {
+        expect(leaveRequestPolicy.reword(employee('adwoa', roles), hers).allowed).toBe(false);
+      }
+    });
+
+    /* A refused read says nothing, because somebody asking after leave that is not
+       theirs has not been shown that the person exists. The other two say which desk,
+       because anybody reaching them can already read the balance. */
+    it('says nothing about a refused read, and why about the rest', () => {
+      const adwoa = employee('adwoa');
+
+      expect(leaveRequestPolicy.read(adwoa, hers).told).toBeNull();
+
+      for (const decision of [
+        leaveRequestPolicy.submit(adwoa, hers),
+        leaveRequestPolicy.reword(adwoa, hers),
+      ]) {
+        expect(decision.allowed).toBe(false);
+        expect(decision.told).not.toBeNull();
+        expect(decision.because).not.toBeNull();
+      }
+    });
+
+    /* There is no `approve` in that file and its absence is deliberate: a decision here
+       would be a way to reach the transition without passing the check that knows which
+       desk FR 38a's chain has the request sitting on. */
+    it('and has no decision for approving one, which is the next story’s', () => {
+      expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
+        'read',
+        'resource',
+        'reword',
+        'submit',
+      ]);
+    });
   });
 
   /* The system is nobody, so it matches no owner and no manager — and holds every

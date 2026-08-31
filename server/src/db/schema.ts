@@ -508,6 +508,17 @@ export interface LeaveLedgerEntryTable {
   /* The entry this one puts right. Only an ADJUSTMENT may carry one, and it must be
      in the same balance — `refuse_a_correction_across_balances()`. */
   corrects_id: string | null;
+  /* The request that caused this movement. LMS 301, and the column the
+     immutable-leave-ledger migration refused to add until there was a table to put
+     behind it.
+
+     Null for everything that moves what somebody is *owed* — a grant, a carry
+     forward, an adjustment, an expiry, a lapse — and required of the four that move
+     what they have *asked for*. That is an equivalence rather than a requirement:
+     `leave_ledger_entry_request_movements_name_a_request` refuses a reservation
+     without one and a grant with one, and the second half is the one that catches a
+     method copied from `reserve`. */
+  leave_request_id: string | null;
   /* Who, in the two forms audit_log keeps them: the id to join on, the description
      to read when the id belongs to nobody. A year rollover has no person behind it.
      Both stamped by the trigger, never by the writer. */
@@ -682,6 +693,67 @@ export interface LeaveEntitlementEventTable {
   updated_at: ColumnType<Date, never, never>;
 }
 
+/**
+ * A period of leave somebody has asked for. FR 10, FR 11, §8. LMS 301.
+ *
+ * The first table whose rows are written by the subject of the record rather than
+ * about them, and the first that both points at the ledger and is pointed at by it —
+ * `leave_ledger_entry.leave_request_id` is the filing, and there is deliberately no
+ * column here pointing back. Two NOT NULL keys between two tables is a pair neither
+ * row can be written first.
+ *
+ * **`counting_basis`, `days` and `calendar_days` are a copy, and the copy is the
+ * point.** FR 11: an HR Administrator may change a leave type's counting basis, and a
+ * request that read it fresh would restate what it cost every time somebody looked at
+ * it. `refuse_rewriting_what_a_request_cost()` holds all three, and the two dates, and
+ * who and what kind, on every connection — so the only editable columns are `reason`,
+ * which explains rather than decides, and `status`, which the approval story moves.
+ *
+ * `submitted_at` is stamped by a trigger rather than defaulted, for the reason the
+ * ledger stamps its writer: FR 17 counts notice from it and FR 18 judges backdating
+ * against it, so it is not a figure the writer supplies.
+ */
+export interface LeaveRequestTable {
+  id: Generated<string>;
+  /* The same three a balance is keyed by, so a request and the movements it causes are
+     filed identically. `leave_year_id` is held to a year covering the whole period by
+     `refuse_a_request_outside_its_leave_year()`, which is what refuses leave running
+     over a year end rather than splitting it. */
+  employee_id: ColumnType<string, string, never>;
+  leave_type_id: ColumnType<string, string, never>;
+  leave_year_id: ColumnType<string, string, never>;
+  /* Inclusive at both ends: away from the twenty first to the thirty first means both
+     of those days. `date`, so no zone can move one across midnight. NFR DAT 03. */
+  start_date: ColumnType<string, string, never>;
+  end_date: ColumnType<string, string, never>;
+  /* FR 10. Mandatory, unlike an entitlement event's note — a manager is being asked to
+     agree to something. The one field of substance that may be edited afterwards. */
+  reason: string;
+  /* FR 11, the story's third criterion. WORKING_DAYS | CALENDAR_DAYS, held closed by
+     leave_request_counting_basis_known; the domain's COUNTING_BASES is the same list
+     and the integration suite asserts the two agree.
+
+     Read this rather than the leave type's when rendering a request. They agree today
+     and the whole reason the column exists is the day they do not. */
+  counting_basis: ColumnType<string, string, never>;
+  /* What it cost, and what the RESERVATION took. `integer` rather than the ledger's
+     `numeric`, which is FR 24 in the type system: leave is requested in whole days,
+     and the ledger's fractions are entitlement rather than requests. */
+  days: ColumnType<number, number, never>;
+  /* The span, counted or not, held equal to the two dates by
+     leave_request_spans_its_own_dates. Stored rather than derived because it is the
+     other half of the sentence a person reads. */
+  calendar_days: ColumnType<number, number, never>;
+  /* SUBMITTED, and only that today. The approval story extends the CHECK in its own
+     migration, as LMS 218 extended the ledger's entry types to admit LAPSE. */
+  status: string;
+  /* Stamped by leave_request_says_when_it_was_submitted, never supplied. */
+  submitted_at: Timestamp;
+  created_at: Timestamp;
+  /* Maintained by the leave_request_set_updated_at trigger. */
+  updated_at: Timestamp;
+}
+
 export interface Database {
   app_user: AppUserTable;
   audit_log: AuditLogTable;
@@ -693,6 +765,7 @@ export interface Database {
   leave_entitlement_event: LeaveEntitlementEventTable;
   leave_entitlement_rule: LeaveEntitlementRuleTable;
   leave_ledger_entry: LeaveLedgerEntryTable;
+  leave_request: LeaveRequestTable;
   leave_type: LeaveTypeTable;
   leave_type_approval_step: LeaveTypeApprovalStepTable;
   leave_year: LeaveYearTable;

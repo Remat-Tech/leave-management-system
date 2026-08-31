@@ -110,6 +110,7 @@ import {
 import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
 import { type LeaveEvent, validateNewLeaveEvent } from '../domain/leave-event.js';
+import type { LeaveRequest, ValidatedLeaveRequest } from '../domain/leave-request.js';
 import { LeaveTypeNotFound } from '../domain/leave-type.js';
 import { LeaveYearNotFound } from '../domain/leave-year.js';
 import type { CalendarDate } from '../domain/time.js';
@@ -220,6 +221,56 @@ export interface EventLapse extends BalanceMovement {
 }
 
 /**
+ * A movement caused by a leave request. LMS 301.
+ *
+ * The four request-shaped entry types each name the request they are about, and this
+ * type is where that stops being a convention. `leave_request_id` is NOT NULL for
+ * exactly these entries — `leave_ledger_entry_request_movements_name_a_request` — so a
+ * caller that could omit it would be a caller writing rows the database refuses at the
+ * last moment.
+ *
+ * {@link BalanceService.reserveForRequest} does not take one, because it is the method
+ * that creates the request. Approval and release do, because by then there is one.
+ */
+export interface RequestMovement extends BalanceMovement {
+  leaveRequestId: string;
+}
+
+/**
+ * What `LeaveRequestService` supplies to submit one. FR 10, LMS 301.
+ *
+ * Two fields, and they are two because the request and the movement it causes say
+ * different things to different people. `request.reason` is why somebody wants the
+ * leave, written by them and read by whoever approves it; `reason` here is what the
+ * `RESERVATION` says, which is the sentence beside five days missing from a balance —
+ * {@link reasonForReservation} composes it. Sharing one string would put "my sister's
+ * wedding" in the ledger and "5 days of Annual Leave held while it is decided" in front
+ * of the approver.
+ *
+ * The request arrives already priced. The day count, the calendar span and the counting
+ * basis are resolved by `LeaveRequestService`, which is the one place the calculator is
+ * asked — a service that recounted here would be a second answer to what a fortnight
+ * costs, and the whole story is that there is one.
+ */
+export interface RequestToSubmit {
+  request: ValidatedLeaveRequest;
+  /** FR 27. What the movement says, which is not what the request says. */
+  reason: string;
+}
+
+/**
+ * The request, the movement it caused, and the balance it left.
+ *
+ * All three, for the reason {@link EventGranted} carries all three: a caller that has
+ * just submitted a request needs the row it wrote — the id, and what the days were
+ * priced at — and reading the balance again afterwards would read it outside the
+ * transaction that moved it.
+ */
+export interface LeaveRequested extends BalanceMoved {
+  request: LeaveRequest;
+}
+
+/**
  * A movement, the balance it left, and the event it belongs to.
  *
  * {@link BalanceMoved} with the event beside it, because a caller that has just
@@ -307,39 +358,82 @@ export class BalanceService {
   }
 
   /**
-   * Holds days for leave that has been asked for. FR 26, §8.2.
+   * Records a leave request and holds the days it costs. FR 10, FR 26, §8.2. LMS 301.
    *
-   * The first movement of a request's life and the one the locking is for. The
-   * balance is held still, read, checked against what is being asked for, and the
-   * `RESERVATION` written — all inside one transaction, so that a second request for
-   * the same days waits rather than reading a figure the first is about to spend.
+   * The first movement of a request's life and the one the locking is for. The balance
+   * is held still, read, checked against what is being asked for, the request written
+   * and the `RESERVATION` written — all inside one transaction, so that a second
+   * request for the same days waits rather than reading a figure the first is about to
+   * spend.
+   *
+   * **The request and the movement are one act**, exactly as an entitlement event and
+   * its grant are, and for the sharper of the two reasons: a request that reserved
+   * nothing could be submitted three times against a balance holding five days, and a
+   * reservation with no request behind it is days missing from somebody's balance that
+   * nobody can explain.
+   *
+   * The order is the opposite of {@link BalanceService.grantForAnEvent}'s and is
+   * decided by which way the foreign key points. An event names the grant it caused, so
+   * the entry goes first; a request is named by the movements it causes, so the request
+   * goes first. What makes the gap between the two statements legitimate is
+   * `leave_request_holds_its_days`, a deferred constraint trigger — see the
+   * create-and-submit-a-leave-request migration for why it can only be judged at
+   * COMMIT.
+   *
+   * It is here rather than in `LeaveRequestService` for the reason nothing else posts a
+   * movement: the ledger has one door. What that service does is work out *whether* the
+   * leave may be asked for and what it costs; this writes it.
    *
    * Refused with {@link BalanceOverdrawn} where the days are not there, **unless the
    * leave type may be exceeded**. FR 32a makes sick leave a documentation threshold
    * rather than a cap, so going past it asks for a medical certificate instead — a
-   * decision about the request, made by the story that owns requests. What this does
-   * is decline to stand in its way, by reading `exceedableWithDocument` off the type
-   * rather than deciding anything about which type it is.
+   * decision about the request, and what this does is decline to stand in its way by
+   * reading `exceedableWithDocument` off the type rather than deciding anything about
+   * which type it is.
    *
-   * Held days are not taken days. They are subtracted from what may be booked,
-   * because days spoken for are not days to spend twice, and they go back if the
-   * request is refused — see {@link BalanceService.release}.
+   * Held days are not taken days. They are subtracted from what may be booked, because
+   * days spoken for are not days to spend twice, and they go back if the request is
+   * refused — see {@link BalanceService.release}.
    */
-  async reserve(actor: Actor, movement: BalanceMovement): Promise<BalanceMoved> {
-    const owner = await this.ownerOf(movement.employeeId);
+  async reserveForRequest(actor: Actor, submission: RequestToSubmit): Promise<LeaveRequested> {
+    const { request, reason } = submission;
+    const owner = await this.ownerOf(request.employeeId);
 
     this.guard.enforce(ledgerPolicy.reserve(actor, owner));
 
-    return this.moving(actor, movement, async (held, repositories) => {
-      const type = await repositories.types.findById(movement.leaveTypeId);
+    const key = keyOf(request);
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      /* The lock first, and before either row is written: the figure this is checked
+         against has to be held still from the moment it is read until the movement is
+         written, which is the whole of §8.2. */
+      const held = await repositories.balances.holdStill(key);
+
+      const type = await repositories.types.findById(request.leaveTypeId);
 
       if (type === undefined) {
-        throw new LeaveTypeNotFound(movement.leaveTypeId);
+        throw new LeaveTypeNotFound(request.leaveTypeId);
       }
 
+      const days = daysToReserve(held, request.days, type.exceedableWithDocument);
+
+      const written = await repositories.requests.submit(actor, request);
+
+      const entry = await repositories.entries.post(
+        actor,
+        validateNewLedgerEntry({
+          ...key,
+          entryType: 'RESERVATION',
+          days: -days,
+          reason,
+          leaveRequestId: written.id,
+        }),
+      );
+
       return {
-        entryType: 'RESERVATION' as const,
-        days: -daysToReserve(held, movement.days, type.exceedableWithDocument),
+        request: written,
+        entry,
+        balance: withAvailable(await repositories.balances.forOne(key)),
       };
     });
   }
@@ -575,7 +669,7 @@ export class BalanceService {
    * unlikely: the second attempt asks to take five days out of a hold the first one
    * emptied.
    */
-  async commit(actor: Actor, movement: BalanceMovement): Promise<BalanceMoved> {
+  async commit(actor: Actor, movement: RequestMovement): Promise<BalanceMoved> {
     const owner = await this.ownerOf(movement.employeeId);
 
     this.guard.enforce(ledgerPolicy.commit(actor, owner));
@@ -601,7 +695,7 @@ export class BalanceService {
    * a holiday inside approved leave, or an `ADJUSTMENT` where HR has decided — and
    * neither is a release.
    */
-  async release(actor: Actor, movement: BalanceMovement): Promise<BalanceMoved> {
+  async release(actor: Actor, movement: RequestMovement): Promise<BalanceMoved> {
     const owner = await this.ownerOf(movement.employeeId);
 
     this.guard.enforce(ledgerPolicy.release(actor, owner));
@@ -753,12 +847,12 @@ export class BalanceService {
    */
   private async moving(
     actor: Actor,
-    movement: BalanceMovement,
+    movement: BalanceMovement | RequestMovement,
     decide: (
       held: LeaveBalance,
       repositories: Repositories,
     ) => Promise<{
-      entryType: 'GRANT' | 'CARRY_FORWARD' | 'RESERVATION' | 'DEDUCTION' | 'RELEASE';
+      entryType: 'GRANT' | 'CARRY_FORWARD' | 'DEDUCTION' | 'RELEASE';
       days: number;
     }>,
   ): Promise<BalanceMoved> {
@@ -770,7 +864,18 @@ export class BalanceService {
 
       const entry = await repositories.entries.post(
         actor,
-        validateNewLedgerEntry({ ...key, entryType, days, reason: movement.reason }),
+        validateNewLedgerEntry({
+          ...key,
+          entryType,
+          days,
+          reason: movement.reason,
+          /* Present for the two request movements and absent for the two entitlement
+             ones, which is the same equivalence `validateNewLedgerEntry` refuses on
+             either side. Read off the movement rather than passed by each caller, so
+             that a method added here cannot forget it — it either has a request or it
+             does not, and the type says which. */
+          leaveRequestId: 'leaveRequestId' in movement ? movement.leaveRequestId : null,
+        }),
       );
 
       return { entry, balance: withAvailable(await repositories.balances.forOne(key)) };

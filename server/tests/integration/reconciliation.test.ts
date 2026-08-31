@@ -78,7 +78,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request');
+  currentRequest = undefined;
 
   people = (await seed(admin)) as Record<string, string>;
   mailer.clear();
@@ -93,7 +94,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request');
 
   await db?.destroy();
   await admin?.end();
@@ -105,7 +106,7 @@ async function post(
   days: number,
   overrides: Record<string, unknown> = {},
 ): Promise<void> {
-  const row = {
+  const row: Record<string, unknown> = {
     employee_id: people.officer,
     leave_type_id: annualId,
     leave_year_id: y2026Id,
@@ -115,6 +116,38 @@ async function post(
     ...overrides,
   };
 
+  /* LMS 301: a request-shaped entry names the request that caused it, and a request
+     holds days — judged at COMMIT, so the pair goes in one transaction. A RESERVATION
+     is the hold and brings a request of its own; a DEDUCTION or RELEASE draws down the
+     one the RESERVATION before it made. */
+  if (REQUEST_SHAPED.includes(entryType) && row.leave_request_id === undefined) {
+    if (entryType === 'RESERVATION') {
+      await admin.query('BEGIN');
+      try {
+        currentRequest = await insertRequest(row, Math.abs(days));
+        await insertEntry({ ...row, leave_request_id: currentRequest });
+        await admin.query('COMMIT');
+      } catch (error) {
+        await admin.query('ROLLBACK');
+        throw error;
+      }
+
+      return;
+    }
+
+    row.leave_request_id = currentRequest;
+  }
+
+  await insertEntry(row);
+}
+
+/** The four kinds of movement a leave request causes. See ../../src/domain/ledger.ts. */
+const REQUEST_SHAPED = ['RESERVATION', 'DEDUCTION', 'RELEASE', 'RECALCULATION'];
+
+/** The request the request-shaped entries of the current test are filed under. */
+let currentRequest: string | undefined;
+
+async function insertEntry(row: Record<string, unknown>): Promise<void> {
   const columns = Object.keys(row);
   const placeholders = columns.map((_column, index) => `$${index + 1}`).join(', ');
 
@@ -122,6 +155,22 @@ async function post(
     `INSERT INTO leave_ledger_entry (${columns.join(', ')}) VALUES (${placeholders})`,
     Object.values(row),
   );
+}
+
+/** A request row, inside whatever transaction the caller has open. */
+async function insertRequest(key: Record<string, unknown>, days: number): Promise<string> {
+  const { rows } = await admin.query<{ id: string }>(
+    `INSERT INTO leave_request (
+        employee_id, leave_type_id, leave_year_id,
+        start_date, end_date, reason, counting_basis, days, calendar_days, status)
+     SELECT $1, $2, $3, y.start_date, y.start_date + ($4::int - 1), 'a request for the suite',
+            'CALENDAR_DAYS', $4, $4, 'SUBMITTED'
+       FROM leave_year y WHERE y.id = $3
+     RETURNING id`,
+    [key.employee_id, key.leave_type_id, key.leave_year_id, Math.max(1, Math.trunc(days) || 1)],
+  );
+
+  return rows[0].id;
 }
 
 /**
@@ -323,7 +372,7 @@ describe('when a cached balance has nothing behind it', () => {
      exists to make impossible. */
   it('finds it, and says the ledger holds nothing', async () => {
     await post('GRANT', 20);
-    await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
+    await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request');
 
     const found = await job.run(nightly);
 

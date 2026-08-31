@@ -201,6 +201,19 @@ export interface NewLedgerEntry {
   reason: string;
   /** The entry this one puts right. Only an `ADJUSTMENT` may name one. */
   correctsId?: string | null;
+  /**
+   * The request that caused this movement. LMS 301.
+   *
+   * Required of exactly the four in {@link REQUEST_MOVEMENTS} and refused of every
+   * other type — an equivalence rather than a requirement, and both halves matter. A
+   * reservation with no request is days held for nothing anybody can find; a grant
+   * *with* one is a year's entitlement filed under a fortnight in March, which is the
+   * shape a method copied from `reserve` would produce.
+   *
+   * `leave_ledger_entry_request_movements_name_a_request` holds the same equivalence
+   * on every connection. This is the half that says which field was wrong.
+   */
+  leaveRequestId?: string | null;
 }
 
 /** The shape a validated entry has by the time it reaches the repository. */
@@ -212,6 +225,7 @@ export interface ValidatedLedgerEntry {
   days: number;
   reason: string;
   correctsId: string | null;
+  leaveRequestId: string | null;
 }
 
 /**
@@ -230,6 +244,11 @@ export interface LedgerEntry {
   days: number;
   reason: string;
   correctsId: string | null;
+  /**
+   * The request that caused this, for the four in {@link REQUEST_MOVEMENTS}, and null
+   * for every other kind. LMS 301.
+   */
+  leaveRequestId: string | null;
   /** Who, as the writer named themselves. Never null; a job says it is a job. */
   createdBy: string;
   /** Which employee, where the writer was a person. Null for a scheduled job. */
@@ -301,6 +320,7 @@ export class LedgerEntryIsFinal extends Error {
 export function validateNewLedgerEntry(input: NewLedgerEntry): ValidatedLedgerEntry {
   const entryType = requireEntryType(input.entryType);
   const correctsId = optionalId('correctsId', input.correctsId);
+  const leaveRequestId = optionalId('leaveRequestId', input.leaveRequestId);
 
   if (correctsId !== null && entryType !== 'ADJUSTMENT') {
     throw new InvalidLedgerEntry(
@@ -312,6 +332,29 @@ export function validateNewLedgerEntry(input: NewLedgerEntry): ValidatedLedgerEn
     );
   }
 
+  /* LMS 301, and an equivalence rather than a requirement. Both halves are refused
+     here so that the message names the field, and both are held again by
+     `leave_ledger_entry_request_movements_name_a_request` for every other writer. */
+  const movesForARequest = REQUEST_MOVEMENTS.includes(entryType);
+
+  if (movesForARequest && leaveRequestId === null) {
+    throw new InvalidLedgerEntry(
+      'leaveRequestId',
+      `A ${entryType} moves days because of a leave request, so it has to say which ` +
+        `one. Days held or taken with nothing to point at are days nobody can explain ` +
+        `to the person they belong to. FR 27.`,
+    );
+  }
+
+  if (!movesForARequest && leaveRequestId !== null) {
+    throw new InvalidLedgerEntry(
+      'leaveRequestId',
+      `A ${entryType} is not caused by a leave request, so it cannot name one. What it ` +
+        `moves is what somebody is owed rather than what they have asked for, and ` +
+        `filing a year's entitlement under a fortnight in March would misfile both.`,
+    );
+  }
+
   return {
     employeeId: requireId('employeeId', input.employeeId),
     leaveTypeId: requireId('leaveTypeId', input.leaveTypeId),
@@ -320,6 +363,7 @@ export function validateNewLedgerEntry(input: NewLedgerEntry): ValidatedLedgerEn
     days: requireDays(entryType, input.days),
     reason: requireReason(input.reason),
     correctsId,
+    leaveRequestId,
   };
 }
 

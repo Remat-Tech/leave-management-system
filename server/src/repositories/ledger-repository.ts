@@ -77,6 +77,7 @@ const CHECKED_FIELDS: Record<string, string> = {
   leave_ledger_entry_requests_move_whole_days: 'days',
   leave_ledger_entry_only_an_adjustment_corrects: 'entryType',
   leave_ledger_entry_corrects_another: 'correctsId',
+  leave_ledger_entry_request_movements_name_a_request: 'leaveRequestId',
 };
 
 /** Which field a missing reference is reported against. */
@@ -85,6 +86,7 @@ const REFERENCED_FIELDS: Record<string, string> = {
   leave_ledger_entry_leave_type_id_fkey: 'leaveTypeId',
   leave_ledger_entry_leave_year_id_fkey: 'leaveYearId',
   leave_ledger_entry_corrects_id_fkey: 'correctsId',
+  leave_ledger_entry_leave_request_id_fkey: 'leaveRequestId',
 };
 
 type LedgerRow = Selectable<LeaveLedgerEntryTable>;
@@ -326,6 +328,7 @@ function rowFor(entry: ValidatedLedgerEntry): Insertable<LeaveLedgerEntryTable> 
     days: entry.days.toFixed(2),
     reason: entry.reason,
     corrects_id: entry.correctsId,
+    leave_request_id: entry.leaveRequestId,
   };
 }
 
@@ -348,6 +351,7 @@ function toEntry(row: LedgerRow): LedgerEntry {
     days: Number(row.days),
     reason: row.reason,
     correctsId: row.corrects_id,
+    leaveRequestId: row.leave_request_id,
     createdBy: row.created_by,
     createdByEmployeeId: row.created_by_employee_id,
     createdAt: row.created_at,
