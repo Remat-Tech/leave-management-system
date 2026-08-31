@@ -283,6 +283,82 @@ export const ledgerPolicy = {
   },
 
   /**
+   * Recording something that happened, and the entitlement it brings. FR 32g, LMS 218.
+   *
+   * **HR, both desks**, and it is the one grant in this file that is not an
+   * Administrator's alone. That is a departure from {@link ledgerPolicy.grant} and
+   * {@link ledgerPolicy.carryForward}, so it needs an argument rather than a shrug.
+   *
+   * What those two have in common is that they apply a *policy* to everybody at once:
+   * a year's entitlement, or a year's remainder, for the whole company on one morning.
+   * Recording a birth is not that. It is one fact about one person, told to whoever in
+   * HR answered the telephone, and the figure it produces is not chosen here either —
+   * it comes from the entitlement rule for the type, which is still an Administrator's
+   * to write. So the decision being made at this desk is "did this happen", which is
+   * exactly the decision {@link MAINTAINS_EMPLOYEE_RECORDS} exists for: joiners,
+   * leavers, and the changes to somebody's record that HR makes daily.
+   *
+   * The practical half is the one {@link MAINTAINS_THE_CALENDAR} makes about gazetted
+   * holidays, and it bites harder here. A new father with fourteen days he cannot book
+   * because an Administrator has not been in this week is the system failing at the
+   * only moment it was ever going to matter to him.
+   *
+   * `SYS_ADMIN` is deliberately not on it. Recording a birth is HR's job, not a power
+   * that comes with being able to reach the database.
+   *
+   * Refused openly, because anybody reaching this can already read the balance.
+   */
+  grantForAnEvent(actor: Actor, owner: BalanceOwner): Decision {
+    return holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)
+      ? about.allow(actor, 'grantForAnEvent', owner.employeeId)
+      : about.refuseOpenly(
+          actor,
+          'grantForAnEvent',
+          owner.employeeId,
+          'holds no role that keeps employee records',
+          'Entitlement that arrives with an event is granted when HR records the ' +
+            'event. It is the desk that keeps the employee records, and the figure ' +
+            'comes from the entitlement rule rather than from whoever enters it. ' +
+            'FR 32g.',
+        );
+  },
+
+  /**
+   * Lapsing an event grant that was not used in time. FR 32e, LMS 218.
+   *
+   * Back to an HR Administrator's, and the line between this and
+   * {@link ledgerPolicy.grantForAnEvent} above is the line this file keeps everywhere:
+   * recording that something happened to one person is the employee-record desk, and
+   * applying a rule that takes days off people is the desk that writes the rule.
+   * `leave_type.entitlement_expiry_months` is what decides that paternity's fourteen
+   * days run out after six months, and writing it is `leaveTypePolicy.update` — an
+   * Administrator's.
+   *
+   * It matters more here than for a grant because of the direction. A grant that
+   * should not have happened leaves somebody with days they did not earn, which the
+   * next report catches. A lapse that should not have happened takes days off somebody
+   * who was going to use them, and they find out when they try to book.
+   *
+   * The nightly run passes as `theSystem`, which holds every role and is nobody.
+   *
+   * Refused openly. Anybody reaching this can already read the balance, and somebody
+   * asking why days went missing is asking a reasonable question at the wrong desk.
+   */
+  lapse(actor: Actor, owner: BalanceOwner): Decision {
+    return holdsAny(actor, ...SETS_UP_THE_ORGANISATION)
+      ? about.allow(actor, 'lapse', owner.employeeId)
+      : about.refuseOpenly(
+          actor,
+          'lapse',
+          owner.employeeId,
+          'holds no role that lapses an unused grant',
+          'Days lapse because a leave type says how long a grant is usable for, and ' +
+            'applying that is the same desk that writes it — an HR Administrator’s. ' +
+            'FR 32e.',
+        );
+  },
+
+  /**
    * Carrying last year's unused days into the new one. FR 36, LMS 217.
    *
    * The same rule as {@link ledgerPolicy.grant}, an HR Administrator's, and it is its own

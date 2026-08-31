@@ -639,6 +639,49 @@ export interface WhatTheLedgerSaysView {
   pending: ColumnType<string, never, never>;
 }
 
+/**
+ * Something that happened, and the entitlement it brought with it. FR 32g, FR 32e.
+ * LMS 218.
+ *
+ * The record a grant is made *against*, and the reason it is a table rather than two
+ * columns on `leave_ledger_entry`: when a birth happened is not a fact about a
+ * movement in a balance, and `created_at` on the grant is the day somebody typed it
+ * rather than the day the child was born.
+ *
+ * **Only `note` and `lapsed_entry_id` may be updated.** The three facts the grant was
+ * calculated from — who, what kind, when — and the deadline it was made under are held
+ * by `refuse_rewriting_an_entitlement_event()`, for the owner connection as well. A
+ * birth recorded against the wrong person is put right by a compensating ADJUSTMENT on
+ * each balance, never by an edit. Nothing is deleted at all.
+ */
+export interface LeaveEntitlementEventTable {
+  id: Generated<string>;
+  /* The same three a balance is keyed by, so an event and the movement it caused are
+     filed identically. `leave_year_id` is held to the year covering `occurred_on` by
+     `refuse_an_event_outside_its_leave_year()`. */
+  employee_id: ColumnType<string, string, never>;
+  leave_type_id: ColumnType<string, string, never>;
+  leave_year_id: ColumnType<string, string, never>;
+  /* The day it happened, which is not the day it was recorded: FR 18 lets an absence
+     be entered a week late and a birth reaches HR later than that, so six months from
+     `created_at` would be six months from the wrong day. */
+  occurred_on: ColumnType<string, string, never>;
+  /* FR 32e. Null where this type's grant never runs out, which is every event type but
+     paternity today. Stored rather than derived, so that changing
+     `leave_type.entitlement_expiry_months` cannot move a deadline already given. */
+  expires_on: ColumnType<string | null, string | null, never>;
+  note: string | null;
+  /* §8.6aa and the story's first criterion, as a foreign key. Unique: one grant, one
+     event. Written in the same transaction as the entry it names. */
+  granted_entry_id: ColumnType<string, string, never>;
+  /* The LAPSE that closed it off, and the whole of the expiry job's idempotency: a row
+     with this set is done. The one column above that an UPDATE may touch. */
+  lapsed_entry_id: string | null;
+  created_at: Timestamp;
+  /* Maintained by the leave_entitlement_event_set_updated_at trigger. */
+  updated_at: ColumnType<Date, never, never>;
+}
+
 export interface Database {
   app_user: AppUserTable;
   audit_log: AuditLogTable;
@@ -647,6 +690,7 @@ export interface Database {
   employee: EmployeeTable;
   holiday: HolidayTable;
   leave_balance: LeaveBalanceTable;
+  leave_entitlement_event: LeaveEntitlementEventTable;
   leave_entitlement_rule: LeaveEntitlementRuleTable;
   leave_ledger_entry: LeaveLedgerEntryTable;
   leave_type: LeaveTypeTable;

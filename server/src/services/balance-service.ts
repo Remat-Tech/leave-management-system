@@ -102,14 +102,17 @@ import {
   daysToCarry,
   daysToCommit,
   daysToGrant,
+  daysToLapse,
   daysToRelease,
   daysToReserve,
   type LeaveBalance,
 } from '../domain/balance.js';
 import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
+import { type LeaveEvent, validateNewLeaveEvent } from '../domain/leave-event.js';
 import { LeaveTypeNotFound } from '../domain/leave-type.js';
 import { LeaveYearNotFound } from '../domain/leave-year.js';
+import type { CalendarDate } from '../domain/time.js';
 import {
   correctionFor,
   type LedgerEntry,
@@ -189,6 +192,47 @@ export interface BalanceMoved {
   entry: LedgerEntry;
   balance: BalanceWithAvailable;
 }
+
+/**
+ * What HR supplies to grant entitlement for something that happened. FR 32g, LMS 218.
+ *
+ * A {@link BalanceMovement} with the event's own three facts on it, because the grant
+ * and the event are written together and neither is complete without the other.
+ *
+ * The figure and the deadline both arrive resolved: `days` is the entitlement rule as
+ * at the day it happened, `expiresOn` is `expiryFor` applied to the type's
+ * `entitlement_expiry_months`. Neither is this service's to work out — see
+ * `LeaveEventService`, which is the one place either question is asked.
+ */
+export interface EventGrant extends BalanceMovement {
+  /** The day the thing happened, which is not the day it was recorded. */
+  occurredOn: CalendarDate;
+  /** FR 32e. When an unused grant lapses, or null where this type's never does. */
+  expiresOn: CalendarDate | null;
+  /** HR's words about the occurrence itself. The grant's own reason is separate. */
+  note?: string | null;
+}
+
+/** What HR or the nightly run supplies to lapse one. FR 32e. */
+export interface EventLapse extends BalanceMovement {
+  /** The event whose grant has run out of time, and which this closes off. */
+  leaveEventId: string;
+}
+
+/**
+ * A movement, the balance it left, and the event it belongs to.
+ *
+ * {@link BalanceMoved} with the event beside it, because a caller that has just
+ * granted or lapsed one needs the row it wrote — the deadline it was given, or the
+ * lapse that closed it — and reading it again afterwards would read it outside the
+ * transaction that produced it.
+ */
+export interface EventGranted extends BalanceMoved {
+  event: LeaveEvent;
+}
+
+/** The same, from a lapse. Named apart so a signature says which act produced it. */
+export type EventLapsed = EventGranted;
 
 export class BalanceService {
   constructor(
@@ -347,6 +391,122 @@ export class BalanceService {
         ).length,
       ),
     }));
+  }
+
+  /**
+   * Records something that happened, and grants the entitlement it brings. FR 32g,
+   * §8.6aa. LMS 218.
+   *
+   * The third movement that puts days into a balance from outside it, and the only one
+   * that writes a row in another table while it does. That is the whole shape of this
+   * method: **the `GRANT` and the event it was made for are one act**, so they land in
+   * one transaction or neither does. A grant with nothing behind it is a hundred and
+   * twenty days nobody can explain, and an event that granted nothing is a record of a
+   * birth that did the employee no good at all.
+   *
+   * It goes here rather than in `LeaveEventService` for the reason nothing else posts a
+   * movement: the ledger has one door. What that service does is work out *whether* an
+   * event may be recorded and what it is worth; this writes it.
+   *
+   * **No once-per-balance check, and that is the difference from the two above.**
+   * `grantTheYear` refuses a second grant and `carryForward` refuses a second carry,
+   * because a year is granted once and carried once. An event type is granted *per
+   * qualifying occurrence* — FR 32g — so a second bereavement in one leave year is
+   * correctly a second `GRANT`, and refusing it would be the rule of the annual grant
+   * applied where it is false. What stops a birth being recorded twice is
+   * `leave_entitlement_event_one_per_day`, which is a rule about the event rather than
+   * about the balance, and it refuses with {@link EventAlreadyRecorded}.
+   *
+   * **No lock either**, for the same reason there is none on an adjustment: nothing is
+   * being checked against what is there. The transaction is here to make the two rows
+   * one act rather than to hold a figure still.
+   *
+   * The deadline arrives already resolved — `expiryFor` in ../domain/leave-event.ts,
+   * from `leave_type.entitlement_expiry_months` — and is written to the event row so
+   * that changing that column later cannot move a deadline already given. FR 32e.
+   */
+  async grantForAnEvent(actor: Actor, grant: EventGrant): Promise<EventGranted> {
+    const owner = await this.ownerOf(grant.employeeId);
+
+    this.guard.enforce(ledgerPolicy.grantForAnEvent(actor, owner));
+
+    const key = keyOf(grant);
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      const entry = await repositories.entries.post(
+        actor,
+        validateNewLedgerEntry({
+          ...key,
+          entryType: 'GRANT',
+          days: daysToGrant(grant.days, 0),
+          reason: grant.reason,
+        }),
+      );
+
+      const event = await repositories.events.record(
+        actor,
+        validateNewLeaveEvent({
+          ...key,
+          occurredOn: grant.occurredOn,
+          expiresOn: grant.expiresOn,
+          note: grant.note,
+          grantedEntryId: entry.id,
+        }),
+      );
+
+      return { entry, event, balance: withAvailable(await repositories.balances.forOne(key)) };
+    });
+  }
+
+  /**
+   * Lapses whatever is left of an event grant whose time is up. FR 32e, LMS 218.
+   *
+   * The story's third criterion, and the only movement in this class that takes days
+   * away from somebody without a request or a person behind it.
+   *
+   * **A `LAPSE` and not an `EXPIRY`**, and the difference is which bucket the days go
+   * back into. An `EXPIRY` takes days out of `carriedOver`, where FR 36a's carry put
+   * them; these days came from a `GRANT`, so they go back out of `entitled`. Using the
+   * wrong one would leave a paternity balance reading `carriedOver: -14` on a type that
+   * cannot carry a single day — available right, column false. See `BUCKETS` in
+   * ../domain/ledger.ts.
+   *
+   * **Once per event**, checked inside the transaction by the repository's guarded
+   * update and refused with {@link AlreadyLapsed}. Per *event* rather than per balance,
+   * which is the one place this differs from every other "already" in the class: two
+   * births in one leave year each have their own deadline, and counting `LAPSE` entries
+   * in the balance would refuse the second one because the first had already run.
+   *
+   * The event row is closed off in the same transaction as the entry, so a run that
+   * fails between the two leaves neither — which is what makes a nightly job safe to
+   * run every night rather than safe to run once.
+   *
+   * **How many days is not this method's to choose.** It is `available` on the balance,
+   * decided by `decideTheLapse` in ../domain/leave-event.ts, which is also what refuses
+   * to lapse anything while another grant in the same balance is still live.
+   */
+  async lapse(actor: Actor, lapse: EventLapse): Promise<EventLapsed> {
+    const owner = await this.ownerOf(lapse.employeeId);
+
+    this.guard.enforce(ledgerPolicy.lapse(actor, owner));
+
+    const key = keyOf(lapse);
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      const entry = await repositories.entries.post(
+        actor,
+        validateNewLedgerEntry({
+          ...key,
+          entryType: 'LAPSE',
+          days: -daysToLapse(lapse.days),
+          reason: lapse.reason,
+        }),
+      );
+
+      const event = await repositories.events.markLapsed(actor, lapse.leaveEventId, entry.id);
+
+      return { entry, event, balance: withAvailable(await repositories.balances.forOne(key)) };
+    });
   }
 
   /**

@@ -103,7 +103,7 @@ beforeEach(async () => {
      `leave_ledger_entry` refuses one too — and no row trigger fires on TRUNCATE,
      which is the door both migrations leave open for exactly this. */
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
   await restoreYears();
 
   people = (await seed(admin)) as Record<string, string>;
@@ -117,7 +117,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
   await restoreYears();
 
   await db?.destroy();
@@ -192,7 +192,7 @@ function theBalance(overrides: Partial<BalanceKey> = {}): BalanceKey {
 
 /** Which way each kind of movement has to go, so a test can post a valid one. */
 function signFor(entryType: LedgerEntryType): number {
-  return ['RESERVATION', 'DEDUCTION', 'EXPIRY'].includes(entryType) ? -1 : 1;
+  return ['RESERVATION', 'DEDUCTION', 'EXPIRY', 'LAPSE'].includes(entryType) ? -1 : 1;
 }
 
 function asAdministrator() {

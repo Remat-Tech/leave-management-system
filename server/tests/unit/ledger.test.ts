@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -82,10 +82,10 @@ function refusedField(build: () => unknown): string {
   throw new Error('That was accepted, and should not have been.');
 }
 
-/* ------------------------------------------------------- the eight, and signs */
+/* -------------------------------------------------------- the nine, and signs */
 
-describe('the eight kinds of movement, §5.7', () => {
-  it('are the eight the story names', () => {
+describe('the nine kinds of movement, §5.7', () => {
+  it('are the nine the stories name', () => {
     expect([...LEDGER_ENTRY_TYPES].sort()).toEqual(
       [
         'ADJUSTMENT',
@@ -93,6 +93,7 @@ describe('the eight kinds of movement, §5.7', () => {
         'DEDUCTION',
         'EXPIRY',
         'GRANT',
+        'LAPSE',
         'RECALCULATION',
         'RELEASE',
         'RESERVATION',
@@ -100,22 +101,44 @@ describe('the eight kinds of movement, §5.7', () => {
     );
   });
 
-  /* The database holds the same list. A type this file knows and the column refuses
-     is a write that fails at the last moment; one the column allows and this file
-     does not is days moving for a reason no screen can render. Read out of the SQL
-     rather than restated, so the assertion is that the two agree rather than that
-     both match a third copy written here. */
-  it('are the same eight the migration will hold', () => {
-    const sql = readFileSync(
-      join(process.cwd(), 'server', 'migrations', '20260830102217409_immutable-leave-ledger.sql'),
-      'utf8',
-    );
+  /**
+   * The database holds the same list.
+   *
+   * A type this file knows and the column refuses is a write that fails at the last
+   * moment; one the column allows and this file does not is days moving for a reason
+   * no screen can render. Read out of the SQL rather than restated, so the assertion
+   * is that the two agree rather than that both match a third copy written here.
+   *
+   * **The *last* migration to define the constraint is the one that counts**, and
+   * this searches for it rather than naming a file. LMS 218 added a ninth type by
+   * dropping and recreating the CHECK, which is what a migration has to do — the file
+   * that first declared it is never edited once merged — so a test pinned to that
+   * file would have gone on asserting against a constraint the database no longer
+   * has, and would have passed while doing it.
+   */
+  it('are the same nine the migrations leave behind', () => {
+    const declarations = readdirSync(join(process.cwd(), 'server', 'migrations'))
+      .filter((file) => file.endsWith('.sql'))
+      .sort()
+      .flatMap((file) => {
+        /* The Up section alone. Every migration that changes a constraint restores
+           the previous one below `-- Down Migration`, and reading that would be
+           asserting against the state this schema has been rolled back out of. */
+        const up = readFileSync(join(process.cwd(), 'server', 'migrations', file), 'utf8').split(
+          '-- Down Migration',
+        )[0];
 
-    const held = /leave_ledger_entry_type_known CHECK \(entry_type IN \(([^)]*)\)/.exec(sql);
+        return [
+          ...up.matchAll(/leave_ledger_entry_type_known CHECK \(\s*entry_type IN \(([^)]*)\)/g),
+        ].map((held) => held[1]);
+      });
 
-    expect(held, 'the constraint moved or was renamed').not.toBeNull();
+    expect(declarations.length, 'the constraint moved or was renamed').toBeGreaterThan(0);
+
+    const inForce = declarations.at(-1)!;
+
     expect(
-      [...(held![1].match(/'([A-Z_]+)'/g) ?? [])].map((code) => code.replace(/'/g, '')).sort(),
+      [...(inForce.match(/'([A-Z_]+)'/g) ?? [])].map((code) => code.replace(/'/g, '')).sort(),
     ).toEqual([...LEDGER_ENTRY_TYPES].sort());
   });
 
@@ -129,7 +152,9 @@ describe('the eight kinds of movement, §5.7', () => {
     ]);
   });
 
-  /* §5.7's own table, restated as the assertion that the code matches it. */
+  /* §5.7's own table, restated as the assertion that the code matches it. LAPSE is
+     not in that table — it is FR 32e's, added by LMS 218 — and goes the way its
+     neighbour EXPIRY does, because both are days running out. */
   it('go the way the Technical Design Document says they go', () => {
     expect(ENTRY_SIGNS).toEqual({
       GRANT: 'ADDS',
@@ -139,8 +164,30 @@ describe('the eight kinds of movement, §5.7', () => {
       RESERVATION: 'CONSUMES',
       DEDUCTION: 'CONSUMES',
       EXPIRY: 'CONSUMES',
+      LAPSE: 'CONSUMES',
       ADJUSTMENT: 'EITHER',
     });
+  });
+
+  /**
+   * And the two that run a clock out are two, on purpose.
+   *
+   * `EXPIRY` is FR 36a — carried days lapsing in the month HR named — and takes days
+   * back out of `carriedOver` where the carry put them. `LAPSE` is FR 32e — an event
+   * grant unused before its deadline — and takes days out of `entitled` where the
+   * grant put them. ../../src/domain/leave-type.ts named the collision before either
+   * existed: "two clocks with similar names".
+   *
+   * Using one for the other would leave a paternity balance reading
+   * `carriedOver: -14` on a type that cannot carry a single day. Available would come
+   * out right and the column would be false, which is the failure design principle 1
+   * exists to prevent, and it is why LMS 218 spent a migration on a ninth type rather
+   * than reusing the eighth.
+   */
+  it('and the two clocks put their days back where each came from', () => {
+    expect(BUCKETS.EXPIRY).toEqual(BUCKETS.CARRY_FORWARD);
+    expect(BUCKETS.LAPSE).toEqual(BUCKETS.GRANT);
+    expect(BUCKETS.EXPIRY).not.toEqual(BUCKETS.LAPSE);
   });
 
   it('divide into the four a request causes and the four it does not', () => {

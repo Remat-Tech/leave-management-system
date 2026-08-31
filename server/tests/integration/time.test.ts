@@ -161,8 +161,16 @@ describe('the columns', () => {
      by one day bug would be most visible to the most people: a Christmas Day held
      as an instant is a Christmas Day that reads as the twenty fourth of December
      from anywhere west of Accra, and everybody in the company is charged a day of
-     leave for it. */
-  it('the seven dates there are today are the ones expected', async () => {
+     leave for it.
+
+     The two from LMS 218 are a qualifying event and the deadline it set. A birth is
+     a day, and the deadline is six months after that day rather than six months
+     after an instant — held as a timestamp, a birth recorded from London would set a
+     deadline one day early for the person it belongs to, and they would find out by
+     being told their fourteen days had run out. `expires_on` is nullable, which is
+     the only one of the nine that carries a real absence: most event types never run
+     out at all. */
+  it('the nine dates there are today are the ones expected', async () => {
     const dates = (await temporalColumns())
       .filter((column) => column.data_type === 'date')
       .map((column) => `${column.table_name}.${column.column_name}`);
@@ -171,6 +179,8 @@ describe('the columns', () => {
       'employee.exit_date',
       'employee.start_date',
       'holiday.holiday_date',
+      'leave_entitlement_event.expires_on',
+      'leave_entitlement_event.occurred_on',
       'leave_entitlement_rule.effective_from',
       'leave_entitlement_rule.effective_to',
       'leave_year.end_date',
