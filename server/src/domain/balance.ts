@@ -349,6 +349,71 @@ export function daysToGrant(days: number, grantsAlreadyPosted: number): number {
 }
 
 /**
+ * A year's unused days carried across the boundary a second time. FR 36, LMS 217.
+ *
+ * The sibling of {@link AlreadyGranted} and refused for the same reason: nothing about
+ * the figure is wrong, and posting it would put a perfectly valid `CARRY_FORWARD` in the
+ * ledger. What is wrong is that it has happened, and the balance would open the year
+ * with last year's remainder in it twice.
+ *
+ * It matters more here than it does for a grant, because the realistic cause is worse. A
+ * rollover is three acts over four hundred people and it is the *first* of January: the
+ * job that failed at employee three hundred is run again by somebody who does not know
+ * how far it got, which is exactly the situation in which "run it again and see" has to
+ * be a safe thing to do.
+ */
+export class AlreadyCarried extends Error {
+  readonly carries: number;
+
+  constructor(carries: number) {
+    super(
+      `Last year's unused days have already been carried into this balance${
+        carries > 1 ? `, ${carries} times` : ''
+      }. A year is carried forward once; where the figure turned out to be wrong, the ` +
+        `difference is an adjustment with a reason on it, so that the balance still ` +
+        `explains itself. FR 36.`,
+    );
+    this.name = 'AlreadyCarried';
+    this.carries = carries;
+  }
+}
+
+/**
+ * How many days a carry forward brings into the new year. FR 36, LMS 217.
+ *
+ * Deliberately the same shape as {@link daysToGrant}, because it is the same kind of
+ * movement — days arriving in a balance from a rule rather than from a request — and the
+ * two refusals are the halves of "safely re-runnable" that the rollover is made of.
+ *
+ * **A carry is a positive number of days**, and may carry a fraction: what crosses the
+ * boundary is what was left of an entitlement, and §8.6d makes an entitlement divisible.
+ * A balance in arrears carries nothing rather than carrying a debt — `decideTheCarry` in
+ * ./year-rollover.ts refuses it by name so the run reports it, and this is the second
+ * line of that defence for a caller that did not ask.
+ *
+ * **A balance is carried into once.** `carriesAlreadyPosted` is counted inside the lock
+ * by `BalanceService.carryForward`, which is what makes running the rollover twice safe
+ * rather than merely unlikely — and not by the job remembering, because a job that
+ * remembers is a job that forgets.
+ */
+export function daysToCarry(days: number, carriesAlreadyPosted: number): number {
+  if (carriesAlreadyPosted > 0) {
+    throw new AlreadyCarried(carriesAlreadyPosted);
+  }
+
+  if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
+    throw new InvalidBalanceMovement(
+      `A carry forward is a number of days left over from last year, and ${String(days)} is ` +
+        `not one. A balance with nothing left carries nothing, and a balance that is ` +
+        `overdrawn carries nothing either — a debt is not written off on the first of ` +
+        `January, it is reported and settled by hand. FR 36.`,
+    );
+  }
+
+  return days;
+}
+
+/**
  * How many days an approval may take out of what is held.
  *
  * Approval does not consume days again — the reserve already did — so this can only
