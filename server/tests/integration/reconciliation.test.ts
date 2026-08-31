@@ -78,7 +78,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
 
   people = (await seed(admin)) as Record<string, string>;
   mailer.clear();
@@ -93,7 +93,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
 
   await db?.destroy();
   await admin?.end();
@@ -323,7 +323,7 @@ describe('when a cached balance has nothing behind it', () => {
      exists to make impossible. */
   it('finds it, and says the ledger holds nothing', async () => {
     await post('GRANT', 20);
-    await admin.query('TRUNCATE leave_ledger_entry');
+    await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
 
     const found = await job.run(nightly);
 

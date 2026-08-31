@@ -141,6 +141,56 @@ export function dayBefore(day: CalendarDate): CalendarDate {
 }
 
 /**
+ * The same day, so many months later. FR 32e, LMS 218.
+ *
+ * "Usable within six months" is a sentence about months rather than about a hundred
+ * and eighty-something days, so this counts in months: six months after the fourth of
+ * March is the fourth of September, in a leap year and out of one.
+ *
+ * **The end of a month is clamped rather than allowed to run over**, which is the
+ * whole reason this is not four lines at the call site. `setUTCMonth` on the
+ * thirty-first of August with six months added produces the thirty-first of February,
+ * which JavaScript rolls forward to the third of March — a deadline three days later
+ * than the one anybody meant, on exactly the dates nobody tests. So the day of the
+ * month is set to the first before the months are added and restored afterwards,
+ * capped at the length of the month it lands in: six months after the thirty-first of
+ * August is the twenty-eighth of February, or the twenty-ninth in a leap year.
+ *
+ * That is the ordinary reading of "six months later" and the one a person would give
+ * if asked, which is what matters for a rule an employee is held to.
+ *
+ * It round trips through UTC midnight for the reason {@link dayAfter} does, and is
+ * safe for the same statable reason: a date built at UTC midnight and formatted back
+ * at UTC is the day it went in, so the zone cancels rather than being avoided.
+ */
+export function monthsAfter(day: CalendarDate, months: number): CalendarDate {
+  if (!Number.isInteger(months) || months < 0) {
+    throw new Error(
+      `A date cannot be moved ${String(months)} months. Months are whole and forwards; ` +
+        `there is no rule in this system that runs a deadline backwards.`,
+    );
+  }
+
+  const from = new Date(`${requireCalendarDate(day)}T00:00:00Z`);
+  const dayOfMonth = from.getUTCDate();
+
+  /* The first of the month before the months are added, so the addition cannot roll
+     over on its own. */
+  from.setUTCDate(1);
+  from.setUTCMonth(from.getUTCMonth() + months);
+
+  /* Day nought of the month after is the last day of this one, which is how the
+     length of February is asked rather than remembered. */
+  const lastOfThatMonth = new Date(
+    Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+
+  from.setUTCDate(Math.min(dayOfMonth, lastOfThatMonth));
+
+  return from.toISOString().slice(0, 10);
+}
+
+/**
  * A calendar date moved by whole days, and the one place a `Date` is built from
  * one.
  *

@@ -19,16 +19,27 @@
  * {@link BUCKETS} for the one part of that projection this file does settle, and
  * why it settles only that part.
  *
- * ## Eight entry types, in two families
+ * ## Nine entry types, in two families
  *
  * The division runs through every rule below, so it is worth having in mind before
  * reading any of them.
  *
- *   **Four are about what somebody is owed.** `GRANT`, `CARRY_FORWARD`,
- *   `ADJUSTMENT`, `EXPIRY`. Entitlement arriving, surviving a year end, corrected by
- *   hand, or lapsing. These may carry a fraction, because §8.6d pro rates a mid year
+ *   **Five are about what somebody is owed.** `GRANT`, `CARRY_FORWARD`,
+ *   `ADJUSTMENT`, `EXPIRY`, `LAPSE`. Entitlement arriving, surviving a year end,
+ *   corrected by hand, or running out — twice, and the two are not the same clock.
+ *   These may carry a fraction, because §8.6d pro rates a mid year
  *   joiner to 10.08 days and "FR 24 governs how leave is requested, not how
  *   entitlement is held".
+ *
+ *   **`EXPIRY` and `LAPSE` are two clocks with similar names**, which is the
+ *   distinction ../domain/leave-type.ts named before either existed. `EXPIRY` is
+ *   FR 36a: carried days running out in the month HR named, so it takes days back out
+ *   of `carriedOver` where the carry put them. `LAPSE` is FR 32e and LMS 218:
+ *   paternity's fourteen days unused six months after the birth, so it takes days out
+ *   of `entitled` where the *grant* put them. Using one for the other would leave a
+ *   balance reading `carriedOver: -14` on a type that cannot carry a single day —
+ *   available right, column false, which is the failure design principle 1 exists to
+ *   prevent.
  *
  *   **Four are about a request.** `RESERVATION`, `DEDUCTION`, `RELEASE`,
  *   `RECALCULATION`. Days held when leave is asked for, taken when it is approved,
@@ -70,18 +81,20 @@ import { isWholeDays, WHOLE_DAYS_ONLY } from './whole-days.js';
  * Every kind of movement there is. §5.7.
  *
  * Ordered as an account reads rather than alphabetically: what arrives, what
- * survives a year end, what is corrected, what lapses, then the four a request
- * moves. The same list is `leave_ledger_entry_type_known` in the
- * immutable-leave-ledger migration, and the integration suite asserts the two
- * agree — a type this file knows and the database refuses would be a write that
- * fails at the last moment, and one the database allows and this file does not
- * would be days moving for a reason no screen can render.
+ * survives a year end, what is corrected, the two ways days run out, then the four a
+ * request moves. The same list is `leave_ledger_entry_type_known` in the
+ * immutable-leave-ledger migration as the event-based-entitlement-grants one left it,
+ * and the integration suite asserts the two agree — a type this file knows and the
+ * database refuses would be a write that fails at the last moment, and one the
+ * database allows and this file does not would be days moving for a reason no screen
+ * can render.
  */
 export const LEDGER_ENTRY_TYPES = [
   'GRANT',
   'CARRY_FORWARD',
   'ADJUSTMENT',
   'EXPIRY',
+  'LAPSE',
   'RESERVATION',
   'DEDUCTION',
   'RELEASE',
@@ -124,6 +137,7 @@ export const ENTRY_SIGNS: Readonly<Record<LedgerEntryType, 'ADDS' | 'CONSUMES' |
   CARRY_FORWARD: 'ADDS',
   ADJUSTMENT: 'EITHER',
   EXPIRY: 'CONSUMES',
+  LAPSE: 'CONSUMES',
   RESERVATION: 'CONSUMES',
   DEDUCTION: 'CONSUMES',
   RELEASE: 'ADDS',
@@ -143,20 +157,29 @@ export const ENTRY_SIGNS: Readonly<Record<LedgerEntryType, 'ADDS' | 'CONSUMES' |
  * once and not ten. Any projection that adds signed days into a single figure gets
  * that wrong, which is why there is no such function anywhere in this file.
  *
+ * `GRANT` and `LAPSE` are the same pair seen from the other end, and are the reason
+ * LMS 218 added a ninth type rather than reusing `EXPIRY`: days that arrived because
+ * of an event go back where the grant put them, and days that were carried go back
+ * where the carry put them. One entry type cannot do both, because which column it
+ * moves would then depend on the leave type — and this table would stop being a
+ * table.
+ *
  * Written here by LMS 210 as the statement of what LMS 211 would have to implement,
  * in the file that knows what an entry means. LMS 211 implemented it in
- * `rebuild_one_balance_from_the_ledger()`, in the cached-balance-table migration,
- * and that is the only arithmetic — a second copy in this language would be the
- * drift the cache exists to be checked against. So this stays a statement rather
- * than becoming a function: ../../tests/integration/balance.test.ts posts one entry
- * of each kind and asserts that exactly the columns named here moved, which is what
- * makes the two agree rather than merely both existing.
+ * `rebuild_one_balance_from_the_ledger()`, LMS 213 lifted it into the
+ * `what_the_ledger_says` view, and that is the only arithmetic — a second copy in
+ * this language would be the drift the cache exists to be checked against. So this
+ * stays a statement rather than becoming a function:
+ * ../../tests/integration/balance.test.ts posts one entry of each kind and asserts
+ * that exactly the columns named here moved, which is what makes the two agree rather
+ * than merely both existing.
  */
 export const BUCKETS: Readonly<Record<LedgerEntryType, readonly BalanceBucket[]>> = {
   GRANT: ['entitled'],
   CARRY_FORWARD: ['carriedOver'],
   ADJUSTMENT: ['adjustment'],
   EXPIRY: ['carriedOver'],
+  LAPSE: ['entitled'],
   RESERVATION: ['pending'],
   DEDUCTION: ['pending', 'taken'],
   RELEASE: ['pending'],

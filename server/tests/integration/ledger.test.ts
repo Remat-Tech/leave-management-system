@@ -97,7 +97,7 @@ beforeEach(async () => {
      refuses a DELETE on every connection, which is the property this file exists to
      prove — and a row trigger does not fire on TRUNCATE, which is the door the
      migration leaves open for exactly this and for the seed. */
-  await admin.query('TRUNCATE leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
   await restoreYears();
 
   people = (await seed(admin)) as Record<string, string>;
@@ -108,7 +108,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await admin.query('TRUNCATE leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
   await restoreYears();
 
   await db?.destroy();
@@ -834,5 +834,5 @@ describe('reading one balance', () => {
  * wrong both were. This one agrees with §5.7.
  */
 function signFor(entryType: LedgerEntryType): number {
-  return ['RESERVATION', 'DEDUCTION', 'EXPIRY'].includes(entryType) ? -1 : 1;
+  return ['RESERVATION', 'DEDUCTION', 'EXPIRY', 'LAPSE'].includes(entryType) ? -1 : 1;
 }

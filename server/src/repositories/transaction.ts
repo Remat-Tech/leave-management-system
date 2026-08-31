@@ -31,6 +31,7 @@ import type { Database } from '../db/index.js';
 import { BalanceRepository } from './balance-repository.js';
 import { DepartmentRepository } from './department-repository.js';
 import { EmployeeRepository } from './employee-repository.js';
+import { LeaveEventRepository } from './leave-event-repository.js';
 import { LeaveTypeRepository } from './leave-type-repository.js';
 import { LeaveYearRepository } from './leave-year-repository.js';
 import { LedgerRepository } from './ledger-repository.js';
@@ -65,11 +66,18 @@ export interface Repositories {
    * `years` arrived with LMS 216, and for a plainer reason: a manual adjustment is
    * the one movement whose three ids are typed by a person, so it is the one that
    * has to say "no leave year with id 41" rather than let a foreign key say it.
+   *
+   * `events` arrived with LMS 218, and it is the one here that is not a read. A grant
+   * made because a child was born and the record of the birth are one act — the grant
+   * names the event and the event names the grant — so both rows land in one
+   * transaction or neither does. An event that granted nothing and a grant with
+   * nothing behind it are both halves of something that did not happen.
    */
   balances: BalanceRepository;
   entries: LedgerRepository;
   types: LeaveTypeRepository;
   years: LeaveYearRepository;
+  events: LeaveEventRepository;
 }
 
 export class Transactions {
@@ -101,6 +109,7 @@ export class Transactions {
         entries: new LedgerRepository(trx),
         types: new LeaveTypeRepository(trx),
         years: new LeaveYearRepository(trx),
+        events: new LeaveEventRepository(trx),
       }),
     );
   }

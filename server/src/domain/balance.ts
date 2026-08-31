@@ -414,6 +414,36 @@ export function daysToCarry(days: number, carriesAlreadyPosted: number): number 
 }
 
 /**
+ * How many days an event grant lapses when its time is up. FR 32e, LMS 218.
+ *
+ * The third of the "days arriving and leaving by rule" rules, beside {@link daysToGrant}
+ * and {@link daysToCarry}, and the only one of the three that takes days *away*. It is
+ * stated positive like every other movement in this file — which way the balance goes
+ * is the operation, and `BalanceService.lapse` is what makes it negative in the ledger.
+ *
+ * **There is no "already lapsed" count here**, and that is the one place this differs
+ * from its two siblings. A grant is granted once per balance per year and a carry
+ * arrives once per balance, both of which are questions the *ledger* can answer by
+ * counting entries. A lapse is once per **event**, and two events in one balance may
+ * each lapse — so the question is a fact about the event row, read inside the same
+ * transaction by `BalanceService.lapse` and refused with {@link AlreadyLapsed}.
+ * Counting `LAPSE` entries in the balance instead would refuse the second birth's
+ * deadline because the first one had already run.
+ */
+export function daysToLapse(days: number): number {
+  if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
+    throw new InvalidBalanceMovement(
+      `A lapse is a number of days going unused, and ${String(days)} is not one. A ` +
+        `balance with nothing left in it lapses nothing — there is no movement to post ` +
+        `— and one that is overdrawn lapses nothing either, because a lapse takes days ` +
+        `away and there are none to take. FR 32e.`,
+    );
+  }
+
+  return days;
+}
+
+/**
  * How many days an approval may take out of what is held.
  *
  * Approval does not consume days again — the reserve already did — so this can only

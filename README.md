@@ -390,6 +390,8 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Every balance in the company, checked against the ledger | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Granting a year's entitlement | | `HR_ADMIN` only |
 | Carrying last year's unused days forward | | `HR_ADMIN` only |
+| Recording an event and granting what it brings | | `HR_OFFICER`, `HR_ADMIN` |
+| Lapsing an unused event grant | | `HR_ADMIN` only |
 | Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
 | Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` — never yourself |
 | Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
@@ -447,6 +449,19 @@ behind it. `ledgerPolicy.carryForward` is the same argument about
 `leave_entitlement_rule.carries_over`, and it is its own decision rather than a reuse of
 `grant` for the reason the file has no `post` at all — "carried 2026 forward" and
 "granted 2027" are two sentences somebody may need to find separately.
+
+**Recording a birth is the employee-record desk, and lapsing what it granted is not.**
+LMS 218, and it is the one grant in this system an HR Officer may post. The two above
+apply a *policy* to everybody at once; recording an event is one fact about one person,
+told to whoever in HR answered the telephone, and the figure still comes from an
+entitlement rule only an Administrator may write. The practical half is the one the
+holiday calendar makes: a new father with fourteen days he cannot book because an
+Administrator has not been in this week is the system failing at the only moment it was
+ever going to matter to him. `ledgerPolicy.lapse` goes back to `HR_ADMIN`, because
+`leave_type.entitlement_expiry_months` is what decides that those days run out and
+writing it is an Administrator's — and because of the direction: a wrong grant leaves
+somebody with days they did not earn, which a report catches, while a wrong lapse takes
+days off somebody who was going to use them, and they find out when they try to book.
 
 **Moving a balance by hand is narrower than anything else in this system, and only
 an `HR_ADMIN` may.** §10's matrix has an ✗ against every other column including HR
@@ -1880,13 +1895,25 @@ design principle 1, LMS 210. `leave_ledger_entry` is what makes "why do I have
 twelve days rather than fifteen" answerable with a list rather than an assertion:
 a date, an amount, a reason, and a name against each line.
 
-**Eight kinds of movement, in two families**, and the division runs through every
+**Nine kinds of movement, in two families**, and the division runs through every
 rule the table has.
 
 | | Kinds | Sign | Whole days? | Into a settled year? |
 |---|---|---|---|---|
-| What somebody is owed | `GRANT`, `CARRY_FORWARD`, `ADJUSTMENT`, `EXPIRY` | `+`, `+`, either, `−` | no — §8.6d pro rates to 10.08 | only `ADJUSTMENT`, see below |
+| What somebody is owed | `GRANT`, `CARRY_FORWARD`, `ADJUSTMENT`, `EXPIRY`, `LAPSE` | `+`, `+`, either, `−`, `−` | no — §8.6d pro rates to 10.08 | only `ADJUSTMENT`, see below |
 | What a request moved | `RESERVATION`, `DEDUCTION`, `RELEASE`, `RECALCULATION` | `−`, `−`, `+`, `+` | yes — FR 24 | never |
+
+**`EXPIRY` and `LAPSE` are two clocks with similar names, and they are two entry
+types because they put their days back in different places.** LMS 218, and
+`domain/leave-type.ts` named the collision before either clock existed. `EXPIRY` is
+FR 36a: carried days running out in the month HR named, so it takes days back out of
+`carried_over` where the carry put them. `LAPSE` is FR 32e: paternity's fourteen days
+unused six months after the birth, so it takes days out of `entitled` where the
+*grant* put them. Using one for the other would leave a paternity balance reading
+`carried_over: -14` on a type that cannot carry a single day — available right, column
+false, which is exactly the figure that stops explaining itself. The
+immutable-leave-ledger migration anticipated the price: "adding a ninth is a
+migration, because the database holds the same list."
 
 **A run of signed days is not the available balance, and nothing sums them into
 one.** `RESERVATION -5` followed on approval by `DEDUCTION -5` is five days gone
@@ -2039,23 +2066,26 @@ story that builds the screen.
 ### One place a balance changes
 
 **`BalanceService` is the only writer of balance movements.** FR 26, §8.2, LMS 212.
-Seven methods, and nothing else in the tree posts a ledger entry — `LedgerService`
+Nine methods, and nothing else in the tree posts a ledger entry — `LedgerService`
 reads the account and writes nothing, which is why `adjust` and `correct` moved out
 of it. Every story since has taken the arrangement up on its offer rather than
 opening a second door: LMS 214 added `grantTheYear`, LMS 217 added `carryForward`,
-and both went where the lock, the rule and the policy already are.
+LMS 218 added `grantForAnEvent` and `lapse`, and every one of them went where the lock,
+the rule and the policy already are.
 
 | | Posts | Checks | Locked? |
 |---|---|---|---|
 | `grantTheYear` | `GRANT` | the year has not been granted already | yes |
 | `carryForward` | `CARRY_FORWARD` | the balance has not been carried into already | yes |
+| `grantForAnEvent` | `GRANT`, and the event row beside it | nothing — FR 32g grants per occurrence — but the same event is not recorded twice | no |
+| `lapse` | `LAPSE`, and closes the event off | the event has not lapsed already | no |
 | `reserve` | `RESERVATION` | the days are there, unless the type may be exceeded | yes |
 | `commit` | `DEDUCTION` | that many days are held | yes |
 | `release` | `RELEASE` | that many days are held | yes |
 | `adjust` | `ADJUSTMENT` | nothing about the days — FR 37 moves them by fiat — but the three ids it was given are real ones | no |
 | `correct` | `ADJUSTMENT` | nothing — it is the exact opposite of one entry | no |
 
-**Days are stated positive, in all seven.** A reserve of five days is `5` and so is
+**Days are stated positive, in all nine.** A reserve of five days is `5` and so is
 the release that gives them back; which way the balance moves is the method that was
 called. A caller that had to remember a reservation is −5 and a release is +5 would
 eventually get one backwards and post a perfectly valid entry meaning the opposite of
@@ -2442,6 +2472,93 @@ the line to call is `new YearRollover(...).run(theSystem('the year rollover'), c
 
 ---
 
+### Entitlement that arrives with an event
+
+**A child is born, and the days are there.** FR 32g, FR 32e, §8.6aa, LMS 218.
+`LeaveEventService.record()` writes a `leave_entitlement_event` row and the `GRANT` it
+causes, in one transaction, and `EntitlementExpiry` lapses whatever is left of it when
+its time is up. `entitlement_basis` has said since LMS 201 that some types work this
+way — "granted per qualifying occurrence, does not reset on 1 January" — and until this
+story that column was only ever read to decide what the annual grant and the rollover
+should *skip*.
+
+**An event is a row, and the grant names it.** The story's first criterion is a foreign
+key: `leave_entitlement_event.granted_entry_id`. It is a table rather than two columns
+on `leave_ledger_entry` because when a birth happened is not a fact about a movement in
+a balance — `created_at` on the grant is the day somebody typed it, and six months from
+*that* is six months from the wrong day. The two rows land together or neither does: a
+grant with nothing behind it is a hundred and twenty days nobody can explain, and an
+event that granted nothing did the employee no good at all.
+
+**The grant lands in the year the event fell in, never today's.** A birth in December
+told to HR in January belongs to December's balance. The service reads the year covering
+the day and `refuse_an_event_outside_its_leave_year()` holds the same rule for every
+other writer, so the two cannot drift.
+
+**A second occurrence is a second grant, which is exactly the rule `grantTheYear` is
+not.** A year is granted once and refused a second time; an event type is granted every
+time the event happens, so two bereavements in one leave year are ten days of
+compassionate leave rather than five. What is refused is the same event *twice* —
+`leave_entitlement_event_one_per_day`, because the duplicate that actually happens is
+the second person in HR to hear about a birth not knowing the first already entered it.
+Twins are one birth and one grant.
+
+**`LAPSE` is a ninth entry type, and that is the expensive decision in this story.**
+`EXPIRY` already means days lapsing and could not be used: it moves `carried_over`,
+which is right for FR 36a's clock and false for this one, because an event grant was
+never carried. See [The balance ledger](#the-balance-ledger). The cost was a migration
+that drops and recreates two CHECK constraints and replaces one view; the alternative
+was a paternity balance reading `carried_over: -14` with `available` coming out right,
+which is the kind of wrong nobody finds.
+
+**The deadline is stored, not recomputed.** `expires_on` is written when the event is
+recorded, from `leave_type.entitlement_expiry_months` — paternity's six, null
+everywhere else — and the table refuses to have it rewritten, on the owner connection
+too. That is FR 31's argument about closed years applied to a clock: a grant already
+made keeps the deadline it was made under, so an Administrator changing the column next
+year cannot move a promise already given. The month arithmetic clamps rather than rolls
+over: six months after 31 August is 28 February, not 3 March.
+
+**A grant lapses *after* its deadline, not on it.** Somebody whose six months are up on
+the fourth may still take the leave on the fourth. Either boundary is arbitrary and
+this is the one a person would assume, which is the only argument that matters for a
+rule somebody is held to.
+
+**Nothing is lapsed while another grant in the same balance is still live.** There is no
+per-grant consumption anywhere in this system — §8.6aa lets one grant be drawn down by
+several requests and the balance is what tracks it — so with two live grants the days
+cannot be attributed to either. Two births in one year, the first deadline up and the
+second not: nothing is taken, the run says why, and the later deadline catches whatever
+is still there. The conservative direction is the right one, because a wrong lapse is
+found by the person trying to book the leave.
+
+**A grant whose leave year has since been closed is reported rather than posted.** A
+December birth runs to June and December's year may have been settled in February; §8.9
+lets nothing but an `ADJUSTMENT` into it. Nothing is lost by that — a closed year's
+balance cannot be booked against either — and the run says so instead of failing.
+
+**Running the expiry nightly is running it again, which is the operating mode rather
+than a nicety.** The event row carries `lapsed_entry_id`, the job's read excludes rows
+that have it, and `BalanceService.lapse` closes the row off in the same transaction as
+the entry — so a run that dies between the two leaves neither. An event that had
+*nothing* left is deliberately **not** closed off: nothing ended it, and a balance is
+not finished moving when a deadline passes, so if HR posts a correcting `ADJUSTMENT`
+next week those days are still past their deadline and the next run takes them.
+
+**An event is a record of something that happened.** Who, what kind, when, and the
+deadline it set cannot be rewritten by anybody — the grant was calculated from them, so
+changing one would move a balance with nothing in the ledger to say why. Only the
+explanatory `note` and the lapse column may change, and nothing is ever deleted. The
+correction for a birth recorded against the wrong person is an `ADJUSTMENT` on each
+balance with a reason, which is FR 27 applied to the record rather than to the movement.
+
+**It is a class, not a schedule**, like the three jobs beside it. The line to call is
+`new EntitlementExpiry(...).run(theSystem('the entitlement expiry'))`, which judges
+deadlines against today; the run takes the day as a parameter so the rule can be asked
+about any of them, which is also the only way a test watches six months pass.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.
@@ -2709,6 +2826,20 @@ its tests asserts that the domain exports nothing that turns ledger entries into
 balance — a `balanceFrom(entries)` would be twenty testable lines and a second
 implementation of the sum, which is the drift the cache exists to be checked against.
 Whoever adds one has to argue with that test first.
+
+**`integration/leave-event.test.ts` carries most of LMS 218, and the unit suite beside
+it carries two arithmetic rules.** The split is the annual grant's, for the same reason:
+when a grant runs out and what is left when it does are pure functions, and everything
+the story is actually about is a claim only a database can make. That the grant and the
+event cannot come apart is a foreign key and a rollback. That `LAPSE` lands in
+`entitled` rather than `carried_over` is a CHECK constraint and a view, and the only
+place to ask whether that is right is against a migrated server. That the expiry can be
+run every night is a guarded update rather than care. The suite also holds the two
+awkward cases that would otherwise never be exercised: two births in one leave year,
+where nothing may be lapsed while the second is still live, and a grant stranded by a
+year somebody closed underneath it. `unit/leave-event.test.ts` spends most of its length
+on the month arithmetic, because six months after 31 August is the case that is wrong on
+exactly the dates nobody tests.
 
 **`unit/year-rollover.test.ts` proves what carries and `integration/year-rollover.test.ts`
 proves that it survives a boundary.** LMS 217 splits along the same line the annual grant

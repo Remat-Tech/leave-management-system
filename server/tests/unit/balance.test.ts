@@ -390,6 +390,7 @@ describe('the five columns, as the ledger names them', () => {
       'daysToCarry',
       'daysToCommit',
       'daysToGrant',
+      'daysToLapse',
       'daysToRelease',
       'daysToReserve',
       'hasMoved',

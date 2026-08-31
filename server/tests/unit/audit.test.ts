@@ -75,6 +75,12 @@ describe('the entities an entry can be about', () => {
          request approved in February cost, and the row says only what the calendar
          says today — so a removed day exists nowhere else at all. */
       'holiday',
+      /* LMS 218. The largest single figure this system puts into a balance — a
+         hundred and twenty days of maternity leave — goes there because one person
+         said a thing had happened. "Who recorded this birth, and when" is the first
+         question asked if it turns out not to have, and `created_at` answers only
+         half of it. */
+      'leave_entitlement_event',
     ]);
   });
 });

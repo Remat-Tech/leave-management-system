@@ -110,7 +110,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
   await withoutTheExtraType();
   await restoreYears();
 
@@ -130,7 +130,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_ledger_entry');
+  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
   await withoutTheExtraType();
   await restoreYears();
 

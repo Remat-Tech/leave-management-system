@@ -83,6 +83,19 @@ export const AUDITED_ENTITIES = [
      so "who added the twenty eighth of December" is answerable from here or
      from nowhere. */
   'holiday',
+  /* LMS 218. Something that happened, and the grant it brought. This is the
+     largest single figure the system puts into anybody's balance — a hundred and
+     twenty days of maternity leave — and it goes there because one person said a
+     thing had happened. "Who recorded this birth, and when" is the first question
+     asked if it turns out not to have, and the row cannot answer it: `created_at`
+     says when and nothing on it says who.
+
+     The ledger entry the event caused is deliberately *not* audited — see the
+     immutable-leave-ledger migration, which declined a trigger because an entry
+     that can never change is already its own history. This row can change, in one
+     column: the expiry job closing it off. So it is audited for the ordinary
+     reason every other table here is. */
+  'leave_entitlement_event',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];
