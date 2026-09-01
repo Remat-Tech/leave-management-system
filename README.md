@@ -1547,13 +1547,17 @@ deliberately — one is somebody's mistake and the other is a fact about the per
 asking, and telling somebody they are ineligible for a type nobody finished
 configuring sends them away with the wrong problem.
 
-**What is not built.** Which *person* a desk resolves to, and what happens when
-the request gets there, is FR 48 and Phase 3 — `approverAfter()` is the walk, as a
-pure function, so that when the workflow arrives there is nothing left to decide.
-The manager who raises their own leave and has to route upwards is FR 48b, and is
-about a reporting line rather than a leave type. Cover while an approver is
-themselves away is FR 49. Parallel approval is nothing the SRS asks for and is the
-one thing `step_order` refuses outright: two rows cannot share a number.
+**Which person a desk resolves to is [LMS 314](#routing-a-request-to-its-approvers)**,
+which took `approverAfter()` up on its offer: the walk was already a pure function,
+so the workflow had nothing left to decide about ordering and only had to say which
+person each desk is.
+
+**What is still not built.** The manager who raises their own leave and has to
+route upwards is FR 48b, and is about a reporting line rather than a leave type —
+such a request waits at a desk nobody can fill rather than being approved by
+somebody the chain never asked. Cover while an approver is themselves away is FR
+49. Parallel approval is nothing the SRS asks for and is the one thing `step_order`
+refuses outright: two rows cannot share a number.
 
 ### The leave year, and closing one
 
@@ -2945,11 +2949,10 @@ ledger**, because five days coming back look identical in a balance whether the 
 changed their mind, a manager turned it down or HR unwound it, and those are three
 different conversations.
 
-**`APPROVED` is deliberately not here.** Approval *commits* days — the hold becomes days
-taken and available does not move at all — so it is a different movement with a different
-entry type, and which desk in FR 38a's chain may agree needs the chain, the type and how
-far the request has got. `BalanceService.commit` has been built and waiting for it since
-LMS 212.
+**`APPROVED` is deliberately not here**, and [LMS 314](#routing-a-request-to-its-approvers)
+is why: approval *commits* days — the hold becomes days taken and available does not move at
+all — so it is a different movement with a different entry type, and which desk in FR 38a's
+chain may agree needs the chain, the type and how far the request has got.
 
 **The status and the `RELEASE` are one act**, in both directions and held by the database
 rather than by the two methods that happen to do it properly:
@@ -2958,7 +2961,7 @@ rather than by the two methods that happen to do it properly:
 |---|---|---|
 | `leave_request_releases_once`, a unique partial index | a second `RELEASE` against one request, immediately, on every connection | a request that ended holding its days |
 | `leave_request_gives_its_days_back`, a deferred constraint trigger | a request that ended and released nothing, at `COMMIT` | `TRUNCATE`, which no row trigger sees |
-| `leave_request_ends_once`, a `BEFORE UPDATE` trigger | a settled request being moved again, or moved anywhere but an ending | — |
+| `leave_request_moves_as_the_table_says`, a `BEFORE UPDATE` trigger | a settled request being moved again, or moved anywhere §6 does not permit | — |
 
 That is the exact mirror of the pair [submission
 built](#asking-for-leave), and the failure modes mirror too: a request that ends without
@@ -3003,6 +3006,7 @@ the standings that may make it:
 | `SUBMITTED` | `WITHDRAW` | `WITHDRAWN` | the requester, or HR |
 | `SUBMITTED` | `REFUSE` | `REFUSED` | their line manager, or HR |
 | `SUBMITTED` | `CANCEL` | `CANCELLED` | HR |
+| `SUBMITTED` | `APPROVE` | `APPROVED` | the desk the chain has it with |
 
 LMS 306 built all three of those and they were all correct — spread over three places.
 The from-state lived in `assertMayBeSettled()`, the destination was named at each call
@@ -3015,7 +3019,9 @@ request"**, which is exactly the question somebody has when a request is stuck.
 column — not a flag on the status, not a separate rule. `refuse_an_impossible_transition()`
 says the same where no service can reach, and the integration suite reads it back out of
 `pg_get_functiondef` and holds it to the table, the same way the overlap constraint is
-held to `LIVE_STATUSES`.
+held to `LIVE_STATUSES`. Since LMS 314 the trigger is called
+`leave_request_moves_as_the_table_says`, because "ends once" is a puzzling thing to read in
+an error about leave that has just been agreed.
 
 **The destination is read off the table, which is what makes the table load bearing.**
 Before, a caller named it; the table could have said anything and the code would still
@@ -3063,13 +3069,97 @@ against a copy of itself", and it is easy to walk into because the check reads l
 important one. So the table is pinned in full, and which desks the policy actually admits
 is `unit/policy.test.ts`'s, against hardcoded actors. A widened row fails both.
 
-**`APPROVE` is not in the table.** It moves a request to a state that still holds days and
-commits them rather than releasing them, and which desk in FR 38a's chain may perform it
-needs the chain, the type and how far the request has got. That story adds a row here, a
-status to `REQUEST_STATUSES` and a migration extending the CHECK — and the shape of the
-table is what makes those three obviously one change rather than three. Two tests are
-written to fail when it lands: every destination today ends the request, and every state
-still running answers every action.
+**`APPROVE` was the row this table was built for**, and [it arrived](#routing-a-request-to-its-approvers)
+as the one change the shape predicted: a row here, a status in `REQUEST_STATUSES` and a
+migration extending the CHECK. Both tests written to fail when it landed did fail — every
+destination used to end the request, and every state still running used to answer every
+action — and both were rewritten to say what is true now rather than relaxed.
+
+---
+
+### Routing a request to its approvers
+
+**A request goes to the approvers its leave type names, in order.** FR 38, FR 38a, FR 40,
+LMS 314. The chain has been configuration [since LMS 204](#who-approves-each-kind-of-leave) and
+nothing read it; the leave-type-approval-chain migration said the routing itself "is FR 48 and
+Phase 3… needs the request table to exist". This is the story that reads it.
+
+**Where a request has got to becomes two facts.** `status` says whether it is still being
+decided; `awaiting_approval_from` says who is deciding it. Held apart rather than folded
+into `AWAITING_MANAGER`, `AWAITING_HR`, `AWAITING_CEO` — and the reason is design principle
+5 rather than tidiness. **The number of stages is configuration.** A status per stage means
+a fourth desk in `leave_type_approval_step` needs a new status, a new CHECK and new
+transitions: a code change and a deployment for the thing FR 31 insists is a form.
+
+**So approval is the one verb that does not always move the status.** A manager approving
+stage one of manager-then-HR leaves the request `SUBMITTED` and sends it on; the HR officer
+approving it afterwards is the same verb and makes it `APPROVED`. `approvalTo()` is where
+the two are told apart, and it reads the destination off `TRANSITIONS` rather than naming
+one — the same discipline `settlementTo()` keeps, and it matters for the same reason: a
+function that could name `APPROVED` could name it one desk early.
+
+**The three desks are three different kinds of fact**, which is why the domain names
+standings and `/auth/leave-request-policy.ts` resolves them:
+
+| Desk | Is | Resolved by |
+|---|---|---|
+| `MANAGER` | a relationship | the reporting line on the record |
+| `HR` | a grant, and two codes staff it | `APPROVES_AS_HR` |
+| `CEO` | a position | FR 04's one employee with no line manager |
+
+`APPROVES_AS_HR` is its own list rather than a reuse of `MAINTAINS_EMPLOYEE_RECORDS`, for
+the reason `MAINTAINS_THE_CALENDAR` is: they agree today for unrelated reasons, and a
+shared constant would have made "who maintains employee records" silently decide "who
+approves unpaid leave".
+
+**A rank admits nobody.** A line manager has no standing over a request whose chain does
+not name `MANAGER` — unpaid leave goes HR then the Chief Executive, §4.3.1, and there is no
+manager stage on it at all. HR has none over a request still sitting with a manager. That
+is the point of routing rather than a restriction bolted on top of it.
+
+**The last approval commits the days**, and only the last one. A `DEDUCTION` moves the same
+days out of `pending` and into `taken`, leaving available exactly where it was — the
+movement `BalanceService.commit` had been built and unused for since LMS 212. An
+intermediate approval writes no ledger entry at all, because no figure in any balance
+moved, and inventing one would be a line in somebody's history recording that nothing
+happened.
+
+**And the status and the `DEDUCTION` are one act**, held the way the other two movements
+are:
+
+| | Covers | Does not cover |
+|---|---|---|
+| `leave_request_commits_once`, a unique partial index | a second `DEDUCTION` against one request, on every connection | a request approved holding its days |
+| `leave_request_takes_its_days`, a deferred constraint trigger | a request that reached `APPROVED` and committed nothing, at `COMMIT` | `TRUNCATE` |
+| `leave_request_waits_at_a_desk`, a `CHECK` | a request being decided with no desk, or one approved or ended still sitting in a queue | — |
+
+**`APPROVED` joined `LIVE_STATUSES` and stayed out of the endings**, which is the payoff of
+[writing both lists out](#the-days-come-back) rather than deriving either. Leave that has
+been agreed is the most live leave there is — the person will be away — so it blocks the
+calendar, and LMS 304's exclusion predicate gained the one word it was written in advance
+for. It is not an ending, so it does not release days. A subtraction would have got the
+second one wrong and released the days of every approved request in the system.
+
+**Two questions became three, and the order is still a disclosure rule.** The settlement
+path asks *may you* then *is this move available*. Approval cannot: **who may approve is
+itself a question about the state**, so it asks *may you see this* (skipped for the desk
+itself, or the Chief Executive — nobody's manager, no roles — would be refused a request
+they are the approver of), then *is there an approval to give*, then *are you the desk*.
+That last one is asked again inside the balance lock, and it is not decoration: without it
+a manager clicking twice on a two-stage chain would find the request at the HR desk on the
+second pass and approve the leave outright.
+
+**What is deliberately not here.** FR 48b — the manager who raised their own request, the
+Chief Executive who has nobody above them — routes *upwards*, and that is a rule about a
+reporting line rather than about a leave type. Such a request waits at a desk nobody can
+fill, visibly, rather than being approved by somebody the chain never asked. Taking agreed
+leave off the books afterwards is FR 26 and is not any of the three endings: the days are
+`taken` by then, so it is a movement against the `DEDUCTION`, and `LeaveCannotBeMoved` is
+what somebody reaching for withdraw is told in the meantime. And `leaveRequestPolicy.refuse`
+was **not** narrowed to the chain, so a line manager may still refuse unpaid leave they
+could not approve — a one-line change to the `REFUSE` row that takes a power away from
+managers, which is somebody's decision to make rather than a side effect of building the
+routing.
 
 ---
 
@@ -3216,6 +3306,18 @@ second writer of `status`, and the split between the two questions the policy an
 table each answer. Its integration half asserts that the trigger permits exactly the
 endings the table holds, and that every move lands in the audit log with the person who
 made it and the state it came from.
+
+LMS 314 puts the walk in that same unit file, against chains written out by hand —
+manager-then-HR, HR-then-CEO, one desk, three desks, and a chain changed under a waiting
+request. That is deliberate: `approvalTo()` is a function of a list of desks, so proving it
+against a leave type would be proving less. Which desks the policy actually admits is
+`unit/policy.test.ts`'s, against hardcoded actors, including the case that makes the
+requester's exclusion necessary — an HR Officer asking for unpaid leave holds a code that
+staffs the desk it starts at. What needs a database is in `integration/leave-request.test.ts`
+and is the story itself: that annual leave starts with the manager and unpaid leave starts
+with HR because of rows the migration wrote, that rewriting a chain moves where the next
+request starts with no deployment, that the last approval writes a `DEDUCTION` and the ones
+before it write nothing, and that leave which has been agreed still blocks its own days.
 
 And since LMS 306 it carries [the three endings](#the-days-come-back), where the
 database half is again a real path rather than a psql backstop. The test the story

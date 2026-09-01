@@ -278,9 +278,10 @@ async function insertRequest(key: Record<string, unknown>, days: number): Promis
   const { rows } = await admin.query<{ id: string }>(
     `INSERT INTO leave_request (
         employee_id, leave_type_id, leave_year_id,
-        start_date, end_date, reason, counting_basis, days, calendar_days, status)
+        start_date, end_date, reason, counting_basis, days, calendar_days, status,
+        awaiting_approval_from)
      SELECT $1, $2, $3, y.start_date + $5::int, y.start_date + $5::int + ($4::int - 1),
-            'a request for the suite', 'CALENDAR_DAYS', $4, $4, 'SUBMITTED'
+            'a request for the suite', 'CALENDAR_DAYS', $4, $4, 'SUBMITTED', 'MANAGER'
        FROM leave_year y WHERE y.id = $3
      RETURNING id`,
     [key.employee_id, key.leave_type_id, key.leave_year_id, days, startsOn],

@@ -126,6 +126,29 @@ export const SETS_UP_THE_ORGANISATION: readonly RoleCode[] = ['HR_ADMIN'];
 export const MAINTAINS_THE_CALENDAR: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN'];
 
 /**
+ * The roles that staff the HR desk in a leave type's approval chain. FR 38a. LMS 314.
+ *
+ * FR 38a gives each leave type an ordered chain of *desks* — MANAGER, HR, CEO — and two of
+ * the three are not roles at all: a manager is somebody a person reports to, and the Chief
+ * Executive is the one employee FR 04 leaves without a line manager. HR is the one that is
+ * a grant, and it is two of them, because "unpaid leave is approved by HR" is what the
+ * policy says and which of the two codes the person on duty holds is not something an HR
+ * Administrator should have to encode to configure a leave type.
+ *
+ * The same two codes as {@link MAINTAINS_EMPLOYEE_RECORDS}, and deliberately a separate
+ * constant rather than a reuse of it, exactly as {@link MAINTAINS_THE_CALENDAR} is. They
+ * agree today for unrelated reasons — that one is about creating and terminating the
+ * records of the people here, this is about who may sign off somebody's leave — and the day
+ * one of them changes is the day a shared constant would have moved the other silently. A
+ * story widening who maintains records to include a System Administrator would otherwise
+ * have quietly made them an approver of every unpaid leave request in the company.
+ *
+ * SYS_ADMIN is not on it for that reason and not by omission. Keeping the system running is
+ * not deciding whether somebody may be away for a fortnight.
+ */
+export const APPROVES_AS_HR: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN'];
+
+/**
  * The roles that set a joiner up with a login and reset a forgotten password.
  * LMS 112.
  *

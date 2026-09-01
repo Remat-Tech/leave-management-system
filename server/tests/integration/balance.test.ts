@@ -206,10 +206,11 @@ async function insertRequest(
   const { rows } = await admin.query<{ id: string }>(
     `INSERT INTO leave_request (
         employee_id, leave_type_id, leave_year_id,
-        start_date, end_date, reason, counting_basis, days, calendar_days, status)
+        start_date, end_date, reason, counting_basis, days, calendar_days, status,
+        awaiting_approval_from)
      SELECT $1, $2, $3,
             y.start_date + $5::int, y.start_date + $5::int + ($4::int - 1),
-            'a request for the suite', 'CALENDAR_DAYS', $4, $4, 'SUBMITTED'
+            'a request for the suite', 'CALENDAR_DAYS', $4, $4, 'SUBMITTED', 'MANAGER'
        FROM leave_year y WHERE y.id = $3
      RETURNING id`,
     [key.employee_id, key.leave_type_id, key.leave_year_id, days, startsOn],
@@ -364,6 +365,9 @@ async function askFor(
       days,
       calendarDays: span,
       status: 'SUBMITTED' as const,
+      /* FR 38a. Where a request starts, which `LeaveRequestService` reads off the leave
+         type's chain. These fixtures go straight to the door, so they say it. LMS 314. */
+      awaitingApprovalFrom: 'MANAGER' as const,
     },
     reason: 'Five days in December',
   });

@@ -290,6 +290,9 @@ async function holdDays(movement: {
       days: movement.days,
       calendarDays: movement.days,
       status: 'SUBMITTED' as const,
+      /* FR 38a. Where a request starts, which `LeaveRequestService` reads off the leave
+         type's chain. This fixture goes straight to the door, so it says it. LMS 314. */
+      awaitingApprovalFrom: 'MANAGER' as const,
     },
     reason: movement.reason,
   });

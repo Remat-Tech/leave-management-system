@@ -36,13 +36,21 @@
  * `leave_request_gives_its_days_back` is the mirror of it: the status has to move before
  * an entry can be written against the settled row, so a request that has ended and
  * released nothing is a legitimate intermediate state that only a check at COMMIT can
- * judge. Its sibling `leave_request_ends_once` fires at the UPDATE, because a request
- * moving out of a state it already left is wrong the moment it is attempted.
+ * judge. LMS 314's `leave_request_takes_its_days` is the third of the family and says the
+ * same thing about an approval that committed nothing.
+ *
+ * **`leave_request_moves_as_the_table_says` fires at the UPDATE**, because a request moving
+ * somewhere the state machine does not permit is wrong the moment it is attempted rather
+ * than at the end of the transaction. It is LMS 306's `leave_request_ends_once` widened by
+ * LMS 314 and renamed with it: the rule was "a request ends once", and it is now "and it
+ * moves only where §6 says", which the old name would have made a puzzle to read in an
+ * error about approved leave.
  */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../db/index.js';
 import type { LeaveRequestTable } from '../db/schema.js';
+import type { ApproverRole } from '../domain/approval-chain.js';
 import type { Attribution } from '../domain/audit.js';
 import type { LeavePeriod } from '../domain/leave-calculator.js';
 import {
@@ -50,7 +58,6 @@ import {
   type LeaveRequest,
   LeaveOverlapsAnother,
   LIVE_STATUSES,
-  type ReleasingStatus,
   type RequestStatus,
   type ValidatedLeaveRequest,
 } from '../domain/leave-request.js';
@@ -65,9 +72,12 @@ const OUTSIDE_ITS_YEAR = 'leave_request_falls_in_its_leave_year';
 const HOLDS_NO_DAYS = 'leave_request_holds_its_days';
 const ALREADY_PRICED = 'leave_request_says_what_it_said';
 
-/** The triggers from the release-days-when-a-request-ends migration. LMS 306. */
-const ENDS_ONCE = 'leave_request_ends_once';
+/** The trigger from the release-days-when-a-request-ends migration. LMS 306. */
 const KEPT_ITS_DAYS = 'leave_request_gives_its_days_back';
+
+/** The two from route-a-request-through-its-chain. LMS 314. */
+const MOVED_WRONGLY = 'leave_request_moves_as_the_table_says';
+const KEPT_ITS_DAYS_ON_APPROVAL = 'leave_request_takes_its_days';
 
 /** The exclusion constraint from the prevent-overlapping-requests migration. */
 const OVERLAPS_ANOTHER = 'leave_request_never_overlaps';
@@ -87,6 +97,8 @@ const CHECKED_FIELDS: Record<string, string> = {
   leave_request_costs_at_least_a_day: 'days',
   leave_request_costs_no_more_than_it_spans: 'days',
   leave_request_spans_its_own_dates: 'calendarDays',
+  leave_request_awaiting_role_known: 'awaitingApprovalFrom',
+  leave_request_waits_at_a_desk: 'awaitingApprovalFrom',
 };
 
 /** Which field a missing reference is reported against. */
@@ -263,29 +275,44 @@ export class LeaveRequestRepository {
   }
 
   /**
-   * Ends a request, which is the only move `status` makes today. FR 26. LMS 306.
+   * Moves a request, which is the only thing that touches `status` or the desk it is
+   * waiting at. FR 26, FR 38a, §6. LMS 306, LMS 314.
    *
-   * Called only from inside `BalanceService.releaseForRequest`'s transaction, which
-   * writes the RELEASE naming the row this returns. Called anywhere else,
-   * `leave_request_gives_its_days_back` refuses it at COMMIT and says why — the mirror
-   * of what `leave_request_holds_its_days` does to a submission that reserved nothing.
+   * **One method rather than two, and that is the state machine's second criterion held
+   * literally.** LMS 306 called this `settle` and it wrote a status; LMS 314 needed a
+   * second kind of move — an approval that sends a request on to the next desk without
+   * changing its status at all — and the obvious shape for it was an `advance` beside this
+   * one. Two methods setting the same column is two writers of it, and
+   * ../../tests/unit/state-machine.test.ts reads the source and fails on the second. So
+   * both moves come through here, and the test counts one `.set({ status`.
    *
-   * Takes a {@link ReleasingStatus} rather than a {@link RequestStatus}, so the one
-   * status this method cannot be asked to write is `SUBMITTED` — a request cannot be
-   * un-ended, and the type says so before the trigger has to. Which of the three is
-   * legitimate for a given actor is ../auth/leave-request-policy.ts's, and whether the
-   * request may be ended at all is `assertMayBeSettled`.
+   * The pair is written in one statement for a reason beyond tidiness:
+   * `leave_request_waits_at_a_desk` is an equivalence between the two columns, so a writer
+   * that moved one and then the other would be refused halfway through every legitimate
+   * move it made.
+   *
+   * Called only from inside `BalanceService`'s transactions, which write the movement
+   * naming the row this returns. Called anywhere else, the deferred triggers refuse it at
+   * COMMIT and say why — `leave_request_gives_its_days_back` for an ending that released
+   * nothing, `leave_request_takes_its_days` for an approval that committed nothing.
+   *
+   * It takes a {@link RequestStatus} rather than a {@link ReleasingStatus}, which is what
+   * LMS 314 cost: `SUBMITTED` is now a legitimate destination, because a request that has
+   * moved on a stage is still submitted. What stops that being a way to un-end a request is
+   * `leave_request_moves_as_the_table_says`, which refuses every move out of a state that
+   * has ended, on every connection. The type used to carry that and no longer can.
    */
-  async settle(
+  async moveTo(
     by: Attribution,
     id: string,
-    to: ReleasingStatus,
+    to: RequestStatus,
+    awaiting: ApproverRole | null,
   ): Promise<LeaveRequest | undefined> {
     return this.catchRefusals(async () => {
       const row = await recording(this.db, by, (on) =>
         on
           .updateTable('leave_request')
-          .set({ status: to })
+          .set({ status: to, awaiting_approval_from: awaiting })
           .where('id', '=', id)
           .returningAll()
           .executeTakeFirst(),
@@ -355,16 +382,18 @@ export class LeaveRequestRepository {
           throw new InvalidLeaveRequest('id', (error as Error).message);
         }
 
-        /* LMS 306's two, and both are backstops rather than paths. `assertMayBeSettled`
-           asks the first question inside the balance lock, which is what makes a second
-           withdrawal wait and then be refused with a sentence; `BalanceService` writes
-           the RELEASE in the same transaction as the status, which is what keeps the
-           second from ever being reached. What they catch is a writer that found
-           another way in, and it is told what it broke rather than which trigger. */
-        if (constraint === ENDS_ONCE) {
-          throw new InvalidLeaveRequest('status', (error as Error).message);
-        }
-        if (constraint === KEPT_ITS_DAYS) {
+        /* The state machine's three, and all of them are backstops rather than paths.
+           `settlementTo` and `approvalTo` ask the first question inside the balance lock,
+           which is what makes a second withdrawal wait and then be refused with a
+           sentence; `BalanceService` writes the movement in the same transaction as the
+           status, which is what keeps the other two from ever being reached. What they
+           catch is a writer that found another way in, and it is told what it broke rather
+           than which trigger. */
+        if (
+          constraint === MOVED_WRONGLY ||
+          constraint === KEPT_ITS_DAYS ||
+          constraint === KEPT_ITS_DAYS_ON_APPROVAL
+        ) {
           throw new InvalidLeaveRequest('status', (error as Error).message);
         }
       }
@@ -405,6 +434,13 @@ function messageFor(constraint: string): string {
       return 'Leave cannot cost more days than the period it covers.';
     case 'leave_request_spans_its_own_dates':
       return 'The number of calendar days does not match the two dates it is a count of.';
+    case 'leave_request_awaiting_role_known':
+      return 'A request waits at one of the three approver desks: MANAGER, HR or CEO.';
+    case 'leave_request_waits_at_a_desk':
+      return (
+        'A request that is still being decided is waiting on exactly one desk, and one ' +
+        'that has been approved or has ended is waiting on none. FR 38a.'
+      );
     default:
       return `${constraint} refused this request.`;
   }
@@ -429,6 +465,10 @@ function rowFor(request: ValidatedLeaveRequest): Insertable<LeaveRequestTable> {
     days: request.days,
     calendar_days: request.calendarDays,
     status: request.status,
+    /* FR 38a. The first desk in the type's chain, worked out by `validateNewLeaveRequest`
+       rather than chosen here. `leave_request_waits_at_a_desk` refuses the row without it
+       while the status is SUBMITTED, which is what a submission always is. */
+    awaiting_approval_from: request.awaitingApprovalFrom,
   };
 }
 
@@ -445,6 +485,7 @@ function toRequest(row: LeaveRequestRow): LeaveRequest {
     days: row.days,
     calendarDays: row.calendar_days,
     status: row.status as RequestStatus,
+    awaitingApprovalFrom: row.awaiting_approval_from as ApproverRole | null,
     submittedAt: row.submitted_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

@@ -8,6 +8,7 @@ import { Guard, NOT_AUTHORISED_MESSAGE, NotAuthorised, policyFor } from '../../s
 import { rolePolicy } from '../../src/auth/role-policy.js';
 import {
   ADMINISTERS_ACCESS,
+  APPROVES_AS_HR,
   MAINTAINS_EMPLOYEE_RECORDS,
   MAINTAINS_THE_CALENDAR,
   PROVIDES_LOGINS,
@@ -1266,13 +1267,14 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       }
     });
 
-    /* There is still no `approve` in that file and its absence is still deliberate: a
-       decision here would be a way to reach the transition without passing the check that
-       knows which desk FR 38a's chain has the request sitting on. The three LMS 306 added
-       do not have that problem, because none of them is a step in the chain — they end a
-       request rather than advancing it. */
-    it('and has no decision for approving one, which is the next story’s', () => {
+    /* And the decisions there are. `approve` arrived with LMS 314 and is the one whose
+       subject is not a `BalanceOwner`: it takes the desk the request is sitting on as well,
+       which is what stops it being "a way to reach the transition without passing the check
+       that knows which desk FR 38a's chain has the request sitting on" — the sentence this
+       file refused it with for two stories. */
+    it('and the decisions it holds are these seven', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
+        'approve',
         'cancel',
         'read',
         'refuse',
@@ -1327,6 +1329,127 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         expect(leaveRequestPolicy.refuse(holder, hers).allowed).toBe(carries);
         expect(leaveRequestPolicy.cancel(holder, hers).allowed).toBe(carries);
       }
+    });
+
+    /**
+     * And approving one is decided by the chain, not by rank. FR 38, FR 38a, FR 40. LMS 314.
+     *
+     * The three desks resolve to a person three different ways — a reporting line, a pair of
+     * granted roles, and the one employee FR 04 leaves without a manager — and this is where
+     * that is pinned against hardcoded actors rather than against `TRANSITIONS`. The table
+     * says `THE_DESK_IT_IS_WITH`; only these cases say who that turns out to be.
+     */
+    describe('and approving one', () => {
+      /** Ama's request, waiting on a desk. Akosua manages her; Yaw is the Chief Executive. */
+      function at(awaiting: 'MANAGER' | 'HR' | 'CEO') {
+        return { ...hers, awaiting, chiefExecutiveId: 'yaw' };
+      }
+
+      it('is the line manager’s while it is sitting with the manager', () => {
+        expect(leaveRequestPolicy.approve(manager('akosua'), at('MANAGER')).allowed).toBe(true);
+      });
+
+      /* And HR does not get to reach past them. A request still with a manager is one the
+         manager has not seen, which is the stage the chain exists to insist on — so holding
+         HR_OFFICER is not standing here, even though it is standing to cancel the request
+         outright. */
+      it('and not HR’s, while it is still sitting with the manager', () => {
+        for (const [, roles] of EACH_ROLE) {
+          expect(leaveRequestPolicy.approve(employee('adwoa', roles), at('MANAGER')).allowed).toBe(
+            false,
+          );
+        }
+      });
+
+      /* HR is a granted role and two codes staff it, which is `APPROVES_AS_HR`. A separate
+         list from the one that maintains employee records, so that widening one cannot
+         quietly widen the other — read off the list here rather than written out, exactly as
+         every other role check in this file is. */
+      it('and is HR’s once it reaches the HR desk, for the roles that staff it', () => {
+        for (const [code, roles] of EACH_ROLE) {
+          expect(leaveRequestPolicy.approve(employee('adwoa', roles), at('HR')).allowed).toBe(
+            APPROVES_AS_HR.includes(code),
+          );
+        }
+      });
+
+      /* And the manager has no standing at the HR stage either. The chain is a sequence and
+         each desk answers for its own stage. */
+      it('and not the line manager’s once it has moved past them', () => {
+        expect(leaveRequestPolicy.approve(manager('akosua'), at('HR')).allowed).toBe(false);
+      });
+
+      /**
+       * The Chief Executive is a position and is compared by id. FR 04.
+       *
+       * Nobody holds a role that says Chief Executive — the leave-type-approval-chain
+       * migration is emphatic that turning the three desks into three role codes is the trap
+       * — so the desk resolves to the one employee with no line manager, and holding every
+       * role in the system is not standing at it.
+       */
+      it('and is the Chief Executive’s at the CEO desk, by who they are rather than what they hold', () => {
+        expect(leaveRequestPolicy.approve(employee('yaw'), at('CEO')).allowed).toBe(true);
+
+        for (const [, roles] of EACH_ROLE) {
+          expect(leaveRequestPolicy.approve(employee('adwoa', roles), at('CEO')).allowed).toBe(
+            false,
+          );
+        }
+      });
+
+      /* And where there is no root at all — which `employee_one_root` says cannot happen and
+         a half-loaded database makes real — nobody is at that desk. `isSelf` refuses two
+         nulls for the same reason: nobody is not somebody. */
+      it('and is nobody’s where the company has no Chief Executive on record', () => {
+        expect(
+          leaveRequestPolicy.approve(employee('yaw'), {
+            ...hers,
+            awaiting: 'CEO',
+            chiefExecutiveId: null,
+          }).allowed,
+        ).toBe(false);
+      });
+
+      /**
+       * And the requester is never at the desk, however they got there.
+       *
+       * The case that makes this necessary is ordinary rather than adversarial: unpaid leave
+       * goes to the HR desk first, and an HR Officer asking for unpaid leave holds a code
+       * that staffs it. Without the exclusion they would approve their own first stage on the
+       * way past. `ledgerPolicy.commit` refuses the same thing at the ledger door, and both
+       * are asked.
+       */
+      it('and is never the person who asked for it, even at a desk they staff', () => {
+        expect(
+          leaveRequestPolicy.approve(employee('ama', ['EMPLOYEE', 'HR_OFFICER']), at('HR')).allowed,
+        ).toBe(false);
+
+        expect(ledgerPolicy.commit(employee('ama', ['EMPLOYEE', 'HR_OFFICER']), hers).allowed).toBe(
+          false,
+        );
+      });
+
+      /* And a request waiting on nobody — approved, or ended — admits nobody. There is no
+         desk, so there is nobody at it. */
+      it('and is nobody’s when the request is waiting on no desk at all', () => {
+        const nowhere = { ...hers, awaiting: null, chiefExecutiveId: 'yaw' };
+
+        expect(leaveRequestPolicy.approve(manager('akosua'), nowhere).allowed).toBe(false);
+        expect(
+          leaveRequestPolicy.approve(employee('adwoa', ['EMPLOYEE', 'HR_ADMIN']), nowhere).allowed,
+        ).toBe(false);
+      });
+
+      /* Refused openly, naming the chain. Anybody reaching this can already read the
+         request, and the person most likely to meet it is an approver at the wrong stage of
+         a chain they cannot see. */
+      it('and says why, and how the chains run', () => {
+        const refusal = leaveRequestPolicy.approve(manager('akosua'), at('HR'));
+
+        expect(refusal.told).toContain('approval chain');
+        expect(refusal.told).toContain('unpaid leave goes to HR');
+        expect(refusal.because).not.toBeNull();
+      });
     });
 
     /* Every one of the three is refused openly. Anybody reaching them can already read

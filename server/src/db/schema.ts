@@ -744,9 +744,20 @@ export interface LeaveRequestTable {
      leave_request_spans_its_own_dates. Stored rather than derived because it is the
      other half of the sentence a person reads. */
   calendar_days: ColumnType<number, number, never>;
-  /* SUBMITTED, and only that today. The approval story extends the CHECK in its own
-     migration, as LMS 218 extended the ledger's entry types to admit LAPSE. */
+  /* SUBMITTED, APPROVED, WITHDRAWN, CANCELLED or REFUSED, held closed by
+     leave_request_status_known; the domain's REQUEST_STATUSES is the same list and the
+     integration suite asserts the two agree. Moved only by
+     LeaveRequestRepository.moveTo(), and only where TRANSITIONS holds the move. */
   status: string;
+  /* FR 38a, FR 40. The desk in the type's approval chain this request is waiting on —
+     MANAGER, HR or CEO — or null once it is waiting on nobody. LMS 314.
+
+     Where a request has got to is two facts and this is the second: the status says
+     whether it is still being decided, this says who is deciding it. Not null exactly
+     while the status is SUBMITTED, which leave_request_waits_at_a_desk holds as an
+     equivalence, so a request that has been approved or has ended sits in nobody's
+     queue. */
+  awaiting_approval_from: string | null;
   /* Stamped by leave_request_says_when_it_was_submitted, never supplied. */
   submitted_at: Timestamp;
   created_at: Timestamp;

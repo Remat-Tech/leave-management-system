@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { DayCount } from '../../src/domain/leave-calculator.js';
 import {
+  approvalTo,
   assertItCostsSomething,
   settlementTo,
+  transitionsFrom,
   assertTheDaysAreThere,
   blocksTheCalendar,
   countingBasisInWords,
   InvalidLeaveRequest,
+  isSettled,
   LeaveAlreadySettled,
   type LeaveRequest,
   LeaveCountsNoDays,
@@ -124,6 +127,7 @@ function aStoredRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     days: 6,
     calendarDays: 9,
     status: 'SUBMITTED',
+    awaitingApprovalFrom: 'MANAGER',
     submittedAt: new Date('2026-02-01T09:00:00Z'),
     createdAt: new Date('2026-02-01T09:00:00Z'),
     updatedAt: new Date('2026-02-01T09:00:00Z'),
@@ -336,6 +340,9 @@ describe('what a request has to say', () => {
     countingBasis: 'WORKING_DAYS' as const,
     days: 7,
     calendarDays: 9,
+    /* FR 38a. The type's chain, handed over so the first stage can be read off it. LMS
+       314 — see the case below about where a request starts. */
+    approvalChain: ['MANAGER', 'HR'] as const,
   };
 
   function refusedField(build: () => unknown): string {
@@ -350,10 +357,49 @@ describe('what a request has to say', () => {
   }
 
   it('carries the four fields FR 10 asks for, and what they were priced at', () => {
+    /* The chain goes in and does not come out: what is stored is the desk read off the
+       front of it, which is the whole of the story's first criterion. */
+    const stored = { ...SOUND, approvalChain: undefined };
+    delete stored.approvalChain;
+
     expect(validateNewLeaveRequest(SOUND)).toEqual({
-      ...SOUND,
+      ...stored,
       status: 'SUBMITTED',
+      awaitingApprovalFrom: 'MANAGER',
     });
+  });
+
+  /**
+   * And where it starts is the first stage of the type's chain. FR 38, FR 38a. LMS 314's
+   * first criterion.
+   *
+   * The chain goes in and the desk comes out, and the desk is the front of whatever list
+   * was handed over. That is the whole criterion: annual leave starts with the line manager
+   * and unpaid leave starts with HR because those are what their chains say, and nothing on
+   * this path knows which type is which. Design principle 5 — the README's version is "if
+   * either appears as an `if` on a type code, that is a bug".
+   */
+  it('and starts at the first desk of the chain it was handed, whatever that is', () => {
+    expect(validateNewLeaveRequest(SOUND).awaitingApprovalFrom).toBe('MANAGER');
+
+    expect(
+      validateNewLeaveRequest({ ...SOUND, approvalChain: ['HR', 'CEO'] }).awaitingApprovalFrom,
+    ).toBe('HR');
+
+    expect(validateNewLeaveRequest({ ...SOUND, approvalChain: ['CEO'] }).awaitingApprovalFrom).toBe(
+      'CEO',
+    );
+  });
+
+  /* And a chain with nobody in it is refused rather than defaulted. A request against a
+     type nobody approves would sit in no queue at all, and `assertSomebodyApprovesIt` says
+     the same thing one layer out with the type named. Defaulting to manager-then-HR here is
+     the tempting alternative and it is the fallback read ./approval-chain.ts argues
+     against: it would route a request somewhere the configuration screen shows nothing. */
+  it('and refuses a chain with nobody in it rather than picking a desk', () => {
+    expect(refusedField(() => validateNewLeaveRequest({ ...SOUND, approvalChain: [] }))).toBe(
+      'approvalChain',
+    );
   });
 
   /* The story's third criterion in the type system: the basis is on the stored shape,
@@ -701,22 +747,46 @@ describe('two periods sharing a day', () => {
 
 describe('which requests hold the days', () => {
   /**
-   * The list is deliberately not "every status there is", and today those are the same
-   * list — which is exactly why it is worth a test.
+   * The list is deliberately not "every status there is", and it is now not "every status
+   * that has not ended" either.
    *
-   * `REQUEST_STATUSES` has one value and it is the pending one, so the two agree today
-   * and will stop agreeing the moment the approval story lands: APPROVED joins this
-   * list, and WITHDRAWN, CANCELLED and REFUSED do not. This asserts the shape of the
-   * decision rather than its current answer, so a status added to one list without a
-   * thought about the other is a failing test rather than a fortnight in March blocked
-   * by leave that was refused in January.
+   * The note here used to say the two would stop agreeing "the moment the approval story
+   * lands: APPROVED joins this list, and WITHDRAWN, CANCELLED and REFUSED do not". Both
+   * halves of that happened. LMS 306 added three that stayed out, and LMS 314 added one
+   * that came in — because leave that has been agreed is the most live leave there is: the
+   * person will be away, the days are gone as `taken`, and something booked on top of them
+   * is FR 15's defect exactly.
+   *
+   * The two lists are separate decisions, and this asserts the shape of the decision rather
+   * than its current answer, so a status added to one without a thought about the other is a
+   * failing test rather than either a fortnight in March blocked by leave refused in January
+   * or a fortnight booked over leave a manager and HR have both signed off.
    */
   it('is a list of its own, not a reading of every status', () => {
-    expect([...LIVE_STATUSES]).toEqual(['SUBMITTED']);
+    expect([...LIVE_STATUSES]).toEqual(['SUBMITTED', 'APPROVED']);
 
     for (const status of LIVE_STATUSES) {
       expect(REQUEST_STATUSES).toContain(status);
     }
+  });
+
+  /**
+   * And APPROVED went into this list and stayed out of the endings, which is the whole
+   * payoff of writing both out rather than deriving either.
+   *
+   * `RELEASING_STATUSES` said in advance what would have happened otherwise: defining it as
+   * "every status that is not live" would have been "a definition that silently absorbs
+   * whatever arrives next", and APPROVED "would land in this list by arithmetic and release
+   * the days of every approved request in the system". It did not, because it is not a
+   * subtraction — somebody had to decide, twice, and the two decisions went opposite ways.
+   *
+   * The two lists are still exact complements today. That is a fact about these five
+   * statuses rather than a rule, and it is why neither is written as the other's negation.
+   */
+  it('and approval joined it while staying out of the endings', () => {
+    expect(blocksTheCalendar('APPROVED')).toBe(true);
+    expect(isSettled('APPROVED')).toBe(false);
+    expect(RELEASING_STATUSES).not.toContain('APPROVED');
   });
 
   it('and a submitted request holds them, because it is waiting to be decided', () => {
@@ -1100,32 +1170,64 @@ describe('a request the balance does not hold', () => {
 
 describe('where this story stops', () => {
   /**
-   * Four statuses, and the shortness of the list is still the boundary.
+   * Five statuses, and the shortness of the list is still the boundary.
    *
-   * A list of six with two unreachable would be a promise the schema cannot keep, so
-   * `leave_request_status_known` holds exactly these four and the approval story extends
-   * it in a migration of its own — as LMS 218 extended the ledger's entry types to admit
-   * LAPSE, and as LMS 306 extended this one to admit the three endings. This test is what
-   * fails if somebody adds a status here without the migration that lets the database
-   * hold it.
+   * A list of eight with three unreachable would be a promise the schema cannot keep — LMS
+   * 209's rule — so `leave_request_status_known` holds exactly these five and every one of
+   * them is reached by a method that exists. LMS 306 extended the single value LMS 301 left,
+   * LMS 314 extended it again for approval, and each did it in a migration of its own. This
+   * test is what fails if somebody adds a status here without the migration that lets the
+   * database hold it.
    */
-  it('has the four statuses something can actually reach', () => {
-    expect([...REQUEST_STATUSES]).toEqual(['SUBMITTED', 'WITHDRAWN', 'CANCELLED', 'REFUSED']);
+  it('has the five statuses something can actually reach', () => {
+    expect([...REQUEST_STATUSES]).toEqual([
+      'SUBMITTED',
+      'APPROVED',
+      'WITHDRAWN',
+      'CANCELLED',
+      'REFUSED',
+    ]);
   });
 
   /**
-   * And `APPROVED` is not one of them, which is the boundary this story stopped at.
+   * And there is nothing after `APPROVED`, which is the boundary this story stopped at.
    *
-   * The three that arrived release days. Approval *commits* them — the hold becomes days
-   * taken and available does not move — and which desk in FR 38a's chain may agree needs
-   * the chain, the type and how far the request has got, none of which exists yet. The
-   * story that brings it brings its own migration.
+   * Taking agreed leave off the books is FR 26 and is a real thing HR does. It is not any of
+   * the three endings, because by then the days are `taken` rather than `pending`: giving
+   * them back is a movement against the `DEDUCTION` and `daysToRelease` would find no hold
+   * to work on. The story that offers it brings that movement, a row in `TRANSITIONS` and a
+   * destination in `refuse_an_impossible_transition()`.
    *
    * Written as an assertion rather than a comment because the tempting thing, on the
-   * afternoon somebody starts the approval story, is to add the status here and reach the
-   * migration later.
+   * afternoon somebody starts that story, is to add the row here and reach the movement
+   * later — which would post a `RELEASE` against a hold that is not there and credit
+   * somebody for leave they have taken.
    */
-  it('and nothing here approves one, which is the next story’s', () => {
-    expect(REQUEST_STATUSES).not.toContain('APPROVED');
+  it('and nothing moves a request on from there, which is the next story’s', () => {
+    expect(transitionsFrom('APPROVED')).toEqual([]);
+  });
+
+  /**
+   * And nothing here routes a request past a desk nobody can fill. FR 48b.
+   *
+   * The gap this story leaves on purpose, asserted so it is a decision rather than a
+   * discovery. A manager who raises their own leave is waiting on themselves, and the Chief
+   * Executive has no line manager to send an ordinary request to; FR 48b routes both
+   * upwards, and it is a rule about a reporting line rather than about a leave type — which
+   * is why the leave-type-approval-chain migration kept it out of the chain table.
+   *
+   * What this story does instead is refuse visibly: `leaveRequestPolicy.approve` admits
+   * nobody but the desk, so such a request waits rather than being approved by somebody the
+   * chain never asked. The walk has no notion of skipping a stage, and that is what this
+   * says.
+   */
+  it('and no desk is skipped when there is nobody at it', () => {
+    const chain = ['MANAGER', 'HR'] as const;
+
+    expect(approvalTo(aStoredRequest({ awaitingApprovalFrom: 'MANAGER' }), chain)).toEqual({
+      by: 'MANAGER',
+      to: 'SUBMITTED',
+      awaiting: 'HR',
+    });
   });
 });
