@@ -1806,7 +1806,9 @@ that is a mistake in the dates, where a period whose days are all free is a mist
 about the kind of leave, and one message for both would send half the people who hit
 it to correct the wrong field. A period over two years is refused as a mistyped year
 — the same "check the unit" guard `requireWindow()` applies to a notice window, not a
-policy about how long leave may be.
+policy about how long leave may be. FR 20a says there is no such policy, and that
+guard is the only thing in the request path that could quietly become one; [no maximum
+request length](#no-maximum-request-length) is where that is held open.
 
 **And the first of January 2027 costs a day.** Only 2026's gazette is seeded, so
 until HR transcribes 2027 New Year's Day is an ordinary Friday. That is the hazard
@@ -2862,6 +2864,54 @@ design principle 5.
 
 ---
 
+### No maximum request length
+
+**Somebody may ask for their whole year's leave in one request.** FR 20a, LMS 309. The
+requirement is an absence — "the system does not impose a limit the company has not set"
+— and an absence is a thing that has to be *kept*, because the way it ends is nobody
+deciding to end it. Somebody tightens a validation bound on a quiet afternoon, and a
+system that never had a cap has one.
+
+**Nothing in the path holds a maximum, and that was already true.** LMS 309 added no
+behaviour; what it added is the proof, and the reasons written where the next person will
+be tempted. The floor and the ceiling are worth seeing side by side:
+
+| | Bound | |
+|---|---|---|
+| `requireWholeDays()` | `days >= 1` | a floor, and no second half to the sentence |
+| `leave_request_costs_at_least_a_day` | `days >= 1` | the same rule where no sentence can reach |
+| `leave_request_costs_no_more_than_it_spans` | `days <= calendar_days` | relative — a coherence rule, not a length one |
+| `LONGEST_PERIOD_DAYS` | 731 calendar days | a mistyped year, unreachable inside one leave year |
+
+**Three things do limit how much leave somebody can ask for at once, and none of them is
+a length rule.** The distinction is the whole requirement, so it is worth being exact:
+
+* **The balance.** FR 26, and the company's own entitlement figure — the limit the
+  company *did* set. Twenty-one days against twenty is [refused with the
+  figure](#days-that-are-not-there), for being unaffordable rather than for being long.
+  Take the balance to exactly nought and nothing objects: the `NOT_ENOUGH_DAYS` warning
+  fires on `days > available`, so twenty against twenty is silent, and somebody spending
+  their whole entitlement deliberately is not told they are short.
+* **The leave year.** FR 16. A request is one period against one balance and a balance
+  belongs to one year, so the longest request there can be is a year — [refused and not
+  split](#dates-that-are-obviously-wrong) at the boundary.
+* **`LONGEST_PERIOD_DAYS`.** The mistyped-year guard, at two years. **It cannot refuse a
+  real request**, and that is a property rather than a coincidence: the year rule above
+  caps any priced period at 366 days, less than half of it. The unit suite asserts a
+  period as long as the longest leave year can be still passes, so a bound lowered far
+  enough to bite fails there rather than in front of somebody booking their August.
+
+**The absence is proved by asking for the longest request the rules allow.** The
+integration suite puts an entitlement up by hand — FR 37's adjustment, doing exactly what
+it is for — and then asks for an entire leave year, two hundred and forty-eight working
+days of it, in one request. Any maximum anywhere in the path refuses that whatever number
+it holds, so the test passes only if there is nothing. Beside it, the twenty-day case the
+story is named for, and a read of `pg_constraint` asserting that no `CHECK` on
+`leave_request` bounds the day count by a literal — the database being where a cap would
+be most durable and least visible.
+
+---
+
 ### The days come back
 
 **A request ends, and what it was holding goes back into what the person may book.** FR
@@ -3066,6 +3116,13 @@ service's and `daysToReserve()`'s, reached by going straight to the door — and
 asserts the two agree on the available figure, the days requested and the
 shortfall, so [neither can be loosened alone](#days-that-are-not-there).
 `unit/leave-request.test.ts` covers the sentence, which is most of that story.
+
+LMS 309 leans on the same suite for a requirement that is an absence: [no maximum
+request length](#no-maximum-request-length) is proved by asking for an entire leave
+year at once, having first put the entitlement up by hand so the balance is not what
+answers. A cap anywhere in the path refuses that whatever value it holds, so the test
+passes only if there is nothing — which is the same trick `unit/one-writer.test.ts`
+plays on a second ledger writer, done by behaviour instead of by reading source.
 
 And since LMS 306 it carries [the three endings](#the-days-come-back), where the
 database half is again a real path rather than a psql backstop. The test the story

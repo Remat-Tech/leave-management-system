@@ -405,6 +405,23 @@ describe('what a request has to say', () => {
   it.each([2.5, 0, -3])('refuses %s days, because leave is asked for in whole days', (days) => {
     expect(refusedField(() => validateNewLeaveRequest({ ...SOUND, days }))).toBe('days');
   });
+
+  /**
+   * And the check on `days` has a floor and no ceiling. FR 20a, LMS 309.
+   *
+   * The rule is "at least one", and the absence of a second half to that sentence is
+   * the requirement. `requireWholeDays` is where a maximum would go if the system had
+   * one — it is the one function that judges the figure a request costs — so this is
+   * where the absence is worth asserting rather than assumed.
+   *
+   * A whole year of working days is well past anything a balance would cover, and that
+   * is the point: what stops a long request is the *balance*, which is the company's
+   * own entitlement figure and therefore a limit the company set. Nothing about the
+   * number of days is refused for being large.
+   */
+  it.each([20, 120, 260, 366])('and accepts %s days, because FR 20a sets no maximum', (days) => {
+    expect(validateNewLeaveRequest({ ...SOUND, days, calendarDays: days }).days).toBe(days);
+  });
 });
 
 describe('what may be changed afterwards', () => {

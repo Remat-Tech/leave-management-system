@@ -601,6 +601,163 @@ describe('a request the balance does not hold', () => {
   }
 });
 
+/* --------------------------------------------------- no maximum request length */
+
+/**
+ * There is no cap on how long a request may be. FR 20a. LMS 309.
+ *
+ * The story is an employee taking their whole year's leave in one go, and the
+ * requirement behind it is an absence rather than a behaviour — "the system does not
+ * impose a limit the company has not set". That makes it two different tests, and only
+ * one of them is the obvious one.
+ *
+ * **That twenty days in one request works** is the story's first criterion, and it needs
+ * a real balance and a real calendar: twenty *working* days is twenty-six calendar days,
+ * and the figure has to come out of the same count that would price any other request.
+ *
+ * **That no cap exists** is a claim about code that is not there, which is the shape
+ * ../unit/one-writer.test.ts deals with by reading the source. Here it is provable by
+ * behaviour, and more convincingly: give somebody an entitlement big enough and ask for
+ * an entire leave year at once. Anything in the path holding a maximum — a constant, a
+ * CHECK, a column somebody added to `leave_type` — refuses that, whatever its value.
+ *
+ * ## What does limit a request, and why none of it is this
+ *
+ * Three rules stop a request being longer, and each is somebody's decision rather than
+ * the system's:
+ *
+ *   **The balance.** FR 26, and the company's own entitlement figure — the limit the
+ *   company *did* set. Asking for more than that is [refused with the
+ *   figure](#days-that-are-not-there), and it is refused for being unaffordable rather
+ *   than for being long.
+ *
+ *   **The leave year.** FR 16. A request is one period against one balance and a balance
+ *   belongs to one year, so the longest request there can be is a year — which is the
+ *   bound this file asks for below.
+ *
+ *   **`LONGEST_PERIOD_DAYS`.** A guard against a mistyped year, at two years, which no
+ *   period inside a single leave year can reach. ../unit/leave-calculator.test.ts holds
+ *   the gap open.
+ */
+describe('how long a request may be', () => {
+  /**
+   * Four working weeks with no public holiday in them, which June 2026 is.
+   *
+   * Monday the first to Friday the twenty-sixth: twenty working days across twenty-six
+   * calendar days, the four weekends inside it costing nothing. The month is chosen
+   * because the gazette is empty between Eid al-Adha in May and Founders' Day in August,
+   * so the twenty is twenty rather than an accident of which holidays fell where.
+   */
+  const ALL_TWENTY = { from: '2026-06-01', to: '2026-06-26' };
+
+  /* The story's first criterion, said plainly. */
+  it('is twenty days in one request, when twenty days is what somebody has', async () => {
+    const { request, balance } = await requests.submit(asThemselves(), aRequest(ALL_TWENTY));
+
+    expect(request.days).toBe(20);
+    expect(request.calendarDays).toBe(26);
+    expect(request.status).toBe('SUBMITTED');
+    expect(balance.pending).toBe(20);
+    expect(balance.available).toBe(0);
+  });
+
+  /**
+   * And the quote said the same before anything was written, without warning about it.
+   *
+   * A balance taken exactly to nought is not a problem and must not read as one: the
+   * `NOT_ENOUGH_DAYS` warning fires on `days > available`, so twenty against twenty is
+   * silent. Somebody spending their whole entitlement deliberately should not be told
+   * they are short.
+   */
+  it('and the quote prices it without warning that it is too much', async () => {
+    const quote = await requests.quote(asThemselves(), aRequest(ALL_TWENTY));
+
+    expect(quote.days).toBe(20);
+    expect(quote.availableNow).toBe(20);
+    expect(quote.availableAfter).toBe(0);
+    expect(quote.warnings.map((warning) => warning.code)).not.toContain('NOT_ENOUGH_DAYS');
+  });
+
+  /* And the twenty-first day is refused by the balance rather than by a length rule —
+     the distinction the whole story is about. The message names the figure. */
+  it('and the day past it is refused for the balance, not for the length', async () => {
+    const refusal = await requests
+      .submit(asThemselves(), aRequest({ from: '2026-06-01', to: '2026-06-29' }))
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(refusal).toBeInstanceOf(NotEnoughDays);
+    expect((refusal as NotEnoughDays).message).toContain('you have 20 left');
+  });
+
+  /**
+   * And a whole leave year in one request, which is the longest there can be.
+   *
+   * The second criterion, and the one that proves the absence rather than a value. Any
+   * maximum anywhere in the path — a constant compared against the day count, a CHECK on
+   * the column, a `max_consecutive_days` on the leave type — refuses two hundred and
+   * forty-eight days whatever number it holds. This passes only if there is nothing.
+   *
+   * The entitlement is put up first, by hand and through the one door, because the point
+   * is to remove the *company's* limit and see whether another one is hiding behind it.
+   * That is FR 37's adjustment doing exactly what it is for.
+   *
+   * The count is asserted as a floor rather than as an exact figure. Which days of 2026
+   * are working days is the calendar's business and ./leave-calculator.test.ts's; what
+   * this file is about is that nothing refused them for being many.
+   */
+  it('and an entire leave year, once the balance covers it', async () => {
+    await balances.adjust(system, {
+      employeeId: people.officer,
+      leaveTypeId: annualId,
+      leaveYearId: y2026.id,
+      days: 300,
+      reason: 'Testing that nothing caps a request by its length. FR 20a.',
+    });
+
+    const wholeYear = aRequest({ from: '2026-01-01', to: '2026-12-31' });
+    const quote = await requests.quote(asThemselves(), wholeYear);
+
+    /* Every working day of the year, less the holidays that fell on one. */
+    expect(quote.days).toBeGreaterThan(240);
+    expect(quote.calendarDays).toBe(365);
+
+    const { request, balance } = await requests.submit(asThemselves(), wholeYear);
+
+    expect(request.days).toBe(quote.days);
+    expect(request.calendarDays).toBe(365);
+    expect(balance.pending).toBe(quote.days);
+  });
+
+  /**
+   * And nothing in the schema bounds the day count from above.
+   *
+   * The database is where a cap would be most durable and least visible, so the absence
+   * is asserted against `pg_constraint` rather than against the migration text — what is
+   * actually on the table, including anything a later migration adds.
+   *
+   * Every bound on `days` today is *relative*: at least one, and no more than the period
+   * spans. Both are rules about coherence rather than about length, and neither has a
+   * ceiling in it. A `CHECK (days <= 30)` is what this fails on.
+   */
+  it('and no CHECK on the table bounds the days by a number', async () => {
+    const { rows } = await admin.query<{ conname: string; definition: string }>(
+      `SELECT conname, pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid = 'leave_request'::regclass AND contype = 'c'`,
+    );
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(
+      rows
+        .filter(({ definition }) => /\bdays\s*<=?\s*\d/.test(definition))
+        .map(({ conname, definition }) => `${conname}: ${definition}`),
+    ).toEqual([]);
+  });
+});
+
 /* ------------------------------------------------- the copy, and what it protects */
 
 describe('the counting basis is copied onto the request', () => {
