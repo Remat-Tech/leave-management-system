@@ -362,6 +362,38 @@ describe('two dates that are not a period', () => {
     expect(() => validateLeavePeriod({ from: '2026-01-01', to: '2027-12-31' })).not.toThrow();
   });
 
+  /**
+   * And it is not a maximum request length, which FR 20a says there is not one of.
+   *
+   * LMS 309. That bound is the only length check anywhere in the request path, so it
+   * is the only thing that could quietly become the cap the requirement forbids — and
+   * the way that happens is somebody tightening it to a "sensible" thirty for
+   * validation's sake, on an afternoon when nothing says why not.
+   *
+   * **What makes it safe today is the gap rather than the number.** A request is one
+   * period against one balance and a balance belongs to one leave year, so FR 16
+   * refuses anything crossing a year end and the longest period that can ever reach
+   * the bound is a leave year — 366 days in a leap year, less than half of it. This
+   * asserts that gap: the longest leave year there can be passes, so a bound lowered
+   * far enough to refuse a real request fails here rather than in front of somebody
+   * taking their entitlement in one go.
+   *
+   * A whole year of leave is not a request anybody's balance would cover, and that is
+   * the point — what stops it is the balance, which is the company's own figure and
+   * therefore a limit the company set. Nothing about its *length* stops it.
+   */
+  it('and is not a cap on how long leave may be, which FR 20a forbids', () => {
+    /* The longest a leave year can be, both ends inclusive. §5.4 does not say a leave
+       year is a calendar year, so this is the shape rather than a real one. */
+    expect(() => validateLeavePeriod({ from: '2028-01-01', to: '2028-12-31' })).not.toThrow();
+
+    /* And every one of the ordinary long absences, none of which is near the bound:
+       four months of maternity leave, and a full year's annual entitlement taken at
+       once. */
+    expect(() => validateLeavePeriod({ from: '2026-01-05', to: '2026-05-04' })).not.toThrow();
+    expect(() => validateLeavePeriod({ from: '2026-06-01', to: '2026-06-26' })).not.toThrow();
+  });
+
   it('refuses them from the counting function too, not only when asked first', () => {
     expect(() =>
       countLeaveDays(ANNUAL, { from: '2026-12-27', to: '2026-12-24' }, STANDARD, []),

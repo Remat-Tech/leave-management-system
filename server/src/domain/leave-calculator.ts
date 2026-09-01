@@ -277,7 +277,7 @@ function freeDayFor(
 /* ---------------------------------------------------------------- the period */
 
 /**
- * The longest period this will count, in calendar days.
+ * The longest period this will count, in calendar days. FR 20a.
  *
  * Two years, and it is a guard against a typed year rather than a policy about
  * leave — the same distinction {@link requireWindow} in ./leave-type.ts draws when
@@ -289,6 +289,29 @@ function freeDayFor(
  * Deliberately generous, because refusing a real request would be the worse
  * failure. Nothing here decides how long leave may be — that is the balance, and it
  * is somebody else's rule.
+ *
+ * ## FR 20a: this is not a maximum request length, and it must never become one
+ *
+ * "No maximum request length" is a requirement, and LMS 309 is the story that made
+ * it one somebody can check. This number is the only length bound anywhere in the
+ * request path, so it is the only thing that could quietly become the cap FR 20a
+ * forbids — and the way that happens is somebody tightening it to a "sensible"
+ * thirty for validation's sake.
+ *
+ * **It is unreachable by any request the other rules permit.** A request is one
+ * period against one balance and a balance belongs to one leave year, so FR 16
+ * refuses anything crossing a year end — and a leave year is at most 366 days. Every
+ * request that gets as far as being priced is therefore under half this figure. The
+ * bound only ever fires on a period no leave year could contain, which is the typo
+ * it exists for.
+ *
+ * That gap is the invariant rather than the number: ../../tests/unit/leave-calculator.test.ts
+ * asserts a period as long as the longest leave year can be passes this, so lowering
+ * it far enough to refuse a real request fails there rather than in production.
+ *
+ * What actually limits how much leave somebody may ask for in one go is the balance
+ * — FR 26, and the company's own entitlement figure — which is a limit the company
+ * set. See the note on {@link validateLeavePeriod}.
  */
 const LONGEST_PERIOD_DAYS = 731;
 
@@ -304,6 +327,12 @@ const LONGEST_PERIOD_DAYS = 731;
  * A single day is a period. Somebody taking Friday off has written the same date
  * twice, which is neither a typo nor an edge case — it is the most common request
  * there is.
+ *
+ * **And there is no upper bound on a real request.** FR 20a, LMS 309. The only
+ * length check here is {@link LONGEST_PERIOD_DAYS}, which no period inside a single
+ * leave year can reach; see its note. Somebody taking their whole year's entitlement
+ * in one go is asking for something the company gave them, and this refuses none of
+ * it.
  *
  * Exported as well as used by {@link countLeaveDays}, because a caller has to be
  * able to ask this *before* it fetches anything. The service reads the holiday
