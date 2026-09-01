@@ -4,10 +4,15 @@ import { describe, expect, it } from 'vitest';
 import { signedInAs } from '../../src/auth/actor.js';
 import { leaveRequestPolicy } from '../../src/auth/leave-request-policy.js';
 import type { BalanceOwner } from '../../src/auth/ledger-policy.js';
+import type { ApproverRole } from '../../src/domain/approval-chain.js';
 import {
+  approvalTo,
   isSettled,
+  isTheLastWord,
   LeaveAlreadySettled,
+  LeaveCannotBeMoved,
   type LeaveRequest,
+  RELEASING_ACTIONS,
   REQUEST_ACTIONS,
   REQUEST_STATUSES,
   type RequestStatus,
@@ -56,6 +61,33 @@ import {
  */
 
 /* ------------------------------------------------------------------ the table */
+
+/**
+ * A request in a given state, waiting where that state implies.
+ *
+ * `awaitingApprovalFrom` is not free to be anything: `leave_request_waits_at_a_desk` makes
+ * it present exactly while the status is `SUBMITTED`, so a fixture that set a desk on a
+ * withdrawn request would be a row the database cannot hold and an assertion about nothing.
+ */
+function aRequestIn(status: RequestStatus, awaiting: ApproverRole = 'MANAGER'): LeaveRequest {
+  return {
+    id: 'request-1',
+    employeeId: 'ama',
+    leaveTypeId: 'annual',
+    leaveYearId: '2026',
+    from: '2026-03-02',
+    to: '2026-03-10',
+    reason: 'My sister is getting married',
+    countingBasis: 'WORKING_DAYS',
+    days: 6,
+    calendarDays: 9,
+    status,
+    awaitingApprovalFrom: status === 'SUBMITTED' ? awaiting : null,
+    submittedAt: new Date('2026-02-01T09:00:00Z'),
+    createdAt: new Date('2026-02-01T09:00:00Z'),
+    updatedAt: new Date('2026-02-01T09:00:00Z'),
+  };
+}
 
 describe('the transitions a request may make', () => {
   it('is an explicit table rather than a rule spread over three files', () => {
@@ -114,23 +146,54 @@ describe('the transitions a request may make', () => {
   });
 
   /**
-   * And every state that has *not* ended answers every action.
+   * And the state a request waits in answers every verb there is.
    *
-   * The invariant `settlementTo`'s refusal leans on: it reports every miss as "this
-   * request has already ended", which is honest only while a miss can mean nothing else.
-   * The approval story adds `APPROVED` — a live state — and the moment it does, this
-   * test asks whether an approved request can be withdrawn, refused and cancelled. If
-   * the answer for any of them is no, the refusal above has to learn to say something
-   * other than "already settled", and this is what says so.
+   * This used to be said of every state that had not ended, and it was written knowing the
+   * approval story would break it: "the moment it does, this test asks whether an approved
+   * request can be withdrawn, refused and cancelled. If the answer for any of them is no,
+   * the refusal above has to learn to say something other than 'already settled', and this
+   * is what says so."
+   *
+   * `APPROVED` is that state, and the answer is no for all three. It holds its days as
+   * `taken` rather than as `pending`, so none of the three verbs has anything to work on —
+   * `daysToRelease` would find no hold to give back — and the story that takes agreed leave
+   * off the books brings the movement that can. {@link LeaveCannotBeMoved} is the refusal
+   * that had to arrive with it, pinned below.
+   *
+   * What survives is the claim about the state a request actually *waits* in, which is the
+   * one somebody is looking at when they say a request is stuck. Everything can be done to
+   * a submitted request, and a verb added without a row out of `SUBMITTED` is a button that
+   * does nothing.
    */
-  it('and every state still running answers every action', () => {
-    const running = REQUEST_STATUSES.filter((status) => !isSettled(status));
+  it('and everything can be done to a request that is waiting to be decided', () => {
+    for (const action of REQUEST_ACTIONS) {
+      expect(transitionFor('SUBMITTED', action)).toBeDefined();
+    }
+  });
 
-    expect(running.length).toBeGreaterThan(0);
+  /**
+   * And a state with no way out has a refusal that says which state it is.
+   *
+   * The invariant that replaced the old one, and it is the one `settlementTo`'s refusal
+   * actually leans on. A status added to {@link REQUEST_STATUSES} with no row out of it and
+   * no word for it in the refusals is a request somebody is looking at, cannot move, and is
+   * told nothing useful about — which is precisely the condition §6 exists to prevent.
+   *
+   * Asserted through the refusal rather than against a list of words, so it fails on the
+   * afternoon somebody adds a sixth status and forgets that `inWordsSettled` has a default.
+   */
+  it('and every state with no way out of it is refused in words that name it', () => {
+    const stuck = REQUEST_STATUSES.filter((status) => transitionsFrom(status).length === 0);
 
-    for (const status of running) {
-      for (const action of REQUEST_ACTIONS) {
-        expect(transitionFor(status, action)).toBeDefined();
+    expect(stuck.length).toBeGreaterThan(0);
+
+    for (const status of stuck) {
+      const said = status.toLowerCase();
+
+      for (const action of RELEASING_ACTIONS) {
+        expect(() => settlementTo(aRequestIn(status), action)).toThrow(
+          expect.objectContaining({ message: expect.stringContaining(said) }),
+        );
       }
     }
   });
@@ -145,42 +208,52 @@ describe('the transitions a request may make', () => {
   });
 
   /**
-   * And every destination in today's table ends the request — deliberately, and only
-   * for now.
+   * And every destination a *releasing* action reaches ends the request.
    *
-   * Every action here releases days, so every one of them lands somewhere terminal, and
-   * `settlementTo` narrows to a `ReleasingStatus` on the strength of it. The approval
-   * story's row is the first with a live destination and it will fail this test, which
-   * is the intent: `releaseForRequest` is the wrong door for a move that commits days
-   * rather than giving them back, and failing here is how that gets noticed before a
-   * balance does.
+   * This used to be said of every row, and the note explained that the approval story's
+   * row would be the first with a live destination and would fail it — "which is the
+   * intent: `releaseForRequest` is the wrong door for a move that commits days rather than
+   * giving them back, and failing here is how that gets noticed before a balance does".
+   *
+   * It was noticed, and the answer was in the type system rather than here:
+   * `settlementTo` and `RequestToSettle` take a {@link RELEASING_ACTIONS} member, so
+   * `APPROVE` cannot reach the release door at all. What is asserted now is the property
+   * that narrowing depends on — that the three verbs which release days all land somewhere
+   * that has ended — and the `isSettled` answer inside `settlementTo` is unreachable
+   * exactly while this passes.
    */
-  it('and every destination today is one that ends it, which approval will change', () => {
-    for (const transition of TRANSITIONS) {
-      expect(isSettled(transition.to)).toBe(true);
+  it('and every releasing action lands somewhere that ends the request', () => {
+    for (const action of RELEASING_ACTIONS) {
+      expect(REQUEST_ACTIONS).toContain(action);
+
+      const rows = TRANSITIONS.filter((transition) => transition.action === action);
+
+      expect(rows.length).toBeGreaterThan(0);
+
+      for (const row of rows) {
+        expect(isSettled(row.to)).toBe(true);
+      }
     }
+  });
+
+  /**
+   * And approval is the one verb that does not always move the status. FR 38a. LMS 314.
+   *
+   * The row says `SUBMITTED → APPROVED`, and that is where the *last* desk leaves it. Every
+   * desk before the last leaves the status exactly where it is and moves the request along
+   * its chain instead, which is why {@link approvalTo} exists and why the table alone
+   * cannot answer where an approval lands.
+   */
+  it('and approval is the only row whose destination keeps the request alive', () => {
+    const live = TRANSITIONS.filter((transition) => !isSettled(transition.to));
+
+    expect(live.map((transition) => transition.action)).toEqual(['APPROVE']);
+    expect(live.map((transition) => transition.to)).toEqual(['APPROVED']);
   });
 });
 
 describe('where a settlement lands', () => {
-  function aRequest(status: RequestStatus): LeaveRequest {
-    return {
-      id: 'request-1',
-      employeeId: 'ama',
-      leaveTypeId: 'annual',
-      leaveYearId: '2026',
-      from: '2026-03-02',
-      to: '2026-03-10',
-      reason: 'My sister is getting married',
-      countingBasis: 'WORKING_DAYS',
-      days: 6,
-      calendarDays: 9,
-      status,
-      submittedAt: new Date('2026-02-01T09:00:00Z'),
-      createdAt: new Date('2026-02-01T09:00:00Z'),
-      updatedAt: new Date('2026-02-01T09:00:00Z'),
-    };
-  }
+  const aRequest = aRequestIn;
 
   /**
    * The destination comes off the table, which is what makes the table load bearing.
@@ -199,10 +272,147 @@ describe('where a settlement lands', () => {
 
   it('and a request that has ended goes nowhere, whatever is asked of it', () => {
     for (const status of REQUEST_STATUSES.filter(isSettled)) {
-      for (const action of REQUEST_ACTIONS) {
+      for (const action of RELEASING_ACTIONS) {
         expect(() => settlementTo(aRequest(status), action)).toThrow(LeaveAlreadySettled);
       }
     }
+  });
+
+  /**
+   * And an approved request goes nowhere either, but is told something else. LMS 314.
+   *
+   * The two refusals are the same shape and different sentences, and the difference is what
+   * is true. "This leave was already withdrawn and its days have been given back" is the
+   * right thing to say to somebody pressing withdraw twice; said about approved leave it is
+   * wrong twice over — the request has not ended, and the days are taken rather than back.
+   *
+   * It is the refusal `APPROVED` made necessary. Before it there was no state that was
+   * running and did not answer every verb, so every miss meant one thing.
+   */
+  it.each([...RELEASING_ACTIONS])(
+    'and %s on approved leave is refused with its own words',
+    (action) => {
+      const approved = aRequest('APPROVED');
+
+      expect(() => settlementTo(approved, action)).toThrow(LeaveCannotBeMoved);
+      expect(() => settlementTo(approved, action)).not.toThrow(LeaveAlreadySettled);
+
+      try {
+        settlementTo(approved, action);
+      } catch (error) {
+        expect((error as LeaveCannotBeMoved).code).toBe('MOVE_NOT_AVAILABLE');
+        expect((error as Error).message).toContain('has been approved');
+        /* And it does not claim the days are back, which is the thing that would be false. */
+        expect((error as Error).message).not.toContain('given back');
+      }
+    },
+  );
+});
+
+/* ------------------------------------------------ where an approval lands, §6 */
+
+/**
+ * Approval advances to the next stage, or to approved if none remains. FR 38, FR 38a, FR
+ * 40. LMS 314's second criterion, and the whole of the routing.
+ *
+ * Asserted against chains written out here rather than read from a leave type, because that
+ * is exactly the point: {@link approvalTo} is a function of a list of desks, and the same
+ * list gives the same answers whether it came from annual leave, from unpaid leave or from
+ * a type an HR Administrator adds next year. Nothing in it knows which type is which — the
+ * third criterion is that unpaid leave has no manager stage, and the way that is true is
+ * that no code anywhere reads a type code.
+ */
+describe('where an approval lands', () => {
+  const waitingOn = (desk: ApproverRole): LeaveRequest => aRequestIn('SUBMITTED', desk);
+
+  /** Manager then HR — what every type but the two unpaid ones goes through. */
+  const ORDINARY: readonly ApproverRole[] = ['MANAGER', 'HR'];
+
+  /** HR then the Chief Executive, and no manager stage at all. FR 32h, §4.3.1. */
+  const UNPAID: readonly ApproverRole[] = ['HR', 'CEO'];
+
+  it('sends a request on to the next desk, leaving it where it was', () => {
+    const outcome = approvalTo(waitingOn('MANAGER'), ORDINARY);
+
+    expect(outcome).toEqual({ by: 'MANAGER', to: 'SUBMITTED', awaiting: 'HR' });
+    expect(isTheLastWord(outcome)).toBe(false);
+  });
+
+  it('and approves it when the chain has nobody left to ask', () => {
+    const outcome = approvalTo(waitingOn('HR'), ORDINARY);
+
+    expect(outcome).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null });
+    expect(isTheLastWord(outcome)).toBe(true);
+  });
+
+  /**
+   * And unpaid leave goes HR then the Chief Executive, with no manager stage. The story's
+   * third criterion.
+   *
+   * The same function, the same request, a different list — and the walk skips a stage
+   * nothing told it to skip, because the stage was never in the chain. A manager
+   * approving this one is refused by the policy rather than routed around here; see
+   * ../unit/policy.test.ts.
+   */
+  it('and walks an unpaid chain from HR to the Chief Executive, with no manager in it', () => {
+    expect(approvalTo(waitingOn('HR'), UNPAID)).toEqual({
+      by: 'HR',
+      to: 'SUBMITTED',
+      awaiting: 'CEO',
+    });
+
+    expect(approvalTo(waitingOn('CEO'), UNPAID)).toEqual({
+      by: 'CEO',
+      to: 'APPROVED',
+      awaiting: null,
+    });
+  });
+
+  /* And a chain of one is decided by the one desk on it, first time. A three-stage chain
+     takes three, and neither is a case this function is told about — both fall out of
+     walking a list. */
+  it('and a chain of one desk is decided by that desk', () => {
+    expect(approvalTo(waitingOn('HR'), ['HR'])).toMatchObject({ to: 'APPROVED', awaiting: null });
+  });
+
+  it('and a chain of three is walked all the way down', () => {
+    const chain: readonly ApproverRole[] = ['MANAGER', 'HR', 'CEO'];
+
+    expect(approvalTo(waitingOn('MANAGER'), chain).awaiting).toBe('HR');
+    expect(approvalTo(waitingOn('HR'), chain).awaiting).toBe('CEO');
+    expect(approvalTo(waitingOn('CEO'), chain).awaiting).toBeNull();
+  });
+
+  /**
+   * And a request standing on a desk the chain no longer has is refused by name.
+   *
+   * The seam in reading the chain live rather than copying it onto the request. HR changes
+   * annual leave from manager-then-HR to HR alone while somebody's request sits with their
+   * manager; the manager approves. `approverAfter` is asked what follows MANAGER in a chain
+   * with no MANAGER in it and answers undefined, which read as "nobody left to ask" would
+   * approve the leave on the strength of a desk the policy no longer includes — and with
+   * HR, the only stage the new chain has, never seeing it.
+   *
+   * So it refuses, and the message carries both chains because the person who meets it is
+   * an approver who has done nothing wrong.
+   */
+  it('and refuses a request waiting on a desk the chain has since dropped', () => {
+    expect(() => approvalTo(waitingOn('MANAGER'), ['HR'])).toThrow(
+      expect.objectContaining({ name: 'ApprovalChainChanged', code: 'CHAIN_CHANGED' }),
+    );
+
+    try {
+      approvalTo(waitingOn('MANAGER'), ['HR']);
+    } catch (error) {
+      expect((error as Error).message).toContain('your line manager');
+      expect((error as Error).message).toContain('changed to HR');
+    }
+  });
+
+  /* And a widening is not a refusal. The Chief Executive added after HR is HR asking for
+     one more signature, which is what the administrator meant by adding them. */
+  it('but follows a chain that has grown a stage since the request was made', () => {
+    expect(approvalTo(waitingOn('HR'), ['MANAGER', 'HR', 'CEO']).awaiting).toBe('CEO');
   });
 });
 
@@ -249,15 +459,43 @@ describe('the table, written out', () => {
         to: 'CANCELLED',
         by: ['LEAVE_ADMINISTRATION'],
       },
+      {
+        from: 'SUBMITTED',
+        action: 'APPROVE',
+        to: 'APPROVED',
+        by: ['THE_DESK_IT_IS_WITH'],
+      },
     ]);
   });
 
   /* And the vocabulary it is keyed by, for the same reason. A standing added here
      without a branch in `hasStanding` does not compile; one added and left out of every
      row is a concept nothing uses. */
-  it('and is keyed by the three actions and the three standings there are', () => {
-    expect([...REQUEST_ACTIONS]).toEqual(['WITHDRAW', 'REFUSE', 'CANCEL']);
-    expect([...STANDINGS]).toEqual(['THE_REQUESTER', 'THEIR_LINE_MANAGER', 'LEAVE_ADMINISTRATION']);
+  it('and is keyed by the four actions and the four standings there are', () => {
+    expect([...REQUEST_ACTIONS]).toEqual(['WITHDRAW', 'REFUSE', 'CANCEL', 'APPROVE']);
+    expect([...STANDINGS]).toEqual([
+      'THE_REQUESTER',
+      'THEIR_LINE_MANAGER',
+      'LEAVE_ADMINISTRATION',
+      'THE_DESK_IT_IS_WITH',
+    ]);
+  });
+
+  /**
+   * And the three that release days are exactly the three that are not approval.
+   *
+   * `RELEASING_ACTIONS` is written out rather than derived, for the reason
+   * `RELEASING_STATUSES` is: "every action but the approving one" is a definition that
+   * absorbs whatever verb arrives next, and the next one — FR 26's cancelling of leave
+   * already agreed — would land in it by subtraction and post a `RELEASE` against days that
+   * have already been taken. This is what holds the two lists together in the meantime.
+   */
+  it('and the releasing actions are a sub-list of them, written out rather than subtracted', () => {
+    expect([...RELEASING_ACTIONS]).toEqual(['WITHDRAW', 'REFUSE', 'CANCEL']);
+
+    for (const action of RELEASING_ACTIONS) {
+      expect(REQUEST_ACTIONS).toContain(action);
+    }
   });
 });
 
@@ -302,27 +540,7 @@ describe('the two questions, and the order they are asked in', () => {
   });
 
   it('and the table decides on the state, for the same person', () => {
-    expect(() =>
-      settlementTo(
-        {
-          id: 'request-1',
-          employeeId: 'ama',
-          leaveTypeId: 'annual',
-          leaveYearId: '2026',
-          from: '2026-03-02',
-          to: '2026-03-10',
-          reason: 'My sister is getting married',
-          countingBasis: 'WORKING_DAYS',
-          days: 6,
-          calendarDays: 9,
-          status: 'WITHDRAWN',
-          submittedAt: new Date('2026-02-01T09:00:00Z'),
-          createdAt: new Date('2026-02-01T09:00:00Z'),
-          updatedAt: new Date('2026-02-01T09:00:00Z'),
-        },
-        'WITHDRAW',
-      ),
-    ).toThrow(LeaveAlreadySettled);
+    expect(() => settlementTo(aRequestIn('WITHDRAWN'), 'WITHDRAW')).toThrow(LeaveAlreadySettled);
   });
 
   /**
@@ -406,6 +624,13 @@ describe('one writer of the status column', () => {
    * that explains rather than decides. A second `set({ status ... })` is the shape a
    * second writer would take, and it would be four characters added to a method that
    * already had the row in hand.
+   *
+   * **This is the assertion LMS 314 had to be built around**, and it is worth saying so.
+   * Approval needed a second kind of move — one that changes the desk a request is waiting
+   * at and leaves the status alone — and the obvious shape for it was an `advance()` beside
+   * `settle()`. Two methods, both correct, both writing the column: exactly the second
+   * writer this test exists to find. So there is one method, `moveTo`, and both doors go
+   * through it.
    */
   it('and exactly one statement in it sets a status', () => {
     const repository = sources.find(
@@ -417,16 +642,16 @@ describe('one writer of the status column', () => {
   });
 
   /**
-   * And one file calls it: the door that writes the `RELEASE` in the same transaction.
+   * And one file calls it: the door that writes the movement in the same transaction.
    *
-   * `BalanceService.releaseForRequest` rather than `LeaveRequestService` itself, and
-   * that is the ledger's one-door rule winning over this one where they meet — the
-   * status and the movement have to land together, and movements are written in one
-   * place. The state machine is still the only way in: it is `LeaveRequestService` that
-   * decides the move, and it reaches the write through that door and nowhere else.
+   * `BalanceService` rather than `LeaveRequestService` itself, and that is the ledger's
+   * one-door rule winning over this one where they meet — the status and the movement have
+   * to land together, and movements are written in one place. The state machine is still the
+   * only way in: it is `LeaveRequestService` that decides the move, and it reaches the write
+   * through that door and nowhere else.
    */
   it('and one file calls the repository method that does it', () => {
-    const calling = sources.filter(({ code }) => /requests\.settle\s*\(/.test(code));
+    const calling = sources.filter(({ code }) => /requests\.moveTo\s*\(/.test(code));
 
     expect(calling.map(({ file }) => file)).toEqual(['services/balance-service.ts']);
   });
@@ -434,21 +659,30 @@ describe('one writer of the status column', () => {
   /**
    * And the destination it writes is the table's, not a caller's.
    *
-   * The one that would undo the whole criterion quietly: `releaseForRequest` taking a
-   * status and writing it. It takes an *action* and asks `settlementTo` inside the lock,
-   * so a caller cannot name where a request ends up.
+   * The one that would undo the whole criterion quietly: a door taking a status and writing
+   * it. Both take an *action* — one implicitly, by being the approval door — and ask the
+   * table inside the lock, so a caller cannot name where a request ends up.
+   *
+   * `approveForRequest` is the sharper case since LMS 314, because it is handed a chain and
+   * could plausibly have been handed an outcome. It is not: `approvalTo` is called again
+   * inside the transaction, and a caller that could pass the destination could approve a
+   * request one desk early.
    */
   it('and the door asks the table where the request lands', () => {
     const door = sources.find(({ file }) => file === 'services/balance-service.ts');
 
     expect(door?.code).toMatch(/settlementTo\(/);
+    expect(door?.code).toMatch(/approvalTo\(/);
     expect(door?.code).toMatch(/holdStill\(/);
   });
 
-  /* And nothing outside the two decides where a settlement lands. A third caller of
-     `settlementTo` is a third place that knows the state machine. */
-  it('and only the state machine and its door consult the table', () => {
-    const consulting = sources.filter(({ code }) => /\bsettlementTo\s*\(/.test(code));
+  /* And nothing outside the state machine and its doors decides where a move lands. A
+     third caller of either lookup is a third place that knows the state machine. */
+  it.each([
+    ['settlementTo', /\bsettlementTo\s*\(/],
+    ['approvalTo', /\bapprovalTo\s*\(/],
+  ])('and only the state machine and its door consult the table for %s', (_name, pattern) => {
+    const consulting = sources.filter(({ code }) => pattern.test(code));
 
     expect(consulting.map(({ file }) => file).sort()).toEqual([
       'domain/leave-request.ts',

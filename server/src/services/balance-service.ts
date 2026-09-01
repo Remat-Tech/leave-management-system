@@ -69,21 +69,29 @@
  * matters: not that a second commit is silently ignored, which would hide a bug, but
  * that it is refused with a sentence naming how many days are actually held.
  *
- * ## A request's days arrive and leave through two methods, and both move two rows
+ * ## A request's days arrive, are committed and leave through three methods
  *
- * {@link BalanceService.reserveForRequest} and {@link BalanceService.releaseForRequest}
- * are the pair, and neither is a movement with a status change bolted on: **the row and
- * the entry are one act in both directions**, because each of the four ways they could
- * come apart is a balance nobody can explain. A request that reserved nothing could be
- * submitted three times against five days; a reservation with no request is days missing
- * with nothing to say why; a request that ended holding its days is a balance
- * permanently short; a release with the status left behind is days that the next
- * withdrawal gives back again.
+ * {@link BalanceService.reserveForRequest}, {@link BalanceService.approveForRequest} and
+ * {@link BalanceService.releaseForRequest}, and none of them is a movement with a status
+ * change bolted on: **the row and the entry are one act every time**, because each of the
+ * ways they could come apart is a balance nobody can explain. A request that reserved
+ * nothing could be submitted three times against five days; a reservation with no request
+ * is days missing with nothing to say why; a request that ended holding its days is a
+ * balance permanently short; a release with the status left behind is days that the next
+ * withdrawal gives back again; and a request marked approved with no `DEDUCTION` is leave
+ * that has been agreed and is still shown as waiting to be decided.
  *
- * The database holds all four — `leave_request_holds_its_days` and
- * `leave_request_gives_its_days_back` at COMMIT, `leave_request_reserves_once` and
- * `leave_request_releases_once` at the write — so the pairing is a guarantee rather than
- * a convention these two methods happen to follow.
+ * The database holds all of them — `leave_request_holds_its_days`,
+ * `leave_request_gives_its_days_back` and `leave_request_takes_its_days` at COMMIT,
+ * `leave_request_reserves_once`, `leave_request_releases_once` and
+ * `leave_request_commits_once` at the write — so the pairing is a guarantee rather than
+ * a convention these three methods happen to follow.
+ *
+ * **The approval door is the one that sometimes writes no entry at all**, and LMS 314's
+ * note on it says why: a request moving from its first approver to its second has not
+ * moved a single day, so there is nothing for the ledger to record. It is here anyway,
+ * because the approval that *does* move days is the same act and has to be written in the
+ * same transaction as the status.
  *
  * ## Not lost between two screens. The row is held while it is checked
  *
@@ -110,6 +118,7 @@
  */
 
 import type { Actor } from '../auth/actor.js';
+import { leaveRequestPolicy } from '../auth/leave-request-policy.js';
 import { type BalanceOwner, ledgerPolicy } from '../auth/ledger-policy.js';
 import type { Guard } from '../auth/policy.js';
 import {
@@ -126,11 +135,14 @@ import {
 import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
 import { type LeaveEvent, validateNewLeaveEvent } from '../domain/leave-event.js';
+import type { ApproverRole } from '../domain/approval-chain.js';
 import {
+  approvalTo,
+  isTheLastWord,
   type LeaveRequest,
   LeaveRequestNotFound,
+  type ReleasingAction,
   type ReleasingStatus,
-  type RequestAction,
   settlementTo,
   type ValidatedLeaveRequest,
 } from '../domain/leave-request.js';
@@ -296,13 +308,17 @@ export interface RequestToSubmit {
 export interface RequestToSettle {
   request: LeaveRequest;
   /**
-   * What is being done to it. §6, LMS 313.
+   * What is being done to it. §6, LMS 313, LMS 314.
    *
    * The act rather than the destination, because the destination is the transition
    * table's to give — and it is given again here, inside the lock, from the status this
    * method re-reads. See {@link BalanceService.releaseForRequest}.
+   *
+   * A {@link ReleasingAction} rather than any action, so `APPROVE` cannot be handed to the
+   * release door at all. It reaches a state that still holds days, and a release against it
+   * would give back days an approval had just committed.
    */
-  action: RequestAction;
+  action: ReleasingAction;
   /**
    * Where the table said that leaves it, as the caller read it a moment ago.
    *
@@ -314,6 +330,44 @@ export interface RequestToSettle {
    */
   to: ReleasingStatus;
   /** FR 27. What the movement says, which is not what the request says. */
+  reason: string;
+}
+
+/**
+ * What `LeaveRequestService` supplies to approve one. FR 38a, FR 40. LMS 314.
+ *
+ * The third of the family, and the one that differs from {@link RequestToSettle} in the
+ * fact it carries instead of a destination: **the chain rather than where the request
+ * lands**, because where it lands is what the chain decides. `approvalTo` is asked again
+ * inside the lock with this list in hand, so a caller cannot approve a request one desk
+ * early by naming a status.
+ *
+ * The chain arrives read rather than looked up here, for the reason the day count does: it
+ * is the leave type's, `LeaveTypeRepository` is what reads it, and a door that fetched
+ * configuration would be a second place deciding who approves what.
+ */
+export interface RequestToApprove {
+  request: LeaveRequest;
+  /** FR 38a. The approvers for this kind of leave, in order, as the type has them now. */
+  chain: readonly ApproverRole[];
+  /**
+   * FR 04. The one employee with no line manager, where this chain names the `CEO` desk.
+   *
+   * Null where it does not, which is every chain but the two unpaid ones — so the query is
+   * paid for by the approvals that need it rather than by all of them. It is here because
+   * the standing check is made again inside the lock and cannot go and look it up: a policy
+   * that touched a database would be a decision whose answer depended on when it was asked.
+   */
+  chiefExecutiveId: string | null;
+  /**
+   * FR 27. What the `DEDUCTION` says, where this approval is the last word.
+   *
+   * Composed by {@link reasonForApproval} against the desk the caller expects to be last,
+   * and unread where the request only moves on a stage — an intermediate approval writes no
+   * entry, because nothing about the balance has changed. Where the two disagree, because
+   * the chain lengthened while somebody was reading a screen, the request moves on and the
+   * sentence is simply not used.
+   */
   reason: string;
 }
 
@@ -338,6 +392,25 @@ export interface LeaveRequested extends BalanceMoved {
  * days back.
  */
 export type LeaveReleased = LeaveRequested;
+
+/**
+ * The same three from the middle of a request's life, with the entry allowed to be absent.
+ * FR 38a. LMS 314.
+ *
+ * **`entry` is null for every approval but the last**, and that is the shape of the story
+ * rather than an inconvenience in the type. A manager approving stage one of a two-stage
+ * chain has changed who the request is waiting on and nothing else: the days were held when
+ * it was submitted and they are held still, so there is no movement to post and posting one
+ * would be inventing a fact about a balance.
+ *
+ * A caller that wants to know which happened reads the request — `awaitingApprovalFrom` is
+ * null exactly when this was the last word — rather than testing the entry for null, which
+ * is why the request is first in this type and why there is no `isFinal` flag beside it.
+ */
+export interface LeaveApproved extends Omit<LeaveRequested, 'entry'> {
+  /** The `DEDUCTION`, where this approval decided it. Null where it only moved on. */
+  entry: LedgerEntry | null;
+}
 
 /**
  * A movement, the balance it left, and the event it belongs to.
@@ -574,7 +647,12 @@ export class BalanceService {
       const to = settlementTo(current, action);
 
       const days = daysToRelease(held, current.days);
-      const written = await repositories.requests.settle(actor, current.id, to);
+
+      /* The desk goes with the status, in one statement, because
+         `leave_request_waits_at_a_desk` is an equivalence between the two: a request that
+         has ended is waiting on nobody, and leaving a settled row saying "awaiting HR"
+         would keep leave that is over in somebody's queue for ever. */
+      const written = await repositories.requests.moveTo(actor, current.id, to, null);
 
       /* Unreachable for the same reason, and one statement later. */
       if (written === undefined) {
@@ -595,6 +673,148 @@ export class BalanceService {
       return {
         request: written,
         entry,
+        balance: withAvailable(await repositories.balances.forOne(key)),
+      };
+    });
+  }
+
+  /**
+   * Sends a request on to the next desk in its chain, or — where there is none — approves
+   * it and turns its held days into taken ones. FR 26, FR 38, FR 38a, FR 40, §8.2. LMS 314.
+   *
+   * The third door a request's life goes through, and the one that does two different
+   * things under one name because they are two outcomes of one act. Somebody at a desk says
+   * yes; whether that yes decides the request is a question about the chain, and
+   * {@link approvalTo} is where it is asked.
+   *
+   * ## An intermediate approval writes no movement, and that is not an omission
+   *
+   * A manager approving stage one of manager-then-HR has changed who the request is waiting
+   * on and nothing else. The days have been held since it was submitted, and they go on
+   * being held while HR looks at it: `pending` does not move, `taken` does not move, and
+   * available is exactly where it was. There is no movement to write, and writing one — a
+   * `DEDUCTION` at each stage, a `RESERVATION` re-posted — would be a line in somebody's
+   * balance history recording that nothing happened.
+   *
+   * So the ledger's one-door rule is kept without a movement passing through it, which is
+   * the first time that has happened here. What justifies the method living in this class
+   * anyway is the other outcome: the last desk's yes **is** a movement, and it has to land
+   * in the same transaction as the status. A service that wrote the status elsewhere and
+   * called `commit` afterwards would be the two-statement version of exactly the failure
+   * `releaseForRequest` exists to prevent.
+   *
+   * ## The lock, and what it is for when nothing moves
+   *
+   * The balance is held still for both outcomes, and for the intermediate one it is not
+   * protecting a figure — it is serialising the request against the other things that can
+   * happen to it. Every move a request makes goes through this class and every one of them
+   * takes this lock, so an approval and a withdrawal arriving together are ordered rather
+   * than interleaved: the second waits, re-reads a request the first has already moved, and
+   * meets {@link LeaveAlreadySettled} or {@link LeaveCannotBeMoved} rather than writing a
+   * desk onto a request that has ended.
+   *
+   * That is the same argument {@link BalanceService.releaseForRequest} makes and it is
+   * stronger here, because the alternative is not merely a wrong figure: without it the
+   * pair of statements can leave a `WITHDRAWN` request waiting at a desk, which
+   * `leave_request_waits_at_a_desk` would refuse at the write with a message about
+   * equivalences rather than about leave.
+   *
+   * ## The chain is re-read inside the lock too
+   *
+   * `LeaveRequestService` read it to decide whether this actor is at the desk; this reads it
+   * again to decide where the request goes. They are the same rows and they agree in every
+   * case but one — an HR Administrator changing the chain in between — and in that case the
+   * answer that binds is this one, which is the answer that will be true when the row is
+   * written. {@link ApprovalChainChanged} is what comes back where the change removed the
+   * desk the request is standing on; see it for why that refuses rather than guesses.
+   *
+   * **How many days is not this method's to choose**, exactly as it is not the release
+   * door's. It is what the request was priced at, frozen since submission by
+   * `refuse_rewriting_what_a_request_cost()`, and `daysToCommit` refuses to take more out of
+   * the hold than is in it — which is what makes approving the same request twice impossible
+   * rather than merely unlikely, and is the second line of defence behind
+   * `leave_request_commits_once`.
+   */
+  async approveForRequest(actor: Actor, approval: RequestToApprove): Promise<LeaveApproved> {
+    const { request, chain, chiefExecutiveId, reason } = approval;
+    const owner = await this.ownerOf(request.employeeId);
+
+    /* The ledger's standing question, and the one that refuses somebody approving their
+       own leave. `leaveRequestPolicy.approve` has already asked whether this actor is the
+       desk; this asks whether they have any business moving this balance at all, and it is
+       asked for the intermediate outcome as well as the final one — a stage approved by
+       somebody who may not move the balance is a stage that would have to be unpicked. */
+    this.guard.enforce(ledgerPolicy.commit(actor, owner, chiefExecutiveId));
+
+    const key = keyOf(request);
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      const held = await repositories.balances.holdStill(key);
+
+      const current = await repositories.requests.findById(request.id);
+
+      /* Unreachable: the caller read this row a moment ago and `leave_request_is_never_
+         deleted` refuses to remove one on any connection. Answered rather than asserted,
+         because the alternative is approving leave that is not there. */
+      if (current === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      /* **The desk, re-decided against the row as it stands now**, and this is the check
+         that closes the one window a lock alone would leave open here.
+
+         `releaseForRequest` needs no equivalent: two withdrawals of one request are the same
+         act by the same standing, so re-reading the status is enough. Approval is not — the
+         desk moves as the request advances, and the same person clicking twice is two
+         *different* questions. Without this, the second click of a manager approving a
+         two-stage chain would find the request sitting at the HR desk, walk it to the end,
+         and approve the leave outright.
+
+         The service asked the same question a moment ago, for the sentence. This is the one
+         that binds, and it is here rather than there for the reason `settlementTo` is asked
+         again in the release door: the answer that matters is the one taken against the row
+         nobody else can move. */
+      this.guard.enforce(
+        leaveRequestPolicy.approve(actor, {
+          ...owner,
+          awaiting: current.awaitingApprovalFrom,
+          chiefExecutiveId,
+        }),
+      );
+
+      const outcome = approvalTo(current, chain);
+
+      const written = await repositories.requests.moveTo(
+        actor,
+        current.id,
+        outcome.to,
+        outcome.awaiting,
+      );
+
+      /* Unreachable for the same reason, and one statement later. */
+      if (written === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      return {
+        request: written,
+        entry: isTheLastWord(outcome)
+          ? await repositories.entries.post(
+              actor,
+              validateNewLedgerEntry({
+                ...key,
+                entryType: 'DEDUCTION',
+                /* Negative, as every consuming movement is. The projection of LMS 211 is
+                   what makes a DEDUCTION the one entry type that moves two buckets: it
+                   takes the days out of `pending` and puts the same days into `taken`, so
+                   available does not move and the balance stops saying the leave is still
+                   being decided. */
+                days: -daysToCommit(held, current.days),
+                reason,
+                leaveRequestId: current.id,
+              }),
+            )
+          : null,
         balance: withAvailable(await repositories.balances.forOne(key)),
       };
     });
@@ -830,6 +1050,13 @@ export class BalanceService {
    * is what makes approving the same request twice impossible rather than merely
    * unlikely: the second attempt asks to take five days out of a hold the first one
    * emptied.
+   *
+   * **Approving a request goes through {@link BalanceService.approveForRequest} instead**,
+   * and the difference is the one {@link BalanceService.release} has with the release door:
+   * this posts the entry and leaves the request saying it is still waiting to be decided,
+   * which is a balance and a request that disagree. This is the primitive rather than the
+   * door, and it stays for the same reason `release` does — the movement is a real one and a
+   * story that commits days for a reason other than a chain running out will want it.
    */
   async commit(actor: Actor, movement: RequestMovement): Promise<BalanceMoved> {
     const owner = await this.ownerOf(movement.employeeId);

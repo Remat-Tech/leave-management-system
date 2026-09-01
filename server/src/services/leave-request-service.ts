@@ -98,16 +98,24 @@
  *
  * ## What it does not do
  *
- * **No approving.** Approval *commits* days — a `DEDUCTION` turning a hold into days
- * taken, leaving available exactly where it was — and which desk in FR 38a's chain may
- * agree is the approval story's. `BalanceService.commit` has been built and waiting for
- * it since LMS 212, and `REQUEST_STATUSES` holds no `APPROVED` so nothing can pretend
- * otherwise.
+ * ## The three endings, and the one advance
  *
- * The three endings that *release* days are here, and arrived together in LMS 306
- * because they are one movement: {@link LeaveRequestService.withdraw},
- * {@link LeaveRequestService.refuse} and {@link LeaveRequestService.cancel}, all through
- * the one {@link LeaveRequestService.settle}.
+ * The three that *release* days arrived together in LMS 306 because they are one movement:
+ * {@link LeaveRequestService.withdraw}, {@link LeaveRequestService.refuse} and
+ * {@link LeaveRequestService.cancel}, all through the one
+ * {@link LeaveRequestService.settle}.
+ *
+ * {@link LeaveRequestService.approve} is LMS 314 and is deliberately not one of them. It
+ * does not release days — it either moves the request to the next desk in FR 38a's chain,
+ * which moves no days at all, or it commits them, which turns a hold into days taken and
+ * leaves available exactly where it was. `BalanceService.commit` had been built and waiting
+ * for it since LMS 212; what it was waiting for was something that knew which desk a
+ * request was sitting on, and that is now a column.
+ *
+ * **It is one verb rather than one per desk**, and that is what "route a request through
+ * its type's chain" means in a signature: the caller says somebody approved, and the chain
+ * decides whether that was the last word. A `approveAsManager` and a `approveAsHr` would be
+ * design principle 5's forbidden `if` on a type code, wearing method names.
  *
  * **No notice or documentation enforcement.** FR 17 is a warning by design — leave is
  * sometimes needed at short notice — and the quote carries it so the person sees it
@@ -117,6 +125,7 @@
 
 import type { Actor } from '../auth/actor.js';
 import { leaveRequestPolicy } from '../auth/leave-request-policy.js';
+import { type ApproverRole, isApprovedBy } from '../domain/approval-chain.js';
 import type { BalanceOwner } from '../auth/ledger-policy.js';
 import type { Decision, Guard } from '../auth/policy.js';
 import type { Employee } from '../domain/employee.js';
@@ -124,6 +133,7 @@ import { EmployeeNotFound } from '../domain/employee.js';
 import type { DayCount, LeavePeriod } from '../domain/leave-calculator.js';
 import { validateLeavePeriod } from '../domain/leave-calculator.js';
 import {
+  approvalTo,
   assertItCostsSomething,
   assertTheDaysAreThere,
   InvalidLeaveRequest,
@@ -136,9 +146,10 @@ import {
   noticeGiven,
   quoteFor,
   reachesPastTheEndOf,
+  reasonForApproval,
   reasonForRelease,
   reasonForReservation,
-  type RequestAction,
+  type ReleasingAction,
   settlementTo,
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
@@ -159,7 +170,12 @@ import type {
 } from '../repositories/leave-request-repository.js';
 import type { LeaveTypeRepository } from '../repositories/leave-type-repository.js';
 import type { LeaveYearRepository } from '../repositories/leave-year-repository.js';
-import type { BalanceService, LeaveReleased, LeaveRequested } from './balance-service.js';
+import type {
+  BalanceService,
+  LeaveApproved,
+  LeaveReleased,
+  LeaveRequested,
+} from './balance-service.js';
 import type { LeaveCalculatorService } from './leave-calculator-service.js';
 
 /**
@@ -308,6 +324,12 @@ export class LeaveRequestService {
       countingBasis: type.countingBasis,
       days: count.days,
       calendarDays: count.calendarDays,
+      /* FR 38a, LMS 314's first criterion. The chain is handed over and the *first* stage
+         of it is written onto the row; `assertSomebodyApprovesIt` above has already refused
+         an empty one with the type named. Annual leave starts with the line manager and
+         unpaid leave starts with HR because that is what their chains say, and nothing on
+         this path knows which type is which. */
+      approvalChain: type.approvalChain,
     });
 
     return this.balances.reserveForRequest(actor, {
@@ -355,6 +377,142 @@ export class LeaveRequestService {
   }
 
   /**
+   * Says yes at the desk this request is waiting on, and sends it to the next one or agrees
+   * it. FR 38, FR 38a, FR 40. LMS 314.
+   *
+   * The whole of the story from the outside: one method, one verb, and which of the two
+   * things it does is decided by the chain rather than by the caller. A manager approving
+   * annual leave moves it on to HR; the HR officer approving it afterwards approves the
+   * leave and the days become taken. Neither of them says which they are doing.
+   *
+   * What comes back is the request, the balance and — only where this was the last word —
+   * the `DEDUCTION`. A caller telling the two apart reads `awaitingApprovalFrom`, which is
+   * null exactly when there is nobody left to ask.
+   *
+   * ## Three questions, and the order is a disclosure rule
+   *
+   * The settlement path asks *may you* and then *is this move available*, and
+   * `standingsFor` argues at length that reversing them would read a stranger's request
+   * state aloud. Approval asks three, and the order is different for a reason worth being
+   * exact about: **the standing question here is itself a question about the state.** Who
+   * may approve depends on which desk the request is sitting on, so a decision made before
+   * the state is known is no decision at all.
+   *
+   *   **May you see this at all?** {@link leaveRequestPolicy.read}, which is the disclosure
+   *   gate the settlement path gets for free from its own narrowness. A colleague probing
+   *   ids is refused here, silently, and learns nothing — which is the property the order
+   *   below would otherwise cost. It is asked only of somebody who is *not* the desk,
+   *   because being the desk is its own reason to be looking: FR 32h routes unpaid leave to
+   *   the Chief Executive, who is nobody's line manager and holds no role, so a read asked
+   *   of everybody would refuse the one approver §4.3.1 names.
+   *
+   *   **Is there an approval to give?** {@link approvalTo}, which answers a request that has
+   *   ended with {@link LeaveAlreadySettled}, one already approved with
+   *   {@link LeaveCannotBeMoved}, and one standing on a desk its chain has dropped with
+   *   {@link ApprovalChainChanged}. Asked before the standing check so that the person who
+   *   clicks approve on leave somebody withdrew a minute ago is told *that*, rather than
+   *   being told they are not the approver of a request that is waiting on nobody — which is
+   *   true, and useless.
+   *
+   *   **Are you the desk it is with?** {@link leaveRequestPolicy.approve}, and then again
+   *   inside the lock, where it is the answer that binds.
+   *
+   * ## What it reads
+   *
+   *   **The leave type, for its chain.** FR 38a's chain is a property of the type and this
+   *   is the one place it is read for a request. It is read *now* rather than taken off the
+   *   request, because the request does not carry it — see {@link ApprovalChainChanged} for
+   *   the seam that leaves and why it is refused by name rather than guessed at.
+   *
+   *   **The Chief Executive, and only where the chain names them.** FR 04 makes it the one
+   *   employee with no line manager, and there is no role that says so — so the desk
+   *   resolves to an id and the id comes from `EmployeeRepository.findRoot`. Asked only for
+   *   a chain with a `CEO` stage in it, because it is a query every other approval in the
+   *   company would otherwise pay for to answer a question about the two unpaid types.
+   *
+   * Throws {@link LeaveRequestNotFound} for an id that is nobody's, {@link NotAuthorised}
+   * for somebody who may not see the request or is not the desk it is waiting on,
+   * {@link LeaveAlreadySettled} for leave that has ended, {@link LeaveCannotBeMoved} for
+   * leave that has already been approved, and {@link ApprovalChainChanged} where the chain
+   * has moved out from under it.
+   */
+  async approve(actor: Actor, id: string): Promise<LeaveApproved> {
+    const request = await this.requests.findById(id);
+
+    if (request === undefined) {
+      throw new LeaveRequestNotFound(id);
+    }
+
+    const employee = await this.employeeFor(request.employeeId);
+    const owner = ownerOf(employee);
+
+    const type = await this.typeFor(request.leaveTypeId);
+    const chiefExecutiveId = await this.chiefExecutiveFor(type.approvalChain);
+
+    const standing = leaveRequestPolicy.approve(actor, {
+      ...owner,
+      awaiting: request.awaitingApprovalFrom,
+      chiefExecutiveId,
+    });
+
+    /* Somebody who is not the desk has to have some other reason to be looking at this
+       request before it is described to them, and being the desk is itself a reason — which
+       is why the read is asked only of everybody else. The Chief Executive is why it has to
+       be that way round rather than a read for all comers: FR 32h routes unpaid leave to
+       them, and they are nobody's line manager and hold no role, so `read` refuses the one
+       approver §4.3.1 names. A colleague with no standing at all meets that refusal, which
+       is silent — see ../auth/policy.ts. */
+    if (!standing.allowed) {
+      this.guard.enforce(leaveRequestPolicy.read(actor, owner));
+    }
+
+    /* Where this leaves it, and the refusals for a request that has nowhere to go. Asked
+       before the standing is enforced, so that somebody clicking approve on leave that was
+       withdrawn a minute ago is told *that* rather than told they are not the approver of a
+       request waiting on nobody — which is true and useless. It is safe in that order
+       because everybody who reaches this line may already read the request.
+
+       The outcome is also what lets the `DEDUCTION`'s sentence name the desk that decided
+       it. It is worked out again inside the lock, and that is the answer that binds. */
+    const outcome = approvalTo(request, type.approvalChain);
+
+    this.guard.enforce(standing);
+
+    return this.balances.approveForRequest(actor, {
+      request,
+      chain: type.approvalChain,
+      chiefExecutiveId,
+      reason: reasonForApproval(type.name, request, request.days, outcome.by),
+    });
+  }
+
+  /**
+   * FR 04. The one employee with no line manager, where this chain asks for one.
+   *
+   * Only for a chain with a `CEO` stage, and the narrowness is the point rather than an
+   * optimisation for its own sake: two of the seven leave types route to the Chief
+   * Executive — unpaid leave and the unpaid maternity extension, §4.3.1 — so every other
+   * approval in the company would be paying for a query about a stage it does not have.
+   *
+   * Keyed on the *chain* rather than on the desk the request is standing at, because the
+   * answer is carried into the lock and the desk may have moved by the time it is used
+   * there. A chain that ends at the Chief Executive needs the id whichever stage the
+   * request is on today.
+   *
+   * Undefined comes back as null rather than as an error, and both policies treat a null as
+   * nobody: an organisation with no root is one `employee_one_root` says cannot exist, and
+   * the honest behaviour if it somehow does is to refuse the approval rather than to admit
+   * whoever asked.
+   */
+  private async chiefExecutiveFor(chain: readonly ApproverRole[]): Promise<string | null> {
+    if (!isApprovedBy(chain, 'CEO')) {
+      return null;
+    }
+
+    return (await this.employees.findRoot())?.id ?? null;
+  }
+
+  /**
    * The one path a request ends by. FR 26, §8.2. LMS 306.
    *
    * The README's rule is that only the state machine moves a request, and this is it:
@@ -391,7 +549,7 @@ export class LeaveRequestService {
   private async settle(
     actor: Actor,
     id: string,
-    action: RequestAction,
+    action: ReleasingAction,
     decide: (owner: BalanceOwner) => Decision,
   ): Promise<LeaveReleased> {
     const request = await this.requests.findById(id);

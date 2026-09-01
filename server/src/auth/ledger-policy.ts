@@ -220,11 +220,32 @@ export const ledgerPolicy = {
    * is that both leave a permanent row with their name on it.
    *
    * **Whether this is the right approver is not asked here.** FR 38a's chain says
-   * which desk a request is sitting on, and that is the approval story's decision
-   * about a request. This one answers the narrower question the balance has to ask
-   * of anybody moving it: have you any standing here at all.
+   * which desk a request is sitting on, and `leaveRequestPolicy.approve` is the
+   * decision that walks it. This one answers the coarser question the balance has to
+   * ask of anybody moving it: have you any standing here at all.
+   *
+   * ## The Chief Executive, and why they are a parameter
+   *
+   * LMS 314. The coarse question above had one wrong answer in it, and the chain is
+   * what exposed it: FR 32h routes unpaid leave to HR and then to the Chief
+   * Executive, and the Chief Executive is neither the requester's line manager nor
+   * the holder of any role — FR 04 makes them the one employee with *no* line
+   * manager, and the leave-type-approval-chain migration is emphatic that turning
+   * that position into a role code is the trap. So this decision, written before
+   * there was a chain, refused the very person §4.3.1 names.
+   *
+   * They are told who it is rather than looking, because no policy in this system
+   * touches a database. `null` is the default and every caller that has no chain in
+   * hand passes nothing, which keeps this exactly as narrow as it was: somebody
+   * else's manager is still nobody here, and the id has to be produced by a caller
+   * that has actually read `EmployeeRepository.findRoot`.
    */
-  commit(actor: Actor, owner: BalanceOwner): Decision {
+  commit(
+    actor: Actor,
+    owner: BalanceOwner,
+    /** FR 04. The one employee with no line manager, where a chain has named them. */
+    chiefExecutiveId: string | null = null,
+  ): Decision {
     if (isSelf(actor, owner.employeeId)) {
       return about.refuseOpenly(
         actor,
@@ -235,7 +256,11 @@ export const ledgerPolicy = {
       );
     }
 
-    if (isSelf(actor, owner.managerId) || holdsAny(actor, ...READS_EVERY_RECORD)) {
+    if (
+      isSelf(actor, owner.managerId) ||
+      isSelf(actor, chiefExecutiveId) ||
+      holdsAny(actor, ...READS_EVERY_RECORD)
+    ) {
       return about.allow(actor, 'commit', owner.employeeId);
     }
 
@@ -243,7 +268,8 @@ export const ledgerPolicy = {
       actor,
       'commit',
       owner.employeeId,
-      'not their line manager, and holds no role that reads everybody',
+      'not their line manager, not an approver this leave is routed to, and holds no ' +
+        'role that reads everybody',
       APPROVAL_IS_SOMEBODY_ELSE,
     );
   },

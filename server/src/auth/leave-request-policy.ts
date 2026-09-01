@@ -43,13 +43,29 @@
  * event, and the two are the same kind of thing: the record a movement was made
  * against.
  *
+ * ## Approving is the chain's, and this is the file that maps a desk onto a person
+ *
+ * LMS 314. This file said for two stories that there was deliberately no `approve` here,
+ * "because a decision here would be a way to reach the transition without passing the check
+ * that knows which desk the request is actually sitting on". {@link leaveRequestPolicy.approve}
+ * is that check rather than a way around it: its subject is a {@link RequestAtADesk}, so the
+ * question cannot be asked without saying where the request has got to.
+ *
+ * The three desks FR 38a names are three different kinds of fact and {@link isAt} is where
+ * that is resolved — a reporting line, a pair of granted roles, and the one employee FR 04
+ * leaves without a manager. None of them is a role code called MANAGER or CEO, and the
+ * leave-type-approval-chain migration is emphatic that making them into one is the trap.
+ *
+ * **A rank admits nobody here.** A line manager has no standing over a request whose chain
+ * does not name `MANAGER`, and HR has none over one that is still sitting with a manager.
+ * That is the point of routing rather than a restriction on top of it.
+ *
  * ## What is not here
  *
- * **No approval.** Deciding a request is FR 38a's chain, it needs the request and the
- * reporting line in hand, and it is the approval story's decision. There is no
- * `approve` in this file and its absence is deliberate rather than pending — a
- * decision here would be a way to reach the transition without passing the check that
- * knows which desk the request is actually sitting on.
+ * **No routing upwards.** FR 48b — the manager who raised their own request, the Chief
+ * Executive who has nobody above them — is a rule about a reporting line rather than about a
+ * leave type, and it is a story of its own. What this file does is refuse visibly rather
+ * than let somebody the chain never asked stand in.
  *
  * ## The three endings, and why they are three decisions rather than one
  *
@@ -92,13 +108,70 @@
  * without noticing they had widened the three underneath.
  */
 
+import type { ApproverRole } from '../domain/approval-chain.js';
 import { type RequestAction, type Standing, standingsFor } from '../domain/leave-request.js';
 import { type Actor, holdsAny, isSelf } from './actor.js';
 import type { BalanceOwner } from './ledger-policy.js';
 import { type Decision, policyFor } from './policy.js';
-import { MAINTAINS_EMPLOYEE_RECORDS, READS_EVERY_RECORD } from './roles.js';
+import { APPROVES_AS_HR, MAINTAINS_EMPLOYEE_RECORDS, READS_EVERY_RECORD } from './roles.js';
 
 const about = policyFor('leave request');
+
+/**
+ * Everything a decision about a request is made from, beyond who is asking. §6, §10.
+ * LMS 314.
+ *
+ * {@link BalanceOwner}'s two ids, plus the two facts `THE_DESK_IT_IS_WITH` needs. Both of
+ * the new ones are nullable and neither is optional, which is the distinction that makes
+ * this type worth having: a caller that has not looked up the Chief Executive and a caller
+ * that has looked and found nobody are different situations, and only one of them is a bug.
+ * Requiring the field means the first cannot happen quietly.
+ *
+ * The two are read by `LeaveRequestService` from the request and the employee table, and
+ * they are read there rather than here for the reason no policy in this system touches a
+ * database: a decision that could fetch is a decision whose answer depends on when it was
+ * asked.
+ */
+export interface RequestAtADesk extends BalanceOwner {
+  /**
+   * FR 38a. The desk this request is waiting on, straight off
+   * `leave_request.awaiting_approval_from`.
+   *
+   * Null for a request that is not waiting on anybody — approved, withdrawn, cancelled or
+   * refused — and a null satisfies no standing, so a decision about one is refused rather
+   * than accidentally allowed. Which is right: the reason it is not waiting is a reason
+   * nobody is due to approve it.
+   */
+  awaiting: ApproverRole | null;
+  /**
+   * FR 04. The one employee with no line manager, or null where the table has none.
+   *
+   * The `CEO` desk resolves to a *position* rather than to a grant — nobody holds a role
+   * that says Chief Executive, and the leave-type-approval-chain migration is emphatic that
+   * turning the three desks into three role codes is the trap. So the person is found the
+   * only way FR 04 offers, `EmployeeRepository.findRoot`, and handed here as an id.
+   *
+   * Null is a company with no root, which `employee_one_root` makes impossible and a
+   * half-loaded test database makes real. It refuses rather than allowing, for the reason
+   * {@link isSelf} refuses two nulls: nobody is not somebody.
+   */
+  chiefExecutiveId: string | null;
+}
+
+/**
+ * The facts a standing may be decided from, whether or not the caller has all of them.
+ *
+ * The three standings LMS 313 wrote need only {@link BalanceOwner}, and their decisions go
+ * on taking exactly that — widening `withdraw`, `refuse` and `cancel` to demand a desk and a
+ * Chief Executive they have no use for would be three signatures made worse to serve a
+ * fourth. So the shared helpers take this, {@link RequestAtADesk} satisfies it, and a
+ * `BalanceOwner` on its own satisfies it too with the desk simply absent.
+ *
+ * An absent desk denies, which is the safe direction and is also the true one: a decision
+ * made without knowing where a request is sitting cannot be a decision that somebody is
+ * sitting there.
+ */
+type StandingFacts = BalanceOwner & Partial<Pick<RequestAtADesk, 'awaiting' | 'chiefExecutiveId'>>;
 
 /**
  * Which roles satisfy each standing the transition table names. §6, §10. LMS 313.
@@ -115,14 +188,50 @@ const about = policyFor('leave request');
  * `undefined` denies silently: the transition would simply stop being performable by
  * anybody, and the first person to notice would be somebody whose request was stuck.
  */
-function hasStanding(actor: Actor, owner: BalanceOwner, standing: Standing): boolean {
+function hasStanding(actor: Actor, subject: StandingFacts, standing: Standing): boolean {
   switch (standing) {
     case 'THE_REQUESTER':
-      return isSelf(actor, owner.employeeId);
+      return isSelf(actor, subject.employeeId);
     case 'THEIR_LINE_MANAGER':
-      return isSelf(actor, owner.managerId);
+      return isSelf(actor, subject.managerId);
     case 'LEAVE_ADMINISTRATION':
       return holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS);
+    case 'THE_DESK_IT_IS_WITH':
+      return !isSelf(actor, subject.employeeId) && isAt(actor, subject);
+  }
+}
+
+/**
+ * Whether this actor is the person the chain's current desk resolves to. FR 38a, FR 48.
+ * LMS 314.
+ *
+ * The half of FR 38a that only this layer may know, and it is three questions rather than
+ * one because the three desks are three different kinds of fact. The
+ * leave-type-approval-chain migration says so at length and the short of it is:
+ *
+ *   **MANAGER is a relationship**, so it is the reporting line and nothing else. Holding
+ *   HR_ADMIN does not make somebody the manager stage of a chain — that is precisely the
+ *   widening that lets a stranger sign off a request addressed to a team lead.
+ *
+ *   **HR is a grant**, and two codes staff it — {@link APPROVES_AS_HR}, which is a list of
+ *   its own so that changing who maintains employee records cannot quietly change who
+ *   approves leave.
+ *
+ *   **CEO is a position**, and the one employee FR 04 leaves without a manager. It is
+ *   compared by id rather than by any role, because nobody grants it.
+ *
+ * A desk of null is a request waiting on nobody, and nobody is at that desk.
+ */
+function isAt(actor: Actor, subject: StandingFacts): boolean {
+  switch (subject.awaiting) {
+    case 'MANAGER':
+      return isSelf(actor, subject.managerId);
+    case 'HR':
+      return holdsAny(actor, ...APPROVES_AS_HR);
+    case 'CEO':
+      return isSelf(actor, subject.chiefExecutiveId ?? null);
+    default:
+      return false;
   }
 }
 
@@ -154,15 +263,15 @@ function hasStanding(actor: Actor, owner: BalanceOwner, standing: Standing): boo
  */
 function mayMove(
   actor: Actor,
-  owner: BalanceOwner,
+  subject: StandingFacts,
   action: RequestAction,
   words: { because: string; told: string },
 ): Decision {
   const said = action.toLowerCase();
 
-  return standingsFor(action).some((standing) => hasStanding(actor, owner, standing))
-    ? about.allow(actor, said, owner.employeeId)
-    : about.refuseOpenly(actor, said, owner.employeeId, words.because, words.told);
+  return standingsFor(action).some((standing) => hasStanding(actor, subject, standing))
+    ? about.allow(actor, said, subject.employeeId)
+    : about.refuseOpenly(actor, said, subject.employeeId, words.because, words.told);
 }
 
 /**
@@ -263,17 +372,24 @@ export const leaveRequestPolicy = {
    * LMS 212 — "yours to withdraw, your manager's to refuse, HR's to cancel" — and this is
    * the decision that names it.
    *
-   * **It is not the approval chain, and the difference is worth being exact about.** FR
-   * 38a gives each leave type an ordered chain of approvers, and deciding *which desk a
-   * given request is currently sitting on* needs the chain, the type and how far the
-   * request has got. None of that exists yet: there is no `APPROVED`, so there is no
-   * partly-approved request to be sitting anywhere. What this holds is the standing
-   * question — is this person in a position to decide this request at all — which is a
-   * manager's or HR's however the chain is later walked.
+   * **It is still not the approval chain, and LMS 314 deliberately left it that way.**
+   * This note used to say the chain did not exist yet and that "the approval story narrows
+   * this rather than replacing it". The chain now exists — {@link leaveRequestPolicy.approve}
+   * walks it — and narrowing this one was not done with it, because it is a change to who
+   * may turn leave down rather than a consequence of routing.
    *
-   * The approval story narrows this rather than replacing it, and narrowing is the safe
-   * direction: a chain check added in front of a decision that already refuses
-   * strangers cannot accidentally widen it.
+   * What that leaves is worth stating plainly rather than leaving to be discovered: **a line
+   * manager may refuse unpaid leave that they could not approve.** Its chain is HR then the
+   * Chief Executive — §4.3.1, "Decided by HR and the Chief Executive" — so the manager is
+   * not a desk on it, and `approve` refuses them. This decision does not, because it was
+   * written before there was a chain to ask.
+   *
+   * It is a one-line change to the `REFUSE` row — `THE_DESK_IT_IS_WITH` in place of
+   * `THEIR_LINE_MANAGER` — and it is not a one-line consequence: it needs this decision to
+   * take a {@link RequestAtADesk}, and it takes away a manager's ability to turn down a
+   * kind of leave they can currently turn down. That is somebody's decision to make rather
+   * than a side effect of building the routing, and the story that puts an approver's queue
+   * in front of people is where it belongs.
    *
    * **The requester is not on it**, which is the one place this differs from every other
    * decision here. Somebody refusing their own leave is withdrawing it, and the two are
@@ -319,6 +435,71 @@ export const leaveRequestPolicy = {
         'Cancelling a request is HR unwinding something that should not be on the ' +
         'books. Taking back your own leave is withdrawing it, and a manager who ' +
         'does not agree to it refuses it.',
+    });
+  },
+
+  /**
+   * Saying yes at the desk the chain has this request sitting on. FR 38, FR 38a, FR 40.
+   * LMS 314.
+   *
+   * The decision this file said for two stories it did not have, and the note it was
+   * refused with is worth reading against what arrived. It said: "Deciding a request is FR
+   * 38a's chain, it needs the request and the reporting line in hand, and it is the
+   * approval story's decision. There is no `approve` in this file and its absence is
+   * deliberate rather than pending — a decision here would be a way to reach the transition
+   * without passing the check that knows which desk the request is actually sitting on."
+   *
+   * This is that check. The subject is a {@link RequestAtADesk} rather than a
+   * {@link BalanceOwner}, so there is no way to ask this question without saying where the
+   * request has got to, and `THE_DESK_IT_IS_WITH` is decided from that column — see
+   * {@link isAt}.
+   *
+   * ## It is the chain that admits somebody, not a rank
+   *
+   * The third criterion, and it is worth being exact about what it rules out. **A line
+   * manager has no standing here at all unless the chain names `MANAGER` and the request is
+   * at that stage.** Unpaid leave goes HR then the Chief Executive — §4.3.1 says of both
+   * unpaid types "Decided by HR and the Chief Executive" — so somebody's manager cannot
+   * approve their unpaid leave, cannot see it advance by doing so, and is refused with a
+   * sentence naming the desks that can.
+   *
+   * **And HR is not admitted by being HR.** {@link MAINTAINS_EMPLOYEE_RECORDS} carries the
+   * three endings, because unwinding a request that should not be on the books is
+   * administration; it carries nothing here. An HR officer approving annual leave that is
+   * still sitting with a line manager would be approving something the manager has not seen,
+   * which is the stage the chain exists to insist on.
+   *
+   * ## The requester is never at the desk, however they got there
+   *
+   * {@link hasStanding} excludes them before it looks at the desk at all, and the case that
+   * makes it necessary is ordinary rather than adversarial: unpaid leave goes to the HR
+   * desk, and an HR Officer asking for unpaid leave holds a code that staffs it. Without the
+   * exclusion they would approve their own first stage on the way past.
+   *
+   * `ledgerPolicy.commit` refuses the same thing at the ledger door — "approving your own
+   * leave is the failure the seed fixtures are built to expose by name" — and both are asked,
+   * which is the arrangement `submit` and `ledgerPolicy.reserve` already have. The narrower
+   * is the real rule, and if these two ever disagreed the wider would be doing nothing.
+   *
+   * **What this does not do is route around it.** A manager who raises their own leave, and
+   * the Chief Executive who has no manager to send it to, are left waiting at a desk nobody
+   * can fill. That is FR 48b — the request routes *upwards* — and it is a rule about a
+   * reporting line rather than about a leave type, which is why the
+   * leave-type-approval-chain migration left it out of the chain table and why this story
+   * leaves it out of the walk. It is a real gap and it is named rather than papered over: a
+   * request in it is refused, visibly, rather than approved by somebody the chain never
+   * asked.
+   *
+   * Refused openly. Anybody reaching this can already read the request, and the person most
+   * likely to meet it is an approver at the wrong stage of a chain they cannot see.
+   */
+  approve(actor: Actor, subject: RequestAtADesk): Decision {
+    return mayMove(actor, subject, 'APPROVE', {
+      because: 'is not the approver this request is currently waiting on',
+      told:
+        'Leave is approved by each desk in its type’s approval chain, in order, and ' +
+        'this request is not waiting on you. Most kinds of leave go to the line manager ' +
+        'and then to HR; unpaid leave goes to HR and then to the Chief Executive. FR 38a.',
     });
   },
 

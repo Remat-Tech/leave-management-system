@@ -141,6 +141,15 @@ beforeEach(async () => {
     "UPDATE leave_type SET is_active = true, counting_basis = 'WORKING_DAYS' WHERE code = 'ANNUAL'",
   );
 
+  /* And the approval chains, for the same reason and since LMS 314: two tests below change
+     one to show that routing reads the rows rather than anything in the code, and
+     `leave_type_approval_step` is the migration's rather than the seed's. Put back through
+     the owner's repair function, which is what an operator would use — it gives a chain to
+     every type that has none and leaves alone every type that has one, so clearing first is
+     what makes it a restore. */
+  await admin.query('DELETE FROM leave_type_approval_step');
+  await admin.query('SELECT ensure_statutory_approval_chains()');
+
   const codes = await admin.query(
     "SELECT code, id FROM leave_type WHERE code IN ('ANNUAL','MATERNITY','SICK')",
   );
@@ -409,8 +418,8 @@ describe('submitting a request', () => {
       admin.query(
         `INSERT INTO leave_request (
             employee_id, leave_type_id, leave_year_id, start_date, end_date,
-            reason, counting_basis, days, calendar_days, status)
-         VALUES ($1, $2, $3, $4, $5, 'straight to the table', 'WORKING_DAYS', 7, 9, 'SUBMITTED')`,
+            reason, counting_basis, days, calendar_days, status, awaiting_approval_from)
+         VALUES ($1, $2, $3, $4, $5, 'straight to the table', 'WORKING_DAYS', 7, 9, 'SUBMITTED', 'MANAGER')`,
         [people.officer, annualId, y2026.id, FROM, TO],
       ),
     ).rejects.toMatchObject({ constraint: 'leave_request_holds_its_days' });
@@ -571,6 +580,9 @@ describe('a request the balance does not hold', () => {
           countingBasis: quote.countingBasis,
           days: quote.days,
           calendarDays: quote.calendarDays,
+          /* FR 38a. Annual leave's chain, which is what the service would have handed over.
+             This test goes round the service on purpose and so has to say it. LMS 314. */
+          approvalChain: ['MANAGER', 'HR'],
         }),
         reason: 'past the service check',
       })
@@ -1013,9 +1025,9 @@ describe('what leave may be asked for', () => {
       admin.query(
         `INSERT INTO leave_request (
             employee_id, leave_type_id, leave_year_id, start_date, end_date,
-            reason, counting_basis, days, calendar_days, status)
+            reason, counting_basis, days, calendar_days, status, awaiting_approval_from)
          VALUES ($1, $2, $3, '2025-03-02', '2025-03-10', 'the wrong year',
-                 'WORKING_DAYS', 7, 9, 'SUBMITTED')`,
+                 'WORKING_DAYS', 7, 9, 'SUBMITTED', 'MANAGER')`,
         [people.officer, annualId, y2026.id],
       ),
     ).rejects.toMatchObject({ constraint: 'leave_request_falls_in_its_leave_year' });
@@ -1250,9 +1262,9 @@ describe('leave cannot be booked over leave already booked', () => {
       admin.query(
         `INSERT INTO leave_request (
             employee_id, leave_type_id, leave_year_id, start_date, end_date,
-            reason, counting_basis, days, calendar_days, status)
+            reason, counting_basis, days, calendar_days, status, awaiting_approval_from)
          VALUES ($1, $2, $3, '2026-03-09', '2026-03-13', 'straight past the service',
-                 'WORKING_DAYS', 4, 5, 'SUBMITTED')`,
+                 'WORKING_DAYS', 4, 5, 'SUBMITTED', 'MANAGER')`,
         [people.officer, annualId, y2026.id],
       ),
     ).rejects.toMatchObject({ constraint: 'leave_request_never_overlaps', code: '23P01' });
@@ -1560,23 +1572,33 @@ describe('withdrawing, refusing and cancelling', () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
     await expect(
-      admin.query(`UPDATE leave_request SET status = 'REFUSED' WHERE id = $1`, [request.id]),
+      admin.query(
+        `UPDATE leave_request SET status = 'REFUSED', awaiting_approval_from = NULL
+          WHERE id = $1`,
+        [request.id],
+      ),
     ).rejects.toMatchObject({ constraint: 'leave_request_gives_its_days_back' });
   });
 
   /* And a request that has ended does not move again, refused as it is attempted rather
-     than at commit: a row leaving a state it already left is wrong immediately. */
+     than at commit: a row leaving a state it already left is wrong immediately. The
+     constraint was called `leave_request_ends_once` until LMS 314 widened it to hold every
+     move §6 permits, which is a name somebody reads in an error about approved leave. */
   it('and a request that has ended cannot be moved again, by anybody', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
     await requests.withdraw(asThemselves(), request.id);
 
     await expect(
       admin.query(`UPDATE leave_request SET status = 'REFUSED' WHERE id = $1`, [request.id]),
-    ).rejects.toMatchObject({ constraint: 'leave_request_ends_once' });
+    ).rejects.toMatchObject({ constraint: 'leave_request_moves_as_the_table_says' });
 
     await expect(
-      admin.query(`UPDATE leave_request SET status = 'SUBMITTED' WHERE id = $1`, [request.id]),
-    ).rejects.toMatchObject({ constraint: 'leave_request_ends_once' });
+      admin.query(
+        `UPDATE leave_request SET status = 'SUBMITTED', awaiting_approval_from = 'MANAGER'
+          WHERE id = $1`,
+        [request.id],
+      ),
+    ).rejects.toMatchObject({ constraint: 'leave_request_moves_as_the_table_says' });
   });
 
   /* And a second RELEASE against one request, which is what a retry would write. The
@@ -1704,6 +1726,548 @@ describe('withdrawing, refusing and cancelling', () => {
   /** The balance every test here moves: her annual leave, this year. */
   function theBalance() {
     return { employeeId: people.officer, leaveTypeId: annualId, leaveYearId: y2026.id };
+  }
+});
+
+/* ------------------------------------------- routing a request through its chain */
+
+/**
+ * A request goes to the approvers its leave type names, in order. FR 38, FR 38a, FR 40.
+ * LMS 314.
+ *
+ * ../unit/state-machine.test.ts proves the walk against chains written out by hand, which
+ * is where the arithmetic of "next desk, or approved" belongs. What needs a database is
+ * everything the story is actually about:
+ *
+ *   **The chain is the one on the leave type**, read out of `leave_type_approval_step`
+ *   rather than out of a constant. Annual leave routes to the manager and unpaid leave
+ *   routes to HR because of rows the leave-type-approval-chain migration wrote, and the
+ *   only way to show that is to route a request of each against the real ones.
+ *
+ *   **The desks resolve to people**, and the three do it three different ways — a reporting
+ *   line, a pair of granted roles, and the one employee FR 04 leaves without a manager.
+ *   Only a real organisation has all three.
+ *
+ *   **The last approval commits the days**, in the same transaction as the status. A
+ *   `DEDUCTION`, a deferred constraint trigger and a balance recomputed by a trigger are
+ *   not properties any pure function has.
+ */
+describe('routing a request to its approvers', () => {
+  /** The chain the two unpaid types carry, which is the third criterion's whole point. */
+  let unpaidId: string;
+
+  beforeEach(async () => {
+    const rows = await admin.query("SELECT id FROM leave_type WHERE code = 'UNPAID'");
+    unpaidId = rows.rows[0].id as string;
+
+    /* Unpaid leave is an event type with no annual grant, so there is nothing to book
+       against it until somebody puts a figure there. FR 37's adjustment, doing what it is
+       for — the balance is not what this suite is about. Both people who ask for unpaid
+       leave below get one. */
+    for (const employeeId of [people.officer, people.hrOfficer]) {
+      await balances.adjust(system, {
+        employeeId,
+        leaveTypeId: unpaidId,
+        leaveYearId: y2026.id,
+        days: 20,
+        reason: 'So there is unpaid leave to ask for. FR 37.',
+      });
+    }
+  });
+
+  /* Kwame Asante, the one employee with no line manager. FR 04. */
+  function asTheChiefExecutive() {
+    return signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
+  }
+
+  /* ------------------------------------------------- the first stage, FR 38a */
+
+  /**
+   * The story's first criterion, and the reason it is asserted against two types at once.
+   *
+   * One type would prove that a request starts *somewhere*. Two, with different chains,
+   * prove it starts where its own chain says — and neither the service nor the domain knows
+   * which type is which, because both read the same column.
+   */
+  it('starts a request at the first desk of its type’s chain', async () => {
+    const ordinary = await requests.submit(asThemselves(), aRequest());
+    const unpaid = await requests.submit(
+      asThemselves(),
+      aRequest({ leaveTypeId: unpaidId, from: '2026-05-04', to: '2026-05-08' }),
+    );
+
+    expect(ordinary.request.awaitingApprovalFrom).toBe('MANAGER');
+    expect(unpaid.request.awaitingApprovalFrom).toBe('HR');
+  });
+
+  /* And it is read off the rows rather than off anything in the code: changing the chain
+     changes where the next request starts, with no deployment. FR 31. */
+  it('and takes it from the rows, so changing the chain changes where leave starts', async () => {
+    await rewriteTheAnnualChain('CEO');
+
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    expect(request.awaitingApprovalFrom).toBe('CEO');
+  });
+
+  /* ---------------------------------------- advancing, and the last word */
+
+  /**
+   * The story's second criterion, walked end to end against the real chain.
+   *
+   * The manager's yes is not an approval — it is a stage — and the request comes back
+   * `SUBMITTED` and waiting on HR. That is the assertion the whole design turns on: if a
+   * single approval decided the request, the second stage of every chain in the company
+   * would be decoration.
+   */
+  it('advances to the next stage on the first approval, and stays submitted', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    const advanced = await requests.approve(asTheirManager(), request.id);
+
+    expect(advanced.request.status).toBe('SUBMITTED');
+    expect(advanced.request.awaitingApprovalFrom).toBe('HR');
+    /* And nothing moved in the ledger, because nothing moved in the balance. */
+    expect(advanced.entry).toBeNull();
+    expect(advanced.balance.pending).toBe(6);
+    expect(advanced.balance.taken).toBe(0);
+    expect(advanced.balance.available).toBe(14);
+  });
+
+  it('and to approved once the chain has nobody left to ask', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    const approved = await requests.approve(asOfficer(), request.id);
+
+    expect(approved.request.status).toBe('APPROVED');
+    expect(approved.request.awaitingApprovalFrom).toBeNull();
+  });
+
+  /**
+   * And the last approval turns held days into taken days, leaving available where it was.
+   *
+   * The movement `BalanceService.commit` has been built and unused for since LMS 212. A
+   * `DEDUCTION` is the one entry type that moves two buckets — out of `pending`, into
+   * `taken` — so a person whose leave is approved sees the same figure they saw when they
+   * asked, which is correct: the days were spoken for either way.
+   */
+  it('and the days become taken rather than held, with available unmoved', async () => {
+    const { request, balance: held } = await requests.submit(asThemselves(), aRequest());
+
+    expect([held.pending, held.taken, held.available]).toEqual([6, 0, 14]);
+
+    await requests.approve(asTheirManager(), request.id);
+    const { balance, entry } = await requests.approve(asOfficer(), request.id);
+
+    expect(balance.pending).toBe(0);
+    expect(balance.taken).toBe(6);
+    expect(balance.available).toBe(14);
+
+    expect(entry?.entryType).toBe('DEDUCTION');
+    expect(entry?.days).toBe(-6);
+    expect(entry?.leaveRequestId).toBe(request.id);
+  });
+
+  /* And the DEDUCTION says what it is for, in the words somebody reading a balance can use
+     — the third of the trio with the RESERVATION and the RELEASE. */
+  it('and the deduction says what it is for, and which desk decided it', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    const { entry } = await requests.approve(asOfficer(), request.id);
+
+    expect(entry?.reason).toContain('6 days of Annual Leave taken');
+    expect(entry?.reason).toContain('approved by HR');
+  });
+
+  /* ------------------------------------ unpaid leave, which has no manager stage */
+
+  /**
+   * The story's third criterion. FR 32h, §4.3.1 — "Decided by HR and the Chief Executive".
+   *
+   * Two things are asserted and the second is the one that matters: unpaid leave reaches HR
+   * and then the Chief Executive, **and the line manager is not a stage on it at all**. A
+   * chain that merely put HR first would still let a manager sign off unpaid leave, which is
+   * an arrangement with the company rather than a team's business.
+   */
+  it('routes unpaid leave to HR and then the Chief Executive', async () => {
+    const unpaid = aRequest({ leaveTypeId: unpaidId, from: '2026-05-04', to: '2026-05-08' });
+    const { request } = await requests.submit(asThemselves(), unpaid);
+
+    expect(request.awaitingApprovalFrom).toBe('HR');
+
+    const advanced = await requests.approve(asOfficer(), request.id);
+
+    expect(advanced.request.status).toBe('SUBMITTED');
+    expect(advanced.request.awaitingApprovalFrom).toBe('CEO');
+
+    const approved = await requests.approve(asTheChiefExecutive(), request.id);
+
+    expect(approved.request.status).toBe('APPROVED');
+    expect(approved.entry?.entryType).toBe('DEDUCTION');
+  });
+
+  it('and never lets the line manager approve it, at either stage', async () => {
+    const unpaid = aRequest({ leaveTypeId: unpaidId, from: '2026-05-04', to: '2026-05-08' });
+    const { request } = await requests.submit(asThemselves(), unpaid);
+
+    await expect(requests.approve(asTheirManager(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+
+    await requests.approve(asOfficer(), request.id);
+
+    await expect(requests.approve(asTheirManager(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+  });
+
+  /* And the Chief Executive is not admitted to an ordinary chain either, which is the same
+     rule read the other way: the desks are a sequence and each answers for its own stage.
+     Being the most senior person in the company is not standing on a chain that does not
+     name the position. */
+  it('and never lets the Chief Executive approve leave whose chain does not name them', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(requests.approve(asTheChiefExecutive(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+  });
+
+  /* ------------------------------------------------- who may, at each stage */
+
+  it('is the line manager while it sits with them, and not HR reaching past', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(requests.approve(asOfficer(), request.id)).rejects.toBeInstanceOf(NotAuthorised);
+    await expect(requests.approve(asAColleague(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+
+    await expect(requests.approve(asTheirManager(), request.id)).resolves.toMatchObject({
+      request: { awaitingApprovalFrom: 'HR' },
+    });
+  });
+
+  it('and HR once it has reached them, and not the manager a second time', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id);
+
+    await expect(requests.approve(asTheirManager(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+
+    await expect(requests.approve(asOfficer(), request.id)).resolves.toMatchObject({
+      request: { status: 'APPROVED' },
+    });
+  });
+
+  /**
+   * And never the person who asked, at a desk they happen to staff.
+   *
+   * The case is ordinary rather than adversarial: unpaid leave goes to HR first, and an HR
+   * Officer asking for unpaid leave holds a code that staffs that desk. Both the request
+   * policy and `ledgerPolicy.commit` refuse it, and either would be enough — which is the
+   * arrangement `submit` and `ledgerPolicy.reserve` already have.
+   */
+  it('and never the person who asked for it, even at a desk they staff', async () => {
+    const { request } = await requests.submit(
+      asOfficer(),
+      aRequest({
+        employeeId: people.hrOfficer,
+        leaveTypeId: unpaidId,
+        from: '2026-05-04',
+        to: '2026-05-08',
+      }),
+    );
+
+    expect(request.awaitingApprovalFrom).toBe('HR');
+
+    await expect(requests.approve(asOfficer(), request.id)).rejects.toBeInstanceOf(NotAuthorised);
+  });
+
+  it('and a refused approval writes nothing and moves nothing', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(requests.approve(asAColleague(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+
+    expect(await requests.byId(asThemselves(), request.id)).toMatchObject({
+      status: 'SUBMITTED',
+      awaitingApprovalFrom: 'MANAGER',
+    });
+    expect(
+      (await admin.query("SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'DEDUCTION'"))
+        .rows[0].count,
+    ).toBe('0');
+  });
+
+  /* --------------------------------------- what approval does to the rest */
+
+  /**
+   * Approved leave still blocks the calendar, which is the one word LMS 304 wrote its
+   * predicate in advance for.
+   *
+   * `leave_request_never_overlaps` carried `WHERE status IN ('SUBMITTED')` while that was a
+   * tautology, saying "the approval story edits this list". Leave that has been agreed is
+   * the most live leave there is — the person will be away — and booking over it would take
+   * the same days off a balance twice.
+   */
+  it('and leave that has been approved still blocks the same days', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    await requests.approve(asOfficer(), request.id);
+
+    await expect(requests.submit(asThemselves(), aRequest())).rejects.toBeInstanceOf(
+      LeaveOverlapsAnother,
+    );
+  });
+
+  /* And it cannot be withdrawn, refused or cancelled — not yet, and the refusal says which
+     rather than pretending the days are back. Taking agreed leave off the books is a
+     movement against the DEDUCTION and is a story of its own. */
+  it('and cannot be withdrawn, refused or cancelled once it is approved', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    await requests.approve(asOfficer(), request.id);
+
+    for (const end of RELEASING_STATUSES) {
+      await expect(ending(end)(whoEnds(end), request.id)).rejects.toMatchObject({
+        name: 'LeaveCannotBeMoved',
+        code: 'MOVE_NOT_AVAILABLE',
+      });
+    }
+
+    const balance = await balances.forOne(asThemselves(), {
+      employeeId: people.officer,
+      leaveTypeId: annualId,
+      leaveYearId: y2026.id,
+    });
+
+    expect(balance.taken).toBe(6);
+    expect(balance.available).toBe(14);
+  });
+
+  /* And a request that has ended is not approved afterwards either, which is the other half
+     of the same rule and the one somebody meets by having two tabs open. */
+  it('and a request that has ended cannot then be approved', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.withdraw(asThemselves(), request.id);
+
+    await expect(requests.approve(asTheirManager(), request.id)).rejects.toBeInstanceOf(
+      LeaveAlreadySettled,
+    );
+  });
+
+  /**
+   * And a chain changed under a waiting request is refused by name. FR 31, FR 38a.
+   *
+   * The seam in reading the chain live rather than copying it onto the request, and the
+   * reason `ApprovalChainChanged` exists. An HR Administrator may change a chain without a
+   * developer — FR 31 insists on it — and a request already standing on a desk the new chain
+   * does not have has no honest next stage. Approving it would agree the leave on the
+   * strength of a desk the policy no longer includes.
+   */
+  it('and refuses a request left standing on a desk the chain no longer has', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await rewriteTheAnnualChain('HR');
+
+    await expect(requests.approve(asTheirManager(), request.id)).rejects.toMatchObject({
+      name: 'ApprovalChainChanged',
+      code: 'CHAIN_CHANGED',
+    });
+
+    expect(await requests.byId(asThemselves(), request.id)).toMatchObject({
+      status: 'SUBMITTED',
+      awaitingApprovalFrom: 'MANAGER',
+    });
+  });
+
+  /* ------------------------------------ and what the database holds anyway */
+
+  /**
+   * The status and the DEDUCTION are one act, held at COMMIT.
+   *
+   * The mirror of `leave_request_gives_its_days_back`, and what it catches is the second
+   * writer: a data fix marking a batch APPROVED, an import setting a status while correcting
+   * something else. Each looks reasonable and each would leave leave that is agreed still
+   * counted as pending in somebody's balance for ever.
+   */
+  it('and a status moved to approved with no DEDUCTION is refused at commit, by anybody', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(
+      admin.query(
+        `UPDATE leave_request SET status = 'APPROVED', awaiting_approval_from = NULL
+          WHERE id = $1`,
+        [request.id],
+      ),
+    ).rejects.toMatchObject({ constraint: 'leave_request_takes_its_days' });
+  });
+
+  /* And a second DEDUCTION against one request, which is what a retry would write. The
+     mirror of `leave_request_reserves_once` and `leave_request_releases_once`. */
+  it('and one request takes its days exactly once, by anybody', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    await requests.approve(asOfficer(), request.id);
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_ledger_entry (
+            employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+         VALUES ($1, $2, $3, 'DEDUCTION', '-6.00', 'taken twice', $4)`,
+        [people.officer, annualId, y2026.id, request.id],
+      ),
+    ).rejects.toMatchObject({ constraint: 'leave_request_commits_once' });
+  });
+
+  /**
+   * And a request is waiting on exactly one desk while it is being decided, and on none
+   * otherwise.
+   *
+   * The equivalence, from both sides. The half nobody would write is the second: an approved
+   * request that still read "awaiting HR" would sit in that desk's queue for ever, and
+   * whoever worked through the queue would have no way to tell it from work.
+   */
+  it('and a request waits at exactly one desk while it is being decided, by anybody', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(
+      admin.query('UPDATE leave_request SET awaiting_approval_from = NULL WHERE id = $1', [
+        request.id,
+      ]),
+    ).rejects.toMatchObject({ constraint: 'leave_request_waits_at_a_desk' });
+
+    await requests.approve(asTheirManager(), request.id);
+    await requests.approve(asOfficer(), request.id);
+
+    await expect(
+      admin.query("UPDATE leave_request SET awaiting_approval_from = 'HR' WHERE id = $1", [
+        request.id,
+      ]),
+    ).rejects.toMatchObject({ constraint: 'leave_request_waits_at_a_desk' });
+  });
+
+  /* And the desk is one of the three FR 38a names, held closed the way the leave type's own
+     column is. The two lists are the same list. */
+  it('and only the three approver desks can be stored, by anybody', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(
+      admin.query("UPDATE leave_request SET awaiting_approval_from = 'DIRECTOR' WHERE id = $1", [
+        request.id,
+      ]),
+    ).rejects.toMatchObject({ constraint: 'leave_request_awaiting_role_known' });
+  });
+
+  /**
+   * And the overlap constraint's predicate is exactly `LIVE_STATUSES`.
+   *
+   * The check LMS 304 wrote for the afternoon this story added a status to one list and not
+   * the other. It failed nothing while `APPROVED` was absent from both; the moment it went
+   * into the domain list and not into the predicate, somebody could have booked a fortnight
+   * on top of leave their manager and HR had signed off.
+   */
+  it('and the exclusion constraint blocks exactly the statuses that hold days', async () => {
+    const { rows } = await admin.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid = 'leave_request'::regclass AND conname = 'leave_request_never_overlaps'`,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(
+      [...rows[0].definition.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1]).sort(),
+    ).toEqual([...LIVE_STATUSES].sort());
+  });
+
+  /* And every approval is on the record with the person who made it, exactly as every
+     settlement is. The advance is an UPDATE like any other, so the trigger writes it. */
+  it('and each stage is in the audit log with the person who approved it', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    await requests.approve(asOfficer(), request.id);
+
+    const { rows } = await admin.query<{
+      actor: string;
+      before: { status: string; awaiting_approval_from: string | null };
+      after: { status: string; awaiting_approval_from: string | null };
+    }>(
+      `SELECT actor, before, after FROM audit_log
+        WHERE entity = 'leave_request' AND entity_id = $1 AND action = 'UPDATE'
+        ORDER BY id`,
+      [request.id],
+    );
+
+    expect(rows).toHaveLength(2);
+
+    expect(rows[0].actor).toContain(people.teamLead);
+    expect(rows[0].before.awaiting_approval_from).toBe('MANAGER');
+    expect(rows[0].after.awaiting_approval_from).toBe('HR');
+    expect(rows[0].after.status).toBe('SUBMITTED');
+
+    expect(rows[1].actor).toContain(people.hrOfficer);
+    expect(rows[1].after.status).toBe('APPROVED');
+    expect(rows[1].after.awaiting_approval_from).toBeNull();
+  });
+
+  /**
+   * Puts a different chain on annual leave, the way an HR Administrator would. FR 31.
+   *
+   * Two statements rather than one, because a chain is replaced as a whole and the
+   * leave-type-approval-chain migration is explicit about why: "Moving 'manager then HR' to
+   * 'HR then CEO' by updating rows in place passes through 'HR then HR' or 'manager then
+   * CEO' depending on which row is written first, and both of those are real chains that a
+   * concurrent reader would find."
+   *
+   * They land inside one transaction so `leave_type_approval_chain_is_whole`, which is
+   * deferred, sees only the state that will be stored. The outer `beforeEach` puts the
+   * shipped chains back afterwards.
+   */
+  async function rewriteTheAnnualChain(...desks: readonly string[]): Promise<void> {
+    await admin.query('BEGIN');
+    await admin.query('DELETE FROM leave_type_approval_step WHERE leave_type_id = $1', [annualId]);
+
+    for (const [index, desk] of desks.entries()) {
+      await admin.query(
+        `INSERT INTO leave_type_approval_step (leave_type_id, step_order, approver_role)
+         VALUES ($1, $2, $3)`,
+        [annualId, index + 1, desk],
+      );
+    }
+
+    await admin.query('COMMIT');
+  }
+
+  /** The three endings, and the desk each is reached from. */
+  function ending(status: (typeof RELEASING_STATUSES)[number]) {
+    switch (status) {
+      case 'WITHDRAWN':
+        return requests.withdraw.bind(requests);
+      case 'REFUSED':
+        return requests.refuse.bind(requests);
+      default:
+        return requests.cancel.bind(requests);
+    }
+  }
+
+  function whoEnds(status: (typeof RELEASING_STATUSES)[number]) {
+    switch (status) {
+      case 'WITHDRAWN':
+        return asThemselves();
+      case 'REFUSED':
+        return asTheirManager();
+      default:
+        return asOfficer();
+    }
   }
 });
 
