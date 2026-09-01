@@ -101,6 +101,10 @@ beforeEach(async () => {
   await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
   await restoreYears();
 
+  /* `restoreYears()` truncates `leave_year` with CASCADE, which takes the requests with
+     it, so the days this run's fixtures claim are free again. */
+  nextRequestDay = 0;
+
   people = (await seed(admin)) as Record<string, string>;
 
   y2026 = (await years.byLabel(system, '2026'))!;
@@ -251,17 +255,35 @@ async function aRequestHoldingDays(key: Record<string, unknown>): Promise<string
   }
 }
 
+/**
+ * Where the next fixture request starts, counted in days from the leave year's first.
+ *
+ * Every request here used to begin on the first of January, which was fine until
+ * `leave_request_never_overlaps` arrived with LMS 304: one person cannot hold the same
+ * day twice, and a suite that wrote four requests for one person wrote four requests for
+ * the first of January. Advancing the start day gives each fixture a period of its own,
+ * which is what the rows were always meant to represent — this file is about the eight
+ * kinds of *movement*, and the requests behind them are scaffolding.
+ *
+ * Reset before each test, alongside the tables, so a run's requests do not walk off the
+ * end of the leave year and meet `leave_request_falls_in_its_leave_year` instead.
+ */
+let nextRequestDay = 0;
+
 /** The request row alone, for a caller that has a transaction open. */
 async function insertRequest(key: Record<string, unknown>, days: number): Promise<string> {
+  const startsOn = nextRequestDay;
+  nextRequestDay += days;
+
   const { rows } = await admin.query<{ id: string }>(
     `INSERT INTO leave_request (
         employee_id, leave_type_id, leave_year_id,
         start_date, end_date, reason, counting_basis, days, calendar_days, status)
-     SELECT $1, $2, $3, y.start_date, y.start_date + ($4::int - 1), 'a request for the suite',
-            'CALENDAR_DAYS', $4, $4, 'SUBMITTED'
+     SELECT $1, $2, $3, y.start_date + $5::int, y.start_date + $5::int + ($4::int - 1),
+            'a request for the suite', 'CALENDAR_DAYS', $4, $4, 'SUBMITTED'
        FROM leave_year y WHERE y.id = $3
      RETURNING id`,
-    [key.employee_id, key.leave_type_id, key.leave_year_id, days],
+    [key.employee_id, key.leave_type_id, key.leave_year_id, days, startsOn],
   );
 
   return rows[0].id;

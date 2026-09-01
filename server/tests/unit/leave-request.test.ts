@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 import type { DayCount } from '../../src/domain/leave-calculator.js';
 import {
   assertItCostsSomething,
+  blocksTheCalendar,
   countingBasisInWords,
   InvalidLeaveRequest,
+  type LeaveRequest,
   LeaveCountsNoDays,
   LeaveCrossesAYearEnd,
+  LeaveOverlapsAnother,
+  LIVE_STATUSES,
   noticeGiven,
+  periodsOverlap,
   quoteFor,
   reachesPastTheEndOf,
   reasonForReservation,
@@ -90,6 +95,34 @@ function leaveYear(label: string, startDate: string, endDate: string): LeaveYear
 /** The two years the database ships with. §5.4. */
 const Y2026 = leaveYear('2026', '2026-01-01', '2026-12-31');
 const Y2027 = leaveYear('2027', '2027-01-01', '2027-12-31');
+
+/** Leave already on the books: the second to the tenth of March, six days of nine. */
+const BOOKED = { from: '2026-03-02', to: '2026-03-10' };
+
+/** And a period somebody is asking for on top of it. */
+const WANTED = { from: '2026-03-05', to: '2026-03-12' };
+
+/** A request as it comes back out of the table, with the fields no test is about held
+    still. */
+function aStoredRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
+  return {
+    id: 'request-1',
+    employeeId: 'employee-1',
+    leaveTypeId: ANNUAL.id,
+    leaveYearId: Y2026.id,
+    from: BOOKED.from,
+    to: BOOKED.to,
+    reason: 'My sister is getting married',
+    countingBasis: 'WORKING_DAYS',
+    days: 6,
+    calendarDays: 9,
+    status: 'SUBMITTED',
+    submittedAt: new Date('2026-02-01T09:00:00Z'),
+    createdAt: new Date('2026-02-01T09:00:00Z'),
+    updatedAt: new Date('2026-02-01T09:00:00Z'),
+    ...overrides,
+  };
+}
 
 function aQuote(overrides: Partial<Parameters<typeof quoteFor>[0]> = {}) {
   return quoteFor({
@@ -601,6 +634,137 @@ describe('a period that crosses a leave year end', () => {
     expect(refusal.resumesOn).toBe('2027-01-01');
     expect(refusal.leaveYearId).toBe(Y2026.id);
     expect(refusal.period).toEqual(OVER_THE_YEAR_END);
+  });
+});
+
+/* ------------------------------------------- leave over leave already booked */
+
+/**
+ * FR 15, §5.6. LMS 304.
+ *
+ * The defect is a balance consumed twice for the same days, and what makes it worth a
+ * story of its own is that nothing about it looks wrong while it happens: two
+ * reservations, both reconciling, both explainable, and a figure that is still
+ * incorrect. Design principle 1 cannot catch it, because the record is faithful — the
+ * request was one nobody should have been allowed to make.
+ *
+ * The rule is here as a predicate and a list. The *reading* — which rows exist, and
+ * which one is in the way — is the service's, and ../integration/leave-request.test.ts
+ * is where that meets a real table and the exclusion constraint behind it.
+ */
+describe('two periods sharing a day', () => {
+  /* Inclusive at both ends on both sides, which is the whole rule. The pair that
+     matters most is the one that touches: leave to the tenth and leave from the tenth
+     share the tenth, and a comparison that missed it would book one day twice — which
+     is the defect itself, arriving through the off-by-one nobody tests. */
+  it.each([
+    ['the same days twice', { from: '2026-03-02', to: '2026-03-10' }, true],
+    ['a period wholly inside another', { from: '2026-03-04', to: '2026-03-05' }, true],
+    ['a period wholly containing another', { from: '2026-02-01', to: '2026-04-01' }, true],
+    ['a period sharing only the first day', { from: '2026-02-20', to: '2026-03-02' }, true],
+    ['a period sharing only the last day', { from: '2026-03-10', to: '2026-03-20' }, true],
+    ['a period ending the day before', { from: '2026-02-20', to: '2026-03-01' }, false],
+    ['a period starting the day after', { from: '2026-03-11', to: '2026-03-20' }, false],
+    ['a period in another month', { from: '2026-06-01', to: '2026-06-05' }, false],
+  ])('%s', (_name, other, expected) => {
+    expect(periodsOverlap(BOOKED, other)).toBe(expected);
+    /* And symmetrically, because neither period is the one being asked for as far as
+       this function is concerned, and a rule that held in one direction only would
+       depend on which row a query happened to return first. */
+    expect(periodsOverlap(other, BOOKED)).toBe(expected);
+  });
+});
+
+describe('which requests hold the days', () => {
+  /**
+   * The list is deliberately not "every status there is", and today those are the same
+   * list — which is exactly why it is worth a test.
+   *
+   * `REQUEST_STATUSES` has one value and it is the pending one, so the two agree today
+   * and will stop agreeing the moment the approval story lands: APPROVED joins this
+   * list, and WITHDRAWN, CANCELLED and REFUSED do not. This asserts the shape of the
+   * decision rather than its current answer, so a status added to one list without a
+   * thought about the other is a failing test rather than a fortnight in March blocked
+   * by leave that was refused in January.
+   */
+  it('is a list of its own, not a reading of every status', () => {
+    expect([...LIVE_STATUSES]).toEqual(['SUBMITTED']);
+
+    for (const status of LIVE_STATUSES) {
+      expect(REQUEST_STATUSES).toContain(status);
+    }
+  });
+
+  it('and a submitted request holds them, because it is waiting to be decided', () => {
+    expect(blocksTheCalendar('SUBMITTED')).toBe(true);
+  });
+});
+
+describe('the refusal, which names the leave already in the way', () => {
+  /**
+   * "You cannot book those days" tells somebody nothing they can act on.
+   *
+   * They are looking at a form they believe in and the clash is with a row they cannot
+   * see, so the sentence carries the other request's dates, what it cost and what kind
+   * it is — which between them identify it on any leave page. NFR USA 03, and the same
+   * argument `LeaveCrossesAYearEnd` makes about naming the two dates to resubmit on.
+   */
+  it('says which leave, when, how long and of what kind', () => {
+    expect(
+      new LeaveOverlapsAnother(WANTED, { request: aStoredRequest(), typeName: 'Annual Leave' })
+        .message,
+    ).toBe(
+      'You already have leave from 2 March 2026 to 10 March 2026 — 6 days of Annual ' +
+        'Leave. The same days cannot be booked twice, or they come off your balance ' +
+        'twice. Withdraw that request, or ask for dates outside it.',
+    );
+  });
+
+  /* The kind is named because it is very often not the kind being asked for — sick
+     leave inside a booked fortnight is the case FR 32b is about — and "you already have
+     leave" over a row the person thinks of as something else is a refusal they will
+     read twice and then dispute. */
+  it('and names the kind it actually was, not the kind being asked for', () => {
+    const refusal = new LeaveOverlapsAnother(WANTED, {
+      request: aStoredRequest({ days: 1, from: '2026-03-05', to: '2026-03-05' }),
+      typeName: 'Sick Leave',
+    });
+
+    expect(refusal.message).toContain('1 day of Sick Leave');
+    expect(refusal.message).toContain('5 March 2026');
+  });
+
+  it('and carries the conflicting request, so a screen can link to it', () => {
+    const conflict = aStoredRequest();
+    const refusal = new LeaveOverlapsAnother(WANTED, {
+      request: conflict,
+      typeName: 'Annual Leave',
+    });
+
+    expect(refusal.conflict?.request).toBe(conflict);
+    expect(refusal.period).toEqual(WANTED);
+  });
+
+  it('and the error code a client branches on', () => {
+    expect(new LeaveOverlapsAnother(WANTED).code).toBe('OVERLAPPING_REQUEST');
+  });
+
+  /**
+   * And the one case where it cannot name anything.
+   *
+   * Two submissions of the same fortnight racing each other: both service checks read a
+   * table with no conflict in it, both pass, and `leave_request_never_overlaps` refuses
+   * the second as it writes. By then the transaction is aborted and cannot be asked
+   * which row it collided with. The same class and the same code either way — a caller
+   * should not have to handle two shapes of "those days clash" — and a second sentence
+   * that says to go and look rather than pretending to have looked.
+   */
+  it('but still says what happened when the database refused it instead', () => {
+    const refusal = new LeaveOverlapsAnother(WANTED);
+
+    expect(refusal.conflict).toBeUndefined();
+    expect(refusal.message).toContain('at the same moment');
+    expect(refusal.message).toContain('reload');
   });
 });
 
