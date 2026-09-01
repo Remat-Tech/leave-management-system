@@ -2987,6 +2987,92 @@ again, which is the ordinary thing to do after a refusal.
 
 ---
 
+### The state machine
+
+**A request moves through defined states and no others.** §6, LMS 313. The story is a
+request in a condition nobody can explain or resolve, and what prevents it is not one
+mechanism but three: the moves are a table, one place writes the column, and every move
+is on the record.
+
+**The table is the rule, not documentation of it.** `TRANSITIONS` in
+`/domain/leave-request.ts`, keyed by from-status and action, carrying the destination and
+the standings that may make it:
+
+| From | Action | To | By |
+|---|---|---|---|
+| `SUBMITTED` | `WITHDRAW` | `WITHDRAWN` | the requester, or HR |
+| `SUBMITTED` | `REFUSE` | `REFUSED` | their line manager, or HR |
+| `SUBMITTED` | `CANCEL` | `CANCELLED` | HR |
+
+LMS 306 built all three of those and they were all correct — spread over three places.
+The from-state lived in `assertMayBeSettled()`, the destination was named at each call
+site (`settle(actor, id, 'WITHDRAWN', …)`), and the actor was whichever policy decision
+the method happened to call. **Nothing could answer "what can happen to a submitted
+request"**, which is exactly the question somebody has when a request is stuck.
+
+**A settled request goes nowhere, and that is written as the absence of a row.**
+`WITHDRAWN`, `CANCELLED` and `REFUSED` appear in the `to` column and never in the `from`
+column — not a flag on the status, not a separate rule. `refuse_an_impossible_transition()`
+says the same where no service can reach, and the integration suite reads it back out of
+`pg_get_functiondef` and holds it to the table, the same way the overlap constraint is
+held to `LIVE_STATUSES`.
+
+**The destination is read off the table, which is what makes the table load bearing.**
+Before, a caller named it; the table could have said anything and the code would still
+have written whatever was asked for. `settlementTo()` is now the only way to find out
+where a move lands, and `releaseForRequest` asks it again *inside the lock* — so a request
+another connection settled while this one waited is refused rather than settled twice.
+
+**The domain names standings, not roles.** Two of the three moves turn on a
+*relationship* — it is your leave, you are the manager it was addressed to — and a table
+keyed by role codes could not express either without widening them into "anybody who reads
+every record", which is how a manager comes to withdraw a stranger's leave. It is also
+what lets the table live in `/domain` at all, which [imports
+nothing](#layering-rule): the table says `THEIR_LINE_MANAGER`, and
+`/auth/leave-request-policy.ts` is the only file that knows which roles satisfy
+`LEAVE_ADMINISTRATION`.
+
+**Two questions, and the order they are asked in is a disclosure rule.** The policy
+answers *is this your business* and is deliberately **not** given the from-status; the
+table then answers *is this move available*. Asking it the other way round reads a
+stranger's request state aloud before deciding whether they may see it. Folding the state
+into the policy instead collapses both into `NotAuthorised` — somebody withdrawing leave
+they have already withdrawn would be told they *may not*, which is untrue, and
+`LeaveAlreadySettled` (which names what happened and says the days are already back)
+would be unreachable by the one person most likely to need it.
+
+**One writer of the status column.** `LeaveRequestRepository.settle()` issues the only
+`UPDATE` that touches `status`, and `BalanceService.releaseForRequest` is its only caller
+— the ledger's one-door rule winning where the two meet, because the status and the
+`RELEASE` have to land together. The state machine is still the only way in.
+`unit/state-machine.test.ts` reads the source and fails on a second writer, the way
+`one-writer.test.ts` does for the ledger, because the realistic second writer is an honest
+service doing an honest `UPDATE` — a bulk cancellation, an import — that satisfies every
+trigger and skips the table.
+
+**Every transition writes an audit entry**, and nothing in the application writes it.
+`leave_request_is_audited` fires on the UPDATE inside the same transaction as the status
+and the `RELEASE`, carrying `before` and `after` — so the log answers *who moved this out
+of `SUBMITTED`, and when* without joining anything, and a rolled-back settlement leaves no
+entry at all.
+
+**A note on testing a table.** Once the policy reads `TRANSITIONS`, a test checking the
+policy against the table is checking a function against itself — widen a row and both move
+together. That is the trap the seven-leave-types suite names as "checking the migration
+against a copy of itself", and it is easy to walk into because the check reads like the
+important one. So the table is pinned in full, and which desks the policy actually admits
+is `unit/policy.test.ts`'s, against hardcoded actors. A widened row fails both.
+
+**`APPROVE` is not in the table.** It moves a request to a state that still holds days and
+commits them rather than releasing them, and which desk in FR 38a's chain may perform it
+needs the chain, the type and how far the request has got. That story adds a row here, a
+status to `REQUEST_STATUSES` and a migration extending the CHECK — and the shape of the
+table is what makes those three obviously one change rather than three. Two tests are
+written to fail when it lands: every destination today ends the request, and every state
+still running answers every action.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.
@@ -3123,6 +3209,13 @@ year at once, having first put the entitlement up by hand so the balance is not 
 answers. A cap anywhere in the path refuses that whatever value it holds, so the test
 passes only if there is nothing — which is the same trick `unit/one-writer.test.ts`
 plays on a second ledger writer, done by behaviour instead of by reading source.
+
+LMS 313 adds `unit/state-machine.test.ts` beside it, which is three criteria in one
+file because they are one design: the table pinned in full, the source read for a
+second writer of `status`, and the split between the two questions the policy and the
+table each answer. Its integration half asserts that the trigger permits exactly the
+endings the table holds, and that every move lands in the audit log with the person who
+made it and the state it came from.
 
 And since LMS 306 it carries [the three endings](#the-days-come-back), where the
 database half is again a real path rather than a psql backstop. The test the story

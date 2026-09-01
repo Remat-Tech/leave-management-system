@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DayCount } from '../../src/domain/leave-calculator.js';
 import {
   assertItCostsSomething,
-  assertMayBeSettled,
+  settlementTo,
   assertTheDaysAreThere,
   blocksTheCalendar,
   countingBasisInWords,
@@ -759,7 +759,7 @@ describe('which requests hold the days', () => {
  */
 describe('ending a request', () => {
   it('is allowed while it is still waiting to be decided', () => {
-    expect(() => assertMayBeSettled(aStoredRequest({ status: 'SUBMITTED' }))).not.toThrow();
+    expect(() => settlementTo(aStoredRequest({ status: 'SUBMITTED' }), 'WITHDRAW')).not.toThrow();
   });
 
   /**
@@ -772,7 +772,7 @@ describe('ending a request', () => {
    * nobody was holding, with every entry reconciling.
    */
   it.each([...RELEASING_STATUSES])('and refused once it is already %s', (status) => {
-    expect(() => assertMayBeSettled(aStoredRequest({ status }))).toThrow(LeaveAlreadySettled);
+    expect(() => settlementTo(aStoredRequest({ status }), 'WITHDRAW')).toThrow(LeaveAlreadySettled);
   });
 
   it('and the refusal says which ending it already had, in words', () => {
@@ -802,7 +802,7 @@ describe('ending a request', () => {
   /** The refusal, caught, for the tests that are about what it says. */
   function refusalFor(status: (typeof RELEASING_STATUSES)[number]): LeaveAlreadySettled {
     try {
-      assertMayBeSettled(aStoredRequest({ status }));
+      settlementTo(aStoredRequest({ status }), 'WITHDRAW');
     } catch (error) {
       return error as LeaveAlreadySettled;
     }
