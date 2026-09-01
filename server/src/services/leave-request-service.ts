@@ -32,8 +32,15 @@
  *
  * ## What it asks, and in what order
  *
- * The order is the order the answers become possible in, and two of them are load
- * bearing:
+ * The order is the order the answers become possible in, and it is also the order the
+ * refusals get cheaper to produce in — which is FR 16's "at once" in the form that
+ * matters, because a person waiting on four queries to be told their dates are backwards
+ * has been made to wait:
+ *
+ *   **Are these two dates a period at all?** {@link validateLeavePeriod}, before a
+ *   single row is read. An end before a start, a date written `31/07/2026`, a period
+ *   two years long. It is first because it needs nothing, and because the queries
+ *   underneath it are bounded by these two dates.
  *
  *   **Is this type still offered, and open to them?** FR 05 and a retired type. Asked
  *   before anything is counted, because counting a fortnight of a type nobody may
@@ -41,16 +48,24 @@
  *
  *   **Which leave year does the period fall in?** The year covering the *start*, and
  *   then the whole period is checked against it. A request straddling a year end is
- *   refused with both years named rather than split — see {@link LeaveCrossesAYearEnd}.
+ *   refused with both years named rather than split — see {@link LeaveCrossesAYearEnd},
+ *   which is the one refusal here carrying an error code.
  *
  *   **What does it cost?** {@link LeaveCalculatorService}, which reads the working
- *   pattern and the holidays for the period and applies the type's basis.
+ *   pattern and the holidays for the period and applies the type's basis. A period
+ *   nothing in which is charged is refused on that answer — {@link countFor} — rather
+ *   than by the calculator, which since LMS 303 reports rather than judges.
  *
  *   **Are the days there?** Not asked here at all. It is asked inside
  *   `BalanceService.reserveForRequest`'s lock, because a service that checked
  *   affordability and then wrote would be checking it a moment before it mattered —
  *   §8.2. The quote reports what the balance holds so that a person is not surprised;
  *   the refusal comes from the door.
+ *
+ * **Every one of those is asked by `quote` as well as by `submit`**, because they share
+ * {@link LeaveRequestService.resolve} and {@link LeaveRequestService.countFor}. A quote
+ * that accepted what a submission would refuse is the surprise this whole story exists
+ * to prevent, arriving two days later in an approver's queue.
  *
  * ## What it does not do
  *
@@ -74,9 +89,10 @@ import type { BalanceOwner } from '../auth/ledger-policy.js';
 import type { Guard } from '../auth/policy.js';
 import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
-import type { LeavePeriod } from '../domain/leave-calculator.js';
+import type { DayCount, LeavePeriod } from '../domain/leave-calculator.js';
 import { validateLeavePeriod } from '../domain/leave-calculator.js';
 import {
+  assertItCostsSomething,
   InvalidLeaveRequest,
   LeaveCrossesAYearEnd,
   type LeaveRequest,
@@ -85,6 +101,7 @@ import {
   type NewLeaveRequest,
   noticeGiven,
   quoteFor,
+  reachesPastTheEndOf,
   reasonForReservation,
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
@@ -97,7 +114,7 @@ import {
   LeaveTypeNotFound,
 } from '../domain/leave-type.js';
 import { type LeaveYear, LeaveYearNotFound } from '../domain/leave-year.js';
-import { type CalendarDate, calendarDateIn } from '../domain/time.js';
+import { type CalendarDate, calendarDateIn, dayAfter } from '../domain/time.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
 import type {
   LeaveRequestListOptions,
@@ -181,7 +198,7 @@ export class LeaveRequestService {
   async quote(actor: Actor, input: NewLeaveRequest): Promise<LeaveRequestQuote> {
     const { employee, type, year, period } = await this.resolve(actor, input);
 
-    const count = await this.calculator.count(actor, employee, type, period);
+    const count = await this.countFor(actor, employee, type, period);
     const balance = await this.balances.forOne(actor, {
       employeeId: employee.id,
       leaveTypeId: type.id,
@@ -231,7 +248,7 @@ export class LeaveRequestService {
 
     /* Counted again, inside no transaction yet but from the same facts, and it is this
        answer that is stored. See the module note for why it is not the caller's. */
-    const count = await this.calculator.count(actor, employee, type, period);
+    const count = await this.countFor(actor, employee, type, period);
 
     const request = validateNewLeaveRequest({
       employeeId: employee.id,
@@ -357,12 +374,47 @@ export class LeaveRequestService {
   }
 
   /**
-   * The leave year the whole period falls in.
+   * What the period costs, refused where that is nothing. FR 16a.
+   *
+   * The one place either method counts, so the refusal cannot end up on the submission
+   * and not on the quote — which would be the exact failure the story is written
+   * against: a person shown a figure, told it is fine, and refused after they commit.
+   *
+   * The judgement is one line and it is deliberately not inlined at the two call sites.
+   * {@link assertItCostsSomething} is the rule and lives in the domain; this is where it
+   * meets the answer, and there is one such place.
+   */
+  private async countFor(
+    actor: Actor,
+    employee: Employee,
+    type: LeaveType,
+    period: LeavePeriod,
+  ): Promise<DayCount> {
+    const count = await this.calculator.count(actor, employee, type, period);
+
+    assertItCostsSomething(type, period, count);
+
+    return count;
+  }
+
+  /**
+   * The leave year the whole period falls in. FR 16.
    *
    * Found from the first day and then checked at the last, which is the only order that
    * gives a useful refusal: a period straddling a year end has a real year at one end
    * and the message can name it, where "no leave year covers 28 December to 5 January"
    * would be true of nothing and helpful to nobody.
+   *
+   * The year being crossed *into* is looked up only once the crossing is established,
+   * and that is the whole reason {@link reachesPastTheEndOf} is a predicate rather than
+   * an assertion taking both years. A quote is safe to call on every keystroke that
+   * changes a date, so a second query asked on the way to answering "no" every time
+   * would be paid for by every request that is fine.
+   *
+   * It is looked up rather than derived because a leave year need not be a calendar year
+   * — §5.4 — so only the row can say whether the year after 2026 is called '2027' or
+   * '2027/28'. Undefined where nobody has defined it yet, which is legitimate: a gap
+   * after the last leave year is next year's decision rather than a hole.
    *
    * `refuse_a_request_outside_its_leave_year()` holds the same rule for every other
    * writer, so the two cannot drift.
@@ -376,8 +428,12 @@ export class LeaveRequestService {
       );
     }
 
-    if (period.to > year.endDate) {
-      throw new LeaveCrossesAYearEnd(period, year.label, year.endDate);
+    if (reachesPastTheEndOf(year, period)) {
+      throw new LeaveCrossesAYearEnd(
+        period,
+        year,
+        await this.years.findCovering(dayAfter(year.endDate)),
+      );
     }
 
     return year;

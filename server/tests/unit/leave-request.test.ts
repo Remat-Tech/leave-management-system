@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { DayCount } from '../../src/domain/leave-calculator.js';
 import {
+  assertItCostsSomething,
   countingBasisInWords,
   InvalidLeaveRequest,
+  LeaveCountsNoDays,
   LeaveCrossesAYearEnd,
   noticeGiven,
   quoteFor,
+  reachesPastTheEndOf,
   reasonForReservation,
   REQUEST_STATUSES,
   validateLeaveRequestChanges,
@@ -16,6 +19,8 @@ import {
   type LeaveType,
   validateNewLeaveType,
 } from '../../src/domain/leave-type.js';
+import type { LeaveYear } from '../../src/domain/leave-year.js';
+import { eachDay } from '../../src/domain/time.js';
 
 /**
  * Asking for leave, and being told what it costs first. FR 10, FR 11. LMS 301.
@@ -67,6 +72,24 @@ const SEVEN_OF_NINE: DayCount = {
     { date: '2026-03-08', because: 'NOT_A_WORKING_DAY', name: null },
   ],
 };
+
+/** A stored leave year, with the fields no test here is about held still. */
+function leaveYear(label: string, startDate: string, endDate: string): LeaveYear {
+  return {
+    id: `year-${label}`,
+    label,
+    startDate,
+    endDate,
+    isClosed: false,
+    closedAt: null,
+    createdAt: new Date('2026-01-05T00:00:00Z'),
+    updatedAt: new Date('2026-01-05T00:00:00Z'),
+  };
+}
+
+/** The two years the database ships with. §5.4. */
+const Y2026 = leaveYear('2026', '2026-01-01', '2026-12-31');
+const Y2027 = leaveYear('2027', '2027-01-01', '2027-12-31');
 
 function aQuote(overrides: Partial<Parameters<typeof quoteFor>[0]> = {}) {
   return quoteFor({
@@ -386,6 +409,201 @@ describe('what the reservation says it is for', () => {
   });
 });
 
+/* --------------------------------------------- dates that are obviously wrong */
+
+/**
+ * FR 16, FR 16a, §8.3. LMS 303.
+ *
+ * The story is somebody finding out while the form is still open rather than after two
+ * days in an approver's queue, so every refusal below is a pure function of what was
+ * typed and can be reached before a single row is read past the leave year.
+ *
+ * The third of them — a period the wrong way round — is `validateLeavePeriod` and is
+ * proved in ./leave-calculator.test.ts, because it is about the {@link LeavePeriod} type
+ * rather than about a request. What is asserted here is that the other two are refusals
+ * *about a request*, made from answers the calculator handed over rather than by the
+ * calculator itself.
+ */
+describe('a period that costs nothing cannot be asked for', () => {
+  /** Two days off, both of them free: the weekend somebody booked by mistake. */
+  const WEEKEND = { from: '2026-03-07', to: '2026-03-08' };
+  const NOTHING: DayCount = {
+    days: 0,
+    calendarDays: 2,
+    free: [
+      { date: '2026-03-07', because: 'NOT_A_WORKING_DAY', name: null },
+      { date: '2026-03-08', because: 'NOT_A_WORKING_DAY', name: null },
+    ],
+  };
+
+  it('is refused on the count, rather than by the counting', () => {
+    expect(() => assertItCostsSomething(ANNUAL, WEEKEND, NOTHING)).toThrow(LeaveCountsNoDays);
+  });
+
+  /* One day is enough, and the boundary is worth pinning: a request for a single
+     Friday off is the most common one there is. */
+  it('and a single day that costs a day is not refused', () => {
+    expect(() =>
+      assertItCostsSomething(
+        ANNUAL,
+        { from: '2026-03-06', to: '2026-03-06' },
+        {
+          days: 1,
+          calendarDays: 1,
+          free: [],
+        },
+      ),
+    ).not.toThrow();
+  });
+
+  /**
+   * The message names the days rather than only the verdict, because the person looking
+   * at it has typed two dates they believe in. It also names the way out: somebody who
+   * really did mean to record the whole period has chosen the wrong kind of leave rather
+   * than the wrong dates, and a type counting calendar days is the answer.
+   */
+  it('and says which days were free, and what to do instead', () => {
+    const refusal = refusalFrom(() => assertItCostsSomething(ANNUAL, WEEKEND, NOTHING));
+
+    expect(refusal.message).toContain('Annual Leave');
+    expect(refusal.message).toContain('2026-03-07');
+    expect(refusal.message).toContain('counts every day');
+  });
+
+  /* It carries the days it refused on and the type that refused, so a screen can offer
+     the alternative rather than only describing it. The free days are the calculator's
+     own — nothing recounts them for the message. */
+  it('and carries the type and the free days it was given', () => {
+    const refusal = refusalFrom(() => assertItCostsSomething(ANNUAL, WEEKEND, NOTHING));
+
+    expect(refusal.leaveTypeId).toBe(ANNUAL.id);
+    expect(refusal.period).toEqual(WEEKEND);
+    expect(refusal.free).toEqual(NOTHING.free);
+  });
+
+  /* And a long run of nothing is summarised rather than listed, because a refusal
+     naming sixty days is a refusal nobody reads to the end of. */
+  it('and summarises a long run of free days rather than listing them', () => {
+    const week = { from: '2026-03-02', to: '2026-03-06' };
+    const refusal = refusalFrom(() =>
+      assertItCostsSomething(ANNUAL, week, {
+        days: 0,
+        calendarDays: 5,
+        free: [...eachDay(week.from, week.to)].map((date) => ({
+          date,
+          because: 'NOT_A_WORKING_DAY' as const,
+          name: null,
+        })),
+      }),
+    );
+
+    expect(refusal.message).toContain('and 1 more');
+  });
+
+  function refusalFrom(build: () => void): LeaveCountsNoDays {
+    try {
+      build();
+    } catch (error) {
+      expect(error).toBeInstanceOf(LeaveCountsNoDays);
+      return error as LeaveCountsNoDays;
+    }
+
+    throw new Error('That was accepted, and should not have been.');
+  }
+});
+
+describe('a period that crosses a leave year end', () => {
+  /** The twenty-eighth of December into the fifth of January: two balances. */
+  const OVER_THE_YEAR_END = { from: '2026-12-28', to: '2027-01-05' };
+
+  /* A request is one period against one balance and a balance belongs to one leave
+     year, so reserving all ten days against either would be a figure that reconciles
+     and is wrong. `may_be_split` and `assertMayBeSplit()` are what a story offering the
+     split uses; this one refuses. */
+  it('is spotted by comparing the last day against the year it started in', () => {
+    expect(reachesPastTheEndOf(Y2026, OVER_THE_YEAR_END)).toBe(true);
+  });
+
+  /* And the last day of the year is inside it, which is the boundary the whole refusal
+     turns on: a request ending on the thirty-first of December is a legitimate one. */
+  it('and a period ending on the last day of the year does not', () => {
+    expect(reachesPastTheEndOf(Y2026, { from: '2026-12-28', to: '2026-12-31' })).toBe(false);
+  });
+
+  /**
+   * The message, verbatim. FR 16.
+   *
+   * Asserted whole rather than in fragments, because the second sentence is the point of
+   * the refusal: a person at a form told only "no" is left doing date arithmetic to
+   * discover what they may type, and they will get it wrong at exactly the boundary that
+   * produced the refusal. The two dates are what they retype, so both are in the
+   * sentence and both are said the way a person says a date — a month spelled out,
+   * because `01/01/2027` and `01/12/2026` are the ambiguity this system refuses
+   * everywhere else.
+   */
+  it('and says so in two sentences, the second of which is what to do', () => {
+    expect(new LeaveCrossesAYearEnd(OVER_THE_YEAR_END, Y2026, Y2027).message).toBe(
+      'This request crosses into the 2027 leave year. Submit one request ending ' +
+        '31 December 2026, and another starting 1 January 2027.',
+    );
+  });
+
+  /* The story asks for the code by name. A message is reworded the first time somebody
+     reads it aloud; a code is what a form branches on to offer the split as two
+     prefilled requests. */
+  it('and carries the error code a client branches on', () => {
+    expect(new LeaveCrossesAYearEnd(OVER_THE_YEAR_END, Y2026, Y2027).code).toBe('CROSS_LEAVE_YEAR');
+  });
+
+  /**
+   * **Every year and every date in that sentence is read off the record.**
+   *
+   * §5.4 is explicit that a leave year need not be a calendar year, so a company running
+   * April to March gets its own boundary and its own labels — '2027/28' rather than
+   * '2027', the thirty-first of March rather than the thirty-first of December. A
+   * message with a December in it would be right for the seeded database and wrong for
+   * the first company that configures its own year, and nothing would say so.
+   */
+  it('and names the years and the dates the record gives, not the ones we ship with', () => {
+    const thisYear = leaveYear('2026/27', '2026-04-01', '2027-03-31');
+    const nextYear = leaveYear('2027/28', '2027-04-01', '2028-03-31');
+
+    expect(
+      new LeaveCrossesAYearEnd({ from: '2027-03-30', to: '2027-04-02' }, thisYear, nextYear)
+        .message,
+    ).toBe(
+      'This request crosses into the 2027/28 leave year. Submit one request ending ' +
+        '31 March 2027, and another starting 1 April 2027.',
+    );
+  });
+
+  /**
+   * And the year being crossed into may not exist yet, which is legitimate.
+   *
+   * A gap *after* the last leave year is not a gap — it is next year's decision, and
+   * `assertFitsAmong` says so. The label then falls back to the year part of the day to
+   * resume on, which is still read off the record rather than written down: the sentence
+   * stays true and the two dates in it, which are the half somebody acts on, stay right.
+   */
+  it('and still says what to do when nobody has defined the year after', () => {
+    expect(new LeaveCrossesAYearEnd(OVER_THE_YEAR_END, Y2026, undefined).message).toBe(
+      'This request crosses into the 2027 leave year. Submit one request ending ' +
+        '31 December 2026, and another starting 1 January 2027.',
+    );
+  });
+
+  /* The two dates are on the object as well as in the sentence, so a form can prefill
+     the pair rather than parse a message to find them. */
+  it('and carries the two days on the refusal itself', () => {
+    const refusal = new LeaveCrossesAYearEnd(OVER_THE_YEAR_END, Y2026, Y2027);
+
+    expect(refusal.endsOn).toBe('2026-12-31');
+    expect(refusal.resumesOn).toBe('2027-01-01');
+    expect(refusal.leaveYearId).toBe(Y2026.id);
+    expect(refusal.period).toEqual(OVER_THE_YEAR_END);
+  });
+});
+
 /* ------------------------------------------------------------ the boundary */
 
 describe('where this story stops', () => {
@@ -400,18 +618,5 @@ describe('where this story stops', () => {
    */
   it('has one status, because nothing yet moves a request', () => {
     expect([...REQUEST_STATUSES]).toEqual(['SUBMITTED']);
-  });
-
-  /* And leave over a year end is refused with both years named, rather than split.
-     `may_be_split` and `assertMayBeSplit()` are what a story offering the split uses. */
-  it('and refuses a period crossing a year end in words somebody can act on', () => {
-    const refusal = new LeaveCrossesAYearEnd(
-      { from: '2026-12-28', to: '2027-01-05' },
-      '2026',
-      '2026-12-31',
-    );
-
-    expect(refusal.message).toContain('2026-12-31');
-    expect(refusal.message).toMatch(/two requests/);
   });
 });

@@ -77,10 +77,16 @@ export class LeaveCalculatorService {
   /**
    * What this period of this kind of leave costs this person.
    *
-   * Throws {@link InvalidLeavePeriod} for two dates that are not a period and
-   * {@link LeaveCountsNoDays} where nothing in it counts — both from the domain,
-   * unchanged, because a service that reworded them would be a second copy of the
+   * Throws {@link InvalidLeavePeriod} for two dates that are not a period — from the
+   * domain, unchanged, because a service that reworded it would be a second copy of the
    * message NFR USA 03 asks for.
+   *
+   * **A period that costs nothing comes back as nought and is not refused here.** That
+   * moved to the submission validator in LMS 303: this service answers "what does this
+   * period cost", and nought is the true answer to that for a Saturday of annual leave.
+   * `LeaveRequestService` refuses a *request* for it, and FR 25's recalculation — which
+   * has to be able to ask the question and get a number — is why the difference is worth
+   * keeping.
    *
    * Two policies are asked rather than one, and they are the two tables this reads.
    * Both are open to anybody signed in, so neither refuses anybody in practice

@@ -453,6 +453,36 @@ export function formatInstant(instant: Date, zone: string): string {
 }
 
 /**
+ * A calendar date, said the way a person says it. `31 December 2026`. LMS 303.
+ *
+ * The counterpart of {@link formatInstant} for the other half of this file's rule, and
+ * it exists for the third of that function's four reasons: **the month is a word**.
+ * `01/12/2026` and `12/01/2026` are the same ten characters meaning two different days,
+ * and a refusal that tells somebody to resubmit on one of them cannot afford to be the
+ * kind of sentence they have to guess at. `LeaveCrossesAYearEnd` is the first caller and
+ * every refusal that names a day to act on should be the next.
+ *
+ * Not a display of an instant, so there is no zone in it and none to pass. It builds a
+ * `Date` at UTC midnight and reads it back at UTC, exactly as {@link dayAfter} does, so
+ * the zone cancels rather than being avoided — the day that comes out is the day that
+ * went in, on a server set to anything. The `Date` exists for the length of the
+ * expression.
+ *
+ * Assembled from `formatToParts` rather than from `dateStyle`, so the sentence is the
+ * same on every runtime. A format that shifts with the ICU version is a format nothing
+ * can assert on, and the message this was written for is asserted verbatim.
+ */
+export function formatDay(day: CalendarDate): string {
+  const parts = partsOf(new Date(`${requireCalendarDate(day)}T00:00:00Z`), 'UTC', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  return `${parts.day} ${parts.month} ${parts.year}`;
+}
+
+/**
  * The pieces of an instant in a zone, by name.
  *
  * `en-GB` fixes the calendar and the numerals — Gregorian and Western Arabic —

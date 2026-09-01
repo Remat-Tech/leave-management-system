@@ -1,5 +1,6 @@
 /**
- * Asking for leave, and knowing what it costs first. FR 10, FR 11, §8. LMS 301.
+ * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 16, §8. LMS 301,
+ * and the refusals of LMS 303.
  *
  * The story is an employee who wants no surprises when the days come off their
  * balance, and the whole of this file follows from taking that literally: the figure
@@ -42,10 +43,38 @@
  * it was built from. In each case the rule is design principle 1: **what was recorded
  * is what happened**, and configuration describes what happens *next*.
  *
+ * ## Dates that are obviously wrong are refused here, and refused at once
+ *
+ * FR 16, FR 16a, §8.3, LMS 303. The story is somebody finding out while the form is
+ * still open rather than after two days in a queue, and three refusals answer it:
+ *
+ *   **The dates run backwards.** {@link validateLeavePeriod}, which owns
+ *   {@link LeavePeriod} and is asked before anything at all is fetched.
+ *
+ *   **Nothing in the period is charged.** {@link assertItCostsSomething}, on the
+ *   {@link DayCount} the calculator gave back.
+ *
+ *   **The period runs past the end of its leave year.** {@link reachesPastTheEndOf},
+ *   and then {@link LeaveCrossesAYearEnd} with both years named and the two dates to
+ *   resubmit on.
+ *
+ * **All three are refusals about a request, and none of them is the calculator's.**
+ * LMS 303 moved the second one here from ./leave-calculator.ts, and the reason is the
+ * reason it belongs beside the other two: that a fortnight over Christmas costs eight
+ * days, or that a Saturday costs none, is arithmetic about a calendar, and the
+ * calculator answers it for anybody who asks — including FR 25's recalculation, which
+ * has to be able to ask "what does this cost now" and get *nought* rather than an
+ * exception. Whether a person may submit that is a rule about submissions.
+ *
+ * The practical half of that division: the calculator stays pure and total, so every
+ * one of its cases is arithmetic a unit test can assert without a database, and every
+ * refusal a person can actually see is in one file with one voice.
+ *
  * ## What is not here
  *
  * **No counting.** ./leave-calculator.ts counts, and it is where the working pattern,
- * the holiday calendar and the counting basis meet. This file is handed the answer.
+ * the holiday calendar and the counting basis meet. This file is handed the answer and
+ * judges it.
  *
  * **No balance.** Whether the days are there is the ledger's, through
  * `BalanceService.reserve`, and the check happens inside the lock rather than here —
@@ -66,7 +95,7 @@
  * anywhere. Who may ask for leave is ../auth/leave-request-policy.ts.
  */
 
-import type { DayCount, LeavePeriod } from './leave-calculator.js';
+import type { DayCount, FreeDay, LeavePeriod } from './leave-calculator.js';
 import {
   approvalChainInWords,
   type CountingBasis,
@@ -74,7 +103,14 @@ import {
   type LeaveType,
   noticeShortfall,
 } from './leave-type.js';
-import { type CalendarDate, calendarDaysBetween, isCalendarDate } from './time.js';
+import type { LeaveYear } from './leave-year.js';
+import {
+  type CalendarDate,
+  calendarDaysBetween,
+  dayAfter,
+  formatDay,
+  isCalendarDate,
+} from './time.js';
 
 /**
  * Where a request has got to.
@@ -196,7 +232,46 @@ export class LeaveRequestNotFound extends Error {
 }
 
 /**
- * A period that runs past the end of a leave year.
+ * A period of leave that costs nothing at all. FR 16a.
+ *
+ * A Saturday to Sunday of annual leave against a Monday to Friday week, or a single
+ * public holiday. Refused rather than stored, and the reason is that every caller
+ * downstream would otherwise have to invent the same handling: a request worth no days
+ * deducts nothing from a balance, waits in a queue for an approval that changes nothing,
+ * and shows on a team calendar as an absence that cost nobody anything. There is no
+ * sensible thing for any of them to do with it. `leave_request_costs_at_least_a_day`
+ * says the same where no sentence can reach.
+ *
+ * The message names the days rather than only the verdict, because the person looking at
+ * it has typed two dates they believe in and needs to see which part of the period the
+ * system thinks is free. Somebody who genuinely meant to record a weekend has not made a
+ * mistake about the dates — they have chosen the wrong kind of leave, and a type counting
+ * calendar days is the answer.
+ *
+ * It moved here from ./leave-calculator.ts in LMS 303 with its message unchanged; see the
+ * module note for why a refusal about a request does not belong in the arithmetic.
+ */
+export class LeaveCountsNoDays extends Error {
+  readonly leaveTypeId: string;
+  readonly period: LeavePeriod;
+  readonly free: FreeDay[];
+
+  constructor(type: LeaveType, period: LeavePeriod, free: FreeDay[]) {
+    super(
+      `${period.from} to ${period.to} costs no ${type.name} at all: ${inWords(free)}. ` +
+        `Leave that costs nothing is leave nobody needs to ask for. Check the dates — ` +
+        `or, if the whole period really is meant to be recorded, it is a kind of ` +
+        `leave that counts every day rather than only working ones.`,
+    );
+    this.name = 'LeaveCountsNoDays';
+    this.leaveTypeId = type.id;
+    this.period = period;
+    this.free = free;
+  }
+}
+
+/**
+ * A period that runs past the end of a leave year. FR 16.
  *
  * Refused rather than split, and refused with both years named so the person at the
  * form knows what to do instead of only that they may not do this.
@@ -208,21 +283,123 @@ export class LeaveRequestNotFound extends Error {
  * and `assertMayBeSplit()` are what a story offering the split would use, and it is a
  * decision — two requests with one approval between them — rather than an arithmetic
  * anything here could perform.
+ *
+ * ## The message is two sentences, and the second one is the useful one
+ *
+ * "This request crosses into the 2027 leave year. Submit one request ending 31 December
+ * 2026, and another starting 1 January 2027." NFR USA 03: a refusal that only says no
+ * leaves somebody at a form doing date arithmetic to find out what they are allowed to
+ * type, and they will get it wrong at exactly the boundary that produced the refusal.
+ *
+ * **Every year and every date in it is read off the record.** The boundary is
+ * `year.endDate`, the day to resume on is {@link dayAfter} of it, and the year being
+ * crossed into is whatever HR called it — '2027' here, '2027/28' at a company running
+ * April to March, which is why `next` is looked up rather than derived from the month.
+ * Nothing here assumes a leave year is a calendar year, because §5.4 is explicit that it
+ * need not be and a hard-coded 'the thirty-first of December' would be wrong for the
+ * first company that changes.
+ *
+ * `next` is undefined where nobody has defined the year after this one yet — a gap after
+ * the last leave year is allowed, and the database ships with 2026 and 2027 and nothing
+ * beyond. The label then falls back to the year part of the day to resume on, which is
+ * still read off the record rather than written down: the sentence stays true and the two
+ * dates in it stay right, which is the half somebody acts on.
  */
 export class LeaveCrossesAYearEnd extends Error {
+  /**
+   * FR 16. What a client branches on, where the message is what a person reads.
+   *
+   * The one refusal in this file carrying a code, and the story asks for it by name
+   * because this is the one a form is expected to *do* something about — offer the split
+   * as two prefilled requests rather than only printing the sentence. A message is
+   * reworded the first time somebody reads it aloud; a code is a contract.
+   */
+  readonly code = 'CROSS_LEAVE_YEAR';
   readonly period: LeavePeriod;
+  readonly leaveYearId: string;
+  /** The last day one request may cover, and the first day the other may. */
+  readonly endsOn: CalendarDate;
+  readonly resumesOn: CalendarDate;
 
-  constructor(period: LeavePeriod, label: string, endsOn: CalendarDate) {
+  constructor(period: LeavePeriod, year: LeaveYear, next: LeaveYear | undefined) {
+    const resumesOn = dayAfter(year.endDate);
+
     super(
-      `Leave from ${period.from} to ${period.to} runs past the end of leave year ` +
-        `${label}, which finishes on ${endsOn}. A request is one period against one ` +
-        `balance and a balance belongs to one leave year, so leave over a year end is ` +
-        `asked for as two requests — one ending ${endsOn} and one starting the day ` +
-        `after.`,
+      `This request crosses into the ${next?.label ?? resumesOn.slice(0, 4)} leave year. ` +
+        `Submit one request ending ${formatDay(year.endDate)}, and another starting ` +
+        `${formatDay(resumesOn)}.`,
     );
     this.name = 'LeaveCrossesAYearEnd';
     this.period = period;
+    this.leaveYearId = year.id;
+    this.endsOn = year.endDate;
+    this.resumesOn = resumesOn;
   }
+}
+
+/* ------------------------------------------------------- refusing the dates */
+
+/**
+ * Whether the period runs out of the year it started in. FR 16.
+ *
+ * A string comparison against the year's last day, which is all "crosses a year end"
+ * means once {@link coversDay} has found the year the first day is in. The service
+ * asks this before it looks up the year being crossed into, because that lookup is a
+ * second query and every quote a person's keystrokes produce would otherwise pay for it
+ * to answer a question almost every request answers no to.
+ *
+ * `refuse_a_request_outside_its_leave_year()` holds the same rule for every other
+ * writer, so the two cannot drift.
+ */
+export function reachesPastTheEndOf(year: LeaveYear, period: LeavePeriod): boolean {
+  return period.to > year.endDate;
+}
+
+/**
+ * Refuses a period that nothing in is charged. FR 16a.
+ *
+ * Takes the count rather than recounting, which is what keeps the number a person is
+ * refused on the same number they were quoted: there is one walk over the days and this
+ * reads its answer. The free days come from the same {@link DayCount}, so the message
+ * names the days that were actually free rather than a second opinion about them.
+ *
+ * Nought is the only refusable answer. A count cannot come back negative — the walk
+ * increments — and every other value is a request somebody may make, affordable or not:
+ * whether the days are *there* is the ledger's, and §8.6b lets sick leave go past its
+ * allowance on purpose.
+ */
+export function assertItCostsSomething(
+  type: LeaveType,
+  period: LeavePeriod,
+  count: DayCount,
+): void {
+  if (count.days === 0) {
+    throw new LeaveCountsNoDays(type, period, count.free);
+  }
+}
+
+/**
+ * The free days as a person would say them, for the one message that needs it.
+ *
+ * Named rather than counted, because "the twenty fifth is Christmas Day" is what makes a
+ * refusal actionable and "3 days were free" is what makes somebody ask which. Capped at
+ * four, because a refusal listing a hundred and twenty days is a refusal nobody reads to
+ * the end of.
+ */
+function inWords(free: readonly FreeDay[]): string {
+  if (free.length === 0) {
+    /* Unreachable: a period holds at least one day, and a day that did not count put a
+       reason in the list. Answered rather than assumed, because a refusal that trails
+       off mid sentence is worse than a clumsy one. */
+    return 'no day in it counts';
+  }
+
+  const named = free
+    .slice(0, 4)
+    .map((day) => (day.name === null ? day.date : `${day.date} (${day.name})`));
+  const rest = free.length - named.length;
+
+  return rest > 0 ? `${named.join(', ')} and ${rest} more` : named.join(', ');
 }
 
 /* --------------------------------------------------------------- the quote */
@@ -429,9 +606,15 @@ export function reasonForReservation(typeName: string, period: LeavePeriod, days
  * That the four fields somebody filled in are four fields.
  *
  * The dates are checked for shape only. Whether they are a *period* — the right way
- * round, and costing something — is {@link countLeaveDays}, which refuses both with
- * messages naming the days, and asking the same question twice in two voices is how
- * two different sentences come to be shown for one mistake.
+ * round, and costing something, and inside one leave year — is
+ * {@link validateLeavePeriod}, {@link assertItCostsSomething} and
+ * {@link reachesPastTheEndOf}, each of which refuses with a message naming the days.
+ * Asking the same question twice in two voices is how two different sentences come to be
+ * shown for one mistake, so this asks none of them again.
+ *
+ * By the time anything reaches here all three have been asked, in the order the answers
+ * become possible in — see ../services/leave-request-service.ts. What is left is the
+ * four fields being four fields.
  */
 export function validateNewLeaveRequest(input: {
   employeeId: string;

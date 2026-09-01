@@ -4,7 +4,7 @@ import type { Kysely } from 'kysely';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import type { Employee } from '../../src/domain/employee.js';
-import { InvalidLeavePeriod, LeaveCountsNoDays } from '../../src/domain/leave-calculator.js';
+import { InvalidLeavePeriod } from '../../src/domain/leave-calculator.js';
 import type { LeaveType } from '../../src/domain/leave-type.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
 import { HolidayRepository } from '../../src/repositories/holiday-repository.js';
@@ -420,15 +420,23 @@ describe('it reads a working pattern and a calendar, and nothing else', () => {
 });
 
 describe('what it refuses', () => {
-  /* Zero days is leave that deducts nothing, waits in a queue for nothing and
-     shows on a team calendar as an absence nobody paid for. */
-  it('refuses a weekend booked as annual leave', async () => {
+  /**
+   * A weekend of annual leave costs nothing, and this service says so rather than
+   * refusing it. LMS 303.
+   *
+   * The refusal moved to the submission validator, where it is about a *request*:
+   * ../integration/leave-request.test.ts is where a person meets it. What this asserts
+   * is that the honest zero survives the trip through a real working pattern and a real
+   * gazette — a service that quietly turned it into a one, or into a throw again, would
+   * break FR 25's recalculation rather than this suite.
+   */
+  it('counts a weekend booked as annual leave as nought, rather than refusing it', async () => {
     await expect(
       calculator.count(system, await employee('officer'), await leaveType('ANNUAL'), {
         from: '2026-12-26',
         to: '2026-12-27',
       }),
-    ).rejects.toBeInstanceOf(LeaveCountsNoDays);
+    ).resolves.toMatchObject({ days: 0, calendarDays: 2 });
   });
 
   /* And takes the same weekend as maternity leave, because that type counts every

@@ -4,9 +4,9 @@ import {
   costsADay,
   countLeaveDays,
   type FreeDay,
-  LeaveCountsNoDays,
   type LeavePeriod,
 } from '../../src/domain/leave-calculator.js';
+import { assertItCostsSomething, LeaveCountsNoDays } from '../../src/domain/leave-request.js';
 import { type LeaveType, validateNewLeaveType } from '../../src/domain/leave-type.js';
 import { type CalendarDate, calendarDaysBetween, eachDay } from '../../src/domain/time.js';
 import { MONDAY_TO_FRIDAY, type Weekday, type WorkPattern } from '../../src/domain/work-pattern.js';
@@ -15,8 +15,9 @@ import { MONDAY_TO_FRIDAY, type Weekday, type WorkPattern } from '../../src/doma
  * The case list of §7.3, worked. LMS 208.
  *
  * ./leave-calculator.test.ts proves the rules: one walk with one branch, the branch
- * on the counting basis and never on the code, nothing refused rather than zero.
- * This file proves the *answers*, and it exists because those are different things.
+ * on the counting basis and never on the code, a period costing nothing answered as
+ * nought. This file proves the *answers*, and it exists because those are different
+ * things.
  * A calculator can obey every rule in its own description and still be a day out
  * over Christmas, and the person who finds out is the one whose leave was a day
  * shorter than they thought.
@@ -336,34 +337,18 @@ const CASES: Case[] = [
 ];
 
 /**
- * What a case costs as annual leave, with a refusal read as nought days.
+ * What a case costs as annual leave.
  *
- * Every row goes through here so that the assertions below are the same shape
- * whether the period cost something or nothing. That is worth a helper rather than
- * a branch in each test: {@link LeaveCountsNoDays} carries the free days it
- * refused on, so the table's `free` column can be checked against the real object
- * on every row instead of only on the ones that returned.
- *
- * The refusal itself is asserted separately — reading a throw as a zero here and
- * nowhere else would quietly turn the story's fourth criterion into a formality.
+ * A plain call since LMS 303: the calculator answers every row, nought included, and
+ * carries the free days it did not charge for whether or not it charged for anything.
+ * This used to catch `LeaveCountsNoDays` and read it as a zero, which is exactly the
+ * shape of handling the split removed.
  */
 function priceAsAnnual(worked: Case): { days: number; free: FreeDay[]; calendarDays: number } {
-  try {
-    return countLeaveDays(ANNUAL, worked.period, worked.pattern, worked.calendar);
-  } catch (error) {
-    if (!(error instanceof LeaveCountsNoDays)) {
-      throw error;
-    }
-
-    return {
-      days: 0,
-      free: error.free,
-      calendarDays: calendarDaysBetween(worked.period.from, worked.period.to),
-    };
-  }
+  return countLeaveDays(ANNUAL, worked.period, worked.pattern, worked.calendar);
 }
 
-/** The table's expected total, as a number, so a refusal compares as nought. */
+/** The table's expected total, as a number, so a period costing nothing compares. */
 function expected(worked: Case): number {
   return worked.asAnnual === 'nothing' ? 0 : worked.asAnnual;
 }
@@ -376,25 +361,27 @@ describe('the case list of §7.3, priced as annual leave', () => {
     expect(priced.free).toEqual(worked.free);
   });
 
-  /* And a period that costs nothing is refused rather than returned as nought,
-     which the helper above deliberately cannot tell you. */
+  /* And a period that costs nothing is refused when it is *asked for*, which is the
+     submission validator's rule read against the same table. The calculator's nought
+     and the refusal are two halves of one behaviour and the table proves both. */
   it.each(CASES.filter((worked) => worked.asAnnual === 'nothing'))(
-    '$name is refused rather than handed back as nought days',
+    '$name cannot be asked for as annual leave',
     (worked) => {
-      expect(() => countLeaveDays(ANNUAL, worked.period, worked.pattern, worked.calendar)).toThrow(
+      expect(() => assertItCostsSomething(ANNUAL, worked.period, priceAsAnnual(worked))).toThrow(
         LeaveCountsNoDays,
       );
     },
   );
 
-  /* Every other row returns, which is the other half of that and is what stops the
-     filter above quietly matching everything. */
+  /* Every other row may be asked for, which is the other half of that and is what
+     stops the filter above quietly matching everything. */
   it.each(CASES.filter((worked) => worked.asAnnual !== 'nothing'))(
-    '$name costs something, and is not refused',
+    '$name costs something, and may be asked for',
     (worked) => {
-      expect(
-        countLeaveDays(ANNUAL, worked.period, worked.pattern, worked.calendar).days,
-      ).toBeGreaterThan(0);
+      expect(priceAsAnnual(worked).days).toBeGreaterThan(0);
+      expect(() =>
+        assertItCostsSomething(ANNUAL, worked.period, priceAsAnnual(worked)),
+      ).not.toThrow();
     },
   );
 });

@@ -46,18 +46,31 @@
  * somebody had loaded, and why {@link yearsWithoutHolidays} exists to catch the
  * year nobody has transcribed a gazette for.
  *
- * ## Nothing at all is refused rather than returned
+ * ## Nothing at all is counted, and nothing at all is returned
  *
- * {@link LeaveCountsNoDays}. A Saturday to Sunday request against a Monday to
- * Friday pattern costs zero days of annual leave, and zero is not an answer to give
- * back: it is leave that deducts nothing from a balance, sits in an approval queue,
- * and appears on a team calendar as an absence nobody paid for. Whatever the person
- * meant, they did not mean that, and the honest response is to say so while they
- * still have the form open.
+ * A Saturday to Sunday request against a Monday to Friday pattern costs zero days of
+ * annual leave, and zero is what comes back. **It used to be a refusal thrown from
+ * here, and LMS 303 moved that refusal to ../domain/leave-request.ts** —
+ * `assertItCostsSomething()`, raised by the submission validator on the answer this
+ * function gave.
  *
- * It can only happen to a working-day type. Every day of a period counts for a
- * calendar-day one, and a period always holds at least one day, so a maternity
- * leave that costs nothing is not a state this function can produce.
+ * The move is the difference between a fact and a judgement. That the period costs
+ * nothing is arithmetic, and it is arithmetic FR 25 has a legitimate use for: a
+ * recalculation asks what a period costs *now* and compares, and a function that
+ * threw rather than answering would make "it costs nothing now" the one comparison
+ * that could not be made. Whether a request may be *submitted* for it is a rule about
+ * requests, and the file that owns requests is where it can sit beside the two other
+ * refusals it belongs with — a period the wrong way round, and one that runs past a
+ * year end.
+ *
+ * What is left here is total: every period this is handed comes back as a number,
+ * and `free` says which days inside it were not charged and why. That is what the
+ * refusal needs to name the days, and it is why the refusal takes a {@link DayCount}
+ * rather than recounting.
+ *
+ * Zero can only happen to a working-day type. Every day of a period counts for a
+ * calendar-day one, and a period always holds at least one day, so a maternity leave
+ * costing nothing is not a state this function can produce.
  *
  * ## What is deliberately not here
  *
@@ -134,7 +147,13 @@ export interface FreeDay {
  * for a fortnight there are rarely more than four of them.
  */
 export interface DayCount {
-  /** Whole days this leave costs. FR 24; never zero, see {@link LeaveCountsNoDays}. */
+  /**
+   * Whole days this leave costs. FR 24.
+   *
+   * Zero where nothing in the period is charged, which is an answer rather than a
+   * failure — see the module note. A request for such a period is refused by
+   * `assertItCostsSomething()` in ./leave-request.ts, which reads this and `free`.
+   */
   days: number;
   /** Every day the period spans, counted or not. */
   calendarDays: number;
@@ -159,40 +178,6 @@ export class InvalidLeavePeriod extends Error {
   }
 }
 
-/**
- * A period of leave that costs nothing at all.
- *
- * The refusal the story asks for by name, and the reason it is a refusal rather
- * than a zero is that every caller downstream would have to invent the same
- * handling: a request worth no days deducts nothing, waits in a queue for an
- * approval that changes nothing, and shows on a team calendar as an absence that
- * cost nobody anything. There is no sensible thing for any of them to do with it.
- *
- * The message names the days rather than only the verdict, because the person
- * looking at it has typed two dates they believe in and needs to see which part of
- * the period the system thinks is free. Somebody who genuinely meant to record a
- * weekend has not made a mistake about the dates — they have chosen the wrong kind
- * of leave, and a type counting calendar days is the answer.
- */
-export class LeaveCountsNoDays extends Error {
-  readonly leaveTypeId: string;
-  readonly period: LeavePeriod;
-  readonly free: FreeDay[];
-
-  constructor(type: LeaveType, period: LeavePeriod, free: FreeDay[]) {
-    super(
-      `${period.from} to ${period.to} costs no ${type.name} at all: ${inWords(free)}. ` +
-        `Leave that costs nothing is leave nobody needs to ask for. Check the dates — ` +
-        `or, if the whole period really is meant to be recorded, it is a kind of ` +
-        `leave that counts every day rather than only working ones.`,
-    );
-    this.name = 'LeaveCountsNoDays';
-    this.leaveTypeId = type.id;
-    this.period = period;
-    this.free = free;
-  }
-}
-
 /* --------------------------------------------------------------- the counting */
 
 /**
@@ -203,9 +188,11 @@ export class LeaveCountsNoDays extends Error {
  * type never touches either, which is FR 22's "the working pattern is not consulted
  * at all" said as code rather than as a comment.
  *
- * Throws {@link InvalidLeavePeriod} for two dates that are not a period, and
- * {@link LeaveCountsNoDays} where nothing in the period costs anything. It never
- * returns zero.
+ * Throws {@link InvalidLeavePeriod} for two dates that are not a period, which is a
+ * precondition rather than a judgement: there is no walk over a range that runs
+ * backwards, and no number to give back for one. Every period that *is* a period
+ * comes back as a count, zero included — see the module note for who refuses that
+ * and why it is not refused here.
  */
 export function countLeaveDays(
   type: LeaveType,
@@ -226,10 +213,6 @@ export function countLeaveDays(
     } else {
       free.push(reason);
     }
-  }
-
-  if (days === 0) {
-    throw new LeaveCountsNoDays(type, { from, to }, free);
   }
 
   return { days, calendarDays: calendarDaysBetween(from, to), free };
@@ -365,28 +348,4 @@ function requireDay(field: string, value: unknown): CalendarDate {
   }
 
   return value;
-}
-
-/**
- * The free days as a person would say them, for the one message that needs it.
- *
- * Named rather than counted, because "the twenty fifth is Christmas Day" is what
- * makes a refusal actionable and "3 days were free" is what makes somebody ask
- * which. Capped at four, because a refusal listing a hundred and twenty days is a
- * refusal nobody reads to the end of.
- */
-function inWords(free: readonly FreeDay[]): string {
-  if (free.length === 0) {
-    /* Unreachable: a period holds at least one day, and a day that did not count
-       put a reason in the list. Answered rather than assumed, because a refusal
-       that trails off mid sentence is worse than a clumsy one. */
-    return 'no day in it counts';
-  }
-
-  const named = free
-    .slice(0, 4)
-    .map((day) => (day.name === null ? day.date : `${day.date} (${day.name})`));
-  const rest = free.length - named.length;
-
-  return rest > 0 ? `${named.join(', ')} and ${rest} more` : named.join(', ');
 }
