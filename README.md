@@ -3163,6 +3163,99 @@ routing.
 
 ---
 
+### Approving or rejecting at a stage
+
+**A decision says why, and who made it, and on whose behalf.** FR 39, FR 52, LMS 315. The
+routing gets a request to the right desk; this is what happens when somebody at that desk
+answers. The story is one sentence — the person knows why, and the reason is on the record
+rather than in a corridor conversation — and everything below follows from taking it
+literally.
+
+**It is a table, not three columns on the request.** `leave_request_decision`, one row per
+answer. The create-and-submit migration listed exactly these three as what it was leaving
+out — "no `approved_by`, no `decided_at`, no `approval_step`" — and the reason they arrive as
+rows is the reason the *status* did not become `AWAITING_HR`: a chain has stages, each stage
+is a decision, and **the number of stages is configuration**. The manager's "cover is
+arranged" and HR's "your balance covers it" are two sentences about one request; columns hold
+one of them, and which one they lose is whichever was written second, silently.
+
+**A refusal must say why; an approval need not.** That asymmetry is the story rather than an
+oversight. Somebody told no has to be able to act on it — different dates, cover, an appeal —
+and "no" with nothing after it leaves them a conversation to chase. Somebody told yes needs no
+account of the yes. `requireAComment()` refuses before a single row is read, so an approver who
+forgot the box is told at once and without the refusal depending on whether the id was
+anybody's; `validateDecision()` asks again inside the transaction; and
+`leave_request_refusal_says_why` asks a third time where no service can reach. Blank is
+nothing, which is the half of "required" usually missed and is what
+`leave_request_decision_comment_not_blank` is for.
+
+**`on_behalf_of` is the desk, and it is not the same fact as who decided it.** The one column
+worth arguing about, because for most rows the two say the same thing twice: only the person a
+desk resolves to may *approve* at it. A refusal is different — `TRANSITIONS` admits a line
+manager and HR to the `REFUSE` row whichever desk the request is sitting at, which is the
+narrowing [LMS 314 deliberately did not make](#routing-a-request-to-its-approvers). So an HR
+Officer turning down leave still with a manager is recorded as their act, at the manager's
+stage, and the manager reading it can see it was not their decision. One field could not say
+that, in exactly the case somebody asks.
+
+**Who and when are the database's.** `decided_by`, `decided_by_employee_id` and `decided_at`
+are stamped by `stamp_the_decider_on_a_decision()` from the transaction-local setting the
+repositories set — the same three lines `leave_ledger_entry` stamps its own by, and for the
+same reason: a fact the writer has an interest in is not a fact the writer supplies. A writer
+who could name the decider could record a refusal under somebody else's name, and one who
+could date it could put a decision before the request it decides.
+
+**Every approval writes a decision; only the last writes a movement.** The asymmetry
+`LeaveApproved` is shaped around. A manager approving stage one changes no figure in any
+balance — the days were held at submission and are held still — so there is no ledger entry
+to post, and it is exactly then that "somebody at a desk said yes" is the only thing that
+happened. The two administrative endings write neither: withdrawing is the person taking
+their own request back and cancelling is HR unwinding a row that should not be on the books,
+and asking somebody to justify changing their mind is not what FR 39 is for. `SettlingAct`
+is a union rather than an optional field, so the door cannot be handed a comment for a
+withdrawal at all.
+
+**And the decision lands with the move, or neither does**, which is the fourth of a family
+whose shape LMS 314 settled:
+
+| | Covers | Does not cover |
+|---|---|---|
+| `leave_request_gives_its_days_back` | an ending that released nothing | — |
+| `leave_request_takes_its_days` | an approval that committed nothing | `TRUNCATE` |
+| `leave_request_records_its_decision` | a move at a desk that recorded no decision, including the intermediate one that changes no status at all | a withdrawal or a cancellation, which decide nothing |
+
+It reads the *latest* decision rather than merely checking that one exists, and that is not
+belt and braces: a chain reordered under a live request can ask the same desk twice — FR 31
+lets an HR Administrator reorder it — so an `EXISTS` would be satisfied by that desk's
+decision from an hour ago while the second approval recorded nothing. The same case is why
+there is no unique index on `(request, desk)`: it would be a rule FR 31 can break.
+
+**Append only, and deliberately not audited.** `refuse_update()` and `refuse_delete()` hold
+against the owner as well, and `lms_app` is never granted more than `SELECT` and `INSERT`. A
+refusal whose comment can be edited says whatever the last person to look at it wanted it to
+say, and the person it was written for has no way of knowing; an approver who put it badly
+decides again. There is no audit trigger for the reason [the ledger declined
+one](#the-balance-ledger): a row that can never change is already its own history, and it
+carries its writer and its instant in its own columns. The `leave_request` row it accompanies
+*is* audited, in the same transaction — so the log answers who moved this request and when,
+and the table answers what they said about it.
+
+**Why the audit log is not this**, since it already records who moved a request and when. It
+has nowhere to put the comment; it cannot say which desk, because `awaiting_approval_from`
+moves in the same statement and the entry holds only the before and after; and NFR AUD 02
+makes it an investigator's record, read by whoever settles a dispute two years later. The
+sentence a manager writes is written *to the requester*, and a record only an administrator
+can read is the corridor conversation with extra steps. `decisionsFor()` is the reading half,
+decided by the same `leaveRequestPolicy.read` that decides who may see the request — because a
+decision is the explanation of a status, and standing to see one without the other is standing
+to see half an answer.
+
+**What is deliberately not here.** That somebody is *told* their leave was refused is FR 45's
+notification and a story of its own; what this one guarantees is that there is something true
+to tell them. Disputing a refusal is FR 41, and it reads these rows rather than adding any.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.

@@ -31,6 +31,7 @@ import type { Database } from '../db/index.js';
 import { BalanceRepository } from './balance-repository.js';
 import { DepartmentRepository } from './department-repository.js';
 import { EmployeeRepository } from './employee-repository.js';
+import { LeaveDecisionRepository } from './leave-decision-repository.js';
 import { LeaveEventRepository } from './leave-event-repository.js';
 import { LeaveRequestRepository } from './leave-request-repository.js';
 import { LeaveTypeRepository } from './leave-type-repository.js';
@@ -81,6 +82,13 @@ export interface Repositories {
    * is `leave_request_holds_its_days`, a deferred constraint trigger that judges at
    * COMMIT — the only point at which a request with no reservation is distinguishable
    * from a request whose reservation has not been written yet.
+   *
+   * `decisions` arrived with LMS 315 and is the third of these that is not a read. What an
+   * approver said and the move it caused are one act — `leave_request_records_its_decision`
+   * judges the pair at COMMIT, exactly as `leave_request_holds_its_days` judges a request
+   * and its reservation — so a refusal whose reason failed to land takes the refusal with
+   * it. A request that has been turned down with nothing to say why is the corridor
+   * conversation FR 39 exists to replace, arriving through a half-committed transaction.
    */
   balances: BalanceRepository;
   entries: LedgerRepository;
@@ -88,6 +96,7 @@ export interface Repositories {
   years: LeaveYearRepository;
   events: LeaveEventRepository;
   requests: LeaveRequestRepository;
+  decisions: LeaveDecisionRepository;
 }
 
 export class Transactions {
@@ -121,6 +130,7 @@ export class Transactions {
         years: new LeaveYearRepository(trx),
         events: new LeaveEventRepository(trx),
         requests: new LeaveRequestRepository(trx),
+        decisions: new LeaveDecisionRepository(trx),
       }),
     );
   }

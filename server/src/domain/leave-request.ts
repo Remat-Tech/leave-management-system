@@ -28,6 +28,13 @@
  * answers, and {@link LeaveRequest.awaitingApprovalFrom} is the second of the two facts a
  * request now carries about where it has got to. FR 38, FR 38a, FR 40.
  *
+ * LMS 315 adds what the approver *said*, and adds none of it here. A decision is its own
+ * record — the verb, the reason, the desk it was made at and the person who made it — so it
+ * is ./leave-decision.ts and a table of its own, for the reason the chain is rows rather than
+ * columns: a request collects one decision per stage, and anything whose shape follows from
+ * how many desks there are cannot be a field on the request. What this file keeps is where a
+ * request may go; what somebody said on the way is filed beside it. FR 39, FR 52.
+ *
  * ## The quote and the request are the same arithmetic
  *
  * {@link LeaveRequestQuote} is what a form shows. {@link ValidatedLeaveRequest} is

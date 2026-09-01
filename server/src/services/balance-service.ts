@@ -134,6 +134,7 @@ import {
 } from '../domain/balance.js';
 import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
+import { type LeaveDecision, validateDecision } from '../domain/leave-decision.js';
 import { type LeaveEvent, validateNewLeaveEvent } from '../domain/leave-event.js';
 import type { ApproverRole } from '../domain/approval-chain.js';
 import {
@@ -305,20 +306,8 @@ export interface RequestToSubmit {
  * lock** all the same — see {@link BalanceService.releaseForRequest} — so what is passed
  * here identifies the row rather than being trusted for its status.
  */
-export interface RequestToSettle {
+export type RequestToSettle = {
   request: LeaveRequest;
-  /**
-   * What is being done to it. §6, LMS 313, LMS 314.
-   *
-   * The act rather than the destination, because the destination is the transition
-   * table's to give — and it is given again here, inside the lock, from the status this
-   * method re-reads. See {@link BalanceService.releaseForRequest}.
-   *
-   * A {@link ReleasingAction} rather than any action, so `APPROVE` cannot be handed to the
-   * release door at all. It reaches a state that still holds days, and a release against it
-   * would give back days an approval had just committed.
-   */
-  action: ReleasingAction;
   /**
    * Where the table said that leaves it, as the caller read it a moment ago.
    *
@@ -331,7 +320,32 @@ export interface RequestToSettle {
   to: ReleasingStatus;
   /** FR 27. What the movement says, which is not what the request says. */
   reason: string;
-}
+} & SettlingAct;
+
+/**
+ * Which of the three endings this is, and what has to be said about it. §6, FR 39. LMS
+ * 313, LMS 314, LMS 315.
+ *
+ * `action` is the act rather than the destination, because the destination is the
+ * transition table's to give — and it is given again inside the lock, from the status
+ * {@link BalanceService.releaseForRequest} re-reads. It is a {@link ReleasingAction} rather
+ * than any action, so `APPROVE` cannot be handed to the release door at all: it reaches a
+ * state that still holds days, and a release against it would give back days an approval had
+ * just committed.
+ *
+ * **Written as a union so that the comment cannot be optional**, which is LMS 315's first
+ * criterion drawn in the type system. Refusing is a decision at a desk and must say why;
+ * withdrawing and cancelling are not decisions at all, and a comment supplied with either
+ * would be a judgement recorded against a request nobody judged. A single `comment?: string`
+ * would permit both mistakes and catch neither — and the second is the silent one, because
+ * the field would simply go unread.
+ *
+ * So the door is handed either a refusal with its reason or one of the other two with an
+ * explicit null, and {@link LeaveRequestService.refuse} is the only place the first is built.
+ */
+type SettlingAct =
+  | { action: 'REFUSE'; comment: string }
+  | { action: Exclude<ReleasingAction, 'REFUSE'>; comment: null };
 
 /**
  * What `LeaveRequestService` supplies to approve one. FR 38a, FR 40. LMS 314.
@@ -369,6 +383,20 @@ export interface RequestToApprove {
    * sentence is simply not used.
    */
   reason: string;
+  /**
+   * FR 39. What the approver said about it, where they said anything. LMS 315.
+   *
+   * Optional in the sense that matters — an approval with nothing to add is the ordinary
+   * case, and null is what that looks like — and *not* optional in the type, for the reason
+   * {@link RequestAtADesk} requires its two nullable fields: a caller that never asked and a
+   * caller that asked and was told nothing are different situations, and only one of them is
+   * a bug.
+   *
+   * Unlike {@link RequestToSettle}'s, this is a comment and not a decision. The decision is
+   * composed inside the lock, from the desk this approval is actually standing at — see
+   * {@link BalanceService.approveForRequest}, which re-decides that before it writes.
+   */
+  comment: string | null;
 }
 
 /**
@@ -384,14 +412,25 @@ export interface LeaveRequested extends BalanceMoved {
 }
 
 /**
- * The same three, from the other end of a request's life. LMS 306.
+ * The same three from the other end of a request's life, and what was said about it. LMS
+ * 306, LMS 315.
  *
  * Named apart from {@link LeaveRequested} for the reason {@link EventLapsed} is named
  * apart from {@link EventGranted}: a signature should say which act produced it, and
  * "the request, the entry and the balance" is true of both while only one of them gives
  * days back.
+ *
+ * **It was an alias of {@link LeaveRequested} until LMS 315 and is now an interface**,
+ * because the two stopped being the same shape the moment one of the three endings started
+ * carrying a decision. That is the alias earning its note rather than losing it: a
+ * refusal is a decision at a desk, a withdrawal and a cancellation are not, and a caller
+ * that has just ended a request needs the row it wrote — the reason the manager gave — from
+ * the transaction that wrote it rather than from a read afterwards.
  */
-export type LeaveReleased = LeaveRequested;
+export interface LeaveReleased extends LeaveRequested {
+  /** FR 39. The refusal's, in the manager's own words. Null for the other two endings. */
+  decision: LeaveDecision | null;
+}
 
 /**
  * The same three from the middle of a request's life, with the entry allowed to be absent.
@@ -410,6 +449,17 @@ export type LeaveReleased = LeaveRequested;
 export interface LeaveApproved extends Omit<LeaveRequested, 'entry'> {
   /** The `DEDUCTION`, where this approval decided it. Null where it only moved on. */
   entry: LedgerEntry | null;
+  /**
+   * FR 39, FR 52. What this desk said, and who said it. Never null. LMS 315.
+   *
+   * The asymmetry with `entry` above is the whole of what a decision is for, and it is
+   * worth reading the two together: an intermediate approval writes **no movement** and
+   * **always** writes a decision. Nothing about the balance changed — the days were held
+   * when the request was submitted and they are held still — so there is no entry to post;
+   * what did happen is that a person at a desk said yes, and that is exactly the fact
+   * neither the balance nor the status can carry.
+   */
+  decision: LeaveDecision;
 }
 
 /**
@@ -615,9 +665,23 @@ export class BalanceService {
    * submitted — so what comes back is exactly what was held. `daysToRelease` refuses to
    * give back more than the balance is holding, which is the second line of that defence
    * and the one that catches a release aimed at the wrong balance.
+   *
+   * ## One of the three endings writes a decision, and it is the one somebody is owed
+   *
+   * FR 39, FR 52. LMS 315. A refusal is a manager turning leave down at the desk it was
+   * sitting on, so it carries the reason and the desk, and both land in this transaction —
+   * `leave_request_records_its_decision` refuses at COMMIT a request that reached `REFUSED`
+   * with nothing to say who refused it or why.
+   *
+   * A withdrawal and a cancellation write none, and that is a decision rather than a gap.
+   * Neither is a judgement about the request: one is the person taking their own back, the
+   * other is HR unwinding a row that should not be on the books. A comment recorded against
+   * either would show the requester a reason for something nobody decided — and asking
+   * somebody to justify changing their mind is not what FR 39 is for. The union on
+   * {@link SettlingAct} is what keeps a caller from supplying one anyway.
    */
   async releaseForRequest(actor: Actor, settlement: RequestToSettle): Promise<LeaveReleased> {
-    const { request, action, reason } = settlement;
+    const { request, action, comment, reason } = settlement;
     const owner = await this.ownerOf(request.employeeId);
 
     this.guard.enforce(ledgerPolicy.release(actor, owner));
@@ -648,6 +712,26 @@ export class BalanceService {
 
       const days = daysToRelease(held, current.days);
 
+      /* FR 39, FR 52. The desk this ending was decided at, taken from the row as it stands
+         now rather than from the copy the caller read — the same discipline `to` above is
+         held to, and it matters for the same reason: a request that moved on a stage while
+         somebody was reading the screen would otherwise have its refusal filed against the
+         desk it *used* to be at. Read before the status moves, because the move clears it. */
+      const desk = current.awaitingApprovalFrom;
+
+      if (comment !== null && desk === null) {
+        /* Unreachable: `settlementTo` has just refused every status but `SUBMITTED`, and
+           `leave_request_waits_at_a_desk` makes the desk present for exactly that one.
+           Answered rather than asserted, because the alternative is a refusal filed against
+           no stage at all — and `leave_request_records_its_decision` would then refuse the
+           whole transaction at COMMIT with a message about a constraint. */
+        throw new Error(
+          `Leave request ${current.id} is being refused and is standing at no desk, so ` +
+            `there is no stage for the decision to be recorded at. A request being decided ` +
+            `waits on exactly one. FR 38a, FR 52.`,
+        );
+      }
+
       /* The desk goes with the status, in one statement, because
          `leave_request_waits_at_a_desk` is an equivalence between the two: a request that
          has ended is waiting on nobody, and leaving a settled row saying "awaiting HR"
@@ -673,6 +757,23 @@ export class BalanceService {
       return {
         request: written,
         entry,
+        /* FR 39. Only a refusal is a decision at a desk. Withdrawing is somebody taking
+           their own request back and cancelling is HR unwinding a row that should not be on
+           the books, and a decision recorded for either would put a judgement in front of
+           the requester that nobody made. The union on {@link SettlingAct} is what makes
+           this branch a narrowing rather than a guess: a non-null comment is a refusal. */
+        decision:
+          comment === null || desk === null
+            ? null
+            : await repositories.decisions.record(
+                actor,
+                validateDecision({
+                  leaveRequestId: current.id,
+                  action: 'REFUSE',
+                  onBehalfOf: desk,
+                  comment,
+                }),
+              ),
         balance: withAvailable(await repositories.balances.forOne(key)),
       };
     });
@@ -702,6 +803,19 @@ export class BalanceService {
    * in the same transaction as the status. A service that wrote the status elsewhere and
    * called `commit` afterwards would be the two-statement version of exactly the failure
    * `releaseForRequest` exists to prevent.
+   *
+   * ## Every approval writes a decision, and that is the one thing both outcomes do
+   *
+   * FR 39, FR 52. LMS 315. The movement is written only by the last desk and the decision is
+   * written by all of them, which is the asymmetry {@link LeaveApproved} is shaped around: an
+   * intermediate approval changes no figure in any balance and *does* change what somebody at
+   * a desk has said, and the second of those is a fact this schema had nowhere to put until
+   * `leave_request_decision` existed.
+   *
+   * The desk it is filed under is `outcome.by` — the stage the walk found inside this lock —
+   * rather than anything the caller read. `leave_request_records_its_decision` judges the
+   * pair at COMMIT and refuses a move at a desk that recorded nothing, which is what makes
+   * the two one act rather than two statements that usually both run.
    *
    * ## The lock, and what it is for when nothing moves
    *
@@ -736,7 +850,7 @@ export class BalanceService {
    * `leave_request_commits_once`.
    */
   async approveForRequest(actor: Actor, approval: RequestToApprove): Promise<LeaveApproved> {
-    const { request, chain, chiefExecutiveId, reason } = approval;
+    const { request, chain, chiefExecutiveId, comment, reason } = approval;
     const owner = await this.ownerOf(request.employeeId);
 
     /* The ledger's standing question, and the one that refuses somebody approving their
@@ -798,6 +912,25 @@ export class BalanceService {
 
       return {
         request: written,
+        /* FR 39, FR 52. What this desk said, written whichever of the two things the
+           approval did — and `outcome.by` rather than anything the caller supplied, for the
+           same reason `outcome.to` is what gets stored: the desk that binds is the one the
+           walk found against the row nobody else can move. An approval recorded against the
+           stage a screen was showing a minute ago is a record of somebody signing for a desk
+           they were not at.
+
+           Written before the entry below, so that a decision exists by the time
+           `leave_request_records_its_decision` is judged at COMMIT — which it would be
+           either way, and the order is for the reader rather than for the trigger. */
+        decision: await repositories.decisions.record(
+          actor,
+          validateDecision({
+            leaveRequestId: current.id,
+            action: 'APPROVE',
+            onBehalfOf: outcome.by,
+            comment,
+          }),
+        ),
         entry: isTheLastWord(outcome)
           ? await repositories.entries.post(
               actor,

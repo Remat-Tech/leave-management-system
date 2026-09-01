@@ -765,6 +765,53 @@ export interface LeaveRequestTable {
   updated_at: Timestamp;
 }
 
+/**
+ * What one approver said at one stage, and when. FR 39, FR 52. LMS 315.
+ *
+ * A table rather than three columns on `leave_request`, because a chain has stages
+ * and each of them is a decision: the manager's "cover is arranged" and HR's "your
+ * balance covers it" are two sentences about one request, and columns hold one of
+ * them. The same argument LMS 314 made about the status — the number of stages is
+ * configuration, so nothing whose shape depends on it may be a column.
+ *
+ * Append only. `refuse_update()` and `refuse_delete()` hold that on every connection,
+ * `lms_app` is granted no more than SELECT and INSERT, and there is deliberately no
+ * audit trigger: a row that can never change is already its own history, which is the
+ * declining the ledger made for the same reason.
+ */
+export interface LeaveRequestDecisionTable {
+  id: Generated<string>;
+  leave_request_id: ColumnType<string, string, never>;
+  /* APPROVE or REFUSE, held closed by leave_request_decision_action_known. The verb
+     rather than the state it left the request in — an approval at the first of two
+     desks moves no status at all, so what happened cannot be read off where the
+     request ended up. The domain's DECIDING_ACTIONS is the same list and the
+     integration suite asserts the two agree. */
+  action: ColumnType<string, string, never>;
+  /* FR 52. The desk this decision answers for: MANAGER, HR or CEO, as the request was
+     standing when it was made.
+
+     Not the same fact as `decided_by`, and the difference is the reason both are
+     here. An approval can only come from the person the desk resolves to, so the two
+     agree; a refusal may come from a line manager or from HR whichever desk the
+     request was at, so "refused by HR, at the line manager's stage" is a sentence
+     this table can make and one column could not. */
+  on_behalf_of: ColumnType<string, string, never>;
+  /* FR 39. Why. Required of a refusal by leave_request_refusal_says_why, optional on
+     an approval, and never blank. Free text rather than a list of codes: a dropdown of
+     reasons is how an approver comes to pick the nearest wrong one. */
+  comment: ColumnType<string | null, string | null, never>;
+  /* Who, in the two forms audit_log keeps them. Both stamped by
+     stamp_the_decider_on_a_decision(), never by the writer — a person who could name
+     the decider could record a refusal under somebody else's name. */
+  decided_by: ColumnType<string, never, never>;
+  decided_by_employee_id: ColumnType<string | null, never, never>;
+  /* When, stamped by the same trigger rather than defaulted: a default applies only
+     where a writer says nothing, and a refusal dated before the request was submitted
+     is a record of a decision that could not have been made. */
+  decided_at: Timestamp;
+}
+
 export interface Database {
   app_user: AppUserTable;
   audit_log: AuditLogTable;
@@ -777,6 +824,7 @@ export interface Database {
   leave_entitlement_rule: LeaveEntitlementRuleTable;
   leave_ledger_entry: LeaveLedgerEntryTable;
   leave_request: LeaveRequestTable;
+  leave_request_decision: LeaveRequestDecisionTable;
   leave_type: LeaveTypeTable;
   leave_type_approval_step: LeaveTypeApprovalStepTable;
   leave_year: LeaveYearTable;

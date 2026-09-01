@@ -104,7 +104,9 @@ beforeEach(async () => {
      `leave_ledger_entry` refuses one too — and no row trigger fires on TRUNCATE,
      which is the door both migrations leave open for exactly this. */
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request');
+  await admin.query(
+    'TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+  );
   await restoreYears();
 
   /* LMS 301: the requests went with the entries, so the next test builds its own. */
@@ -125,7 +127,9 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request');
+  await admin.query(
+    'TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+  );
   await restoreYears();
 
   await db?.destroy();
