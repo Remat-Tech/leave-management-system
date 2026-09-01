@@ -1224,7 +1224,7 @@ describe('where this story stops', () => {
   it('and no desk is skipped when there is nobody at it', () => {
     const chain = ['MANAGER', 'HR'] as const;
 
-    expect(approvalTo(aStoredRequest({ awaitingApprovalFrom: 'MANAGER' }), chain)).toEqual({
+    expect(approvalTo(aStoredRequest({ awaitingApprovalFrom: 'MANAGER' }), chain, [])).toEqual({
       by: 'MANAGER',
       to: 'SUBMITTED',
       awaiting: 'HR',

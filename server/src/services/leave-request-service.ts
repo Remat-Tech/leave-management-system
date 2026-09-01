@@ -148,9 +148,15 @@ import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
 import type { DayCount, LeavePeriod } from '../domain/leave-calculator.js';
 import { validateLeavePeriod } from '../domain/leave-calculator.js';
-import { type LeaveDecision, readComment, requireAComment } from '../domain/leave-decision.js';
+import {
+  desksThatApproved,
+  type LeaveDecision,
+  readComment,
+  requireAComment,
+} from '../domain/leave-decision.js';
 import {
   approvalTo,
+  type ApprovalProgress,
   assertItCostsSomething,
   assertTheDaysAreThere,
   InvalidLeaveRequest,
@@ -161,6 +167,7 @@ import {
   LeaveOverlapsAnother,
   type NewLeaveRequest,
   noticeGiven,
+  progressOf,
   quoteFor,
   reachesPastTheEndOf,
   reasonForApproval,
@@ -526,8 +533,17 @@ export class LeaveRequestService {
        because everybody who reaches this line may already read the request.
 
        The outcome is also what lets the `DEDUCTION`'s sentence name the desk that decided
-       it. It is worked out again inside the lock, and that is the answer that binds. */
-    const outcome = approvalTo(request, type.approvalChain);
+       it. It is worked out again inside the lock, and that is the answer that binds.
+
+       FR 41, LMS 316. The desks that have already signed are read here for the same reason
+       the chain is: the walk asks which stage has *not* approved rather than which comes
+       after this one, so it needs the decisions and not only the cursor. Read again inside
+       the lock, where the answer binds — see `approveForRequest`. */
+    const outcome = approvalTo(
+      request,
+      type.approvalChain,
+      desksThatApproved(await this.decisions.forRequest(request.id)),
+    );
 
     this.guard.enforce(standing);
 
@@ -564,6 +580,44 @@ export class LeaveRequestService {
    * Throws {@link LeaveRequestNotFound} for an id that is nobody's, and {@link NotAuthorised}
    * — silently, as `read` refuses — for somebody with no standing to see the request.
    */
+  /**
+   * Whether this leave is agreed, and who is still to agree it. FR 41, FR 42. LMS 316.
+   *
+   * The story's "so that", answered in one call: *I never take leave believing it was agreed
+   * when it was not*. Every fact needed to be wrong about that is already readable — the
+   * status, the desk it is with, the decisions, the chain — and it is readable in four
+   * places, which is exactly the arrangement in which a screen shows the newest approval and
+   * a person reads it as the answer. {@link ApprovalProgress.agreed} is the answer.
+   *
+   * **The chain is read now**, as it is everywhere else in this file, so the stages still to
+   * approve are the ones the policy asks for today rather than the ones it asked for when
+   * the request was made. That is the same reading `approve` makes and it is what keeps the
+   * two from ever describing a request differently.
+   *
+   * Decided by {@link leaveRequestPolicy.read}, the same rule that decides who may see the
+   * request itself and who may read its decisions — refused silently, because somebody
+   * asking after leave that is not theirs has not been shown that it exists.
+   */
+  async progressFor(actor: Actor, id: string): Promise<ApprovalProgress> {
+    const request = await this.requests.findById(id);
+
+    if (request === undefined) {
+      throw new LeaveRequestNotFound(id);
+    }
+
+    const employee = await this.employeeFor(request.employeeId);
+
+    this.guard.enforce(leaveRequestPolicy.read(actor, ownerOf(employee)));
+
+    const type = await this.typeFor(request.leaveTypeId);
+
+    return progressOf({
+      request,
+      chain: type.approvalChain,
+      approvedBy: desksThatApproved(await this.decisions.forRequest(request.id)),
+    });
+  }
+
   async decisionsFor(actor: Actor, id: string): Promise<LeaveDecision[]> {
     const request = await this.requests.findById(id);
 

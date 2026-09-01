@@ -153,10 +153,11 @@
 
 import {
   type ApproverRole,
-  approverAfter,
   chainInWords,
   firstApprover,
   isApprovedBy,
+  nextUnapproved,
+  stagesNotApproved,
 } from './approval-chain.js';
 import type { DayCount, FreeDay, LeavePeriod } from './leave-calculator.js';
 import {
@@ -379,24 +380,30 @@ export class LeaveCannotBeMoved extends Error {
 }
 
 /**
- * A request waiting at a desk its type's chain no longer has. FR 31, FR 38a. LMS 314.
+ * A request waiting at a desk its type's chain no longer has. FR 31, FR 38a, FR 41. LMS 314,
+ * LMS 316.
  *
  * The one seam in reading the chain live rather than copying it onto the request, and it is
- * refused by name because both ways of guessing are worse than saying so.
+ * refused by name because letting the approval through is worse than saying so.
  *
  * The situation: annual leave goes manager then HR, somebody's request is sitting with
  * their manager, and an HR Administrator changes the chain to HR alone — which FR 31 says
- * they may, without a developer and without a deployment. The manager now approves.
- * {@link approverAfter} is asked what comes after `MANAGER` in a chain that does not contain
- * `MANAGER`, and it answers undefined, exactly as ./approval-chain.ts says it will: "A desk
- * that is not in this chain gets undefined rather than the first stage, which is the
- * cautious reading and the one that fails loudly."
+ * they may, without a developer and without a deployment. The manager now approves, at a
+ * desk the policy no longer asks.
  *
- * **Reading that undefined as "nobody left to ask" approves the leave**, on the authority of
- * a desk the policy no longer includes and without HR — the only stage the new chain has —
- * ever seeing it. Reading it as "start again from the first stage" is the other guess, and
- * it silently un-approves a stage somebody already signed. Neither is a decision this
- * function is entitled to make on somebody's leave.
+ * **LMS 314 refused it because approving would have been the likely reading**, and said so:
+ * `approverAfter` answered undefined for a desk outside the chain, "nobody left to ask" would
+ * have approved the leave without HR — the only stage the new chain has — ever seeing it, and
+ * "start again from the first stage" would have silently un-approved a stage somebody signed.
+ *
+ * **LMS 316 removed both of those and left the refusal standing**, which is worth reading as
+ * a change of grounds rather than as the same note. {@link nextUnapproved} does not answer
+ * undefined here: a chain the desk has been dropped from still has stages nobody has signed,
+ * so the walk would route the request to the first of them and nothing would be approved
+ * early. What the refusal protects now is the claim itself — **every approval on record has
+ * to belong to a stage**, or "every stage has approved" is a statement about a set with
+ * strangers in it, and a manager's signature would sit in a request's history looking exactly
+ * like one that counted.
  *
  * So it refuses, and the message is written for the two people who will meet it: the
  * approver, who needs to know this is not their mistake, and whoever fixes it, who needs to
@@ -743,11 +750,38 @@ export function settlementTo(request: LeaveRequest, action: ReleasingAction): Re
 
 /**
  * Where an approval leaves the request: on to the next desk, or agreed. FR 38, FR 38a, FR
- * 40, §6. LMS 314.
+ * 40, FR 41, FR 42, §6. LMS 314, LMS 316.
  *
- * The story's second criterion, and the whole of the routing in one function. It is handed
- * the request — which carries the desk it is sitting at — and the chain off its leave type,
+ * The whole of the routing in one function. It is handed the request — which carries the desk
+ * it is sitting at — the chain off its leave type, and the desks that have already signed,
  * and it answers the only question an approval has: **is there anybody left to ask.**
+ *
+ * ## What "anybody left" means, and why it changed
+ *
+ * LMS 316, and it is one line of code and the whole of that story. LMS 314 asked
+ * `approverAfter(chain, desk)` — the stage after the one signing — which is a question about
+ * a position in a list, and answered it against a cursor the request carries. LMS 316 asks
+ * {@link nextUnapproved} instead: the first stage in the chain that has no approval recorded
+ * against it.
+ *
+ * The two agree in every ordinary case, and the case they part on is the one FR 41 is about.
+ * A stage added *in front of* a request in flight — annual leave goes manager then HR, a
+ * request is with HR because the manager has signed, and an HR Administrator changes the
+ * chain to CEO, manager, HR — leaves the cursor pointing at the last position of the new
+ * list. "The one after HR" is nothing, so HR's yes would approve the leave outright and the
+ * Chief Executive, a stage the policy now names, would never see it. The employee is told
+ * their leave is agreed. That is the sentence the story exists to make true, and asking which
+ * desk has *not* signed cannot get it wrong, because it is a question about the whole chain.
+ *
+ * **The desks that have signed are a parameter rather than something read here**, for the
+ * reason the day count and the balance are parameters: `/domain` imports nothing and touches
+ * nothing, and the rows live in `leave_request_decision`. `desksThatApproved()` in
+ * ./leave-decision.ts turns them into the list, and `LeaveRequestService` carries it across.
+ *
+ * **The desk approving now counts towards it.** The caller passes what was signed *before*
+ * this approval, and this adds the one being given — so the last desk in a chain of two sees
+ * both and finds nobody left. Doing it the other way round, with the caller adding its own
+ * desk first, would make every call site responsible for the same increment.
  *
  * ## Two shapes of yes, and only one of them is a status change
  *
@@ -781,17 +815,30 @@ export function settlementTo(request: LeaveRequest, action: ReleasingAction): Re
  * themselves — the walk simply finds a further stage and the request keeps going, which is
  * the behaviour HR asked for.
  *
- * Where it removes the desk the request is *standing on*, there is no next stage to find
- * and no honest answer: {@link approverAfter} would return undefined, which this function
- * would otherwise read as "nobody left to ask" and approve the leave on the strength of a
- * signature from a desk the chain no longer has. {@link ApprovalChainChanged} is that case,
- * refused by name — see it for why refusing is better than either guess.
+ * Where it removes the desk the request is *standing on*, {@link ApprovalChainChanged} is
+ * still the answer, and LMS 316 narrowed what that refusal is protecting rather than making
+ * it unnecessary. The danger LMS 314 named — reading "no next stage" as "nobody left to ask"
+ * and approving the leave — is gone, because a chain the desk has dropped still has stages
+ * nobody has signed and the walk routes to the first of them. What remains is the reason to
+ * refuse anyway: **every approval this system records has to belong to a stage**, or "every
+ * stage has approved" is a claim about a set that has strangers in it. Letting a desk the
+ * chain no longer names sign would put one there.
  *
  * Copying the whole chain onto the request at submission is the other answer, and it is the
  * one FR 11 gave for the counting basis. It is a table of its own and a story of its own;
  * what this does is make the gap loud instead of silent in the meantime.
  */
-export function approvalTo(request: LeaveRequest, chain: readonly ApproverRole[]): ApprovalOutcome {
+export function approvalTo(
+  request: LeaveRequest,
+  chain: readonly ApproverRole[],
+  /**
+   * FR 41. The desks that had approved before this one. LMS 316.
+   *
+   * Empty for a request nobody has decided yet, which is what a first approval is handed.
+   * Read off `leave_request_decision` by the service — see `desksThatApproved()`.
+   */
+  approvedAlready: readonly ApproverRole[],
+): ApprovalOutcome {
   const transition = transitionFor(request.status, 'APPROVE');
 
   if (transition === undefined) {
@@ -811,7 +858,7 @@ export function approvalTo(request: LeaveRequest, chain: readonly ApproverRole[]
     throw new ApprovalChainChanged(request, desk, chain);
   }
 
-  const next = approverAfter(chain, desk);
+  const next = nextUnapproved(chain, [...approvedAlready, desk]);
 
   return next === undefined
     ? { by: desk, to: transition.to, awaiting: null }
@@ -821,6 +868,135 @@ export function approvalTo(request: LeaveRequest, chain: readonly ApproverRole[]
 /** Whether that approval was the last word, rather than a step towards one. */
 export function isTheLastWord(outcome: ApprovalOutcome): boolean {
   return outcome.awaiting === null;
+}
+
+/**
+ * How far through its chain a request has got. FR 41, FR 42. LMS 316.
+ *
+ * The reading half of the story, and the half its "so that" is about: *I never take leave
+ * believing it was agreed when it was not*. Every fact needed to be wrong about that is
+ * already stored — the status, the desk, the decisions, the chain — and it is stored in four
+ * places, which is exactly the arrangement in which a screen shows the newest approval and a
+ * person reads it as the answer.
+ *
+ * So there is one function that puts them together, and {@link ApprovalProgress.agreed} is
+ * what anybody asking "is this leave mine to take" reads.
+ *
+ * ## `agreed` is the status, and the rest is the explanation
+ *
+ * It is `status === 'APPROVED'` and nothing cleverer, which is worth being explicit about
+ * because the tempting definition is `everyStageApproved(chain, approvedBy)`. That second one
+ * is a claim about the chain *as it stands this afternoon*, and a chain that has grown a stage
+ * since a request was approved would make it false about leave that was properly agreed and
+ * whose days are already taken. What was recorded is what happened — design principle 1 — and
+ * the status is the record.
+ *
+ * {@link stagesNotApproved} is asked all the same, and disagreeing with the status is what
+ * {@link ApprovalProgress.stagesMissing} reports rather than hides: an approved request whose
+ * type has since gained a desk is a real and legitimate state, and a screen that wants to say
+ * "agreed under the old policy" can. It is also the shape a defect would take, which is why
+ * `leave_request_is_approved_by_every_stage` refuses one at the moment of approval and this
+ * only describes what it finds afterwards.
+ *
+ * ## `stillToApprove` is empty for anything that is not being decided
+ *
+ * A withdrawn request is not waiting on its manager, and neither is an approved one. Both
+ * would otherwise read as "still waiting on HR" for ever, which is the queue entry
+ * `leave_request_waits_at_a_desk` exists to stop the schema holding — said here in the
+ * reading rather than in a column.
+ */
+export interface ApprovalProgress {
+  /**
+   * FR 41. Whether this leave is agreed and may be taken. The one field a person acts on.
+   */
+  agreed: boolean;
+  /** The chain as the type has it now, in order. */
+  chain: readonly ApproverRole[];
+  /** The stages that have said yes, in chain order. */
+  approvedBy: readonly ApproverRole[];
+  /** The stages still to be asked, in chain order. Empty unless it is being decided. */
+  stillToApprove: readonly ApproverRole[];
+  /** The desk it is sitting on now, or null once it is sitting nowhere. */
+  awaiting: ApproverRole | null;
+  /**
+   * Stages of today's chain with no approval on this request, whatever its status.
+   *
+   * Empty for everything the system does normally. Non-empty means either a request still
+   * being decided — where it is the same list as `stillToApprove` — or an approved one whose
+   * type has gained a desk since, which is the honest reading rather than a fault.
+   */
+  stagesMissing: readonly ApproverRole[];
+  /** NFR USA 03. What a person is told, in one sentence. */
+  inWords: string;
+}
+
+/**
+ * Where a request stands, from the four facts that say so.
+ *
+ * Pure, and assembled here rather than in the service for the reason {@link quoteFor} is: the
+ * sentence somebody reads before they book a flight is a rule about what they are owed, and
+ * it should be testable without a database.
+ */
+export function progressOf(input: {
+  request: LeaveRequest;
+  chain: readonly ApproverRole[];
+  /** FR 41. The desks that have approved, from `desksThatApproved()`. */
+  approvedBy: readonly ApproverRole[];
+}): ApprovalProgress {
+  const { request, chain, approvedBy } = input;
+
+  const missing = stagesNotApproved(chain, approvedBy);
+  const signed = chain.filter((desk) => approvedBy.includes(desk));
+  const beingDecided = request.status === 'SUBMITTED';
+  const agreed = request.status === 'APPROVED';
+
+  return {
+    agreed,
+    chain: [...chain],
+    approvedBy: signed,
+    stillToApprove: beingDecided ? missing : [],
+    awaiting: request.awaitingApprovalFrom,
+    stagesMissing: missing,
+    inWords: progressInWords(request, signed, missing, agreed),
+  };
+}
+
+/**
+ * The sentence, and it says what has happened before it says what has not.
+ *
+ * NFR USA 03. A person reading this has an aeroplane ticket in the other tab, so the shape is
+ * the answer first: agreed, or not yet and who is left. "Approved by your line manager" on its
+ * own is the sentence this whole story exists to stop being the whole sentence — which is why
+ * the two halves are one string composed once rather than two fields a screen may show one of.
+ *
+ * The chain is not consulted for the agreed case. See {@link progressOf}.
+ */
+function progressInWords(
+  request: LeaveRequest,
+  approved: readonly ApproverRole[],
+  missing: readonly ApproverRole[],
+  agreed: boolean,
+): string {
+  const signed =
+    approved.length === 0
+      ? 'Nobody has approved it yet.'
+      : `Approved by ${chainInWords(approved)}.`;
+
+  if (agreed) {
+    return `This leave is agreed and is yours to take. ${signed}`;
+  }
+
+  if (isSettled(request.status)) {
+    return (
+      `This leave was ${inWordsSettled(request.status)} and is not yours to take. ${signed} ` +
+      `The days are back in your balance.`
+    );
+  }
+
+  return (
+    `This leave is not agreed yet, so do not book anything on it. ${signed} It still ` +
+    `needs ${chainInWords(missing)}.`
+  );
 }
 
 /**

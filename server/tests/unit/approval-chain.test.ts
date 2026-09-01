@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   APPROVER_ROLES,
-  approverAfter,
   chainInWords,
   chainOf,
   DEFAULT_APPROVAL_CHAIN,
@@ -9,9 +8,10 @@ import {
   InvalidApprovalChain,
   isApprovable,
   isApprovedBy,
-  isFinalApprover,
   LONGEST_CHAIN,
+  nextUnapproved,
   readApproverRole,
+  stagesNotApproved,
   stepsOf,
   validateApprovalChain,
 } from '../../src/domain/approval-chain.js';
@@ -217,33 +217,89 @@ describe('the walk, which is what routing will read', () => {
     expect(firstApprover(UNPAID)).toBe('HR');
   });
 
+  /**
+   * And the front of the list is where a request nobody has decided goes.
+   *
+   * `firstApprover` is a question about the chain and `nextUnapproved` is a
+   * question about the chain and what has happened; they agree for a request with
+   * no decisions on it, which every new one is. Asserted so that submission going
+   * through the first and routing going through the second cannot come apart.
+   */
+  it('and that is the same desk the walk sends an undecided request to', () => {
+    for (const chain of [MOST_TYPES, UNPAID]) {
+      expect(nextUnapproved(chain, [])).toBe(firstApprover(chain));
+    }
+  });
+
   /* The whole of the story, said as one assertion: unpaid leave goes to HR and
      the CEO while everything else goes to the manager, and the difference is two
      lists rather than two branches. */
   it('sends unpaid leave to HR and then the CEO, and everything else to the manager', () => {
-    expect(approverAfter(UNPAID, 'HR')).toBe('CEO');
-    expect(approverAfter(UNPAID, 'CEO')).toBeUndefined();
+    expect(nextUnapproved(UNPAID, ['HR'])).toBe('CEO');
+    expect(nextUnapproved(UNPAID, ['HR', 'CEO'])).toBeUndefined();
 
-    expect(approverAfter(MOST_TYPES, 'MANAGER')).toBe('HR');
-    expect(approverAfter(MOST_TYPES, 'HR')).toBeUndefined();
+    expect(nextUnapproved(MOST_TYPES, ['MANAGER'])).toBe('HR');
+    expect(nextUnapproved(MOST_TYPES, ['MANAGER', 'HR'])).toBeUndefined();
   });
 
-  /* Undefined after the last desk is what "the request is approved" looks like,
-     and it is the same undefined a desk outside the chain produces — which is
-     why isFinalApprover exists rather than callers comparing to undefined. */
-  it('tells the last approval apart from an approval by a desk not in the chain', () => {
-    expect(isFinalApprover(MOST_TYPES, 'HR')).toBe(true);
-    expect(isFinalApprover(MOST_TYPES, 'MANAGER')).toBe(false);
-    expect(isFinalApprover(MOST_TYPES, 'CEO')).toBe(false);
-
-    expect(approverAfter(MOST_TYPES, 'CEO')).toBeUndefined();
+  /**
+   * Undefined is what "every stage has approved" looks like, and it is the one
+   * thing it can mean. FR 41. LMS 316.
+   *
+   * This used to read "undefined after the last desk… and it is the same
+   * undefined a desk outside the chain produces — which is why isFinalApprover
+   * exists rather than callers comparing to undefined". Both halves are gone with
+   * `approverAfter`: the walk is no longer asked about a desk at all, so there is
+   * no desk it can be asked about wrongly, and undefined means the list of
+   * unsigned stages is empty.
+   */
+  it('runs out only once every stage has signed', () => {
+    expect(stagesNotApproved(MOST_TYPES, [])).toEqual(['MANAGER', 'HR']);
+    expect(stagesNotApproved(MOST_TYPES, ['MANAGER'])).toEqual(['HR']);
+    expect(stagesNotApproved(MOST_TYPES, ['MANAGER', 'HR'])).toEqual([]);
   });
 
-  /* The cautious reading. An approval recorded against a chain the desk does not
-     belong to is a bug; handing back the first stage would quietly restart the
-     chain and hand back the last would quietly approve the request. */
-  it('does not restart the chain for a desk that is not in it', () => {
-    expect(approverAfter(UNPAID, 'MANAGER')).toBeUndefined();
+  /**
+   * And a stage added in front of a request in flight is still asked. LMS 316's
+   * first criterion, and the case `approverAfter` got wrong.
+   *
+   * The manager has signed and HR is about to. Under the old walk, "the desk after
+   * HR" in `[CEO, MANAGER, HR]` is nothing, so HR's yes approved the leave and the
+   * Chief Executive never saw it. Asking which stage has *not* signed cannot make
+   * that mistake, because it is a question about the whole chain rather than about
+   * one position in it.
+   */
+  it('and asks a stage added in front of where a request had got to', () => {
+    const widened = validateApprovalChain(['CEO', 'MANAGER', 'HR']);
+
+    expect(nextUnapproved(widened, ['MANAGER', 'HR'])).toBe('CEO');
+    expect(nextUnapproved(widened, ['MANAGER', 'HR', 'CEO'])).toBeUndefined();
+  });
+
+  /* And the order is the chain's, so a request still travels it the way an HR
+     Administrator wrote it — what the order does not decide is when the request is
+     agreed, which is "none left" and is a question about a set. */
+  it('and asks in the order the chain is written, whatever order they signed in', () => {
+    expect(nextUnapproved(validateApprovalChain(['CEO', 'MANAGER', 'HR']), [])).toBe('CEO');
+    expect(nextUnapproved(MOST_TYPES, ['HR'])).toBe('MANAGER');
+  });
+
+  /* And nobody is asked twice. `approverAfter` could not promise this once the
+     order could change underneath a live request; a walk that skips what is signed
+     can. `leave_request_decision_once_per_desk` holds the same rule in the schema. */
+  it('and never asks a desk that has already signed', () => {
+    for (const chain of [MOST_TYPES, UNPAID, validateApprovalChain(['CEO', 'MANAGER', 'HR'])]) {
+      for (const signed of chain) {
+        expect(nextUnapproved(chain, [signed])).not.toBe(signed);
+      }
+    }
+  });
+
+  /* A desk outside the chain is neither a stage nor a signature that counts. It is
+     ignored here and refused where somebody is actually approving — see
+     `ApprovalChainChanged`, which is what keeps every recorded approval a stage. */
+  it('ignores an approval by a desk the chain does not name', () => {
+    expect(nextUnapproved(UNPAID, ['MANAGER'])).toBe('HR');
     expect(isApprovedBy(UNPAID, 'MANAGER')).toBe(false);
     expect(isApprovedBy(UNPAID, 'CEO')).toBe(true);
   });
@@ -252,7 +308,11 @@ describe('the walk, which is what routing will read', () => {
     expect(isApprovable(MOST_TYPES)).toBe(true);
     expect(isApprovable([])).toBe(false);
     expect(firstApprover([])).toBeUndefined();
-    expect(isFinalApprover([], 'HR')).toBe(false);
+
+    /* A chain with no stages has none outstanding, which reads as fully approved.
+       That is `assertSomebodyApprovesIt`'s to refuse, at submission, with the type
+       named — see the note on `stagesNotApproved`. */
+    expect(stagesNotApproved([], [])).toEqual([]);
   });
 });
 

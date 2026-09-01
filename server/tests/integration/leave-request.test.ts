@@ -2126,16 +2126,20 @@ describe('routing a request to its approvers', () => {
   it('and a status moved to approved with no DEDUCTION is refused at commit, by anybody', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
-    /* The decision is written as well, and it has to be. Since LMS 315 the same second
-       writer breaks two rules at once — a request approved with no DEDUCTION and one
-       approved with nothing to say who approved it — and only one of them can be the
-       message. `leave_request_records_its_decision` sorts first among the deferred
-       constraints and would be the one raised, which is correct and is not what this test
-       is about. So the writer is made to satisfy that one, and is refused for the days. */
+    /* The manager's stage goes through the door, so the request is genuinely sitting with
+       HR when the second writer reaches it, and the writer records HR's approval as well.
+
+       Both are needed and neither is decoration. The same careless UPDATE now breaks three
+       rules at once — a request approved with no DEDUCTION, one approved with nothing to say
+       who approved it (LMS 315), and one approved with a stage unasked (LMS 316) — and only
+       one of them can be the message. The other two sort ahead of this one among the deferred
+       constraints, which is correct and is not what this test is about. */
+    await requests.approve(asTheirManager(), request.id);
+
     await admin.query('BEGIN');
     await admin.query(
       `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of)
-       VALUES ($1, 'APPROVE', 'MANAGER')`,
+       VALUES ($1, 'APPROVE', 'HR')`,
       [request.id],
     );
     await admin.query(
@@ -2782,4 +2786,397 @@ describe('the decision at a stage', () => {
     expect(rows).toEqual([]);
     expect(AUDITED_ENTITIES).not.toContain('leave_request_decision');
   });
+});
+
+/* ---------------------------------------------- every stage must approve, FR 41 */
+
+/**
+ * Leave is approved when every stage has approved it. FR 41, FR 42. LMS 316.
+ *
+ * ../unit/state-machine.test.ts proves the walk asks the right desk, against chains written
+ * out as lists. What needs a server is the thing the story is actually about: the chain
+ * changing underneath a request that is already in somebody's queue, which is a thing an HR
+ * Administrator does with a form and no developer — FR 31 — and which no pure function can
+ * be shown doing.
+ *
+ * And the half a service cannot promise at all: that a request marked approved with a stage
+ * unasked is refused by the database, whatever wrote it.
+ */
+describe('leave that is agreed only once every stage has agreed', () => {
+  /**
+   * The story in one test: a stage added in front of a request in flight is still asked.
+   *
+   * The manager has signed and the request is with HR. The chain becomes CEO, manager, HR.
+   * Under LMS 314's walk the desk after HR was nothing, so HR's approval would have agreed
+   * the leave outright, with the Chief Executive — the stage the policy now names — never
+   * seeing it, and the employee told it was theirs to take.
+   */
+  it('asks a stage added in front of where the request had got to', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    await rewriteTheAnnualChain('CEO', 'MANAGER', 'HR');
+
+    const advanced = await requests.approve(asOfficer(), request.id);
+
+    expect(advanced.request.status).toBe('SUBMITTED');
+    expect(advanced.request.awaitingApprovalFrom).toBe('CEO');
+    /* And no days were taken, because nothing was agreed. */
+    expect(advanced.entry).toBeNull();
+    expect(advanced.balance.pending).toBe(6);
+    expect(advanced.balance.taken).toBe(0);
+  });
+
+  /* And it is agreed once that stage signs too, which is the criterion said forwards. */
+  it('and agrees it once that stage has approved as well', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    await rewriteTheAnnualChain('CEO', 'MANAGER', 'HR');
+    await requests.approve(asOfficer(), request.id);
+
+    const approved = await requests.approve(asTheChiefExecutive(), request.id);
+
+    expect(approved.request.status).toBe('APPROVED');
+    expect(approved.request.awaitingApprovalFrom).toBeNull();
+    expect(approved.balance.taken).toBe(6);
+    expect(approved.balance.pending).toBe(0);
+  });
+
+  /* And a desk that has signed is never asked twice, whatever the chain is reordered to.
+     LMS 315 wrote its deferred check around the possibility that it could be, and
+     `leave_request_decision_once_per_desk` is what retires that. */
+  it('and never asks a desk that has already approved', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    await rewriteTheAnnualChain('HR', 'MANAGER');
+
+    const advanced = await requests.approve(asOfficer(), request.id);
+
+    /* Manager is first in the new chain and has signed, so the walk skips it and finds
+       nobody left rather than sending the request back to a desk it came from. */
+    expect(advanced.request.status).toBe('APPROVED');
+
+    const desks = (await requests.decisionsFor(asThemselves(), request.id)).map(
+      (decision) => decision.onBehalfOf,
+    );
+    expect(desks).toEqual(['MANAGER', 'HR']);
+  });
+
+  /* -------------------------------------------- what a person is told. FR 41 */
+
+  /**
+   * And the person is told it is not agreed, in a sentence that says so first.
+   *
+   * The story's "so that". A screen showing the newest decision would say "approved by your
+   * line manager", which is true and is the exact belief this story is written against.
+   */
+  it('tells the person it is not theirs to take until every stage has agreed', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id);
+
+    const waiting = await requests.progressFor(asThemselves(), request.id);
+
+    expect(waiting.agreed).toBe(false);
+    expect(waiting.approvedBy).toEqual(['MANAGER']);
+    expect(waiting.stillToApprove).toEqual(['HR']);
+    expect(waiting.inWords).toMatch(/not agreed yet/);
+
+    await requests.approve(asOfficer(), request.id);
+
+    const agreed = await requests.progressFor(asThemselves(), request.id);
+
+    expect(agreed.agreed).toBe(true);
+    expect(agreed.stillToApprove).toEqual([]);
+    expect(agreed.inWords).toMatch(/agreed and is yours to take/);
+  });
+
+  /* Read by whoever may read the request, and by nobody else — a decision is the
+     explanation of a status, and standing to see one without the other is standing to see
+     half an answer. */
+  it('and where it stands is read by the same people the request is', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    for (const who of [asThemselves(), asTheirManager(), asOfficer()]) {
+      await expect(requests.progressFor(who, request.id)).resolves.toMatchObject({
+        agreed: false,
+      });
+    }
+
+    await expect(requests.progressFor(asAColleague(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+  });
+
+  /* -------------------------- a rejection at the last stage ends it. FR 42 */
+
+  /**
+   * The story's second criterion. Every earlier stage approved, the last one did not, and
+   * the request is refused rather than partly agreed.
+   *
+   * The days come back in full and at once — they were still `pending`, because only the
+   * last approval commits — and the manager's approval stays on the record as what it was:
+   * a stage that agreed to leave the company did not, in the end, give.
+   */
+  it('ends the workflow when the last stage refuses, whatever the earlier ones said', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id, 'Cover is arranged');
+
+    const refused = await requests.refuse(asOfficer(), request.id, WHY_NOT);
+
+    expect(refused.request.status).toBe('REFUSED');
+    expect(refused.request.awaitingApprovalFrom).toBeNull();
+    expect(refused.balance.available).toBe(20);
+    expect(refused.balance.pending).toBe(0);
+    expect(refused.balance.taken).toBe(0);
+
+    const progress = await requests.progressFor(asThemselves(), request.id);
+
+    expect(progress.agreed).toBe(false);
+    expect(progress.inWords).toMatch(/was refused and is not yours to take/);
+  });
+
+  /* And both decisions are on the record, in the order they were made. The approval that
+     did not carry the day is not deleted by the refusal — it is what an appeal is worked
+     from, and "my manager agreed to this" is a true thing to be able to show. */
+  it('and keeps the approvals that came before it', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id, 'Cover is arranged');
+    await requests.refuse(asOfficer(), request.id, WHY_NOT);
+
+    expect(
+      (await requests.decisionsFor(asThemselves(), request.id)).map((decision) => [
+        decision.onBehalfOf,
+        decision.action,
+      ]),
+    ).toEqual([
+      ['MANAGER', 'APPROVE'],
+      ['HR', 'REFUSE'],
+    ]);
+  });
+
+  /* And nothing took any days for it, at any point. A DEDUCTION is written by the last
+     approval and by nothing else, so a request refused at the last stage never had one. */
+  it('and no days were ever taken for it', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    await requests.refuse(asOfficer(), request.id, WHY_NOT);
+
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'DEDUCTION' AND leave_request_id = $1",
+          [request.id],
+        )
+      ).rows[0].count,
+    ).toBe('0');
+  });
+
+  /* ------------------------------------- and what the database holds anyway */
+
+  /**
+   * A request marked approved with a stage unasked is refused at COMMIT, by anybody.
+   *
+   * The second writer this guards against is honest: a data fix approving a backlog, an
+   * import that sets a status while correcting something else. Each looks reasonable, and
+   * each would tell somebody their leave was agreed by a desk that never saw it.
+   *
+   * The writer here satisfies every rule that already existed — a decision at the desk it
+   * was standing on, a DEDUCTION for the days — so what refuses it is the one this story
+   * adds.
+   */
+  it('cannot be approved by a writer that skips a stage', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await admin.query('BEGIN');
+    await admin.query(
+      `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of)
+       VALUES ($1, 'APPROVE', 'MANAGER')`,
+      [request.id],
+    );
+    await admin.query(
+      `UPDATE leave_request SET status = 'APPROVED', awaiting_approval_from = NULL
+        WHERE id = $1`,
+      [request.id],
+    );
+    await admin.query(
+      `INSERT INTO leave_ledger_entry
+         (employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+       VALUES ($1, $2, $3, 'DEDUCTION', -6, 'Days taken', $4)`,
+      [people.officer, annualId, y2026.id, request.id],
+    );
+
+    await expect(admin.query('COMMIT')).rejects.toMatchObject({
+      constraint: 'leave_request_is_approved_by_every_stage',
+    });
+
+    expect(await requests.byId(asThemselves(), request.id)).toMatchObject({
+      status: 'SUBMITTED',
+      awaitingApprovalFrom: 'MANAGER',
+    });
+  });
+
+  /* And the refusal names the stage that never saw it, because the reader is whoever is
+     holding the second writer and that is the whole of what they need to know. */
+  it('and the refusal names the stage that was never asked', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await admin.query('BEGIN');
+    await admin.query(
+      `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of)
+       VALUES ($1, 'APPROVE', 'MANAGER')`,
+      [request.id],
+    );
+    await admin.query(
+      `UPDATE leave_request SET status = 'APPROVED', awaiting_approval_from = NULL
+        WHERE id = $1`,
+      [request.id],
+    );
+
+    await expect(admin.query('COMMIT')).rejects.toThrow(/approved without HR/);
+  });
+
+  /**
+   * And days can never be taken for leave that has ended. FR 42, where no service reaches.
+   *
+   * The story's second criterion said to the ledger. The request is over, its days are back
+   * in the balance, and a second writer posting a DEDUCTION against it — a retry, an import,
+   * a reconciliation that decided a request "looked approved" — would charge somebody for
+   * leave they were turned down for. The balance would reconcile perfectly afterwards, which
+   * is what makes it the kind of defect design principle 1 cannot catch on its own.
+   */
+  it('and days cannot be taken for a request that was refused', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+    await requests.refuse(asOfficer(), request.id, WHY_NOT);
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_ledger_entry
+           (employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+         VALUES ($1, $2, $3, 'DEDUCTION', -6, 'Days taken', $4)`,
+        [people.officer, annualId, y2026.id, request.id],
+      ),
+    ).rejects.toMatchObject({
+      constraint: 'leave_ledger_entry_takes_no_days_for_ended_leave',
+    });
+  });
+
+  /* And the same for the other two endings, which are one movement with three names — the
+     list is `RELEASING_STATUSES` and the suite asserts the trigger holds the same three. */
+  it.each([
+    ['withdrawn', (id: string) => requests.withdraw(asThemselves(), id)],
+    ['cancelled', (id: string) => requests.cancel(asOfficer(), id)],
+  ] as const)('and not for one that was %s either', async (_ending, end) => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await end(request.id);
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_ledger_entry
+           (employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+         VALUES ($1, $2, $3, 'DEDUCTION', -6, 'Days taken', $4)`,
+        [people.officer, annualId, y2026.id, request.id],
+      ),
+    ).rejects.toMatchObject({
+      constraint: 'leave_ledger_entry_takes_no_days_for_ended_leave',
+    });
+  });
+
+  /**
+   * And the three it names are the three the domain calls an ending.
+   *
+   * The pairing every list in this schema has with its counterpart in `/domain`. A status
+   * added to `RELEASING_STATUSES` without being added here is leave that has ended and can
+   * still be charged for.
+   */
+  it('and the endings it refuses are the ones the code calls an ending', async () => {
+    const { rows } = await admin.query<{ definition: string }>(
+      `SELECT pg_get_functiondef(oid) AS definition
+         FROM pg_proc
+        WHERE proname = 'refuse_days_taken_for_leave_that_ended'`,
+    );
+
+    expect(rows).toHaveLength(1);
+
+    for (const status of RELEASING_STATUSES) {
+      expect(rows[0].definition).toContain(`'${status}'`);
+    }
+  });
+
+  /**
+   * And a request still being decided is deliberately not refused.
+   *
+   * The rule this story declined to make, named rather than left to be discovered. The
+   * converse of `leave_request_takes_its_days` — days committed belong to leave that was
+   * approved — is truer and stronger, and it refuses every use of `BalanceService.commit`,
+   * the primitive LMS 314 kept on purpose beside the approval door. Taking a movement away
+   * from the ledger is somebody's decision rather than a side effect of tightening the
+   * workflow, so it stays permitted and this says so out loud.
+   */
+  it('but a request still being decided is not refused, which is a boundary rather than a gap', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_ledger_entry
+           (employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+         VALUES ($1, $2, $3, 'DEDUCTION', -6, 'Days taken', $4)`,
+        [people.officer, annualId, y2026.id, request.id],
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  /* And one desk decides one request once, on every connection. The walk never asks twice
+     since LMS 316; this is what keeps that from being a promise the application makes to
+     itself. */
+  it('and one desk decides one request exactly once', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of)
+         VALUES ($1, 'APPROVE', 'MANAGER')`,
+        [request.id],
+      ),
+    ).rejects.toMatchObject({ constraint: 'leave_request_decision_once_per_desk' });
+  });
+
+  /**
+   * Puts a different chain on annual leave, the way an HR Administrator would. FR 31.
+   *
+   * The same two statements the routing suite uses, and for the same reason: a chain is
+   * replaced as a whole, and `leave_type_approval_chain_is_whole` is deferred so that only
+   * the state which will be stored is judged. The outer `beforeEach` puts the shipped chains
+   * back afterwards.
+   */
+  async function rewriteTheAnnualChain(...desks: readonly string[]): Promise<void> {
+    await admin.query('BEGIN');
+    await admin.query('DELETE FROM leave_type_approval_step WHERE leave_type_id = $1', [annualId]);
+
+    for (const [index, desk] of desks.entries()) {
+      await admin.query(
+        `INSERT INTO leave_type_approval_step (leave_type_id, step_order, approver_role)
+         VALUES ($1, $2, $3)`,
+        [annualId, index + 1, desk],
+      );
+    }
+
+    await admin.query('COMMIT');
+  }
+
+  /* Kwame Asante, the one employee with no line manager. FR 04. */
+  function asTheChiefExecutive() {
+    return signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
+  }
 });

@@ -3225,10 +3225,12 @@ whose shape LMS 314 settled:
 | `leave_request_records_its_decision` | a move at a desk that recorded no decision, including the intermediate one that changes no status at all | a withdrawal or a cancellation, which decide nothing |
 
 It reads the *latest* decision rather than merely checking that one exists, and that is not
-belt and braces: a chain reordered under a live request can ask the same desk twice — FR 31
-lets an HR Administrator reorder it — so an `EXISTS` would be satisfied by that desk's
-decision from an hour ago while the second approval recorded nothing. The same case is why
-there is no unique index on `(request, desk)`: it would be a rule FR 31 can break.
+belt and braces: it is the check that a decision explains *this* move rather than some
+earlier one. LMS 315 also declined a unique index on `(request, desk)` on the grounds that a
+chain reordered under a live request could ask the same desk twice — true of the walk it was
+written against, and [no longer true](#every-stage-must-approve): `nextUnapproved()` never
+returns a desk that has signed, and `leave_request_decision_once_per_desk` now holds that in
+the schema.
 
 **Append only, and deliberately not audited.** `refuse_update()` and `refuse_delete()` hold
 against the owner as well, and `lms_app` is never granted more than `SELECT` and `INSERT`. A
@@ -3252,7 +3254,98 @@ to see half an answer.
 
 **What is deliberately not here.** That somebody is *told* their leave was refused is FR 45's
 notification and a story of its own; what this one guarantees is that there is something true
-to tell them. Disputing a refusal is FR 41, and it reads these rows rather than adding any.
+to tell them.
+
+---
+
+### Every stage must approve
+
+**Leave is agreed when every stage has agreed it, and not before.** FR 41, FR 42, LMS 316.
+The routing gets a request to the right desks and the decisions record what each said; this
+is the story that makes "approved" mean what the employee thinks it means.
+
+**The walk asks which stage has not signed, not which desk comes next.** That is the whole
+change, and it is one line. LMS 314 walked with `approverAfter(chain, theDeskItWasAt)` — a
+question about a *position* in a list — against a cursor on the request. It is right while
+the chain stands still, and FR 31 says it need not stand still.
+
+The case it gets wrong is **a stage added in front of a request in flight**. Annual leave
+goes manager then HR. A request is with HR because the manager has signed. An administrator
+changes the chain to CEO, manager, HR. The desk after HR is nothing, so HR's yes approves the
+leave outright, the Chief Executive never sees a request the policy now routes to them, and
+the person is told their leave is agreed. That does not arrive as a bug report. It arrives as
+somebody on an aeroplane.
+
+`nextUnapproved()` cannot make that mistake, because it is a question about the whole chain:
+the first stage in it with no approval recorded. Two things follow that are worth naming
+rather than discovering.
+
+**It is only askable because of `leave_request_decision`.** Until [LMS
+315](#approving-or-rejecting-at-a-stage) made decisions rows, "has every stage approved" had
+no answer in this system — there was a cursor saying where a request had got to and nothing
+saying who had actually signed. The two agree until somebody edits a chain.
+
+**And nobody is asked twice.** A desk that has signed is skipped, so a chain reordered
+mid-flight cannot send a request back to a desk it came from. That is what retired LMS 315's
+caveat and let `leave_request_decision_once_per_desk` be added.
+
+**The cursor stays.** `awaiting_approval_from` is what an approver's queue reads (FR 40) and
+what the policy resolves to a person, and it is now a record of where the request was *sent*
+rather than the thing that decides where it goes next.
+
+**`approverAfter()` and `isFinalApprover()` are gone rather than kept beside the new walk.**
+Two answers to "who is next" is one answer waiting to disagree, and the second one is wrong.
+Being last in the list is likewise not the same as being the last to sign, once a stage can
+be added in front; whether an approval was the last word is `isTheLastWord()`, which reads
+the outcome of the walk rather than the shape of the list.
+
+**And the schema says it too**, because the application is not always the writer:
+
+| | Covers | Does not cover |
+|---|---|---|
+| `leave_request_is_approved_by_every_stage`, deferred | a request approved with a stage unasked, whatever wrote it | a chain that grows *after* approval |
+| `leave_ledger_entry_takes_no_days_for_ended_leave`, deferred | days taken for leave that was refused, withdrawn or cancelled | days taken for a request still being decided |
+| `leave_request_decision_once_per_desk`, a unique index | one desk deciding twice on one request | two requests decided by one desk |
+
+The first is judged against the chain **as it stands at the moment of approval** — the same
+reading the application makes, and the only one that can be right: a request approved last
+March under a two-stage chain is not retrospectively unapproved by a third stage added in
+November. Order is deliberately not checked. The rule is that every stage approved, not that
+they approved in the order the chain lists them; the order is the routing's, and a check here
+would refuse a legitimate approval the afternoon somebody reorders a chain mid-flight.
+
+**Final-stage rejection ends the workflow**, and the earlier approvals do not survive it as
+anything but a record. A refusal at any stage — the last included — leaves the request
+`REFUSED`, releases the full hold at once (the days were still `pending`, because only the
+last approval commits), and the manager's approval stays on the file as what it was: a stage
+that agreed to leave the company did not, in the end, give. Nothing moves out of `REFUSED`,
+and no `DEDUCTION` was ever written.
+
+**What this story declined to do.** The tempting second trigger is the exact converse of
+`leave_request_takes_its_days` — days committed belong to leave that was approved — which
+would make a `DEDUCTION` and an `APPROVED` status exist only together. It is truer and
+stronger, and it refuses every use of `BalanceService.commit`, the primitive LMS 314 kept on
+purpose beside the approval door ("a story that commits days for a reason other than a chain
+running out will want it"). Taking a movement away from the ledger is somebody's decision to
+make rather than a side effect of tightening the workflow — the same judgement LMS 314 made
+about not narrowing `leaveRequestPolicy.refuse` to the chain. So the trigger is about
+endings, and the converse is one line for the story that removes the primitive.
+
+**And the person is told where it stands, in a sentence that answers first.**
+`progressFor()` reads the four facts that could mislead them — the status, the desk, the
+decisions, the chain — and returns one of them: `agreed`. A screen showing the newest
+decision would say "approved by your line manager", which is true and is exactly the belief
+this story exists to prevent, so the two halves are one string composed once rather than two
+fields a screen may show one of.
+
+`agreed` is the status and not an arithmetic over today's chain, which matters for leave
+approved under a chain that has since grown: the days are taken, everybody it was routed to
+signed, and recomputing the answer would tell the person their leave is not agreed after all.
+What was recorded is what happened. `stagesMissing` is where that difference is reported
+rather than hidden.
+
+**Still not here.** Being *told* is FR 45's notification. Disputing a refusal is FR 41's
+appeal, and it reads these rows rather than adding any.
 
 ---
 

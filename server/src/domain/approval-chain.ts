@@ -43,6 +43,20 @@
  * and the reporting line in hand, and belongs to Phase 3; see the note at the
  * foot of this file.
  *
+ * ## The walk asks which desk has not signed, rather than which comes next
+ *
+ * LMS 316, and it is the one thing in this file that has changed since it was
+ * written. `approverAfter(chain, theDeskItWasAt)` was the walk from LMS 314 and
+ * it is gone: it answers correctly only while the chain stands still, and FR 31
+ * says it need not. {@link nextUnapproved} and {@link everyStageApproved} are
+ * what replaced it, and the argument is in full on the first of them.
+ *
+ * `isFinalApprover` went with it, for the same reason and one worth stating on
+ * its own: being last in the list is not the same as being the last to sign once
+ * a stage can be added in front of a request in flight. Whether an approval was
+ * the last word is `isTheLastWord()` in ./leave-request.ts, which reads the
+ * outcome of the walk rather than the shape of the list.
+ *
  * ## The default is data, and is here too
  *
  * {@link DEFAULT_APPROVAL_CHAIN} is manager then HR — the story's second
@@ -239,47 +253,96 @@ export function isApprovable(chain: readonly ApproverRole[]): boolean {
  * Undefined rather than a throw, because "is there anybody" is a fair question
  * with an answer; the refusal belongs where somebody is actually trying to raise
  * a request, which is {@link assertSomebodyApprovesIt} in ./leave-type.ts.
+ *
+ * It is the front of the list, which is a question about the *chain*, where
+ * {@link nextUnapproved} is a question about a chain and what has happened to a
+ * request. They give the same answer for a request nobody has decided yet —
+ * which every new one is — and the unit suite asserts as much, so the two cannot
+ * come apart while a submission goes through this one.
  */
 export function firstApprover(chain: readonly ApproverRole[]): ApproverRole | undefined {
   return chain[0];
 }
 
 /**
- * The desk after the one that has just said yes, or undefined when that was the
- * last of them and the request is approved.
+ * The first desk in this chain that has not approved yet, or undefined when
+ * every one of them has. FR 41, FR 42. LMS 316.
  *
  * The whole of the walk, and it is here rather than in the request workflow of
  * Phase 3 for the reason {@link worksOn} is here rather than in the leave
- * calculator: it needs nothing but the chain and the stage just completed, so it
- * can be read and tested without a request, a person or a database. What the
+ * calculator: it needs nothing but the chain and the desks that have signed, so
+ * it can be read and tested without a request, a person or a database. What the
  * workflow adds is who the desk resolves to and what happens when nobody is
  * there.
  *
- * A desk that is not in this chain gets undefined rather than the first stage,
- * which is the cautious reading and the one that fails loudly: an approval
- * recorded against a chain it does not belong to is a bug, and treating it as
- * "then we are done" leaves it visible in a request that was approved by the
- * wrong desk, rather than quietly restarting the chain.
+ * ## It replaced `approverAfter`, and the difference is the story
+ *
+ * LMS 314 walked the chain with `approverAfter(chain, theDeskItWasAt)` — "the
+ * one after the one that just signed" — and kept a cursor on the request saying
+ * where it had got to. That is right whenever the chain stands still, and the
+ * chain does not have to: FR 31 gives it to an HR Administrator, who may edit it
+ * while a request is in the queue.
+ *
+ * The case it gets wrong is a stage added **in front of** where a request is
+ * standing. Annual leave goes manager then HR, a request is with HR because the
+ * manager has signed, and the administrator changes the chain to CEO, manager,
+ * HR. The cursor says HR; the desk after HR is nothing; so HR's yes approves the
+ * leave and the Chief Executive — a stage the policy now names — never sees it.
+ * The employee is told their leave is agreed, which is the sentence LMS 316
+ * exists to make true.
+ *
+ * Asking instead which desk has *not* signed cannot make that mistake, because
+ * it is a question about the whole chain rather than about one position in it.
+ * The cursor stays — it is what an approver's queue reads, FR 40, and what the
+ * policy resolves to a person — but it is a record of where the request was sent
+ * rather than the thing that decides where it goes next.
+ *
+ * ## Order, and what it is and is not doing
+ *
+ * The first unapproved desk **in chain order**, so a request still travels the
+ * chain the way an HR Administrator wrote it. What the order does not do is
+ * decide when the request is agreed: that is "none left", which is a question
+ * about a set. A chain reordered under a live request routes by the new order
+ * and still collects every signature.
+ *
+ * A desk that has approved is never returned, which is what stops anybody being
+ * asked twice — {@link approverAfter} could not promise that once the order
+ * could change, and `leave_request_decision_once_per_desk` now holds it in the
+ * schema.
+ *
+ * Approvals from desks the chain does not name are ignored rather than refused
+ * here. They are refused where somebody is actually trying to approve — see
+ * `ApprovalChainChanged` — and this function is a question about the chain's own
+ * stages, so a signature from outside it is simply not one of them.
  */
-export function approverAfter(
+export function nextUnapproved(
   chain: readonly ApproverRole[],
-  approved: ApproverRole,
+  approved: readonly ApproverRole[],
 ): ApproverRole | undefined {
-  const at = chain.indexOf(approved);
-
-  return at === -1 ? undefined : chain[at + 1];
+  return stagesNotApproved(chain, approved)[0];
 }
 
 /**
- * Whether that desk is the last stage, so its yes is the decision rather than a
- * step towards one.
+ * Every stage of this chain that has not approved, in chain order. FR 41. LMS
+ * 316's first criterion, as a list rather than as a verdict.
  *
- * What the notification of FR 45 turns on: the manager who approves annual leave
- * is telling HR to look at it, and the HR officer who approves it afterwards is
- * telling the employee they may book the flight.
+ * The walk itself, and {@link nextUnapproved} is its first element — one pass
+ * over the list with two readings, rather than two passes that can disagree.
+ * "Every stage has approved" is this coming back empty, and it is written that
+ * way at each of the two places that ask rather than given a predicate of its
+ * own: both of them want the list as well, to route to or to say aloud.
+ *
+ * **An empty chain gives an empty list**, so a type nobody approves reads as
+ * fully approved. That is not a hole for this function to plug: a request for
+ * such a type is refused at submission by `assertSomebodyApprovesIt`, with the
+ * type named, which is where a person can act on it. The question "is there a
+ * chain at all" is {@link isApprovable} and is asked there.
  */
-export function isFinalApprover(chain: readonly ApproverRole[], approved: ApproverRole): boolean {
-  return chain.length > 0 && chain[chain.length - 1] === approved;
+export function stagesNotApproved(
+  chain: readonly ApproverRole[],
+  approved: readonly ApproverRole[],
+): ApproverRole[] {
+  return chain.filter((desk) => !approved.includes(desk));
 }
 
 /** Whether that desk is asked at all. */
