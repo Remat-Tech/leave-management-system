@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DayCount } from '../../src/domain/leave-calculator.js';
 import {
   assertItCostsSomething,
+  assertTheDaysAreThere,
   blocksTheCalendar,
   countingBasisInWords,
   InvalidLeaveRequest,
@@ -10,8 +11,10 @@ import {
   LeaveCrossesAYearEnd,
   LeaveOverlapsAnother,
   LIVE_STATUSES,
+  NotEnoughDays,
   noticeGiven,
   periodsOverlap,
+  QUOTE_WARNINGS,
   quoteFor,
   reachesPastTheEndOf,
   reasonForReservation,
@@ -765,6 +768,180 @@ describe('the refusal, which names the leave already in the way', () => {
     expect(refusal.conflict).toBeUndefined();
     expect(refusal.message).toContain('at the same moment');
     expect(refusal.message).toContain('reload');
+  });
+});
+
+/* --------------------------------------------------- days that are not there */
+
+/**
+ * Told at once that the days are not there. FR 14, NFR USA 03. LMS 305.
+ *
+ * The rule is four lines and the sentence is the story, so most of what follows is about
+ * the sentence. A person who is refused has to be able to act without going and looking
+ * anything up — the whole point of "at once" is that the next thing they do is fix the
+ * request, not open another screen — and that is a property of what the message says
+ * rather than of the comparison that produced it.
+ *
+ * `daysToReserve` in ../../src/domain/balance.ts refuses the same thing inside the lock
+ * and is the guarantee; ../integration/leave-request.test.ts is where the two are held
+ * to the same answer, because only a real balance can show that.
+ */
+describe('a request the balance does not hold', () => {
+  const SHORT = leaveType({ code: 'ANNUAL_SHORT', name: 'Annual Leave' });
+
+  function refuse(availableNow: number): NotEnoughDays {
+    try {
+      assertTheDaysAreThere(SHORT, PERIOD, SEVEN_OF_NINE, availableNow);
+    } catch (error) {
+      return error as NotEnoughDays;
+    }
+
+    throw new Error(`${availableNow} days was not refused, and seven were asked for.`);
+  }
+
+  it('is refused when it costs more than is left', () => {
+    expect(() => assertTheDaysAreThere(SHORT, PERIOD, SEVEN_OF_NINE, 6)).toThrow(NotEnoughDays);
+  });
+
+  /* Seven days against seven is the boundary, and it is spendable. A balance is what may
+     be booked, so a request that empties it exactly is an ordinary request. */
+  it('and is allowed when it costs exactly what is left', () => {
+    expect(() => assertTheDaysAreThere(SHORT, PERIOD, SEVEN_OF_NINE, 7)).not.toThrow();
+    expect(() => assertTheDaysAreThere(SHORT, PERIOD, SEVEN_OF_NINE, 8)).not.toThrow();
+  });
+
+  /**
+   * FR 32a, §8.6b. A type that may be exceeded is not refused, and the flag is a column.
+   *
+   * Sick leave's allowance is the point at which a medical certificate is asked for
+   * rather than a cap, so the balance going below nought is the design. Nothing here
+   * compares a leave type's code to anything — design principle 5 — and this is the pair
+   * that shows the column doing the work: same period, same count, same empty balance,
+   * two answers.
+   */
+  it('and is not refused at all for a type that may go past its allowance', () => {
+    const sick = leaveType({
+      code: 'SICK_TEST',
+      name: 'Sick Leave',
+      exceedableWithDocument: true,
+    });
+
+    expect(() => assertTheDaysAreThere(sick, PERIOD, SEVEN_OF_NINE, 0)).not.toThrow();
+    expect(() => assertTheDaysAreThere(SHORT, PERIOD, SEVEN_OF_NINE, 0)).toThrow(NotEnoughDays);
+  });
+
+  /* The story's second criterion, and the one it is named for. */
+  it('and the message states the figure that is available', () => {
+    expect(refuse(3).message).toBe(
+      'This is 7 days of Annual Leave and you have 3 left — 4 days more than the balance ' +
+        'holds. Ask for 3 days or fewer, or speak to HR if the balance itself looks wrong.',
+    );
+  });
+
+  /**
+   * And the second sentence is the useful one, exactly as `LeaveCrossesAYearEnd`'s is.
+   *
+   * A refusal that only says no leaves somebody at a form guessing, and the guess it
+   * produces is "try six" followed by a second refusal. So the figure they may actually
+   * ask for is in the sentence.
+   */
+  it('and says what could be asked for instead', () => {
+    expect(refuse(3).couldAskFor).toBe(3);
+    expect(refuse(3).message).toContain('Ask for 3 days or fewer');
+  });
+
+  /**
+   * And what it offers is a whole number of days. FR 24.
+   *
+   * §8.6d pro rates a mid year joiner to a fraction, so a balance of 2.5 is ordinary.
+   * Two days is what somebody may actually book against it, and telling them to ask for
+   * 2.5 would be telling them to do the one thing `requireWholeDays` refuses.
+   */
+  it('and floors a fractional balance to the days that can actually be booked', () => {
+    expect(refuse(2.5).couldAskFor).toBe(2);
+    expect(refuse(2.5).message).toContain('Ask for 2 days or fewer');
+  });
+
+  /* And the shortfall is not a figure with a tail of decimal places on it. `7 - 2.52` in
+     doubles is 4.48 and a little, which is not a number to show anybody. */
+  it('and says how short it is, to the precision a balance is held to', () => {
+    expect(refuse(2.52).shortBy).toBe(4.48);
+    expect(refuse(2.52).message).toContain('4.48 days more');
+  });
+
+  /**
+   * And where there is nothing at all, it stops offering.
+   *
+   * "Ask for 0 days or fewer" is an invitation to do something `requireWholeDays`
+   * refuses, and a negative balance — legitimately left there by an exceedable type —
+   * would produce worse. The sentence says what is true and stops.
+   */
+  it('and offers nothing where there is nothing to offer', () => {
+    expect(refuse(0).message).toContain('nothing left to book against');
+    expect(refuse(0).message).not.toContain('Ask for');
+    expect(refuse(0).couldAskFor).toBe(0);
+
+    expect(refuse(-2).couldAskFor).toBe(0);
+    expect(refuse(-2).message).toContain('you have -2 left');
+  });
+
+  /* A day is a day and not "1 days", in both halves of the sentence. */
+  it('and counts in words that agree with the number', () => {
+    const oneDay: DayCount = { days: 1, calendarDays: 1, free: [] };
+
+    expect(() => assertTheDaysAreThere(SHORT, PERIOD, oneDay, 0)).toThrow(
+      /This is 1 day of Annual Leave/,
+    );
+    expect(refuse(6).message).toContain('1 day more than the balance holds');
+  });
+
+  it('and carries the arithmetic, so a screen need not parse the sentence', () => {
+    const refusal = refuse(3);
+
+    expect(refusal.requested).toBe(7);
+    expect(refusal.available).toBe(3);
+    expect(refusal.shortBy).toBe(4);
+    expect(refusal.leaveTypeId).toBe(SHORT.id);
+    expect(refusal.period).toEqual(PERIOD);
+  });
+
+  /**
+   * And the code is the quote's warning code, deliberately.
+   *
+   * The warning and the refusal are one condition seen at two moments — before somebody
+   * commits, where it is worth saying, and as they do, where it stops them. A form that
+   * highlights the balance on the quote highlights it on the refusal with the same
+   * branch, rather than drawing them as two unrelated problems.
+   */
+  it('and the error code a client branches on is the quote warning code', () => {
+    expect(refuse(3).code).toBe('NOT_ENOUGH_DAYS');
+    expect([...QUOTE_WARNINGS]).toContain(refuse(3).code);
+  });
+
+  /**
+   * And the quote and the refusal open with the same clause.
+   *
+   * They are the same fact told twice and a person may well meet both, in that order.
+   * Two descriptions of one figure is how somebody comes to believe they are two
+   * problems; what differs is what follows, which is the half each exists for.
+   */
+  it('and opens with the clause the quote warns in', () => {
+    const warning = quoteFor({
+      type: SHORT,
+      period: PERIOD,
+      count: SEVEN_OF_NINE,
+      availableNow: 3,
+      daysOfNotice: 30,
+    }).warnings.find((each) => each.code === 'NOT_ENOUGH_DAYS');
+
+    const shared = 'This is 7 days of Annual Leave and you have 3 left';
+
+    expect(warning?.message).toContain(shared);
+    expect(refuse(3).message).toContain(shared);
+
+    /* And then they diverge, because one may still be submitted and the other may not. */
+    expect(warning?.message).toContain('cannot be submitted as it stands');
+    expect(refuse(3).message).toContain('Ask for 3 days or fewer');
   });
 });
 

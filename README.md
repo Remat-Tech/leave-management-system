@@ -2664,6 +2664,11 @@ leave is sometimes needed at short notice, and a system that refused it is a sys
 work around — so a short-notice request is submitted and the quote says by how much. FR
 13's documentation is an attachment and there is nowhere to attach one until Phase 4.
 
+**The balance is the one that both warns and refuses**, and which it does depends on when
+it is asked: the quote reports the shortfall so somebody can decide what to ask for, and
+the submission refuses it. Same condition, same error code, two moments — see [days that
+are not there](#days-that-are-not-there).
+
 **What this story deliberately does not bring**, each named so it is inherited rather
 than rediscovered:
 
@@ -2800,6 +2805,62 @@ written anyway for the same reason; the integration suite reads it back out of
 
 ---
 
+### Days that are not there
+
+**Told at once, and told the figure.** FR 14, NFR USA 03, LMS 305. The story is somebody
+finding out at the form that they do not have the days, rather than waiting days in an
+approver's queue to be turned down for a reason the system knew before they clicked. The
+check itself is a comparison; everything interesting about the story is in what the
+refusal *says*.
+
+> This is 7 days of Annual Leave and you have 3 left — 4 days more than the balance holds.
+> Ask for 3 days or fewer, or speak to HR if the balance itself looks wrong.
+
+**The second sentence is the useful one**, the same way it is in the [cross-year
+refusal](#dates-that-are-obviously-wrong). A refusal that only says no leaves somebody
+guessing, and the guess it produces is "try six" followed by a second refusal. So the
+figure they may actually ask for is in the sentence — and it is **floored to a whole
+number**, because §8.6d pro rates a mid year joiner to a fraction and a balance of 2.5 is
+two days somebody may book. Telling them to ask for 2.5 would be telling them to do the
+one thing `requireWholeDays()` refuses. Where the floor is nought the sentence stops
+offering rather than inviting a request for no days.
+
+**And the leave type is named, because a balance is per type.** "You have 3 left" is a
+figure somebody will check against the wrong number on their own leave page.
+
+| | Covers | Does not cover |
+|---|---|---|
+| `assertTheDaysAreThere()`, from the submission path | the sentence — the leave type, the figure, the shortfall, what to ask for instead — for everybody who is not in a race | a balance spent between the read and the write; it holds no lock |
+| `daysToReserve()`, inside `BalanceService`'s lock | the same rule against a balance held still, which is the only check that binds | saying anything about leave; it sees a number of days and a balance, and `BalanceOverdrawn` reads accordingly |
+
+This is the same two-altitude arrangement as [the overlap
+check](#leave-over-leave-already-booked) and its exclusion constraint, and the division
+is the same one: **the check that cannot be beaten is not the check that can speak.**
+`daysToReserve()` is handed a figure and a balance and knows nothing about leave types or
+periods, which is correct for the ledger and useless to a form. The service's check knows
+both, and runs first. The integration suite submits one request past both of them and
+asserts they agree on the available figure, the days requested and the shortfall, so
+neither can be loosened alone.
+
+**The quote reports rather than refuses**, and that is deliberate. A quote is what
+somebody reads to *decide* what to ask for, so it shows `availableNow`, shows
+`availableAfter` below nought where that is the truth, and warns. Refusing there would be
+declining to tell a person how far short they are. The warning carries `NOT_ENOUGH_DAYS`,
+**which is also the refusal's error code** — one condition seen at two moments, so a form
+highlights the balance with the same branch either way rather than drawing them as two
+unrelated problems. Both messages open with the same clause, from
+`daysAgainstTheBalance()`, for the same reason.
+
+**Sick leave is not refused at all.** FR 32a and §8.6b: `exceedable_with_document` makes
+the allowance the point at which a medical certificate is asked for rather than a cap, so
+the balance goes below nought and the leave is granted. Read off the column by
+`balanceMayBeExceededWithDocument()` — which has sat in `/domain/leave-type.ts` since LMS
+201 saying the check "belongs to the submission path, which is the only thing that knows
+what the balance is", and this is that path. No leave type code is compared to anything;
+design principle 5.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.
@@ -2920,6 +2981,15 @@ is the racing second submission made deterministic. It also reads
 `leave_request_never_overlaps` back out of `pg_constraint` and asserts its `WHERE`
 predicate is exactly `LIVE_STATUSES` — the check that fails on the afternoon the
 approval story adds a status to one list and not the other.
+
+Since LMS 305 it also carries the balance refusal, and what needs a database there
+is that the figure in the sentence is the one in the table: it holds six days
+against the balance and asserts the *next* refusal names fourteen rather than the
+entitlement. The same suite submits one over-long request past both checks — the
+service's and `daysToReserve()`'s, reached by going straight to the door — and
+asserts the two agree on the available figure, the days requested and the
+shortfall, so [neither can be loosened alone](#days-that-are-not-there).
+`unit/leave-request.test.ts` covers the sentence, which is most of that story.
 
 **`unit/leave-type.test.ts` is where LMS 201 is proved and
 `integration/leave-type.test.ts` is what stops it being proved against itself.**
