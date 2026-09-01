@@ -7,9 +7,10 @@ import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { BalanceOverdrawn } from '../../src/domain/balance.js';
 import { EmployeeNotFound } from '../../src/domain/employee.js';
-import { LeaveCountsNoDays, InvalidLeavePeriod } from '../../src/domain/leave-calculator.js';
+import { InvalidLeavePeriod } from '../../src/domain/leave-calculator.js';
 import {
   InvalidLeaveRequest,
+  LeaveCountsNoDays,
   LeaveCrossesAYearEnd,
   LeaveRequestNotFound,
   type NewLeaveRequest,
@@ -560,6 +561,105 @@ describe('what leave may be asked for', () => {
     await expect(
       requests.submit(asThemselves(), aRequest({ from: '2026-12-28', to: '2027-01-05' })),
     ).rejects.toBeInstanceOf(LeaveCrossesAYearEnd);
+  });
+
+  /**
+   * And the sentence names both years and the two dates to resubmit on. FR 16, LMS 303.
+   *
+   * The message is asserted whole in ../unit/leave-request.test.ts. What needs a
+   * database is that the years in it are the ones on the rows: this reads the seeded
+   * 2026 and 2027 through `findCovering`, so a service that had hard-coded either — or
+   * looked up the wrong day — would say something else here and nowhere else.
+   */
+  it('and says which year it crosses into, and the two dates to submit instead', async () => {
+    await expect(
+      requests.submit(asThemselves(), aRequest({ from: '2026-12-28', to: '2027-01-05' })),
+    ).rejects.toMatchObject({
+      code: 'CROSS_LEAVE_YEAR',
+      message:
+        'This request crosses into the 2027 leave year. Submit one request ending ' +
+        '31 December 2026, and another starting 1 January 2027.',
+      endsOn: '2026-12-31',
+      resumesOn: '2027-01-01',
+    });
+  });
+
+  /**
+   * **The year in that sentence is whatever HR called it.**
+   *
+   * §5.4 does not say a leave year is a calendar year, and the label is deliberately not
+   * derived from the start date — `requireLabel` says so, because a company running
+   * April to March calls its year '2026/27'. Renaming the seeded 2027 is the cheapest
+   * proof that the message reads the row rather than the date: nothing else about the
+   * request moves, and the sentence has to move with it.
+   */
+  it('and takes that year name from the record rather than from the date', async () => {
+    await admin.query("UPDATE leave_year SET label = '2027/28' WHERE label = '2027'");
+
+    await expect(
+      requests.submit(asThemselves(), aRequest({ from: '2026-12-28', to: '2027-01-05' })),
+    ).rejects.toMatchObject({
+      message:
+        'This request crosses into the 2027/28 leave year. Submit one request ending ' +
+        '31 December 2026, and another starting 1 January 2027.',
+    });
+  });
+
+  /* And it is refused before anything is written, which is the whole of "at once":
+     nothing to withdraw, no days held, and no approver waiting. */
+  it('and nothing is written when a request is refused for its dates', async () => {
+    await expect(
+      requests.submit(asThemselves(), aRequest({ from: '2026-12-28', to: '2027-01-05' })),
+    ).rejects.toBeInstanceOf(LeaveCrossesAYearEnd);
+
+    expect((await admin.query('SELECT count(*) FROM leave_request')).rows[0].count).toBe('0');
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'RESERVATION'",
+        )
+      ).rows[0].count,
+    ).toBe('0');
+  });
+
+  /**
+   * The other two obviously wrong shapes, refused by `submit` as well as by `quote`.
+   *
+   * The quote refuses both above, and both are asserted again here against the
+   * submission because the two paths sharing `resolve` and `countFor` is an
+   * implementation detail — a person who was quoted nothing and submitted anyway must
+   * meet the same refusal, and this is the test that fails if the two ever come apart.
+   */
+  it('nor two dates the wrong way round', async () => {
+    await expect(
+      requests.submit(asThemselves(), aRequest({ from: '2026-03-10', to: '2026-03-02' })),
+    ).rejects.toBeInstanceOf(InvalidLeavePeriod);
+  });
+
+  /* FR 16a. A weekend of annual leave costs nothing, and the calculator says so with a
+     nought — this is the refusal built on that answer, named against the real gazette
+     and the real working pattern. */
+  it('nor a period that costs nothing at all', async () => {
+    await expect(
+      requests.submit(asThemselves(), aRequest({ from: '2026-03-07', to: '2026-03-08' })),
+    ).rejects.toBeInstanceOf(LeaveCountsNoDays);
+  });
+
+  /**
+   * And the same days of a calendar-day type are perfectly askable.
+   *
+   * The pair that shows the refusal is about the counting rule rather than about the
+   * dates: same weekend, same person, one refused and one quoted at two days. Somebody
+   * who really did mean to record the whole period has chosen the wrong kind of leave,
+   * which is what the message tells them — and this is the test that it is true advice.
+   */
+  it('but the same weekend of a type that counts every day is quoted, not refused', async () => {
+    const quote = await requests.quote(
+      asThemselves(),
+      aRequest({ leaveTypeId: maternityId, from: '2026-03-07', to: '2026-03-08' }),
+    );
+
+    expect(quote.days).toBe(2);
   });
 
   /* And the database holds the same rule for every other writer, so the two cannot

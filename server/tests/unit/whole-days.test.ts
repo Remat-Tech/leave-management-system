@@ -318,14 +318,11 @@ describe('what the calculator hands back is always a whole day', () => {
           const from = dayOfYear(start);
           const to = dayOfYear(start + length);
 
-          let count;
-          try {
-            count = countLeaveDays(type, { from, to }, STANDARD, []);
-          } catch {
-            /* A single Saturday of annual leave costs nothing and is refused by
-               name rather than counted as zero. LMS 207. */
-            continue;
-          }
+          /* Every period comes back with a number since LMS 303, a single Saturday of
+             annual leave included — that one costs nought, and nought is whole. The
+             sweep used to skip those, which is a sweep that stopped looking at exactly
+             the periods most likely to produce a fraction. */
+          const count = countLeaveDays(type, { from, to }, STANDARD, []);
 
           expect(isWholeDays(count.days), `${from} to ${to} cost ${count.days}`).toBe(true);
           expect(isWholeDays(count.calendarDays)).toBe(true);
@@ -334,9 +331,8 @@ describe('what the calculator hands back is always a whole day', () => {
       }
     }
 
-    /* 2 bases × 52 starts × 6 lengths, less the handful of single Saturdays and
-       Sundays that a working-day type refuses. */
-    expect(counted).toBeGreaterThan(600);
+    /* 2 bases × 52 starts × 6 lengths, and none skipped since LMS 303. */
+    expect(counted).toBe(2 * 52 * 6);
   });
 
   /* The one date arithmetic in the system that divides, ./time.ts's

@@ -6,7 +6,6 @@ import {
   costsADay,
   countLeaveDays,
   InvalidLeavePeriod,
-  LeaveCountsNoDays,
   validateLeavePeriod,
 } from '../../src/domain/leave-calculator.js';
 import { type LeaveType, validateNewLeaveType } from '../../src/domain/leave-type.js';
@@ -36,9 +35,12 @@ import { MONDAY_TO_FRIDAY, type WorkPattern, type Weekday } from '../../src/doma
  * which is FR 22's "expressed as a continuous period of absence rather than an
  * allowance of workdays" made arithmetic.
  *
- * **Nothing at all is refused rather than returned.** Zero days is leave that
- * deducts nothing, waits in a queue for nothing and shows on a calendar as an
- * absence nobody paid for. There is no sensible thing for any caller to do with it.
+ * **Nothing at all is counted, and nought is returned.** LMS 303 moved the refusal
+ * out of this function and into the submission validator — see
+ * ../../src/domain/leave-request.ts and ./leave-request.test.ts. A Saturday of annual
+ * leave costs nothing, which is arithmetic; whether somebody may *ask* for it is a
+ * rule about requests. What is proved here is the half the refusal is built on: the
+ * count is nought and `free` names every day inside the period and why.
  *
  * **It reads nothing.** No database, no clock, no environment. Every fact it needs
  * is an argument, and the two that come from tables — the pattern and the calendar
@@ -193,9 +195,9 @@ describe('a calendar day type, which counts every day', () => {
     }
   });
 
-  /* And it can never cost nothing, which is why LeaveCountsNoDays is a
-     working-day-type refusal in practice: a period always holds at least one day
-     and every one of them counts. */
+  /* And it can never cost nothing, which is why a nought — and the refusal built on
+     one — is a working-day-type case in practice: a period always holds at least one
+     day and every one of them counts. */
   it('costs at least a day, even over a weekend nobody works', () => {
     expect(
       countLeaveDays(MATERNITY, { from: '2026-12-26', to: '2026-12-27' }, STANDARD, []).days,
@@ -263,80 +265,63 @@ describe('the branch is on the counting basis, never on the type code', () => {
   });
 });
 
-describe('leave that costs nothing is refused rather than returned', () => {
+describe('leave that costs nothing counts as nought, and says which days were free', () => {
   /**
-   * The story's fourth criterion, and the reason is what every caller downstream
-   * would otherwise have to invent: a request worth no days deducts nothing from a
-   * balance, waits in an approval queue for a decision that changes nothing, and
-   * shows on a team calendar as an absence nobody paid for.
+   * The story's fourth criterion seen from this side of the LMS 303 split.
+   *
+   * A weekend of annual leave against a Monday to Friday week costs nothing, and
+   * nothing is what comes back: this function reports and the submission validator
+   * judges. `assertItCostsSomething()` is what a person actually meets, and
+   * ./leave-request.test.ts proves the sentence it produces.
+   *
+   * Nought is an answer FR 25 has a use for — a recalculation asks what a period costs
+   * *now* and compares — so a throw here would make the one comparison that matters the
+   * one that could not be made.
    */
-  it('refuses a weekend booked as annual leave', () => {
-    expect(() =>
-      countLeaveDays(ANNUAL, { from: '2026-12-26', to: '2026-12-27' }, STANDARD, []),
-    ).toThrow(LeaveCountsNoDays);
+  it('counts a weekend booked as annual leave as nought days', () => {
+    const count = countLeaveDays(ANNUAL, { from: '2026-12-26', to: '2026-12-27' }, STANDARD, []);
+
+    expect(count.days).toBe(0);
+    expect(count.calendarDays).toBe(2);
   });
 
-  it('refuses a single public holiday booked as annual leave', () => {
-    expect(() =>
-      countLeaveDays(
-        ANNUAL,
-        { from: '2026-12-25', to: '2026-12-25' },
-        STANDARD,
-        CHRISTMAS_CALENDAR,
-      ),
-    ).toThrow(LeaveCountsNoDays);
+  it('counts a single public holiday booked as annual leave as nought days', () => {
+    expect(
+      countLeaveDays(ANNUAL, { from: '2026-12-25', to: '2026-12-25' }, STANDARD, CHRISTMAS_CALENDAR)
+        .days,
+    ).toBe(0);
   });
 
   /**
-   * The message names the days rather than only the verdict, because the person
-   * looking at it has typed two dates they believe in. It also names the way out:
-   * somebody who really did mean to record the whole period has chosen the wrong
-   * kind of leave, not the wrong dates.
+   * And every day of it is in `free`, with the reason against each.
+   *
+   * This is what makes the refusal downstream able to name the days rather than only
+   * the verdict, and to name them without walking the period a second time. A person
+   * looking at that message has typed two dates they believe in and needs to see which
+   * part of the period the system thinks is free.
    */
-  it('names the free days and the kind of leave, so the message is actionable', () => {
-    try {
-      countLeaveDays(
-        ANNUAL,
-        { from: '2026-12-26', to: '2026-12-27' },
-        STANDARD,
-        CHRISTMAS_CALENDAR,
-      );
-      throw new Error('That was counted, and should not have been.');
-    } catch (error) {
-      expect(error).toBeInstanceOf(LeaveCountsNoDays);
-      expect((error as LeaveCountsNoDays).free.length).toBe(2);
-      expect((error as LeaveCountsNoDays).period).toEqual({
-        from: '2026-12-26',
-        to: '2026-12-27',
-      });
-      expect((error as Error).message).toContain('Annual leave');
-      expect((error as Error).message).toContain('2026-12-26');
-      expect((error as Error).message).toContain('counts every day');
-    }
+  it('names every free day and why, which is what the refusal is built from', () => {
+    const count = countLeaveDays(
+      ANNUAL,
+      { from: '2026-12-26', to: '2026-12-27' },
+      STANDARD,
+      CHRISTMAS_CALENDAR,
+    );
+
+    expect(count.free).toEqual([
+      { date: '2026-12-26', because: 'NOT_A_WORKING_DAY', name: null },
+      { date: '2026-12-27', because: 'NOT_A_WORKING_DAY', name: null },
+    ]);
   });
 
-  /* It carries the type so a screen can offer the alternative rather than only
-     describing it. */
-  it('says which leave type refused it', () => {
-    try {
-      countLeaveDays(ANNUAL, { from: '2026-12-26', to: '2026-12-27' }, STANDARD, []);
-      throw new Error('That was counted, and should not have been.');
-    } catch (error) {
-      expect((error as LeaveCountsNoDays).leaveTypeId).toBe(ANNUAL.id);
-    }
-  });
-
-  /* And a long run of nothing is summarised rather than listed, because a refusal
-     naming sixty days is a refusal nobody reads to the end of. */
-  it('does not list every day of a long period that counts nothing', () => {
+  /* A week nobody works costs nothing either, and every day of it is accounted for —
+     the summarising of a long list is the message's problem rather than the count's. */
+  it('accounts for every day of a longer period that counts nothing', () => {
     const nobodyWorks = pattern('Nobody works', [7]);
+    const count = countLeaveDays(ANNUAL, { from: '2026-03-02', to: '2026-03-06' }, nobodyWorks, []);
 
-    try {
-      countLeaveDays(ANNUAL, { from: '2026-03-02', to: '2026-03-06' }, nobodyWorks, []);
-      throw new Error('That was counted, and should not have been.');
-    } catch (error) {
-      expect((error as Error).message).toContain('and 1 more');
-    }
+    expect(count.days).toBe(0);
+    expect(count.free.length).toBe(5);
   });
 });
 

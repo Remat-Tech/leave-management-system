@@ -1773,16 +1773,22 @@ to cost anything and the gazette had nothing to do with it. That is also what ma
 FR 25's recalculation come out right: a holiday declared on a day somebody does not
 work gives back nothing.
 
-**Nothing at all is refused rather than returned.** `LeaveCountsNoDays`. A Saturday
-to Sunday request against a Monday to Friday pattern costs zero days of annual
-leave, and zero is not an answer to hand back: it is leave that deducts nothing from
-a balance, waits in an approval queue for a decision that changes nothing, and shows
-on a team calendar as an absence nobody paid for. There is no sensible thing for any
-caller downstream to do with it, so each of them would invent the same handling. The
-message names the free days and the way out — somebody who really did mean to record
-the whole period has chosen the wrong kind of leave, not the wrong dates.
+**Nothing at all is counted, and nought is returned.** A Saturday to Sunday request
+against a Monday to Friday pattern costs zero days of annual leave, and zero is what
+comes back. That used to be a refusal thrown from here; LMS 303 moved it to
+`assertItCostsSomething()` in `/domain/leave-request.ts`, raised by the submission
+validator on the answer this function gave. **The difference is between a fact and a
+judgement.** That a period costs nothing is arithmetic, and it is arithmetic FR 25 has
+a use for — a recalculation asks what a period costs *now* and compares, and a function
+that threw rather than answering would make "it costs nothing now" the one comparison
+that could not be made. Whether somebody may *submit* a request for it is a rule about
+requests, and it belongs beside [the other two](#dates-that-are-obviously-wrong).
 
-It can only happen to a working-day type. Every day counts for a calendar-day one
+What is left here is total: every period comes back as a number, and `free` says which
+days inside it were not charged and why — which is what lets the refusal name the days
+without walking the period a second time.
+
+Zero can only happen to a working-day type. Every day counts for a calendar-day one
 and a period always holds at least one day, so a maternity leave costing nothing is
 not a state the function can produce.
 
@@ -2648,10 +2654,10 @@ filed under a fortnight in March, which looks entirely reasonable.
 **Leave over a year end is refused, not split.** A request is one period against one
 balance and a balance belongs to one leave year, so the twenty-eighth of December to the
 fifth of January is two balances; reserving all ten days against either would be a figure
-that reconciles and is wrong. The refusal names both years so the person at the form
-knows what to do. `leave_type.may_be_split` and `assertMayBeSplit()` have been in the
-domain since LMS 201 and are what a story offering the split would use — it is two
-requests with one approval between them, which is a decision rather than an arithmetic.
+that reconciles and is wrong. `leave_type.may_be_split` and `assertMayBeSplit()` have
+been in the domain since LMS 201 and are what a story offering the split would use — it
+is two requests with one approval between them, which is a decision rather than an
+arithmetic. What the refusal says is [below](#dates-that-are-obviously-wrong).
 
 **Notice and documentation warn; they do not refuse.** FR 17 is advisory by design —
 leave is sometimes needed at short notice, and a system that refused it is a system people
@@ -2674,6 +2680,66 @@ than rediscovered:
   has to know which statuses count as live, which is the state machine's list.
 * **No approval, withdrawal or cancellation.** All three move `status` and two of them
   release days. `ledgerPolicy.release` is already written and waiting for them.
+
+---
+
+### Dates that are obviously wrong
+
+**A mistake in the dates is answered while the form is still open, never by an approver
+two days later.** FR 16, FR 16a, §8.3, LMS 303. Three shapes of obviously wrong, and
+each is refused at the first moment its answer is knowable — which is what "at once"
+means in practice, because a person waiting on four queries to be told their end date is
+before their start date has been made to wait.
+
+| Refused | By | Knowable after |
+|---|---|---|
+| The end before the start — also a date written `31/07/2026`, and a period over two years long | `validateLeavePeriod()`, `InvalidLeavePeriod` | nothing at all is read |
+| A period that runs past the end of its leave year | `reachesPastTheEndOf()`, `LeaveCrossesAYearEnd` — error code **`CROSS_LEAVE_YEAR`** | the leave year is found |
+| A period nothing in which is charged — a range that is entirely weekend and public holiday | `assertItCostsSomething()`, `LeaveCountsNoDays` | the days are counted |
+
+**All three are asked by `quote()` as well as by `submit()`**, because the two share
+`resolve()` and `countFor()`. A quote that accepted what a submission would refuse is
+precisely the surprise this part of the system exists to prevent, arriving late.
+
+**The refusals are the request's, and the day calculator stays out of it.**
+`countLeaveDays()` used to throw for a period that cost nothing; LMS 303 moved that
+judgement into `/domain/leave-request.ts` and left the calculator
+[pure and total](#the-day-calculator). A Saturday of annual leave costing nought is
+arithmetic about a calendar, and FR 25's recalculation has to be able to ask for it and
+get a number. Whether a person may submit a request for it is a rule about requests, and
+now it sits in one file, in one voice, beside the other two.
+
+**The cross-year message is two sentences and the second one is the useful one.**
+
+> This request crosses into the 2027 leave year. Submit one request ending 31 December
+> 2026, and another starting 1 January 2027.
+
+NFR USA 03. A refusal that only says no leaves somebody at a form doing date arithmetic
+to work out what they are allowed to type, and they will get it wrong at exactly the
+boundary that produced the refusal. So the two dates they need are in the sentence, and
+they are said the way a person says a date — the month spelled out, because `01/01/2027`
+and `01/12/2026` are the ambiguity this system refuses [everywhere
+else](#things-that-will-bite-you-if-you-do-not-know-them). `formatDay()` is where that
+happens.
+
+**Every year and every date in it is read off the record. None of it is written down
+here.** The boundary is `leave_year.end_date`, the day to resume on is `dayAfter()` of
+it, and the year being crossed into is whatever HR called it — looked up rather than
+derived, because §5.4 does not say a leave year is a calendar year and a company running
+April to March calls its next one `2027/28`. A hard-coded "the thirty-first of December"
+would be right for the database we ship and wrong for the first company that configures
+its own year, and nothing would say so. The integration suite renames the seeded 2027 and
+asserts the sentence moves with it.
+
+Where nobody has defined the year after this one yet — legitimate, since a gap *after*
+the last leave year is next year's decision rather than a hole — the label falls back to
+the year part of the day to resume on. The sentence stays true and the two dates in it,
+which are the half somebody acts on, stay right.
+
+**And `CROSS_LEAVE_YEAR` is the one refusal here carrying an error code**, because it is
+the one a form is expected to *do* something with: offer the split as two prefilled
+requests rather than only printing the sentence. A message is reworded the first time
+somebody reads it aloud; a code is a contract.
 
 ---
 
