@@ -1,12 +1,19 @@
 /**
  * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 14, FR 15, FR 16,
- * §8. LMS 301, and the refusals of LMS 303, LMS 304 and LMS 305.
+ * FR 26, §8. LMS 301, the refusals of LMS 303, LMS 304 and LMS 305, and the three
+ * endings of LMS 306.
  *
  * The story is an employee who wants no surprises when the days come off their
  * balance, and the whole of this file follows from taking that literally: the figure
  * a person is shown before they submit and the figure that is stored afterwards are
  * produced by the same function from the same facts, and once stored the figure is
  * never derived again.
+ *
+ * LMS 306 is the same sentence read from the other end. Days held are days gone from what
+ * somebody may book, so the moment a request stops standing they have to come back — and
+ * come back *once*. {@link RELEASING_STATUSES}, {@link assertMayBeSettled} and
+ * {@link reasonForRelease} are that story's whole share of this file; the movement is
+ * `BalanceService.releaseForRequest` and the desks are in ../auth/leave-request-policy.ts.
  *
  * ## The quote and the request are the same arithmetic
  *
@@ -106,14 +113,16 @@
  * is the answer that binds. What this one buys is the sentence, said while the form is
  * still open — see {@link NotEnoughDays}.
  *
- * **No transitions.** {@link REQUEST_STATUSES} holds one value. The state machine of
- * §8 — approve, refuse, withdraw, cancel — is the next story's, it brings its own
- * migration extending the CHECK exactly as LMS 218 extended the ledger's entry types,
- * and the README's rule that "only the state machine moves a request" is what it
- * inherits. What this story guarantees is that nothing else has moved one first.
+ * **No approval.** {@link REQUEST_STATUSES} has four values and `APPROVED` is not one of
+ * them. Approval *commits* days rather than releasing them — a `DEDUCTION`, turning a
+ * hold into days taken — and which desk in FR 38a's chain may agree is the approval
+ * story's. It arrives with its own migration extending the CHECK, exactly as LMS 306
+ * extended the single value LMS 301 left.
  *
  * **No policy.** There is no {@link Actor} here and there is none in a `/domain` file
- * anywhere. Who may ask for leave is ../auth/leave-request-policy.ts.
+ * anywhere. Who may ask for leave, and which of the three endings a given person may
+ * reach, is ../auth/leave-request-policy.ts. What this file says is that a request ends
+ * once.
  */
 
 import type { DayCount, FreeDay, LeavePeriod } from './leave-calculator.js';
@@ -135,17 +144,50 @@ import {
 } from './time.js';
 
 /**
- * Where a request has got to.
+ * Where a request has got to. LMS 301, and the three endings of LMS 306.
  *
- * One value, and the shortness of this list is the story's boundary rather than an
- * omission. See the module note: a CHECK naming six states of which one is reachable
- * is a promise the schema cannot keep, and `leave_request_status_known` in the
- * create-and-submit-a-leave-request migration holds exactly this list. The integration
- * suite asserts the two agree.
+ * Four values, and the shortness of the list is still the story's boundary rather than
+ * an omission: **`APPROVED` is deliberately absent**, because approval commits days
+ * rather than releasing them and FR 38a's chain decides which desk does it. That is the
+ * approval story's, and it extends this list in a migration of its own exactly as this
+ * one extended `leave_request_status_known` from the single value LMS 301 left.
+ *
+ * The rule LMS 209 set is what keeps that honest: a CHECK naming states nothing can
+ * reach is a promise the schema cannot keep, so a status arrives in the same story as
+ * the transition that reaches it. All three added here are reachable —
+ * {@link RELEASING_STATUSES}, and `LeaveRequestService` has a method for each.
+ *
+ * `leave_request_status_known` in the release-days-when-a-request-ends migration holds
+ * exactly this list, and the integration suite reads it back out of `pg_constraint` and
+ * asserts the two agree.
  */
-export const REQUEST_STATUSES = ['SUBMITTED'] as const;
+export const REQUEST_STATUSES = ['SUBMITTED', 'WITHDRAWN', 'CANCELLED', 'REFUSED'] as const;
 
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+
+/**
+ * The three endings that give the days back. FR 26, §8.2. LMS 306.
+ *
+ * Withdrawn by the person who asked, cancelled by HR, refused by a manager. Three
+ * different acts by three different desks, and one movement: days that were held stop
+ * being held. `ledgerPolicy.release` has said exactly that since LMS 212 — "yours to
+ * withdraw, your manager's to refuse, HR's to cancel… they share a rule here because
+ * they are one movement" — and this is the list that act can leave a request in.
+ *
+ * **It is the exact complement of {@link LIVE_STATUSES} today, and it is not defined as
+ * one.** Writing `REQUEST_STATUSES.filter(not live)` would be a definition that silently
+ * absorbs whatever arrives next: `APPROVED` is not live in the sense of *releasing* — it
+ * is live in the sense of holding days, and it would land in this list by arithmetic and
+ * release the days of every approved request in the system. A status joins this list
+ * because somebody decided it ends a request and gives the days back, which is a
+ * decision rather than a subtraction.
+ *
+ * The same three are the transition trigger's list in the migration, and the integration
+ * suite asserts the two agree — so neither can be extended alone.
+ */
+export const RELEASING_STATUSES = ['WITHDRAWN', 'CANCELLED', 'REFUSED'] as const;
+
+export type ReleasingStatus = (typeof RELEASING_STATUSES)[number];
 
 /**
  * The statuses that hold a person's days. FR 15, §5.6. LMS 304.
@@ -157,15 +199,23 @@ export type RequestStatus = (typeof REQUEST_STATUSES)[number];
  * came back are days somebody may book again, which is the ordinary thing to do after
  * a request is turned down.
  *
- * One value today, because {@link REQUEST_STATUSES} has one value and it is the
- * *pending* one: a request in this system is submitted and waiting. The list is
- * nonetheless separate from `REQUEST_STATUSES` rather than being read as "all of them",
- * and that is the whole point of it existing this early. The approval story brings
- * APPROVED — live — alongside WITHDRAWN, CANCELLED and REFUSED, which are not, and the
- * difference between the two lists is what stops a fortnight in March being blocked by
- * leave that was refused in January. A story adding a status has to decide which list it
- * joins, which is the decision that would otherwise be made by whichever query somebody
- * copied.
+ * **Still one value, and LMS 306 is the story that made that mean something.** Until the
+ * three endings existed this list and {@link REQUEST_STATUSES} held the same single
+ * value, and every query filtering by it was filtering nothing. The note here said at the
+ * time that the list was separate "rather than being read as all of them, and that is the
+ * whole point of it existing this early" — this is the story that collected on it. Three
+ * statuses arrived, none of them joined this list, and the queries that were written
+ * against it started excluding rows without a line of them changing.
+ *
+ * What that buys, concretely: a fortnight in March is no longer blocked by leave that was
+ * refused in January, and somebody whose request was turned down can book the same days
+ * again — which is the ordinary thing to do after a refusal, and the reason FR 15's
+ * overlap rule had to be keyed on *live* leave rather than on any leave at all.
+ *
+ * The approval story brings `APPROVED`, which **is** live and does join this list. That
+ * is the decision this list exists to force somebody to make: a status added to
+ * `REQUEST_STATUSES` without a thought about this one either blocks days that came back
+ * or lets somebody book over leave that was agreed.
  *
  * `leave_request_never_overlaps` holds the same list as the predicate on an exclusion
  * constraint, and the integration suite asserts the two agree — so neither can be
@@ -183,6 +233,85 @@ export const LIVE_STATUSES: readonly RequestStatus[] = ['SUBMITTED'];
  */
 export function blocksTheCalendar(status: RequestStatus): boolean {
   return LIVE_STATUSES.includes(status);
+}
+
+/**
+ * Whether this request has already been settled, and its days already given back.
+ *
+ * The complement of {@link blocksTheCalendar} for the statuses that exist today, and
+ * asked separately for the reason that list is not defined as a subtraction: "has it
+ * ended" and "does it hold days" are two questions that agree now and part company the
+ * moment `APPROVED` arrives, which holds days and has certainly not ended.
+ */
+export function isSettled(status: RequestStatus): boolean {
+  return (RELEASING_STATUSES as readonly RequestStatus[]).includes(status);
+}
+
+/**
+ * A request being ended a second time. FR 26, §8.2. LMS 306.
+ *
+ * The refusal that makes "my days cannot be given back twice" true rather than hoped for,
+ * and the mirror of `NotEnoughHeld` in ./balance.ts. Withdrawing an already withdrawn
+ * request would post a second `RELEASE` against a hold the first one emptied — and where
+ * the person has other leave pending in the same balance there would be days there to
+ * take, so the ledger would accept it and credit them for a fortnight nobody was holding.
+ *
+ * **Which is why the guard is the status and not the balance.** `daysToRelease` refuses
+ * to give back more than the balance holds, but the balance is per employee, leave type
+ * and leave year — it cannot tell one request's held days from another's.
+ * `ledgerPolicy.release` says so in as many words: the worst a wrong release can do "is
+ * unhold days that a request still thinks it has — which is the request state machine's
+ * integrity to keep rather than the balance's". This is the state machine keeping it.
+ *
+ * The message names what happened rather than only refusing, because the overwhelmingly
+ * likely reader is somebody who pressed the button twice, or two people acting on the
+ * same request from different screens — and "this was already withdrawn" is the whole of
+ * what either of them needs to know.
+ */
+export class LeaveAlreadySettled extends Error {
+  /** FR 26. What a client branches on, as `CROSS_LEAVE_YEAR` and the others are. */
+  readonly code = 'ALREADY_SETTLED';
+  readonly leaveRequestId: string;
+  /** Where it had already got to. Never a live status; see {@link assertMayBeSettled}. */
+  readonly status: RequestStatus;
+
+  constructor(request: LeaveRequest) {
+    super(
+      `This leave was already ${inWordsSettled(request.status)} and its days have been ` +
+        `given back, so there is nothing left to give back. A request ends once. If the ` +
+        `days are wanted again, ask for them again — they are back in the balance.`,
+    );
+    this.name = 'LeaveAlreadySettled';
+    this.leaveRequestId = request.id;
+    this.status = request.status;
+  }
+}
+
+/**
+ * Refuses to end a request that has already ended. FR 26, §8.2. LMS 306.
+ *
+ * The one rule the three transitions share, and the reason they share a private path
+ * through `LeaveRequestService`: withdrawing, cancelling and refusing are three different
+ * decisions by three different desks, but "may this request be ended at all" has one
+ * answer and should be given in one place.
+ *
+ * **It is not the guarantee**, and the arrangement is the one LMS 305 and LMS 304 both
+ * made. Two tabs withdrawing the same request both read `SUBMITTED` here and both pass.
+ * What closes that window is the balance lock in `BalanceService.releaseForRequest` —
+ * both withdrawals move the same balance, so the second waits and re-reads a request the
+ * first has already settled — and `leave_request_releases_once` behind even that, for a
+ * writer that found another way in. What this buys is the sentence.
+ *
+ * Today every non-live status is a settled one, so this reads as "not live". It is
+ * written against {@link isSettled} rather than against `blocksTheCalendar` because the
+ * two part company when `APPROVED` arrives: an approved request holds days and has not
+ * ended, and cancelling one is a real act that story will define — releasing nothing,
+ * because approval already turned the hold into days taken.
+ */
+export function assertMayBeSettled(request: LeaveRequest): void {
+  if (isSettled(request.status)) {
+    throw new LeaveAlreadySettled(request);
+  }
 }
 
 /** What somebody fills in. FR 10's four fields, and nothing else. */
@@ -921,6 +1050,60 @@ export function reasonForReservation(typeName: string, period: LeavePeriod, days
     `${days} ${days === 1 ? 'day' : 'days'} of ${typeName} requested, ` +
     `${period.from} to ${period.to}, held while it is decided`
   );
+}
+
+/**
+ * What the RELEASE says it is for. FR 27, LMS 306.
+ *
+ * The other half of {@link reasonForReservation}, and the sentence somebody reads beside
+ * five days arriving back in their balance. The pair read as a pair in a history — "held
+ * while it is decided", then "given back, the request was withdrawn" — which is what
+ * makes a balance explain itself to the person looking at it rather than merely
+ * reconcile.
+ *
+ * **Which of the three endings it was is in the sentence**, because that is the part
+ * nobody can reconstruct from the figures. Five days coming back look identical whether
+ * the person changed their mind, a manager turned it down or HR unwound it, and those are
+ * three different conversations. The request id is not in it and does not need to be —
+ * `leave_ledger_entry.leave_request_id` is the join, and a reason full of identifiers is a
+ * reason nobody reads.
+ */
+export function reasonForRelease(
+  typeName: string,
+  period: LeavePeriod,
+  days: number,
+  to: ReleasingStatus,
+): string {
+  return (
+    `${days} ${days === 1 ? 'day' : 'days'} of ${typeName} given back, ` +
+    `${period.from} to ${period.to}, the request was ${inWordsSettled(to)}`
+  );
+}
+
+/**
+ * An ending as a person says it. "withdrawn", not `WITHDRAWN`.
+ *
+ * A function of the status rather than of anything else, for the reason
+ * {@link countingBasisInWords} is: a screen never shows an underscored constant, and one
+ * mapping in one place is what stops the ledger's word and the refusal's word drifting
+ * apart. The two callers are {@link reasonForRelease} and {@link LeaveAlreadySettled},
+ * which is precisely the pair a person meets in sequence when they press twice.
+ */
+function inWordsSettled(status: RequestStatus): string {
+  switch (status) {
+    case 'WITHDRAWN':
+      return 'withdrawn';
+    case 'CANCELLED':
+      return 'cancelled';
+    case 'REFUSED':
+      return 'refused';
+    default:
+      /* Unreachable: both callers are reached only for a settled status — one takes a
+         `ReleasingStatus`, the other is thrown from `assertMayBeSettled` after `isSettled`
+         said yes. Answered rather than asserted, because a sentence that reads "the
+         request was undefined" is worse than one that says less. */
+      return 'ended';
+  }
 }
 
 /* ------------------------------------------------------------ what is stored */

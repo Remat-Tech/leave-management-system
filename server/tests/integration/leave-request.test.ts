@@ -10,6 +10,7 @@ import { EmployeeNotFound } from '../../src/domain/employee.js';
 import { InvalidLeavePeriod } from '../../src/domain/leave-calculator.js';
 import {
   InvalidLeaveRequest,
+  LeaveAlreadySettled,
   LeaveCountsNoDays,
   LeaveCrossesAYearEnd,
   LeaveOverlapsAnother,
@@ -17,6 +18,8 @@ import {
   LIVE_STATUSES,
   type NewLeaveRequest,
   NotEnoughDays,
+  RELEASING_STATUSES,
+  REQUEST_STATUSES,
   validateNewLeaveRequest,
 } from '../../src/domain/leave-request.js';
 import { LeaveTypeRetired } from '../../src/domain/leave-type.js';
@@ -1130,6 +1133,297 @@ describe('leave cannot be booked over leave already booked', () => {
     }
 
     throw new Error('That was accepted, and should not have been.');
+  }
+});
+
+/* ------------------------------------------------- the days come back, LMS 306 */
+
+/**
+ * A request ends, and its days come back. FR 26, §8.2. LMS 306.
+ *
+ * ../unit/leave-request.test.ts proves which statuses end a request and what the movement
+ * says. What needs a server is the whole of what the story actually promises:
+ *
+ *   **The balance moves.** "The balance I see is what I can actually still book" is a
+ *   claim about a figure in a table, and only a real one can be watched going down at
+ *   submission and back up at withdrawal.
+ *
+ *   **The status and the RELEASE are one act.** A foreign key, a deferred constraint
+ *   trigger, a unique index and a rollback are not properties any pure function has —
+ *   and the failure they prevent is a balance permanently short with nothing to explain
+ *   it.
+ *
+ *   **The days can be booked again.** This is the one that ties the story to LMS 304: the
+ *   overlap constraint's `WHERE status IN ('SUBMITTED')` was a tautology until three
+ *   statuses arrived that are not in it, and this is the test that shows it stopped being
+ *   one.
+ */
+describe('withdrawing, refusing and cancelling', () => {
+  it('gives the days back and says so in the balance', async () => {
+    const { request, balance: held } = await requests.submit(asThemselves(), aRequest());
+    expect(held.available).toBe(14);
+
+    const { balance } = await requests.withdraw(asThemselves(), request.id);
+
+    expect(balance.pending).toBe(0);
+    expect(balance.available).toBe(20);
+  });
+
+  it('and the request says which ending it had', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    const withdrawn = await requests.withdraw(asThemselves(), request.id);
+
+    expect(withdrawn.request.status).toBe('WITHDRAWN');
+    expect(await requests.byId(asThemselves(), request.id)).toMatchObject({
+      status: 'WITHDRAWN',
+    });
+  });
+
+  /* The other half of the reservation's sentence. The two read as a pair in a history,
+     which is what makes a balance explain itself rather than merely reconcile. */
+  it('and the RELEASE names the request, the days and which ending it was', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    const { entry } = await requests.withdraw(asThemselves(), request.id);
+
+    expect(entry.entryType).toBe('RELEASE');
+    expect(entry.days).toBe(6);
+    expect(entry.leaveRequestId).toBe(request.id);
+    expect(entry.reason).toContain('6 days of Annual Leave given back');
+    expect(entry.reason).toContain('the request was withdrawn');
+  });
+
+  /* Three desks, three endings, one movement. `ledgerPolicy.release` has described this
+     since LMS 212 and these are the methods that took it up. */
+  it.each([
+    ['withdrawn by the person who asked', 'WITHDRAWN', () => asThemselves()],
+    ['refused by their line manager', 'REFUSED', () => asTheirManager()],
+    ['cancelled by HR', 'CANCELLED', () => asOfficer()],
+  ] as const)('and is %s', async (_what, status, who) => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    const ended = await ending(status)(who(), request.id);
+
+    expect(ended.request.status).toBe(status);
+    expect(ended.balance.available).toBe(20);
+    expect(ended.entry.reason).toContain(status.toLowerCase());
+  });
+
+  /**
+   * And the second ending is refused, with a sentence rather than a figure.
+   *
+   * The balance cannot be the guard: `pending` is per employee, leave type and leave
+   * year, so with other leave waiting there would be days for a second release to take
+   * and the ledger would accept it. This is the state machine keeping the integrity
+   * `ledgerPolicy.release` says is its to keep.
+   */
+  it('and a request that has already ended cannot end again', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.withdraw(asThemselves(), request.id);
+
+    await expect(requests.withdraw(asThemselves(), request.id)).rejects.toBeInstanceOf(
+      LeaveAlreadySettled,
+    );
+    await expect(requests.refuse(asTheirManager(), request.id)).rejects.toBeInstanceOf(
+      LeaveAlreadySettled,
+    );
+  });
+
+  /* And the days did not come back twice, which is what that refusal is protecting. */
+  it('and the days come back exactly once', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.withdraw(asThemselves(), request.id);
+    await requests.withdraw(asThemselves(), request.id).catch(() => undefined);
+
+    const balance = await balances.forOne(asThemselves(), theBalance());
+
+    expect(balance.available).toBe(20);
+    expect(
+      (await admin.query("SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'RELEASE'"))
+        .rows[0].count,
+    ).toBe('1');
+  });
+
+  /**
+   * And the days are bookable again, which is the story's point and LMS 304's payoff.
+   *
+   * `leave_request_never_overlaps` carries `WHERE status IN ('SUBMITTED')`, a predicate
+   * that excluded nothing until this story added three statuses that are not in it. The
+   * same fortnight, asked for twice, refused the second time while the first stands and
+   * accepted once it has been withdrawn.
+   */
+  it('and the same days can be asked for again once the first request has gone', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(requests.submit(asThemselves(), aRequest())).rejects.toBeInstanceOf(
+      LeaveOverlapsAnother,
+    );
+
+    await requests.withdraw(asThemselves(), request.id);
+
+    const again = await requests.submit(asThemselves(), aRequest());
+
+    expect(again.request.status).toBe('SUBMITTED');
+    expect(again.balance.available).toBe(14);
+  });
+
+  /* And the reason may still be improved afterwards, which is why the transition trigger
+     compares the two statuses rather than refusing every update to a settled row. The
+     record of what somebody asked for and why is what an appeal is worked from. */
+  it('and the reason can still be improved after a refusal', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.refuse(asTheirManager(), request.id);
+
+    await expect(
+      requests.reword(asThemselves(), request.id, 'It is my sister, and it is her wedding'),
+    ).resolves.toMatchObject({ status: 'REFUSED', reason: expect.stringContaining('sister') });
+  });
+
+  /* ------------------------------------------------------------ who may end one */
+
+  /**
+   * A manager may refuse leave and may not withdraw it, and the difference is the record.
+   *
+   * A manager who could withdraw a report's leave could empty their calendar without ever
+   * refusing anything and without a decision appearing anywhere. Refusing is the same
+   * movement wearing its own name, and `reasonForRelease` writes which one happened.
+   */
+  it('is refused by a manager, and never withdrawn by one', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(requests.withdraw(asTheirManager(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+    await expect(requests.refuse(asTheirManager(), request.id)).resolves.toMatchObject({
+      request: { status: 'REFUSED' },
+    });
+  });
+
+  /* And somebody does not mark their own leave refused. Taking back your own request is
+     withdrawing it, and "refused" against nobody's decision is a record of something that
+     did not happen. */
+  it('and is not refused or cancelled by the person who asked for it', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(requests.refuse(asThemselves(), request.id)).rejects.toBeInstanceOf(NotAuthorised);
+    await expect(requests.cancel(asThemselves(), request.id)).rejects.toBeInstanceOf(NotAuthorised);
+  });
+
+  it('and is never ended by a colleague, whichever ending they reach for', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    for (const end of RELEASING_STATUSES) {
+      await expect(ending(end)(asAColleague(), request.id)).rejects.toBeInstanceOf(NotAuthorised);
+    }
+
+    const balance = await balances.forOne(asThemselves(), theBalance());
+    expect(balance.available).toBe(14);
+  });
+
+  it('and a refusal to end one writes no movement at all', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(requests.withdraw(asAColleague(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+
+    expect(
+      (await admin.query("SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'RELEASE'"))
+        .rows[0].count,
+    ).toBe('0');
+  });
+
+  it('and an id that is nobody’s is not found rather than refused obscurely', async () => {
+    await expect(requests.withdraw(asThemselves(), '987654321')).rejects.toBeInstanceOf(
+      LeaveRequestNotFound,
+    );
+  });
+
+  /* ------------------------------------------- and what the database holds anyway */
+
+  /**
+   * The list of statuses is written twice, here and in the domain.
+   *
+   * The same argument `LIVE_STATUSES` and the overlap constraint's predicate make: a
+   * status added to one and not the other is a status the application writes and the
+   * database refuses, or a value the CHECK admits that nothing means. The approval story
+   * adds APPROVED to both.
+   */
+  it('the CHECK admits exactly the statuses the code knows', async () => {
+    const { rows } = await admin.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid = 'leave_request'::regclass AND conname = 'leave_request_status_known'`,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(
+      [...rows[0].definition.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1]).sort(),
+    ).toEqual([...REQUEST_STATUSES].sort());
+  });
+
+  /**
+   * And a request that ends without giving its days back is refused at COMMIT.
+   *
+   * The acceptance criterion the story is named for, held where no service can forget it.
+   * `leave_request_gives_its_days_back` is the mirror of `leave_request_holds_its_days`,
+   * and what it catches is the second writer: a data fix marking a batch REFUSED, a
+   * `cancelAll` that loops over statuses. Each looks reasonable and each would leave days
+   * held forever.
+   */
+  it('and a status moved without a RELEASE is refused at commit, by anybody', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(
+      admin.query(`UPDATE leave_request SET status = 'REFUSED' WHERE id = $1`, [request.id]),
+    ).rejects.toMatchObject({ constraint: 'leave_request_gives_its_days_back' });
+  });
+
+  /* And a request that has ended does not move again, refused as it is attempted rather
+     than at commit: a row leaving a state it already left is wrong immediately. */
+  it('and a request that has ended cannot be moved again, by anybody', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.withdraw(asThemselves(), request.id);
+
+    await expect(
+      admin.query(`UPDATE leave_request SET status = 'REFUSED' WHERE id = $1`, [request.id]),
+    ).rejects.toMatchObject({ constraint: 'leave_request_ends_once' });
+
+    await expect(
+      admin.query(`UPDATE leave_request SET status = 'SUBMITTED' WHERE id = $1`, [request.id]),
+    ).rejects.toMatchObject({ constraint: 'leave_request_ends_once' });
+  });
+
+  /* And a second RELEASE against one request, which is what a retry would write. The
+     mirror of `leave_request_reserves_once`. */
+  it('and one request gives its days back exactly once, by anybody', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.withdraw(asThemselves(), request.id);
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_ledger_entry (
+            employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+         VALUES ($1, $2, $3, 'RELEASE', '6.00', 'given back twice', $4)`,
+        [people.officer, annualId, y2026.id, request.id],
+      ),
+    ).rejects.toMatchObject({ constraint: 'leave_request_releases_once' });
+  });
+
+  /** The three endings, as the methods that reach them. */
+  function ending(status: (typeof RELEASING_STATUSES)[number]) {
+    switch (status) {
+      case 'WITHDRAWN':
+        return requests.withdraw.bind(requests);
+      case 'REFUSED':
+        return requests.refuse.bind(requests);
+      default:
+        return requests.cancel.bind(requests);
+    }
+  }
+
+  /** The balance every test here moves: her annual leave, this year. */
+  function theBalance() {
+    return { employeeId: people.officer, leaveTypeId: annualId, leaveYearId: y2026.id };
   }
 });
 

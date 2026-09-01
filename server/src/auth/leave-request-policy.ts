@@ -1,6 +1,6 @@
 /**
- * Who may ask for leave, and who may see what somebody asked for. FR 10, NFR SEC 02.
- * §10. LMS 301.
+ * Who may ask for leave, who may see what somebody asked for, and who may end it. FR 10,
+ * FR 26, NFR SEC 02. §10. LMS 301, and the three endings of LMS 306.
  *
  * The first policy about something an employee *does* rather than something recorded
  * about them, and the difference shows in which way the defaults run. Everything in
@@ -50,9 +50,27 @@
  * decision here would be a way to reach the transition without passing the check that
  * knows which desk the request is actually sitting on.
  *
- * **No withdrawal, and no cancellation.** Both move `status`, both release days, and
- * both belong with the state machine. `ledgerPolicy.release` is already written and
- * waiting for them.
+ * ## The three endings, and why they are three decisions rather than one
+ *
+ * LMS 306. Withdrawing, cancelling and refusing are one *movement* — days that were held
+ * stop being held, and `ledgerPolicy.release` decides all three together for that reason.
+ * They are three *decisions* here because they are three different acts, and who may
+ * perform them differs at every one:
+ *
+ * | | May | Because |
+ * |---|---|---|
+ * | {@link leaveRequestPolicy.withdraw} | the requester, or HR | it is the undoing of submitting, so it is the rule `submit` already has |
+ * | {@link leaveRequestPolicy.refuse} | the line manager, or HR | a decision about somebody else's request, which is what a manager is for |
+ * | {@link leaveRequestPolicy.cancel} | HR | an administrative unwinding that is nobody's own leave and nobody's own report |
+ *
+ * A single `settle(actor, owner)` decision would have to be the union of those three,
+ * which is `ledgerPolicy.release` — and it would let a manager withdraw a report's leave
+ * and a requester mark their own leave refused. Both would write a perfectly valid
+ * `RELEASE` and a record of something that did not happen.
+ *
+ * The service asks the matching one and then takes a single path through the transition,
+ * so there is one place a request ends and three places it is decided that somebody may
+ * end it.
  *
  * **No quoting decision.** Asking what a fortnight would cost is not a separate power:
  * it reads a working pattern, a public holiday calendar and a balance, and each of
@@ -132,6 +150,114 @@ export const leaveRequestPolicy = {
       owner.employeeId,
       'not their leave, not their line manager, and holds no role that reads everybody',
     );
+  },
+
+  /**
+   * Taking back leave you asked for. FR 26. LMS 306.
+   *
+   * The requester's, and HR's on their behalf — deliberately the same rule as
+   * {@link leaveRequestPolicy.submit} rather than a narrower one, because withdrawing is
+   * the undoing of submitting and the same FR 18 argument applies to both. Somebody who
+   * was off sick when they should have cancelled their annual leave is exactly the case
+   * an Officer exists to enter on their behalf.
+   *
+   * **A line manager is deliberately not on it**, for the reason they are not on
+   * `submit`: a manager who could withdraw somebody's leave could empty their calendar
+   * without ever refusing anything, and without the record saying a decision was made. A
+   * manager who does not want the leave to happen refuses it — see
+   * {@link leaveRequestPolicy.refuse} — which is the same movement wearing its own name.
+   *
+   * Refused openly; see {@link ASKING_IS_YOURS}, which is the same sentence because it is
+   * the same rule.
+   */
+  withdraw(actor: Actor, owner: BalanceOwner): Decision {
+    if (isSelf(actor, owner.employeeId) || holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)) {
+      return about.allow(actor, 'withdraw', owner.employeeId);
+    }
+
+    return about.refuseOpenly(
+      actor,
+      'withdraw',
+      owner.employeeId,
+      'not their own leave, and holds no role that maintains leave for somebody else',
+      ASKING_IS_YOURS,
+    );
+  },
+
+  /**
+   * Turning down leave somebody asked for. FR 26, and half of FR 38a. LMS 306.
+   *
+   * The line manager's, and HR's. `ledgerPolicy.release` has described this desk since
+   * LMS 212 — "yours to withdraw, your manager's to refuse, HR's to cancel" — and this is
+   * the decision that names it.
+   *
+   * **It is not the approval chain, and the difference is worth being exact about.** FR
+   * 38a gives each leave type an ordered chain of approvers, and deciding *which desk a
+   * given request is currently sitting on* needs the chain, the type and how far the
+   * request has got. None of that exists yet: there is no `APPROVED`, so there is no
+   * partly-approved request to be sitting anywhere. What this holds is the standing
+   * question — is this person in a position to decide this request at all — which is a
+   * manager's or HR's however the chain is later walked.
+   *
+   * The approval story narrows this rather than replacing it, and narrowing is the safe
+   * direction: a chain check added in front of a decision that already refuses
+   * strangers cannot accidentally widen it.
+   *
+   * **The requester is not on it**, which is the one place this differs from every other
+   * decision here. Somebody refusing their own leave is withdrawing it, and the two are
+   * not interchangeable in the record: `reasonForRelease` writes which of them happened
+   * into the ledger, and "refused" against somebody's own name would read as a decision
+   * that was never made.
+   *
+   * Refused openly. Anybody reaching this can already read the request.
+   */
+  refuse(actor: Actor, owner: BalanceOwner): Decision {
+    if (isSelf(actor, owner.managerId) || holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)) {
+      return about.allow(actor, 'refuse', owner.employeeId);
+    }
+
+    return about.refuseOpenly(
+      actor,
+      'refuse',
+      owner.employeeId,
+      'is not their line manager and holds no role that decides leave for the company',
+      'Leave is turned down by the line manager it was addressed to, or by HR. Taking ' +
+        'back your own request is withdrawing it. FR 38a.',
+    );
+  },
+
+  /**
+   * Unwinding a request that should not stand. FR 26, FR 37. LMS 306.
+   *
+   * HR's alone, and the narrowest of the three endings. A cancellation is the one that is
+   * nobody's own decision about their own leave and nobody's decision about their own
+   * report: it is the administrative act of saying this request should not be on the
+   * books — leave booked against the wrong person, a request entered twice, days that
+   * belong in a different year.
+   *
+   * **Narrower than {@link ledgerPolicy.release}, deliberately.** That decision admits
+   * the requester and the manager as well, because it is about a *movement* and a release
+   * cannot take anything from anybody. This one is about which act somebody may perform,
+   * and the two are asked in that order: a person who may cancel may certainly release,
+   * and if these files disagreed the narrower would be the real rule. Which is the
+   * arrangement `submit` and `ledgerPolicy.reserve` already have, and for the same
+   * reason.
+   *
+   * Refused openly, naming the desk that can. Somebody reaching this is doing legitimate
+   * work at the wrong window.
+   */
+  cancel(actor: Actor, owner: BalanceOwner): Decision {
+    return holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)
+      ? about.allow(actor, 'cancel', owner.employeeId)
+      : about.refuseOpenly(
+          actor,
+          'cancel',
+          owner.employeeId,
+          'holds no role that maintains leave for the company',
+          'Cancelling a request is HR unwinding something that should not be on the ' +
+            'books. Taking back your own leave is withdrawing it, and a manager who ' +
+            'does not agree to it refuses it.',
+        );
   },
 
   /**
