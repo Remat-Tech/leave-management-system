@@ -134,7 +134,11 @@ import {
 } from '../domain/balance.js';
 import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
-import { type LeaveDecision, validateDecision } from '../domain/leave-decision.js';
+import {
+  desksThatApproved,
+  type LeaveDecision,
+  validateDecision,
+} from '../domain/leave-decision.js';
 import { type LeaveEvent, validateNewLeaveEvent } from '../domain/leave-event.js';
 import type { ApproverRole } from '../domain/approval-chain.js';
 import {
@@ -896,7 +900,18 @@ export class BalanceService {
         }),
       );
 
-      const outcome = approvalTo(current, chain);
+      /* FR 41, LMS 316. Which stages have signed, read inside the lock and against the rows
+         as they stand — the same discipline the status and the desk are held to, and it
+         matters here for the sharpest reason of the three. Two approvals of one request
+         arriving together are two movements on one balance, so this lock orders them: the
+         second waits, reads the decision the first wrote, and finds one fewer stage
+         outstanding. Read outside it, both would see an empty list, both would route to the
+         same next desk, and the second could approve leave a stage had not seen. */
+      const outcome = approvalTo(
+        current,
+        chain,
+        desksThatApproved(await repositories.decisions.forRequest(current.id)),
+      );
 
       const written = await repositories.requests.moveTo(
         actor,

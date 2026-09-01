@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   DECIDING_ACTIONS,
+  desksThatApproved,
   isADecision,
   type LeaveDecision,
   readComment,
@@ -212,6 +213,52 @@ describe('the refusal among a request’s decisions', () => {
   it('and there is none on a request nobody turned down', () => {
     expect(theRefusal([decision('APPROVE', null)])).toBeUndefined();
     expect(theRefusal([])).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------- what the walk is asked */
+
+/**
+ * The desks that have said yes, which is what "every stage has approved" is read against.
+ * FR 41. LMS 316.
+ *
+ * The reason this table could carry the next story at all: until these rows existed there was
+ * a cursor saying where a request had got to and nothing saying who had actually signed, and
+ * the two agree only while nobody edits a chain.
+ */
+describe('the desks that have approved a request', () => {
+  const decision = (
+    action: 'APPROVE' | 'REFUSE',
+    onBehalfOf: 'MANAGER' | 'HR' | 'CEO',
+  ): LeaveDecision => ({
+    id: `${onBehalfOf}-${action}`,
+    leaveRequestId: '41',
+    action,
+    onBehalfOf,
+    comment: action === 'REFUSE' ? 'No cover' : null,
+    decidedBy: 'employee 7',
+    decidedByEmployeeId: '7',
+    decidedAt: new Date('2026-03-01T09:00:00Z'),
+  });
+
+  it('is the desks, in the order they decided', () => {
+    expect(desksThatApproved([decision('APPROVE', 'MANAGER'), decision('APPROVE', 'HR')])).toEqual([
+      'MANAGER',
+      'HR',
+    ]);
+  });
+
+  /* And a refusal is not an approval, which is filtering rather than mapping. A refused
+     request has ended so it never reaches the walk; the filter is what keeps that true if
+     it ever does. */
+  it('and a refusal is not one of them', () => {
+    expect(desksThatApproved([decision('APPROVE', 'MANAGER'), decision('REFUSE', 'HR')])).toEqual([
+      'MANAGER',
+    ]);
+  });
+
+  it('and a request nobody has decided has none', () => {
+    expect(desksThatApproved([])).toEqual([]);
   });
 });
 

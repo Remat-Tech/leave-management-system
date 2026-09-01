@@ -6,7 +6,7 @@ import type { Database } from '../../src/db/schema.js';
 import type { Employee } from '../../src/domain/employee.js';
 import {
   type ApproverRole,
-  approverAfter,
+  nextUnapproved,
   DEFAULT_APPROVAL_CHAIN,
   firstApprover,
   InvalidApprovalChain,
@@ -210,7 +210,7 @@ describe('the chains of FR 38a, which is the story', () => {
     for (const code of ['UNPAID', 'MAT_EXT_UNPAID']) {
       expect(await chainFor(code)).not.toContain('MANAGER');
       expect(firstApprover(await chainFor(code))).toBe('HR');
-      expect(approverAfter(await chainFor(code), 'HR')).toBe('CEO');
+      expect(nextUnapproved(await chainFor(code), ['HR'])).toBe('CEO');
     }
   });
 
@@ -270,7 +270,7 @@ describe('saying who approves a type, which never waits on a developer', () => {
     await types.setApprovalChain(asAdministrator(), unpaid.id, ['HR']);
 
     expect(await chainFor('UNPAID')).toEqual(['HR']);
-    expect(approverAfter(await chainFor('UNPAID'), 'HR')).toBeUndefined();
+    expect(nextUnapproved(await chainFor('UNPAID'), ['HR'])).toBeUndefined();
   });
 
   it('accepts a three stage chain, which is as long as one can be', async () => {

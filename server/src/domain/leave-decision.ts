@@ -267,3 +267,27 @@ export function validateDecision(input: {
 export function theRefusal(decisions: readonly LeaveDecision[]): LeaveDecision | undefined {
   return decisions.find((decision) => decision.action === 'REFUSE');
 }
+
+/**
+ * The desks that have said yes to this request. FR 41. LMS 316.
+ *
+ * What the walk is asked against, and the reason LMS 316 could be built at all: until these
+ * rows existed, "has every stage approved" had no answer in the system — there was a cursor
+ * saying where a request had got to and nothing saying who had actually signed. The two agree
+ * while nothing moves, and FR 31 lets an HR Administrator move the chain.
+ *
+ * **Only approvals count, and a refusal is not the absence of one.** A refused request has
+ * ended, so it never reaches the question; filtering rather than mapping is what keeps that
+ * true if it ever does.
+ *
+ * The desks rather than the decisions, because that is all the walk needs and it is what lets
+ * ./approval-chain.ts stay a file about lists of desks. ./leave-request.ts asks
+ * {@link nextUnapproved} with the answer, and neither of them imports this file — the service
+ * carries the value across, which is the same seam the counting basis and the balance are
+ * handed over on.
+ */
+export function desksThatApproved(decisions: readonly LeaveDecision[]): ApproverRole[] {
+  return decisions
+    .filter((decision) => decision.action === 'APPROVE')
+    .map((decision) => decision.onBehalfOf);
+}

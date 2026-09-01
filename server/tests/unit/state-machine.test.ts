@@ -12,6 +12,7 @@ import {
   LeaveAlreadySettled,
   LeaveCannotBeMoved,
   type LeaveRequest,
+  progressOf,
   RELEASING_ACTIONS,
   REQUEST_ACTIONS,
   REQUEST_STATUSES,
@@ -332,21 +333,21 @@ describe('where an approval lands', () => {
   const UNPAID: readonly ApproverRole[] = ['HR', 'CEO'];
 
   it('sends a request on to the next desk, leaving it where it was', () => {
-    const outcome = approvalTo(waitingOn('MANAGER'), ORDINARY);
+    const outcome = approvalTo(waitingOn('MANAGER'), ORDINARY, []);
 
     expect(outcome).toEqual({ by: 'MANAGER', to: 'SUBMITTED', awaiting: 'HR' });
     expect(isTheLastWord(outcome)).toBe(false);
   });
 
-  it('and approves it when the chain has nobody left to ask', () => {
-    const outcome = approvalTo(waitingOn('HR'), ORDINARY);
+  it('and approves it when every stage has approved', () => {
+    const outcome = approvalTo(waitingOn('HR'), ORDINARY, ['MANAGER']);
 
     expect(outcome).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null });
     expect(isTheLastWord(outcome)).toBe(true);
   });
 
   /**
-   * And unpaid leave goes HR then the Chief Executive, with no manager stage. The story's
+   * And unpaid leave goes HR then the Chief Executive, with no manager stage. LMS 314's
    * third criterion.
    *
    * The same function, the same request, a different list — and the walk skips a stage
@@ -355,13 +356,13 @@ describe('where an approval lands', () => {
    * ../unit/policy.test.ts.
    */
   it('and walks an unpaid chain from HR to the Chief Executive, with no manager in it', () => {
-    expect(approvalTo(waitingOn('HR'), UNPAID)).toEqual({
+    expect(approvalTo(waitingOn('HR'), UNPAID, [])).toEqual({
       by: 'HR',
       to: 'SUBMITTED',
       awaiting: 'CEO',
     });
 
-    expect(approvalTo(waitingOn('CEO'), UNPAID)).toEqual({
+    expect(approvalTo(waitingOn('CEO'), UNPAID, ['HR'])).toEqual({
       by: 'CEO',
       to: 'APPROVED',
       awaiting: null,
@@ -372,15 +373,18 @@ describe('where an approval lands', () => {
      takes three, and neither is a case this function is told about — both fall out of
      walking a list. */
   it('and a chain of one desk is decided by that desk', () => {
-    expect(approvalTo(waitingOn('HR'), ['HR'])).toMatchObject({ to: 'APPROVED', awaiting: null });
+    expect(approvalTo(waitingOn('HR'), ['HR'], [])).toMatchObject({
+      to: 'APPROVED',
+      awaiting: null,
+    });
   });
 
   it('and a chain of three is walked all the way down', () => {
     const chain: readonly ApproverRole[] = ['MANAGER', 'HR', 'CEO'];
 
-    expect(approvalTo(waitingOn('MANAGER'), chain).awaiting).toBe('HR');
-    expect(approvalTo(waitingOn('HR'), chain).awaiting).toBe('CEO');
-    expect(approvalTo(waitingOn('CEO'), chain).awaiting).toBeNull();
+    expect(approvalTo(waitingOn('MANAGER'), chain, []).awaiting).toBe('HR');
+    expect(approvalTo(waitingOn('HR'), chain, ['MANAGER']).awaiting).toBe('CEO');
+    expect(approvalTo(waitingOn('CEO'), chain, ['MANAGER', 'HR']).awaiting).toBeNull();
   });
 
   /**
@@ -388,31 +392,188 @@ describe('where an approval lands', () => {
    *
    * The seam in reading the chain live rather than copying it onto the request. HR changes
    * annual leave from manager-then-HR to HR alone while somebody's request sits with their
-   * manager; the manager approves. `approverAfter` is asked what follows MANAGER in a chain
-   * with no MANAGER in it and answers undefined, which read as "nobody left to ask" would
-   * approve the leave on the strength of a desk the policy no longer includes — and with
-   * HR, the only stage the new chain has, never seeing it.
+   * manager; the manager approves.
    *
-   * So it refuses, and the message carries both chains because the person who meets it is
-   * an approver who has done nothing wrong.
+   * LMS 314 refused it because the walk would otherwise have approved the leave. LMS 316
+   * removed that danger — the chain still has a stage nobody has signed, so the walk would
+   * route the request to HR rather than approve it — and the refusal stays for the reason
+   * that survived: every approval on record has to belong to a stage, or "every stage has
+   * approved" is a claim about a set with strangers in it.
+   *
+   * The message carries both chains, because the person who meets it is an approver who has
+   * done nothing wrong.
    */
   it('and refuses a request waiting on a desk the chain has since dropped', () => {
-    expect(() => approvalTo(waitingOn('MANAGER'), ['HR'])).toThrow(
+    expect(() => approvalTo(waitingOn('MANAGER'), ['HR'], [])).toThrow(
       expect.objectContaining({ name: 'ApprovalChainChanged', code: 'CHAIN_CHANGED' }),
     );
 
     try {
-      approvalTo(waitingOn('MANAGER'), ['HR']);
+      approvalTo(waitingOn('MANAGER'), ['HR'], []);
     } catch (error) {
       expect((error as Error).message).toContain('your line manager');
       expect((error as Error).message).toContain('changed to HR');
     }
   });
 
-  /* And a widening is not a refusal. The Chief Executive added after HR is HR asking for
-     one more signature, which is what the administrator meant by adding them. */
-  it('but follows a chain that has grown a stage since the request was made', () => {
-    expect(approvalTo(waitingOn('HR'), ['MANAGER', 'HR', 'CEO']).awaiting).toBe('CEO');
+  /* And a widening at the end is not a refusal. The Chief Executive added after HR is HR
+     asking for one more signature, which is what the administrator meant by adding them. */
+  it('but follows a chain that has grown a stage at the end since the request was made', () => {
+    expect(approvalTo(waitingOn('HR'), ['MANAGER', 'HR', 'CEO'], ['MANAGER']).awaiting).toBe('CEO');
+  });
+
+  /**
+   * And a stage added *in front of* a request in flight is asked before it is agreed. FR
+   * 41. LMS 316, and the case the old walk got wrong.
+   *
+   * The manager has signed and the request is with HR. An HR Administrator puts the Chief
+   * Executive at the head of the chain — FR 31 says they may — and HR approves.
+   *
+   * `approverAfter(chain, 'HR')` was the old question, and in `[CEO, MANAGER, HR]` the desk
+   * after HR is nothing: the leave would have been approved on the spot, with the Chief
+   * Executive never seeing a request the policy now routes to them, and the employee told
+   * it was agreed. Asking which stage has not signed answers CEO.
+   */
+  it('and asks a stage added in front of where the request had got to', () => {
+    const widened: readonly ApproverRole[] = ['CEO', 'MANAGER', 'HR'];
+
+    const outcome = approvalTo(waitingOn('HR'), widened, ['MANAGER']);
+
+    expect(outcome).toEqual({ by: 'HR', to: 'SUBMITTED', awaiting: 'CEO' });
+    expect(isTheLastWord(outcome)).toBe(false);
+  });
+
+  /* And it is agreed only once that stage has signed too, which is the criterion in one
+     line: every stage, not every stage that happened to be in the chain at the time. */
+  it('and is agreed only once that stage has signed as well', () => {
+    const widened: readonly ApproverRole[] = ['CEO', 'MANAGER', 'HR'];
+
+    expect(approvalTo(waitingOn('CEO'), widened, ['MANAGER', 'HR'])).toEqual({
+      by: 'CEO',
+      to: 'APPROVED',
+      awaiting: null,
+    });
+  });
+
+  /* And an approval recorded at a desk the chain does not name counts for nothing. It
+     cannot happen through the door — `ApprovalChainChanged` refuses it — and if a row for
+     one existed the walk would still ask every stage. */
+  it('and a signature from outside the chain does not stand in for a stage', () => {
+    expect(approvalTo(waitingOn('HR'), UNPAID, ['MANAGER'])).toEqual({
+      by: 'HR',
+      to: 'SUBMITTED',
+      awaiting: 'CEO',
+    });
+  });
+});
+
+/* ------------------------------------------------- where a request has got to */
+
+/**
+ * What a person is told about a request they are about to book a flight on. FR 41, FR 42.
+ * LMS 316.
+ *
+ * The story's "so that", and the half that is not about routing: *I never take leave
+ * believing it was agreed when it was not*. Every fact needed to be wrong about that is
+ * stored, and it is stored in four places — the status, the desk, the decisions, the chain —
+ * so `progressOf` is the one reading of all four, and `agreed` is what somebody acts on.
+ */
+describe('how far through its chain a request has got', () => {
+  const ORDINARY: readonly ApproverRole[] = ['MANAGER', 'HR'];
+
+  it('is not agreed while a stage is still to approve, however many have', () => {
+    const progress = progressOf({
+      request: aRequestIn('SUBMITTED', 'HR'),
+      chain: ORDINARY,
+      approvedBy: ['MANAGER'],
+    });
+
+    expect(progress.agreed).toBe(false);
+    expect(progress.approvedBy).toEqual(['MANAGER']);
+    expect(progress.stillToApprove).toEqual(['HR']);
+    expect(progress.awaiting).toBe('HR');
+  });
+
+  /* And the sentence says so first. A screen that showed only the newest decision would say
+     "Approved by your line manager", which is true and is the exact belief this story is
+     written against — so the two halves are one string composed once rather than two fields
+     a screen may show one of. */
+  it('and says so before it says who has approved', () => {
+    const { inWords } = progressOf({
+      request: aRequestIn('SUBMITTED', 'HR'),
+      chain: ORDINARY,
+      approvedBy: ['MANAGER'],
+    });
+
+    expect(inWords).toMatch(/not agreed yet/);
+    expect(inWords).toMatch(/do not book anything on it/);
+    expect(inWords).toMatch(/Approved by your line manager/);
+    expect(inWords).toMatch(/still needs HR/);
+  });
+
+  it('and is agreed once the request is approved', () => {
+    const progress = progressOf({
+      request: aRequestIn('APPROVED'),
+      chain: ORDINARY,
+      approvedBy: ['MANAGER', 'HR'],
+    });
+
+    expect(progress.agreed).toBe(true);
+    expect(progress.stillToApprove).toEqual([]);
+    expect(progress.stagesMissing).toEqual([]);
+    expect(progress.inWords).toMatch(/agreed and is yours to take/);
+  });
+
+  /**
+   * And `agreed` is the status rather than an arithmetic over today's chain.
+   *
+   * The tempting definition is "every stage of the chain has approved", and it is wrong
+   * about leave that was properly agreed under a chain that has since grown: the days are
+   * already taken, the request was approved by everybody it was routed to, and a screen
+   * computing the answer afresh would tell the person their leave is not agreed after all.
+   * What was recorded is what happened. `stagesMissing` is where the difference is reported
+   * rather than hidden.
+   */
+  it('and stays agreed when a stage is added to the chain afterwards', () => {
+    const progress = progressOf({
+      request: aRequestIn('APPROVED'),
+      chain: ['CEO', 'MANAGER', 'HR'],
+      approvedBy: ['MANAGER', 'HR'],
+    });
+
+    expect(progress.agreed).toBe(true);
+    expect(progress.stagesMissing).toEqual(['CEO']);
+    /* And it is not put in anybody's queue by saying so. */
+    expect(progress.stillToApprove).toEqual([]);
+    expect(progress.awaiting).toBeNull();
+  });
+
+  /* And a request that has ended is not waiting on anybody, whatever the chain says. A
+     withdrawn request reading "still waiting on HR" is the queue entry
+     `leave_request_waits_at_a_desk` keeps out of the schema, arriving in the reading. */
+  it('and a request that has ended waits on nobody', () => {
+    const progress = progressOf({
+      request: aRequestIn('REFUSED'),
+      chain: ORDINARY,
+      approvedBy: ['MANAGER'],
+    });
+
+    expect(progress.agreed).toBe(false);
+    expect(progress.stillToApprove).toEqual([]);
+    expect(progress.awaiting).toBeNull();
+    expect(progress.inWords).toMatch(/was refused and is not yours to take/);
+    expect(progress.inWords).toMatch(/days are back/);
+  });
+
+  it('and a request nobody has looked at yet says exactly that', () => {
+    const { inWords } = progressOf({
+      request: aRequestIn('SUBMITTED', 'MANAGER'),
+      chain: ORDINARY,
+      approvedBy: [],
+    });
+
+    expect(inWords).toMatch(/Nobody has approved it yet/);
+    expect(inWords).toMatch(/still needs your line manager then HR/);
   });
 });
 
