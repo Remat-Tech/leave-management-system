@@ -2674,10 +2674,6 @@ than rediscovered:
   `leave_ledger_entry_type_known` to admit `LAPSE`. The README's "only the state machine
   moves a request" is what that story inherits; what this one guarantees is that nothing
   else has moved one first.
-* **No overlap constraint.** The baseline enabled `btree_gist` for the GiST exclusion
-  constraint that refuses two requests over the same fortnight. It is not here because it
-  is a rule about two requests and this story is about one — and because the constraint
-  has to know which statuses count as live, which is the state machine's list.
 * **No approval, withdrawal or cancellation.** All three move `status` and two of them
   release days. `ledgerPolicy.release` is already written and waiting for them.
 
@@ -2736,10 +2732,71 @@ the last leave year is next year's decision rather than a hole — the label fal
 the year part of the day to resume on. The sentence stays true and the two dates in it,
 which are the half somebody acts on, stay right.
 
-**And `CROSS_LEAVE_YEAR` is the one refusal here carrying an error code**, because it is
-the one a form is expected to *do* something with: offer the split as two prefilled
+**And `CROSS_LEAVE_YEAR` is the first refusal here to carry an error code**, because it
+is one a form is expected to *do* something with: offer the split as two prefilled
 requests rather than only printing the sentence. A message is reworded the first time
-somebody reads it aloud; a code is a contract.
+somebody reads it aloud; a code is a contract. `OVERLAPPING_REQUEST` is the second, and
+is [below](#leave-over-leave-already-booked).
+
+---
+
+### Leave over leave already booked
+
+**One person is in one place on one day.** FR 15, §5.6, LMS 304. The defect is a balance
+consumed twice for the same days, and what makes it worth a story of its own is that
+nothing about it looks wrong while it happens. Somebody books the second to the tenth of
+March, forgets, and books the fifth to the twelfth. Both reserve. Both ledger entries
+reconcile, every figure is explainable, and the balance is still incorrect. That is the
+one shape of error design principle 1 cannot catch on its own — the record is faithful,
+and the request was one nobody should have been allowed to make.
+
+**The constraint is keyed by the employee and the dates, and deliberately not by the
+leave type.** A person is away or they are not. Annual leave from the second to the tenth
+and sick leave on the fifth are not two absences that happen to share a day; they are one
+day with two claims on it, each taking a day off a different balance. Keying by type as
+well would permit exactly that and would read as though somebody had thought about it. FR
+32b's "sick leave during annual leave is converted" is the real answer to that case, and
+it is a conversion with an approver on it — the first request is amended and the days
+come back — rather than two rows quietly coexisting.
+
+**The range is inclusive at both ends**, `daterange(start_date, end_date, '[]')`, because
+that is what the two dates mean everywhere else in this schema. Leave ending on the tenth
+and leave starting on the tenth share the tenth, and a half-open range would let that
+through as one day booked twice — the defect itself, arriving through the off-by-one
+nobody tests. Leave starting the day *after* is ordinary and is accepted.
+
+| | Covers | Does not cover |
+|---|---|---|
+| `LeaveRequestService.resolve()`, asking first | naming the leave in the way — its dates, what it cost, its kind — for everybody who is not in a race | two submissions at the same moment, which both see a table with no conflict in it |
+| `leave_request_never_overlaps`, a GiST exclusion constraint | the same rule on every connection, evaluated as the row is written | saying which row it collided with; by then the transaction is aborted |
+
+**This is the first constraint in the system where the backstop is a path real users
+take.** Everywhere else — the ledger's triggers, the year check — the database half
+catches psql and bulk loads while the service half catches everybody. Here the check and
+the write are two statements, and no arrangement of application code closes the gap
+between them: two tabs, or two clicks, and only the constraint sees the second row land
+on the first. So the repository maps `exclusion_violation` back to the same
+`LeaveOverlapsAnother` and the same `OVERLAPPING_REQUEST` code the service raises, and
+what changes is the second sentence — it says to reload and look rather than pretending
+to have looked. **This is what `btree_gist` was enabled for in the baseline**, which
+described the shape of it two migrations before the table existed: equality on a scalar
+column beside overlap on a range.
+
+**A request blocks the days only while it is still live**, and `LIVE_STATUSES` is the
+list of what live means — drafted, waiting to be decided, or agreed. Withdrawn, cancelled
+and refused leave has given its days back, and days that came back are days somebody may
+book again, which is the ordinary thing to do after a request is turned down.
+
+Today that list holds `SUBMITTED` and nothing else, because [the state
+machine](#asking-for-leave) is still the approval story's and `SUBMITTED` is the pending
+state. **The list is nonetheless separate from `REQUEST_STATUSES` rather than being read
+as "all of them", and that is the point of writing it this early.** The approval story
+brings `APPROVED` — live — alongside `WITHDRAWN`, `CANCELLED` and `REFUSED`, which are
+not, and a story that extends one list and forgets the other either blocks a fortnight in
+March against leave that was refused in January or lets somebody book over leave that was
+approved. The same list is the constraint's `WHERE` predicate, currently a tautology and
+written anyway for the same reason; the integration suite reads it back out of
+`pg_constraint` and asserts the two agree, so neither can be extended alone.
 
 ---
 
@@ -2855,6 +2912,14 @@ its `RESERVATION` are shown to be one act — a foreign key, a deferred trigger 
 a rollback are not properties any pure function has.
 `unit/leave-request.test.ts` covers what a quote says and what a request has to
 carry, and neither file names a leave type by its code.
+
+Since LMS 304 the same suite carries the overlap rule, and there the database half
+is a path real users take rather than a backstop for psql: the service is asked to
+book over leave it has already booked, and separately the owner connection is, which
+is the racing second submission made deterministic. It also reads
+`leave_request_never_overlaps` back out of `pg_constraint` and asserts its `WHERE`
+predicate is exactly `LIVE_STATUSES` — the check that fails on the afternoon the
+approval story adds a status to one list and not the other.
 
 **`unit/leave-type.test.ts` is where LMS 201 is proved and
 `integration/leave-type.test.ts` is what stops it being proved against itself.**

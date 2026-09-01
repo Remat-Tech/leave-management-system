@@ -12,7 +12,9 @@ import {
   InvalidLeaveRequest,
   LeaveCountsNoDays,
   LeaveCrossesAYearEnd,
+  LeaveOverlapsAnother,
   LeaveRequestNotFound,
+  LIVE_STATUSES,
   type NewLeaveRequest,
 } from '../../src/domain/leave-request.js';
 import { LeaveTypeRetired } from '../../src/domain/leave-type.js';
@@ -717,6 +719,237 @@ describe('what leave may be asked for', () => {
       requests.submit(asThemselves(), aRequest({ reason: '  ' })),
     ).rejects.toBeInstanceOf(InvalidLeaveRequest);
   });
+});
+
+/* ------------------------------------------- leave over leave already booked */
+
+/**
+ * FR 15, §5.6. LMS 304.
+ *
+ * The defect is a balance consumed twice for the same days, and it is worth being
+ * precise about why it needs a story: nothing about it looks wrong while it happens.
+ * Somebody books the second to the tenth of March, forgets, and books the fifth to the
+ * twelfth. Both reserve. Both entries reconcile. Every figure is explainable and the
+ * balance is still incorrect — which is the one shape of error design principle 1
+ * cannot catch, because the record is faithful and the request was one nobody should
+ * have been allowed to make.
+ *
+ * ../unit/leave-request.test.ts proves the predicate, the list and the sentence. What
+ * needs a database is the part that is about *rows*: that the check sees leave of every
+ * kind, that the boundary is inclusive against a real `daterange`, and that the
+ * exclusion constraint refuses what no application check could have caught.
+ */
+describe('leave cannot be booked over leave already booked', () => {
+  /** The first request, which every case below is asked on top of. */
+  async function alreadyBooked(): Promise<void> {
+    await requests.submit(asThemselves(), aRequest());
+  }
+
+  it('is refused when the same days are asked for twice', async () => {
+    await alreadyBooked();
+
+    await expect(requests.submit(asThemselves(), aRequest())).rejects.toBeInstanceOf(
+      LeaveOverlapsAnother,
+    );
+  });
+
+  /**
+   * And the refusal names the leave in the way. The story's second criterion.
+   *
+   * "You cannot book those days" tells somebody nothing they can act on: they are
+   * looking at a form they believe in and the clash is with a row they cannot see. So
+   * the dates, the day count and the kind are all in the sentence, and the request
+   * itself is on the error for a screen to link to.
+   */
+  it('and the refusal names the request in the way, by its dates and its kind', async () => {
+    await alreadyBooked();
+
+    const refusal = await refusalFrom(
+      requests.submit(asThemselves(), aRequest({ from: '2026-03-09', to: '2026-03-13' })),
+    );
+
+    expect(refusal.code).toBe('OVERLAPPING_REQUEST');
+    expect(refusal.message).toBe(
+      'You already have leave from 2 March 2026 to 10 March 2026 — 6 days of Annual ' +
+        'Leave. The same days cannot be booked twice, or they come off your balance ' +
+        'twice. Withdraw that request, or ask for dates outside it.',
+    );
+    expect(refusal.conflict?.request).toMatchObject({ from: FROM, to: TO, days: 6 });
+  });
+
+  /**
+   * **A different kind of leave is still the same day off.**
+   *
+   * The constraint is keyed by employee and dates and deliberately not by leave type: a
+   * person is away or they are not. Annual leave from the second to the tenth and sick
+   * leave on the fifth are not two absences sharing a day, they are one day with two
+   * claims on it, each taking a day off a different balance. FR 32b's conversion of sick
+   * leave taken during annual leave is the real answer to that case, and it amends the
+   * first request rather than writing a second beside it.
+   */
+  it('and leave of another kind over the same days is refused too', async () => {
+    await alreadyBooked();
+
+    const refusal = await refusalFrom(
+      requests.submit(
+        asThemselves(),
+        aRequest({ leaveTypeId: maternityId, from: '2026-03-05', to: '2026-03-05' }),
+      ),
+    );
+
+    expect(refusal.conflict?.typeName).toBe('Annual Leave');
+  });
+
+  /* The boundary, and it is the case an off-by-one would let through: leave ending on
+     the tenth and leave starting on the tenth share the tenth. That is one day booked
+     twice, which is the defect itself. */
+  it('and a period sharing only one day with it is still refused', async () => {
+    await alreadyBooked();
+
+    await expect(
+      requests.submit(asThemselves(), aRequest({ from: TO, to: '2026-03-13' })),
+    ).rejects.toBeInstanceOf(LeaveOverlapsAnother);
+  });
+
+  /* And the other side of that boundary, which is what stops the rule being "no second
+     request in March": leave starting the day after is ordinary and common — a
+     fortnight, back for a day, then another week. */
+  it('but a period starting the day after it ends is accepted', async () => {
+    await alreadyBooked();
+
+    await expect(
+      requests.submit(asThemselves(), aRequest({ from: '2026-03-11', to: '2026-03-13' })),
+    ).resolves.toMatchObject({ request: { from: '2026-03-11' } });
+  });
+
+  /* One person's leave blocks that person's leave and nobody else's, which is the
+     `employee_id WITH =` half of the constraint — and the half a `daterange`-only
+     constraint would have got wrong by stopping the whole company taking the same
+     fortnight. */
+  it('and one person’s leave does not block anybody else’s', async () => {
+    await alreadyBooked();
+
+    /* Abena Sarpong has no entitlement of her own in this suite; the officer is the only
+       person granted any. Granted here rather than in the fixture because this is the
+       one test that needs a second person to be able to spend anything. */
+    await balances.grantTheYear(system, {
+      employeeId: people.partTimer,
+      leaveTypeId: annualId,
+      leaveYearId: y2026.id,
+      days: 20,
+      reason: 'Annual entitlement for 2026',
+    });
+
+    await expect(
+      requests.submit(
+        signedInAs(people.partTimer, { roles: ['EMPLOYEE'], isManager: false }),
+        aRequest({ employeeId: people.partTimer }),
+      ),
+    ).resolves.toMatchObject({ request: { employeeId: people.partTimer } });
+  });
+
+  /**
+   * The quote refuses it too, which is where somebody actually finds out.
+   *
+   * The story is that the system stops them booking over leave they already have, not
+   * that it prices it first and refuses afterwards — the same rule LMS 303 established
+   * for the other refusals, held by `quote` and `submit` sharing `resolve()`.
+   */
+  it('and a quote for those days is refused rather than priced', async () => {
+    await alreadyBooked();
+
+    await expect(
+      requests.quote(asThemselves(), aRequest({ from: '2026-03-09', to: '2026-03-13' })),
+    ).rejects.toBeInstanceOf(LeaveOverlapsAnother);
+  });
+
+  /* Refused before anything is written: no second request, and no second hold on the
+     balance. The days the first request took are the only days taken. */
+  it('and nothing is written by the request that was refused', async () => {
+    await alreadyBooked();
+
+    await expect(
+      requests.submit(asThemselves(), aRequest({ from: '2026-03-09', to: '2026-03-13' })),
+    ).rejects.toBeInstanceOf(LeaveOverlapsAnother);
+
+    expect((await admin.query('SELECT count(*) FROM leave_request')).rows[0].count).toBe('1');
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'RESERVATION'",
+        )
+      ).rows[0].count,
+    ).toBe('1');
+    const balance = await balances.forOne(asThemselves(), {
+      employeeId: people.officer,
+      leaveTypeId: annualId,
+      leaveYearId: y2026.id,
+    });
+
+    expect(balance.pending).toBe(6);
+  });
+
+  /**
+   * **And the constraint refuses it where no application check could have.**
+   *
+   * The story's third criterion. `LeaveRequestService` asks first so the refusal can
+   * name the leave in the way, but that ask cannot close the window: two tabs submitting
+   * the same fortnight at the same moment both read a table with no conflict in it, both
+   * pass, and only the database sees the second row land on the first.
+   *
+   * A direct INSERT on the owner connection is that race made deterministic — it is the
+   * one writer no service check is in front of, which is exactly the position the second
+   * of two racing submissions is in.
+   */
+  it('and the database refuses an overlapping row, by anybody', async () => {
+    await alreadyBooked();
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_request (
+            employee_id, leave_type_id, leave_year_id, start_date, end_date,
+            reason, counting_basis, days, calendar_days, status)
+         VALUES ($1, $2, $3, '2026-03-09', '2026-03-13', 'straight past the service',
+                 'WORKING_DAYS', 4, 5, 'SUBMITTED')`,
+        [people.officer, annualId, y2026.id],
+      ),
+    ).rejects.toMatchObject({ constraint: 'leave_request_never_overlaps', code: '23P01' });
+  });
+
+  /**
+   * And the list of statuses that block is written twice — here and in the domain.
+   *
+   * `LIVE_STATUSES` and the constraint's `WHERE` are the same list, and today both hold
+   * the single value `REQUEST_STATUSES` holds. That makes this test look like a
+   * formality and it is the opposite: the approval story adds APPROVED to both and
+   * WITHDRAWN, CANCELLED and REFUSED to neither, and a story that extends one and
+   * forgets the other either blocks leave that was refused in January or lets a person
+   * book over leave that was approved. This is what fails instead.
+   */
+  it('and the constraint blocks exactly the statuses the code calls live', async () => {
+    const { rows } = await admin.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid = 'leave_request'::regclass AND conname = 'leave_request_never_overlaps'`,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(
+      [...rows[0].definition.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1]).sort(),
+    ).toEqual([...LIVE_STATUSES].sort());
+  });
+
+  /** The refusal, awaited, so a test can read what it said rather than only its type. */
+  async function refusalFrom(work: Promise<unknown>): Promise<LeaveOverlapsAnother> {
+    try {
+      await work;
+    } catch (error) {
+      expect(error).toBeInstanceOf(LeaveOverlapsAnother);
+      return error as LeaveOverlapsAnother;
+    }
+
+    throw new Error('That was accepted, and should not have been.');
+  }
 });
 
 /* --------------------------------------------------------------- who may ask */

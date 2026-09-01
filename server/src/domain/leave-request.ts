@@ -1,6 +1,6 @@
 /**
- * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 16, §8. LMS 301,
- * and the refusals of LMS 303.
+ * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 15, FR 16, §8.
+ * LMS 301, and the refusals of LMS 303 and LMS 304.
  *
  * The story is an employee who wants no surprises when the days come off their
  * balance, and the whole of this file follows from taking that literally: the figure
@@ -58,6 +58,15 @@
  *   and then {@link LeaveCrossesAYearEnd} with both years named and the two dates to
  *   resubmit on.
  *
+ * LMS 304 added a fourth, which is not about the dates being wrong but about the days
+ * being taken:
+ *
+ *   **The period runs over leave the person already has.** {@link periodsOverlap} and
+ *   {@link LIVE_STATUSES}, and then {@link LeaveOverlapsAnother} naming the leave in the
+ *   way. Unlike the three above it is a rule about *another row*, so the domain holds
+ *   the predicate and the list while the service does the reading — and
+ *   `leave_request_never_overlaps` holds the same rule where two submissions race.
+ *
  * **All three are refusals about a request, and none of them is the calculator's.**
  * LMS 303 moved the second one here from ./leave-calculator.ts, and the reason is the
  * reason it belongs beside the other two: that a fortnight over Christmas costs eight
@@ -86,10 +95,6 @@
  * migration extending the CHECK exactly as LMS 218 extended the ledger's entry types,
  * and the README's rule that "only the state machine moves a request" is what it
  * inherits. What this story guarantees is that nothing else has moved one first.
- *
- * **No overlap check.** Two requests for the same fortnight is a rule about two rows
- * and needs the state machine's list of which statuses count as live. The baseline
- * enabled `btree_gist` for the exclusion constraint that will hold it.
  *
  * **No policy.** There is no {@link Actor} here and there is none in a `/domain` file
  * anywhere. Who may ask for leave is ../auth/leave-request-policy.ts.
@@ -124,6 +129,44 @@ import {
 export const REQUEST_STATUSES = ['SUBMITTED'] as const;
 
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+
+/**
+ * The statuses that hold a person's days. FR 15, §5.6. LMS 304.
+ *
+ * **A request blocks the same days being asked for again only while it is still live**,
+ * and this is the list of what live means. Everything in it is leave the person still
+ * has or is still expecting: drafted, waiting to be decided, or agreed. Everything
+ * outside it is leave that came back — withdrawn, cancelled, refused — and days that
+ * came back are days somebody may book again, which is the ordinary thing to do after
+ * a request is turned down.
+ *
+ * One value today, because {@link REQUEST_STATUSES} has one value and it is the
+ * *pending* one: a request in this system is submitted and waiting. The list is
+ * nonetheless separate from `REQUEST_STATUSES` rather than being read as "all of them",
+ * and that is the whole point of it existing this early. The approval story brings
+ * APPROVED — live — alongside WITHDRAWN, CANCELLED and REFUSED, which are not, and the
+ * difference between the two lists is what stops a fortnight in March being blocked by
+ * leave that was refused in January. A story adding a status has to decide which list it
+ * joins, which is the decision that would otherwise be made by whichever query somebody
+ * copied.
+ *
+ * `leave_request_never_overlaps` holds the same list as the predicate on an exclusion
+ * constraint, and the integration suite asserts the two agree — so neither can be
+ * extended alone.
+ */
+export const LIVE_STATUSES: readonly RequestStatus[] = ['SUBMITTED'];
+
+/**
+ * Whether a request in this state still holds the days it covers. FR 15.
+ *
+ * Asked of the status rather than of a list at each call site, for the reason
+ * {@link countsWorkingDays} is asked of the basis rather than of the code: the question
+ * "does this one block" should have one answer, and a second `includes` written
+ * somewhere else is a second answer waiting to disagree.
+ */
+export function blocksTheCalendar(status: RequestStatus): boolean {
+  return LIVE_STATUSES.includes(status);
+}
 
 /** What somebody fills in. FR 10's four fields, and nothing else. */
 export interface NewLeaveRequest {
@@ -337,7 +380,100 @@ export class LeaveCrossesAYearEnd extends Error {
   }
 }
 
+/**
+ * The leave already in the way, as the refusal needs to say it. FR 15.
+ *
+ * The request and the name of its type, because the row carries a `leaveTypeId` and
+ * nobody has ever recognised their own leave from one. The conflict is very often of a
+ * different kind from the one being asked for — sick leave inside a booked fortnight is
+ * the case FR 32b is about — so naming the kind is what makes the sentence recognisable
+ * rather than merely true.
+ */
+export interface ConflictingLeave {
+  request: LeaveRequest;
+  /** The kind of leave, as a person would say it. `leaveType.name`. */
+  typeName: string;
+}
+
+/**
+ * Leave asked for over leave the person already has. FR 15, §5.6.
+ *
+ * The days would be reserved twice and come off the balance twice, and nothing in the
+ * ledger would look wrong while it happened: both reservations reconcile, both are
+ * explainable, and the figure is still incorrect. It is the one defect design principle
+ * 1 cannot catch by itself, because the record is faithful and the request should never
+ * have been made.
+ *
+ * **The message names the leave in the way.** "You cannot book those days" tells
+ * somebody nothing they can act on — they are looking at a form they believe in, and the
+ * clash is with a row they cannot see. So the sentence carries the other request's dates,
+ * what it cost and what kind it is, which between them identify it on any leave page, and
+ * {@link ConflictingLeave} is on the error so a screen can link to it rather than parse a
+ * message for it.
+ *
+ * ## The one case where it cannot name anything
+ *
+ * `conflict` is undefined when the refusal came from `leave_request_never_overlaps`
+ * rather than from the service's own check — two submissions of the same fortnight
+ * racing each other, where both checks read a table with no conflict in it and the
+ * database refused the second INSERT. There is no arrangement of application code that
+ * closes that window, and by the time the violation is caught the transaction is aborted
+ * and cannot be asked which row it collided with.
+ *
+ * The same class and the same code either way, because a caller catching this wants to
+ * know the days clash and should not have to handle two shapes of that. What changes is
+ * the second sentence, which says to look rather than pretending to have looked.
+ */
+export class LeaveOverlapsAnother extends Error {
+  /**
+   * FR 15. What a client branches on, as `CROSS_LEAVE_YEAR` is.
+   *
+   * The second refusal here to carry one, and for the same reason: this is a refusal a
+   * form is expected to *do* something with — show the clashing leave, offer to jump to
+   * it — rather than only print.
+   */
+  readonly code = 'OVERLAPPING_REQUEST';
+  readonly period: LeavePeriod;
+  /** The leave in the way. Undefined only on the race; see the class note. */
+  readonly conflict: ConflictingLeave | undefined;
+
+  constructor(period: LeavePeriod, conflict?: ConflictingLeave) {
+    super(
+      conflict === undefined
+        ? `Those days overlap leave this person already has. One period of leave per ` +
+            `person per day — the same days cannot be booked twice, or they come off a ` +
+            `balance twice. Another request for them was submitted at the same moment as ` +
+            `this one; reload the leave page and check the dates before asking again.`
+        : `You already have leave from ${formatDay(conflict.request.from)} to ` +
+            `${formatDay(conflict.request.to)} — ${conflict.request.days} ` +
+            `${conflict.request.days === 1 ? 'day' : 'days'} of ${conflict.typeName}. The ` +
+            `same days cannot be booked twice, or they come off your balance twice. ` +
+            `Withdraw that request, or ask for dates outside it.`,
+    );
+    this.name = 'LeaveOverlapsAnother';
+    this.period = period;
+    this.conflict = conflict;
+  }
+}
+
 /* ------------------------------------------------------- refusing the dates */
+
+/**
+ * Whether two periods share a day. FR 15.
+ *
+ * Inclusive at both ends on both sides, which is the whole of it: leave from the first
+ * to the tenth and leave from the tenth to the twelfth share the tenth, and a comparison
+ * that missed it would be one day booked twice — the exact shape of the defect. Two
+ * string comparisons, for the reason {@link coversDay} is two: a {@link CalendarDate} is
+ * ten characters that sort correctly.
+ *
+ * The same predicate `daterange(start_date, end_date, '[]') WITH &&` states in
+ * `leave_request_never_overlaps`, said in the language this half of the system is
+ * written in.
+ */
+export function periodsOverlap(one: LeavePeriod, other: LeavePeriod): boolean {
+  return one.from <= other.to && other.from <= one.to;
+}
 
 /**
  * Whether the period runs out of the year it started in. FR 16.

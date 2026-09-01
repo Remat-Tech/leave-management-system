@@ -110,6 +110,10 @@ beforeEach(async () => {
   /* LMS 301: the requests went with the entries, so the next test builds its own. */
   currentRequest = undefined;
 
+  /* And with them the days they claimed, so the next test starts at the year's first
+     again. LMS 304. */
+  nextRequestDay = 0;
+
   people = (await seed(admin)) as Record<string, string>;
 
   y2026 = (await years.byLabel(system, '2026'))!;
@@ -171,27 +175,44 @@ function movesForARequest(entryType: LedgerEntryType): boolean {
 }
 
 /**
+ * Where the next fixture request starts, counted in days from its leave year's first.
+ *
+ * Every request in this file used to begin on the first of January, which was fine until
+ * `leave_request_never_overlaps` arrived with LMS 304: one person may not hold the same
+ * day twice. Advancing the start day gives each fixture a period of its own — which is
+ * what these rows were always meant to represent, since what this file is about is the
+ * balance rather than the calendar.
+ *
+ * Reset for each test alongside the tables, so a run's requests do not walk off the end
+ * of the leave year and meet `leave_request_falls_in_its_leave_year` instead.
+ */
+let nextRequestDay = 0;
+
+/**
  * A request row, inside whatever transaction the caller has open.
  *
- * The period starts on the first day of its leave year and runs `days` days, which is
- * the one shape that satisfies every CHECK on the table for any figure a test asks
- * for: inside the year, ending on or after it starts, and spanning at least as many
- * days as it costs.
+ * The period runs `days` days from wherever the last one ended, which is the one shape
+ * that satisfies every rule on the table for any figure a test asks for: inside the year,
+ * ending on or after it starts, spanning at least as many days as it costs, and not on
+ * top of a period this person already holds.
  */
 async function insertRequest(
   key: { employee_id: unknown; leave_type_id: unknown; leave_year_id: unknown },
   days: number,
 ): Promise<string> {
+  const startsOn = nextRequestDay;
+  nextRequestDay += days;
+
   const { rows } = await admin.query<{ id: string }>(
     `INSERT INTO leave_request (
         employee_id, leave_type_id, leave_year_id,
         start_date, end_date, reason, counting_basis, days, calendar_days, status)
      SELECT $1, $2, $3,
-            y.start_date, y.start_date + ($4::int - 1),
+            y.start_date + $5::int, y.start_date + $5::int + ($4::int - 1),
             'a request for the suite', 'CALENDAR_DAYS', $4, $4, 'SUBMITTED'
        FROM leave_year y WHERE y.id = $3
      RETURNING id`,
-    [key.employee_id, key.leave_type_id, key.leave_year_id, days],
+    [key.employee_id, key.leave_type_id, key.leave_year_id, days, startsOn],
   );
 
   return rows[0].id;
@@ -303,10 +324,18 @@ function asThemselves() {
  * request and a request has to hold days — so there is no way to write one without the
  * other, which is the point rather than an inconvenience.
  *
- * The period starts on the first day of the leave year and runs as many days as are
- * being asked for, counted as calendar days, so that any figure a test wants is a period
- * the table accepts. What the tests below are about is the balance rather than the
- * counting; ./leave-request.test.ts is where the counting is proved.
+ * Each period runs as many days as are being asked for, counted as calendar days, so that
+ * any figure a test wants is a period the table accepts. What the tests below are about
+ * is the balance rather than the counting; ./leave-request.test.ts is where the counting
+ * is proved.
+ *
+ * **Each one starts where the last left off**, which since LMS 304 is what makes two of
+ * them possible at all: `leave_request_never_overlaps` refuses one person two requests
+ * over the same day, and these all used to begin on the first of January. The days are
+ * claimed synchronously, before the first `await`, so that the two callers of the
+ * concurrency tests below take different periods rather than racing for one — the race
+ * those tests are about is for the *balance*, and a fixture that made them collide on
+ * the calendar instead would be proving something else.
  */
 async function askFor(
   overrides: Partial<BalanceKey> & { days?: number } = {},
@@ -316,9 +345,13 @@ async function askFor(
   const balance = theBalance(key);
   const span = Math.max(1, Math.trunc(Math.abs(days)) || 1);
 
+  const startsOn = nextRequestDay;
+  nextRequestDay += span;
+
   const { rows } = await admin.query<{ start_date: string; end_date: string }>(
-    `SELECT start_date, start_date + ($2::int - 1) AS end_date FROM leave_year WHERE id = $1`,
-    [balance.leaveYearId, span],
+    `SELECT start_date + $3::int AS start_date, start_date + $3::int + ($2::int - 1) AS end_date
+       FROM leave_year WHERE id = $1`,
+    [balance.leaveYearId, span, startsOn],
   );
 
   return balances.reserveForRequest(who, {

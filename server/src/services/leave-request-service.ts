@@ -51,6 +51,12 @@
  *   refused with both years named rather than split — see {@link LeaveCrossesAYearEnd},
  *   which is the one refusal here carrying an error code.
  *
+ *   **Do they already have leave on those days?** FR 15, and the only question here
+ *   about another row. Asked last of the four above because it is the only one that
+ *   costs a query the happy path would not otherwise run — and answered with
+ *   {@link LeaveOverlapsAnother} naming the leave in the way, which needs one more
+ *   query and gets it only on the way to a refusal.
+ *
  *   **What does it cost?** {@link LeaveCalculatorService}, which reads the working
  *   pattern and the holidays for the period and applies the type's basis. A period
  *   nothing in which is charged is refused on that answer — {@link countFor} — rather
@@ -74,9 +80,6 @@
  * authorisation check, one audit write. That is the next story's, and this one leaves
  * `REQUEST_STATUSES` holding a single value so nothing can pretend otherwise.
  *
- * **No overlap check.** Two requests for the same fortnight is a rule about two rows
- * and it needs the state machine's list of live statuses to know which of them count.
- *
  * **No notice or documentation enforcement.** FR 17 is a warning by design — leave is
  * sometimes needed at short notice — and the quote carries it so the person sees it
  * before they commit and the approver sees it afterwards. FR 13's documentation is an
@@ -98,6 +101,7 @@ import {
   type LeaveRequest,
   type LeaveRequestQuote,
   LeaveRequestNotFound,
+  LeaveOverlapsAnother,
   type NewLeaveRequest,
   noticeGiven,
   quoteFor,
@@ -229,6 +233,7 @@ export class LeaveRequestService {
    * {@link LeaveCountsNoDays} where nothing in it counts, {@link LeaveTypeRetired} and
    * {@link NotEligibleForTheType} for a type that may not be asked for,
    * {@link LeaveCrossesAYearEnd} for a period spanning a year end,
+   * {@link LeaveOverlapsAnother} for leave over leave already booked,
    * {@link LeaveYearIsClosed} for a settled year, and {@link BalanceOverdrawn} from the
    * door where the days are not there.
    */
@@ -370,7 +375,56 @@ export class LeaveRequestService {
 
     const year = await this.yearCovering(period);
 
+    await this.assertNothingIsAlreadyBooked(employee, period);
+
     return { employee, type, year, period };
+  }
+
+  /**
+   * Refuses leave asked for over leave the person already has. FR 15, §5.6. LMS 304.
+   *
+   * Last in {@link LeaveRequestService.resolve}, because it is the only check there that
+   * costs a query the happy path would not otherwise run, and because everything above
+   * it refuses on the dates alone. A period the wrong way round should be told so
+   * without a table being consulted about it.
+   *
+   * **Asked by `quote` as well as by `submit`.** A quote is where somebody finds out,
+   * and the story is that the system stops them booking over leave they already have
+   * rather than letting them price it first and refusing them afterwards.
+   *
+   * The conflicting request's leave type is read only to be named, and only on the way
+   * to a refusal — a row carries a `leaveTypeId` and nobody has recognised their own
+   * leave from one. It is very often a different type from the one being asked for,
+   * which is what makes naming it worth a query nobody pays for unless they are being
+   * refused.
+   *
+   * **This is not the guarantee.** Two submissions of the same fortnight racing each
+   * other both reach this with a table that has no conflict in it, and both pass; what
+   * refuses the second is `leave_request_never_overlaps` as the row is written. The
+   * repository turns that into the same refusal. What this method buys is the sentence
+   * naming the leave in the way, for everybody who is not in a race — which is
+   * everybody.
+   */
+  private async assertNothingIsAlreadyBooked(
+    employee: Employee,
+    period: LeavePeriod,
+  ): Promise<void> {
+    const conflict = await this.requests.findOverlapping(employee.id, period);
+
+    if (conflict === undefined) {
+      return;
+    }
+
+    const type = await this.types.findById(conflict.leaveTypeId);
+
+    throw new LeaveOverlapsAnother(period, {
+      request: conflict,
+      /* Unreachable: `leave_request.leave_type_id` is NOT NULL with a foreign key behind
+         it, and nothing deletes a leave type — retiring one clears `is_active`. Answered
+         rather than asserted, because a refusal that reads "5 days of undefined" is worse
+         than one that says less. */
+      typeName: type?.name ?? 'leave',
+    });
   }
 
   /**
