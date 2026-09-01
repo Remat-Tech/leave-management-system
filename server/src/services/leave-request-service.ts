@@ -117,6 +117,22 @@
  * decides whether that was the last word. A `approveAsManager` and a `approveAsHr` would be
  * design principle 5's forbidden `if` on a type code, wearing method names.
  *
+ * ## And every one of those verbs now says something. FR 39, FR 52. LMS 315
+ *
+ * {@link LeaveRequestService.approve} takes a comment and does not need one;
+ * {@link LeaveRequestService.refuse} takes one and will not proceed without it. That
+ * asymmetry is the whole of the story and it is argued for in ../domain/leave-decision.ts:
+ * somebody told no has to be able to act on it, and somebody told yes needs no account of
+ * the yes.
+ *
+ * The two administrative endings take none, because neither is a decision at a desk — see
+ * {@link LeaveRequestService.settle}, which is where the comment stops being a parameter and
+ * becomes half of a union the door cannot be handed wrongly.
+ *
+ * **The reading of them is {@link LeaveRequestService.decisionsFor}**, and it is the half
+ * that makes the writing worth anything: a refusal recorded and never shown is the corridor
+ * conversation with a database behind it.
+ *
  * **No notice or documentation enforcement.** FR 17 is a warning by design — leave is
  * sometimes needed at short notice — and the quote carries it so the person sees it
  * before they commit and the approver sees it afterwards. FR 13's documentation is an
@@ -132,6 +148,7 @@ import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
 import type { DayCount, LeavePeriod } from '../domain/leave-calculator.js';
 import { validateLeavePeriod } from '../domain/leave-calculator.js';
+import { type LeaveDecision, readComment, requireAComment } from '../domain/leave-decision.js';
 import {
   approvalTo,
   assertItCostsSomething,
@@ -164,6 +181,7 @@ import {
 import { type LeaveYear, LeaveYearNotFound } from '../domain/leave-year.js';
 import { type CalendarDate, calendarDateIn, dayAfter } from '../domain/time.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
+import type { LeaveDecisionRepository } from '../repositories/leave-decision-repository.js';
 import type {
   LeaveRequestListOptions,
   LeaveRequestRepository,
@@ -217,6 +235,16 @@ export class LeaveRequestService {
     private readonly years: LeaveYearRepository,
     /** For the reads; the writes go through {@link BalanceService}. */
     private readonly requests: LeaveRequestRepository,
+    /**
+     * What each desk said, for the reads. FR 39, FR 52. LMS 315.
+     *
+     * The same division `requests` above is held to, and for a stronger reason: a decision
+     * has to land in the same transaction as the status it explains — the two are one act —
+     * so the writing is `BalanceService`'s through the seam that owns transactions, and what
+     * this service holds is the reading. A `record()` called from here would be a decision
+     * that could commit while the move it describes rolled back.
+     */
+    private readonly decisions: LeaveDecisionRepository,
     /**
      * What the period costs. The one place this question is asked.
      *
@@ -347,7 +375,9 @@ export class LeaveRequestService {
    * because a screen that has just withdrawn something has to say what came back.
    */
   async withdraw(actor: Actor, id: string): Promise<LeaveReleased> {
-    return this.settle(actor, id, 'WITHDRAW', (owner) => leaveRequestPolicy.withdraw(actor, owner));
+    return this.settle(actor, id, 'WITHDRAW', null, (owner) =>
+      leaveRequestPolicy.withdraw(actor, owner),
+    );
   }
 
   /**
@@ -361,9 +391,30 @@ export class LeaveRequestService {
    * that matters to the person who asked: leave they were turned down for is not leave
    * that goes on being deducted from what they may book while somebody gets round to
    * tidying it up.
+   *
+   * ## And it says why. FR 39, FR 52. LMS 315
+   *
+   * The one ending that takes a comment, and the only method here that requires one. A
+   * refusal is a decision made about somebody by somebody else, and the person it is made
+   * about is owed the reason in the record rather than in a corridor: {@link LeaveDecision}
+   * is where it lands, with the desk it was decided at and the name of whoever decided it,
+   * in the same transaction as the status and the `RELEASE`.
+   *
+   * **Refused before anything at all is read**, which is a deliberate choice about the
+   * order rather than an optimisation. `settle` below asks *may you*, then *is this move
+   * available*, and both of those answers describe a request; asking for the reason first
+   * means an approver who forgot the box is told so without a single row being fetched, and
+   * without the refusal depending on whether the id was anybody's. {@link requireAComment}
+   * asks it again inside the transaction that writes, and
+   * `leave_request_refusal_says_why` asks it a third time where no service can reach.
+   *
+   * Throws {@link RefusalNeedsAComment} for a refusal with nothing said, before
+   * {@link LeaveRequestNotFound} and before {@link NotAuthorised}.
    */
-  async refuse(actor: Actor, id: string): Promise<LeaveReleased> {
-    return this.settle(actor, id, 'REFUSE', (owner) => leaveRequestPolicy.refuse(actor, owner));
+  async refuse(actor: Actor, id: string, comment: string): Promise<LeaveReleased> {
+    return this.settle(actor, id, 'REFUSE', requireAComment(comment), (owner) =>
+      leaveRequestPolicy.refuse(actor, owner),
+    );
   }
 
   /**
@@ -373,7 +424,9 @@ export class LeaveRequestService {
    * that belong in another year. See {@link leaveRequestPolicy.cancel}.
    */
   async cancel(actor: Actor, id: string): Promise<LeaveReleased> {
-    return this.settle(actor, id, 'CANCEL', (owner) => leaveRequestPolicy.cancel(actor, owner));
+    return this.settle(actor, id, 'CANCEL', null, (owner) =>
+      leaveRequestPolicy.cancel(actor, owner),
+    );
   }
 
   /**
@@ -436,7 +489,7 @@ export class LeaveRequestService {
    * leave that has already been approved, and {@link ApprovalChainChanged} where the chain
    * has moved out from under it.
    */
-  async approve(actor: Actor, id: string): Promise<LeaveApproved> {
+  async approve(actor: Actor, id: string, comment?: string): Promise<LeaveApproved> {
     const request = await this.requests.findById(id);
 
     if (request === undefined) {
@@ -482,8 +535,47 @@ export class LeaveRequestService {
       request,
       chain: type.approvalChain,
       chiefExecutiveId,
+      /* FR 39, LMS 315. Optional, and normalised here rather than at the door so that an
+         approver who typed two spaces and one who typed nothing produce the same row.
+         The desk it is filed under is not this method's — see `approveForRequest`. */
+      comment: readComment(comment),
       reason: reasonForApproval(type.name, request, request.days, outcome.by),
     });
+  }
+
+  /**
+   * What each desk said about this request, in the order they said it. FR 39, FR 52. LMS
+   * 315.
+   *
+   * The reading half of the story, and the reason the writing half is worth anything: a
+   * refusal recorded and never shown is the corridor conversation with a database behind it.
+   * What comes back is one row per decision — the verb, the comment, the desk it was decided
+   * at, who decided it and when — oldest first, so a request that went to a manager and then
+   * to HR reads as the account of how it got where it is.
+   *
+   * **Decided by `leaveRequestPolicy.read`**, which is exactly the rule that decides who may
+   * see the request itself, and deliberately not a narrower one. A decision is the
+   * explanation of a status, and standing to see the status without the reason for it would
+   * be standing to see half an answer — the same sentence this file's policy makes about a
+   * request and the balance it moves. So the requester sees why they were turned down, their
+   * line manager sees it, and a role that reads every record sees it; a colleague sees
+   * neither the request nor this.
+   *
+   * Throws {@link LeaveRequestNotFound} for an id that is nobody's, and {@link NotAuthorised}
+   * — silently, as `read` refuses — for somebody with no standing to see the request.
+   */
+  async decisionsFor(actor: Actor, id: string): Promise<LeaveDecision[]> {
+    const request = await this.requests.findById(id);
+
+    if (request === undefined) {
+      throw new LeaveRequestNotFound(id);
+    }
+
+    const employee = await this.employeeFor(request.employeeId);
+
+    this.guard.enforce(leaveRequestPolicy.read(actor, ownerOf(employee)));
+
+    return this.decisions.forRequest(request.id);
   }
 
   /**
@@ -550,6 +642,18 @@ export class LeaveRequestService {
     actor: Actor,
     id: string,
     action: ReleasingAction,
+    /**
+     * FR 39. The reason, for the one of the three that is a decision. LMS 315.
+     *
+     * A string for a refusal and null for the other two, checked by whichever verb built
+     * it — {@link LeaveRequestService.refuse} is the only one that can produce a string, and
+     * it does so with {@link requireAComment} before this method is entered.
+     *
+     * It stays a plain parameter here and becomes a discriminated union at the door, where
+     * `SettlingAct` makes the pairing something the compiler holds rather than something
+     * this method promises.
+     */
+    comment: string | null,
     decide: (owner: BalanceOwner) => Decision,
   ): Promise<LeaveReleased> {
     const request = await this.requests.findById(id);
@@ -570,22 +674,30 @@ export class LeaveRequestService {
 
     const type = await this.types.findById(request.leaveTypeId);
 
-    return this.balances.releaseForRequest(actor, {
+    const reason = reasonForRelease(
+      /* Unreachable: `leave_request.leave_type_id` is NOT NULL with a foreign key
+         behind it, and nothing deletes a leave type — retiring one clears `is_active`.
+         Answered rather than asserted, for the reason the overlap refusal answers it:
+         a ledger entry reading "6 days of undefined given back" is worse than one that
+         says less. */
+      type?.name ?? 'leave',
       request,
-      action,
+      request.days,
       to,
-      reason: reasonForRelease(
-        /* Unreachable: `leave_request.leave_type_id` is NOT NULL with a foreign key
-           behind it, and nothing deletes a leave type — retiring one clears `is_active`.
-           Answered rather than asserted, for the reason the overlap refusal answers it:
-           a ledger entry reading "6 days of undefined given back" is worse than one that
-           says less. */
-        type?.name ?? 'leave',
-        request,
-        request.days,
-        to,
-      ),
-    });
+    );
+
+    /* The one branch on the way to the one path, and it is a narrowing rather than a
+       decision: `SettlingAct` pairs the verb with what has to be said about it, so a
+       refusal is handed over with its reason and the other two with an explicit null.
+       Writing it as a spread of `{ action, comment }` would compile and would let a
+       withdrawal carry a comment, which is the mistake the union exists to make
+       unwritable. */
+    return this.balances.releaseForRequest(
+      actor,
+      action === 'REFUSE'
+        ? { request, action, to, reason, comment: requireAComment(comment) }
+        : { request, action, to, reason, comment: null },
+    );
   }
 
   /** One request, if the actor may see whose it is. */

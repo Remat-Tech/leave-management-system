@@ -1,11 +1,14 @@
 import { Client } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 import type { Kysely } from 'kysely';
-import { signedInAs, theSystem } from '../../src/auth/actor.js';
+import { type Actor, signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
+import { APPROVER_ROLES } from '../../src/domain/approval-chain.js';
+import { AUDITED_ENTITIES, UNATTRIBUTED } from '../../src/domain/audit.js';
 import { BalanceOverdrawn } from '../../src/domain/balance.js';
+import { DECIDING_ACTIONS } from '../../src/domain/leave-decision.js';
 import { EmployeeNotFound } from '../../src/domain/employee.js';
 import { InvalidLeavePeriod } from '../../src/domain/leave-calculator.js';
 import {
@@ -28,6 +31,7 @@ import type { LeaveYear } from '../../src/domain/leave-year.js';
 import { BalanceRepository } from '../../src/repositories/balance-repository.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
 import { HolidayRepository } from '../../src/repositories/holiday-repository.js';
+import { LeaveDecisionRepository } from '../../src/repositories/leave-decision-repository.js';
 import { LeaveRequestRepository } from '../../src/repositories/leave-request-repository.js';
 import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
 import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
@@ -76,6 +80,7 @@ let admin: Client;
 let requests: LeaveRequestService;
 let balances: BalanceService;
 let repository: LeaveRequestRepository;
+let decisions: LeaveDecisionRepository;
 let years: LeaveYearService;
 let people: Record<string, string>;
 let seededYears: Record<string, unknown>[];
@@ -97,6 +102,15 @@ let sickId: string;
 const FROM = '2026-03-02';
 const TO = '2026-03-10';
 
+/**
+ * What a manager says when they turn leave down. FR 39. LMS 315.
+ *
+ * Written out once and used everywhere a refusal is made, because the story is that this
+ * sentence exists and reaches the person: a test that passed `'no'` would satisfy the
+ * constraint and prove nothing about what the requester is left holding.
+ */
+const WHY_NOT = 'Two of the team are already away that week and the desk cannot be empty';
+
 beforeAll(async () => {
   db = databaseFor(testDatabaseUrl);
 
@@ -108,6 +122,7 @@ beforeAll(async () => {
   const yearRepository = new LeaveYearRepository(db);
 
   repository = new LeaveRequestRepository(db);
+  decisions = new LeaveDecisionRepository(db);
   balances = new BalanceService(new BalanceRepository(db), guard, employees, new Transactions(db));
   years = new LeaveYearService(yearRepository, guard);
 
@@ -118,6 +133,7 @@ beforeAll(async () => {
     types,
     yearRepository,
     repository,
+    decisions,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
   );
 
@@ -126,7 +142,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request');
+  await admin.query(
+    'TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+  );
   await restoreYears();
 
   people = (await seed(admin)) as Record<string, string>;
@@ -172,7 +190,9 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request');
+  await admin.query(
+    'TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+  );
   await admin.query(
     "UPDATE leave_type SET is_active = true, counting_basis = 'WORKING_DAYS' WHERE code = 'ANNUAL'",
   );
@@ -1393,7 +1413,7 @@ describe('withdrawing, refusing and cancelling', () => {
     await expect(requests.withdraw(asThemselves(), request.id)).rejects.toBeInstanceOf(
       LeaveAlreadySettled,
     );
-    await expect(requests.refuse(asTheirManager(), request.id)).rejects.toBeInstanceOf(
+    await expect(requests.refuse(asTheirManager(), request.id, WHY_NOT)).rejects.toBeInstanceOf(
       LeaveAlreadySettled,
     );
   });
@@ -1441,7 +1461,7 @@ describe('withdrawing, refusing and cancelling', () => {
      record of what somebody asked for and why is what an appeal is worked from. */
   it('and the reason can still be improved after a refusal', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
-    await requests.refuse(asTheirManager(), request.id);
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
 
     await expect(
       requests.reword(asThemselves(), request.id, 'It is my sister, and it is her wedding'),
@@ -1463,7 +1483,7 @@ describe('withdrawing, refusing and cancelling', () => {
     await expect(requests.withdraw(asTheirManager(), request.id)).rejects.toBeInstanceOf(
       NotAuthorised,
     );
-    await expect(requests.refuse(asTheirManager(), request.id)).resolves.toMatchObject({
+    await expect(requests.refuse(asTheirManager(), request.id, WHY_NOT)).resolves.toMatchObject({
       request: { status: 'REFUSED' },
     });
   });
@@ -1474,7 +1494,9 @@ describe('withdrawing, refusing and cancelling', () => {
   it('and is not refused or cancelled by the person who asked for it', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
-    await expect(requests.refuse(asThemselves(), request.id)).rejects.toBeInstanceOf(NotAuthorised);
+    await expect(requests.refuse(asThemselves(), request.id, WHY_NOT)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
     await expect(requests.cancel(asThemselves(), request.id)).rejects.toBeInstanceOf(NotAuthorised);
   });
 
@@ -1715,11 +1737,14 @@ describe('withdrawing, refusing and cancelling', () => {
   function ending(status: (typeof RELEASING_STATUSES)[number]) {
     switch (status) {
       case 'WITHDRAWN':
-        return requests.withdraw.bind(requests);
+        return (actor: Actor, id: string) => requests.withdraw(actor, id);
+      /* FR 39, LMS 315. Refusing says why, so the helper supplies the sentence a manager
+         would have typed. The other two are not decisions at a desk and take none, which
+         is why this cannot go on being three bound methods with one shape. */
       case 'REFUSED':
-        return requests.refuse.bind(requests);
+        return (actor: Actor, id: string) => requests.refuse(actor, id, WHY_NOT);
       default:
-        return requests.cancel.bind(requests);
+        return (actor: Actor, id: string) => requests.cancel(actor, id);
     }
   }
 
@@ -2101,13 +2126,27 @@ describe('routing a request to its approvers', () => {
   it('and a status moved to approved with no DEDUCTION is refused at commit, by anybody', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
-    await expect(
-      admin.query(
-        `UPDATE leave_request SET status = 'APPROVED', awaiting_approval_from = NULL
-          WHERE id = $1`,
-        [request.id],
-      ),
-    ).rejects.toMatchObject({ constraint: 'leave_request_takes_its_days' });
+    /* The decision is written as well, and it has to be. Since LMS 315 the same second
+       writer breaks two rules at once — a request approved with no DEDUCTION and one
+       approved with nothing to say who approved it — and only one of them can be the
+       message. `leave_request_records_its_decision` sorts first among the deferred
+       constraints and would be the one raised, which is correct and is not what this test
+       is about. So the writer is made to satisfy that one, and is refused for the days. */
+    await admin.query('BEGIN');
+    await admin.query(
+      `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of)
+       VALUES ($1, 'APPROVE', 'MANAGER')`,
+      [request.id],
+    );
+    await admin.query(
+      `UPDATE leave_request SET status = 'APPROVED', awaiting_approval_from = NULL
+        WHERE id = $1`,
+      [request.id],
+    );
+
+    await expect(admin.query('COMMIT')).rejects.toMatchObject({
+      constraint: 'leave_request_takes_its_days',
+    });
   });
 
   /* And a second DEDUCTION against one request, which is what a retry would write. The
@@ -2251,11 +2290,14 @@ describe('routing a request to its approvers', () => {
   function ending(status: (typeof RELEASING_STATUSES)[number]) {
     switch (status) {
       case 'WITHDRAWN':
-        return requests.withdraw.bind(requests);
+        return (actor: Actor, id: string) => requests.withdraw(actor, id);
+      /* FR 39, LMS 315. Refusing says why, so the helper supplies the sentence a manager
+         would have typed. The other two are not decisions at a desk and take none, which
+         is why this cannot go on being three bound methods with one shape. */
       case 'REFUSED':
-        return requests.refuse.bind(requests);
+        return (actor: Actor, id: string) => requests.refuse(actor, id, WHY_NOT);
       default:
-        return requests.cancel.bind(requests);
+        return (actor: Actor, id: string) => requests.cancel(actor, id);
     }
   }
 
@@ -2362,5 +2404,382 @@ describe("one person's leave", () => {
 
   it('and is empty for somebody who has asked for nothing', async () => {
     expect(await requests.forEmployee(asOfficer(), people.teamLead)).toEqual([]);
+  });
+});
+
+/* --------------------------------------- what the approver said, and who said it */
+
+/**
+ * Approving or rejecting at a stage, with a comment. FR 39, FR 52. LMS 315.
+ *
+ * ../unit/leave-decision.test.ts proves the two rules about the comment — a refusal must
+ * carry one, an approval need not — and it can prove nothing else, because the rest of the
+ * story is written by the database. What needs a server is all three criteria met at once:
+ *
+ *   **The decision and the move are one act.** A refusal that committed with its reason
+ *   lost, or a reason that committed against a request that was never refused, are the two
+ *   halves of the same failure. `leave_request_records_its_decision` judges the pair at
+ *   COMMIT, and only a real transaction can show it.
+ *
+ *   **Who, when and on whose behalf are the database's.** All three are stamped from the
+ *   setting the repositories put on the transaction, so no writer can record a decision
+ *   under somebody else's name or date one before the request it decides. The half that
+ *   matters is that it holds against the owner connection too.
+ *
+ *   **And nothing rewrites one afterwards.** A refusal whose comment can be edited says
+ *   whatever the last person to look at it wanted it to say, and the person it was written
+ *   for has no way of knowing.
+ */
+describe('the decision at a stage', () => {
+  /* ---------------------------------------------------- refusing, and saying why */
+
+  /**
+   * The story in one assertion: the reason the person was given is on the record, with the
+   * name of whoever gave it and the stage it was given at.
+   */
+  it('is recorded with the reason, the desk it was decided at, and who decided it', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    const refused = await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+    expect(refused.request.status).toBe('REFUSED');
+    expect(refused.decision).toMatchObject({
+      leaveRequestId: request.id,
+      action: 'REFUSE',
+      onBehalfOf: 'MANAGER',
+      comment: WHY_NOT,
+      decidedByEmployeeId: people.teamLead,
+    });
+    expect(refused.decision?.decidedBy).toContain(people.teamLead);
+    expect(refused.decision?.decidedAt).toBeInstanceOf(Date);
+  });
+
+  /**
+   * And a refusal with nothing said is refused before anything at all happens.
+   *
+   * The story's first criterion, at the altitude a person meets it. The request is still
+   * waiting on its manager afterwards, its days are still held, and nothing was written —
+   * which is what makes this a refusal rather than a half-finished rejection.
+   */
+  it('and leave is not turned down without one', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    for (const nothing of ['', '   ']) {
+      await expect(requests.refuse(asTheirManager(), request.id, nothing)).rejects.toMatchObject({
+        name: 'RefusalNeedsAComment',
+        code: 'REFUSAL_NEEDS_A_COMMENT',
+        field: 'comment',
+      });
+    }
+
+    expect(await requests.byId(asThemselves(), request.id)).toMatchObject({
+      status: 'SUBMITTED',
+      awaitingApprovalFrom: 'MANAGER',
+    });
+
+    expect(
+      (await admin.query("SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'RELEASE'"))
+        .rows[0].count,
+    ).toBe('0');
+    expect((await admin.query('SELECT count(*) FROM leave_request_decision')).rows[0].count).toBe(
+      '0',
+    );
+  });
+
+  /* ------------------------------------------------- approving, with or without one */
+
+  /**
+   * And every approval records one, including the ones that move no days at all.
+   *
+   * The asymmetry `LeaveApproved` is shaped around, and the reason this table exists rather
+   * than three columns: a manager approving stage one writes no ledger entry, because
+   * nothing about the balance changed, and it is exactly then that "somebody at a desk said
+   * yes" is a fact nothing else in the schema can carry.
+   */
+  it('is recorded at each stage of the chain, whether or not any days moved', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    const advanced = await requests.approve(asTheirManager(), request.id, 'Cover is arranged');
+    const approved = await requests.approve(asOfficer(), request.id);
+
+    expect(advanced.entry).toBeNull();
+    expect(advanced.decision).toMatchObject({
+      action: 'APPROVE',
+      onBehalfOf: 'MANAGER',
+      comment: 'Cover is arranged',
+      decidedByEmployeeId: people.teamLead,
+    });
+
+    expect(approved.entry).not.toBeNull();
+    expect(approved.decision).toMatchObject({
+      action: 'APPROVE',
+      onBehalfOf: 'HR',
+      comment: null,
+      decidedByEmployeeId: people.hrOfficer,
+    });
+  });
+
+  /* The story's second criterion. An approval says nothing unless the approver wanted to,
+     and two spaces are nothing rather than a comment nobody can read. */
+  it('and an approval says nothing unless the approver had something to add', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    const advanced = await requests.approve(asTheirManager(), request.id, '   ');
+
+    expect(advanced.decision.comment).toBeNull();
+  });
+
+  /* ------------------------------------------------------ on whose behalf. FR 52 */
+
+  /**
+   * And the desk is recorded apart from the person, because they are not always the same.
+   *
+   * The one column here worth arguing about. An approval can only come from the person the
+   * desk resolves to, so the two agree. A refusal need not: `TRANSITIONS` admits HR to the
+   * REFUSE row whichever desk the request is sitting at, and LMS 314 deliberately left it
+   * that way.
+   *
+   * So an HR Officer turning down leave that is still with the line manager is recorded as
+   * their act, at the manager's stage — a sentence a manager can read and recognise as a
+   * decision that was not theirs. Folding the two into one field would make that
+   * unanswerable in exactly the case somebody asks.
+   */
+  it('names the stage it was decided at, even where that is not the decider’s own desk', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    const refused = await requests.refuse(asOfficer(), request.id, WHY_NOT);
+
+    expect(refused.decision).toMatchObject({
+      onBehalfOf: 'MANAGER',
+      decidedByEmployeeId: people.hrOfficer,
+    });
+  });
+
+  /* And the endings that are not decisions record none. Withdrawing is somebody taking
+     their own request back and cancelling is HR unwinding a row that should not be on the
+     books; a comment against either would show the requester a reason for something nobody
+     decided. */
+  it('and a withdrawal or a cancellation is not a decision, and records none', async () => {
+    const withdrawn = await requests.submit(asThemselves(), aRequest());
+    await requests.withdraw(asThemselves(), withdrawn.request.id);
+
+    const cancelled = await requests.submit(
+      asThemselves(),
+      aRequest({ from: '2026-05-04', to: '2026-05-06' }),
+    );
+    await requests.cancel(asOfficer(), cancelled.request.id);
+
+    expect(await requests.decisionsFor(asThemselves(), withdrawn.request.id)).toEqual([]);
+    expect(await requests.decisionsFor(asThemselves(), cancelled.request.id)).toEqual([]);
+  });
+
+  /* ------------------------------------------------------------- reading them back */
+
+  /**
+   * And the person whose leave it is can read what was said about it.
+   *
+   * The half that makes the writing worth anything: a refusal recorded and never shown is
+   * the corridor conversation with a database behind it. Decided by the same rule that
+   * decides who may see the request, because a decision is the explanation of a status and
+   * standing to see one without the other is standing to see half an answer.
+   */
+  it('is read by the person who asked, their manager and HR, and by nobody else', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id, 'Cover is arranged');
+    await requests.approve(asOfficer(), request.id);
+
+    for (const who of [asThemselves(), asTheirManager(), asOfficer()]) {
+      const decisions = await requests.decisionsFor(who, request.id);
+
+      /* Oldest first, so a request that went to a manager and then to HR reads as the
+         account of how it got where it is. */
+      expect(decisions.map((decision) => decision.onBehalfOf)).toEqual(['MANAGER', 'HR']);
+      expect(decisions[0].comment).toBe('Cover is arranged');
+    }
+
+    await expect(requests.decisionsFor(asAColleague(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+  });
+
+  /* ------------------------------------------- what holds where no service reaches */
+
+  /**
+   * The pair is one act, and the deferred trigger is what says so at COMMIT.
+   *
+   * Asserted against the intermediate move, which is the one nothing else in the schema
+   * guards: a request advancing a stage changes no status, writes no ledger entry, and would
+   * otherwise be free to happen with nothing recorded. The owner connection is the writer
+   * that could — a data fix, an import — and it is refused.
+   */
+  it('cannot be skipped by a writer that moves a request at a desk', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await admin.query('BEGIN');
+    await admin.query("UPDATE leave_request SET awaiting_approval_from = 'HR' WHERE id = $1", [
+      request.id,
+    ]);
+
+    await expect(admin.query('COMMIT')).rejects.toMatchObject({
+      constraint: 'leave_request_records_its_decision',
+    });
+
+    expect(await requests.byId(asThemselves(), request.id)).toMatchObject({
+      awaitingApprovalFrom: 'MANAGER',
+    });
+  });
+
+  /* And a decision filed against the wrong stage does not satisfy it either, which is what
+     makes `on_behalf_of` a fact rather than a label. */
+  it('and a decision recorded at another desk does not explain the move', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await admin.query('BEGIN');
+    await admin.query(
+      `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of)
+       VALUES ($1, 'APPROVE', 'CEO')`,
+      [request.id],
+    );
+    await admin.query("UPDATE leave_request SET awaiting_approval_from = 'HR' WHERE id = $1", [
+      request.id,
+    ]);
+
+    await expect(admin.query('COMMIT')).rejects.toMatchObject({
+      constraint: 'leave_request_records_its_decision',
+    });
+  });
+
+  /* And the CHECK carries the story's first criterion where no sentence can reach. */
+  it('and no refusal is stored without a reason, on any connection', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of)
+         VALUES ($1, 'REFUSE', 'MANAGER')`,
+        [request.id],
+      ),
+    ).rejects.toMatchObject({ constraint: 'leave_request_refusal_says_why' });
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of, comment)
+         VALUES ($1, 'REFUSE', 'MANAGER', '   ')`,
+        [request.id],
+      ),
+    ).rejects.toMatchObject({ constraint: 'leave_request_decision_comment_not_blank' });
+  });
+
+  /**
+   * And the writer cannot name themselves, nor date what they wrote. FR 52.
+   *
+   * The same rule `leave_ledger_entry` holds its own three columns to, and the reason is
+   * the same: a fact the writer has an interest in is not a fact the writer supplies. The
+   * owner connection tries both and the trigger overwrites both.
+   */
+  it('and records who and when for itself, whatever the writer says', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    const { rows } = await admin.query<{
+      decided_by: string;
+      decided_by_employee_id: string | null;
+      decided_at: Date;
+    }>(
+      `INSERT INTO leave_request_decision
+         (leave_request_id, action, on_behalf_of, decided_by, decided_by_employee_id, decided_at)
+       VALUES ($1, 'APPROVE', 'MANAGER', 'somebody else entirely', $2, TIMESTAMPTZ '2020-01-01')
+       RETURNING decided_by, decided_by_employee_id, decided_at`,
+      [request.id, people.engineer],
+    );
+
+    expect(rows[0].decided_by).toBe(UNATTRIBUTED);
+    expect(rows[0].decided_by_employee_id).toBeNull();
+    expect(rows[0].decided_at.getFullYear()).toBeGreaterThan(2020);
+  });
+
+  /* And nothing rewrites or removes one, the owner included. An approver who put it badly
+     decides again; the history is the answer. */
+  it('and is never changed and never removed', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    const refused = await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+    /* Asserted on what the refusal says rather than on a constraint name, because
+       `refuse_update()` and `refuse_delete()` are shared functions that raise with a
+       message and a hint and name no constraint — the same way ./ledger.test.ts reads
+       them. What is being checked is that the trigger is attached at all. */
+    await expect(
+      admin.query('UPDATE leave_request_decision SET comment = $1 WHERE id = $2', [
+        'Actually, fine',
+        refused.decision?.id,
+      ]),
+    ).rejects.toThrow(/never changed once written/);
+
+    await expect(
+      admin.query('DELETE FROM leave_request_decision WHERE id = $1', [refused.decision?.id]),
+    ).rejects.toThrow(/never deleted/);
+  });
+
+  /* ------------------------------------------------- the lists, held in two places */
+
+  /**
+   * The verbs the schema admits are the verbs the domain knows.
+   *
+   * The same pairing `leave_request_status_known` has with `REQUEST_STATUSES`, and it
+   * matters here for the reason it matters there: FR 26's cancelling of leave already agreed
+   * is the next verb to arrive, and it is not a decision at a desk. Whichever side somebody
+   * adds it to, this fails.
+   */
+  it('admits exactly the two verbs the code calls a decision', async () => {
+    const { rows } = await admin.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid = 'leave_request_decision'::regclass
+          AND conname = 'leave_request_decision_action_known'`,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(
+      [...rows[0].definition.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1]).sort(),
+    ).toEqual([...DECIDING_ACTIONS].sort());
+  });
+
+  /* And the desks, which are the three of FR 38a and no others. A fourth is a migration and
+     a change to whatever resolves a desk to a person, both of which this would fail. */
+  it('and exactly the three desks a chain can name', async () => {
+    const { rows } = await admin.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid = 'leave_request_decision'::regclass
+          AND conname = 'leave_request_decision_desk_known'`,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(
+      [...rows[0].definition.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1]).sort(),
+    ).toEqual([...APPROVER_ROLES].sort());
+  });
+
+  /**
+   * And the table is deliberately not audited.
+   *
+   * The declining the ledger made for the same reason: a row that can never change is
+   * already its own history, and it carries its writer and its instant in its own columns.
+   * An audit entry would be a second copy of a row nothing can move.
+   *
+   * Asserted against the catalogue rather than the migration text, because the failure this
+   * guards is somebody adding the trigger later for symmetry — at which point
+   * `AUDITED_ENTITIES` and the triggers disagree, and ./audit.test.ts starts failing about a
+   * table nobody meant to add.
+   */
+  it('and is its own history rather than a second row in the audit log', async () => {
+    const { rows } = await admin.query<{ tgname: string }>(
+      `SELECT tgname FROM pg_trigger
+        WHERE tgrelid = 'leave_request_decision'::regclass
+          AND NOT tgisinternal
+          AND tgfoid = 'record_in_audit_log'::regproc`,
+    );
+
+    expect(rows).toEqual([]);
+    expect(AUDITED_ENTITIES).not.toContain('leave_request_decision');
   });
 });

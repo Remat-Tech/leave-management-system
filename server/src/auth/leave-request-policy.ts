@@ -67,6 +67,13 @@
  * leave type, and it is a story of its own. What this file does is refuse visibly rather
  * than let somebody the chain never asked stand in.
  *
+ * **And no decision about the comment.** FR 39 makes a refusal say why, LMS 315 records who
+ * said it and on whose behalf, and none of that is a power somebody holds: the same people
+ * may approve and refuse as could before, and what changed is what they have to write while
+ * doing it. A `mayComment` here would be a policy with nothing on the other side of it. The
+ * rule that a refusal carries a reason is ../domain/leave-decision.ts's, where every other
+ * rule about the shape of a thing lives.
+ *
  * ## The three endings, and why they are three decisions rather than one
  *
  * LMS 306. Withdrawing, cancelling and refusing are one *movement* — days that were held
