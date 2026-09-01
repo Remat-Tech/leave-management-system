@@ -125,7 +125,6 @@ import type { DayCount, LeavePeriod } from '../domain/leave-calculator.js';
 import { validateLeavePeriod } from '../domain/leave-calculator.js';
 import {
   assertItCostsSomething,
-  assertMayBeSettled,
   assertTheDaysAreThere,
   InvalidLeaveRequest,
   LeaveCrossesAYearEnd,
@@ -139,7 +138,8 @@ import {
   reachesPastTheEndOf,
   reasonForRelease,
   reasonForReservation,
-  type ReleasingStatus,
+  type RequestAction,
+  settlementTo,
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
 } from '../domain/leave-request.js';
@@ -325,9 +325,7 @@ export class LeaveRequestService {
    * because a screen that has just withdrawn something has to say what came back.
    */
   async withdraw(actor: Actor, id: string): Promise<LeaveReleased> {
-    return this.settle(actor, id, 'WITHDRAWN', (owner) =>
-      leaveRequestPolicy.withdraw(actor, owner),
-    );
+    return this.settle(actor, id, 'WITHDRAW', (owner) => leaveRequestPolicy.withdraw(actor, owner));
   }
 
   /**
@@ -343,7 +341,7 @@ export class LeaveRequestService {
    * tidying it up.
    */
   async refuse(actor: Actor, id: string): Promise<LeaveReleased> {
-    return this.settle(actor, id, 'REFUSED', (owner) => leaveRequestPolicy.refuse(actor, owner));
+    return this.settle(actor, id, 'REFUSE', (owner) => leaveRequestPolicy.refuse(actor, owner));
   }
 
   /**
@@ -353,7 +351,7 @@ export class LeaveRequestService {
    * that belong in another year. See {@link leaveRequestPolicy.cancel}.
    */
   async cancel(actor: Actor, id: string): Promise<LeaveReleased> {
-    return this.settle(actor, id, 'CANCELLED', (owner) => leaveRequestPolicy.cancel(actor, owner));
+    return this.settle(actor, id, 'CANCEL', (owner) => leaveRequestPolicy.cancel(actor, owner));
   }
 
   /**
@@ -393,7 +391,7 @@ export class LeaveRequestService {
   private async settle(
     actor: Actor,
     id: string,
-    to: ReleasingStatus,
+    action: RequestAction,
     decide: (owner: BalanceOwner) => Decision,
   ): Promise<LeaveReleased> {
     const request = await this.requests.findById(id);
@@ -406,12 +404,17 @@ export class LeaveRequestService {
 
     this.guard.enforce(decide(ownerOf(employee)));
 
-    assertMayBeSettled(request);
+    /* Where this leaves it, read off `TRANSITIONS` rather than named here. The policy
+       above has already refused a move the table does not hold; this is the same lookup
+       asked for its answer rather than for its verdict, and it is asked a third time
+       inside the lock where it binds. */
+    const to = settlementTo(request, action);
 
     const type = await this.types.findById(request.leaveTypeId);
 
     return this.balances.releaseForRequest(actor, {
       request,
+      action,
       to,
       reason: reasonForRelease(
         /* Unreachable: `leave_request.leave_type_id` is NOT NULL with a foreign key

@@ -127,10 +127,11 @@ import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
 import { type LeaveEvent, validateNewLeaveEvent } from '../domain/leave-event.js';
 import {
-  assertMayBeSettled,
   type LeaveRequest,
   LeaveRequestNotFound,
   type ReleasingStatus,
+  type RequestAction,
+  settlementTo,
   type ValidatedLeaveRequest,
 } from '../domain/leave-request.js';
 import { LeaveTypeNotFound } from '../domain/leave-type.js';
@@ -294,7 +295,23 @@ export interface RequestToSubmit {
  */
 export interface RequestToSettle {
   request: LeaveRequest;
-  /** Which of the three endings. The type admits no way to un-end a request. */
+  /**
+   * What is being done to it. §6, LMS 313.
+   *
+   * The act rather than the destination, because the destination is the transition
+   * table's to give — and it is given again here, inside the lock, from the status this
+   * method re-reads. See {@link BalanceService.releaseForRequest}.
+   */
+  action: RequestAction;
+  /**
+   * Where the table said that leaves it, as the caller read it a moment ago.
+   *
+   * Carried so the reason and the status cannot disagree — `reasonForRelease` has
+   * already been composed against this — and deliberately **not** what gets written:
+   * the value stored is looked up again from the request as it stands inside the lock.
+   * A caller that could choose the destination could settle a request into a state the
+   * table does not permit, which is the whole thing §6 is against.
+   */
   to: ReleasingStatus;
   /** FR 27. What the movement says, which is not what the request says. */
   reason: string;
@@ -527,7 +544,7 @@ export class BalanceService {
    * and the one that catches a release aimed at the wrong balance.
    */
   async releaseForRequest(actor: Actor, settlement: RequestToSettle): Promise<LeaveReleased> {
-    const { request, to, reason } = settlement;
+    const { request, action, reason } = settlement;
     const owner = await this.ownerOf(request.employeeId);
 
     this.guard.enforce(ledgerPolicy.release(actor, owner));
@@ -549,7 +566,12 @@ export class BalanceService {
         throw new LeaveRequestNotFound(request.id);
       }
 
-      assertMayBeSettled(current);
+      /* Where the table says this act leaves the request as it stands *now*, rather than
+         the destination the caller worked out before the lock. Both are the same lookup
+         over the same table, so they agree in every case but one: a request another
+         connection settled while this one waited, where the caller's answer is stale and
+         this throws {@link LeaveAlreadySettled}. §6, LMS 313. */
+      const to = settlementTo(current, action);
 
       const days = daysToRelease(held, current.days);
       const written = await repositories.requests.settle(actor, current.id, to);

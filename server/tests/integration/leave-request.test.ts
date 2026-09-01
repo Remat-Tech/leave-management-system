@@ -19,6 +19,7 @@ import {
   type NewLeaveRequest,
   NotEnoughDays,
   RELEASING_STATUSES,
+  TRANSITIONS,
   REQUEST_STATUSES,
   validateNewLeaveRequest,
 } from '../../src/domain/leave-request.js';
@@ -1519,6 +1520,34 @@ describe('withdrawing, refusing and cancelling', () => {
   });
 
   /**
+   * And the trigger permits exactly the endings the table does. §6. LMS 313.
+   *
+   * The state machine is stated twice — `TRANSITIONS` in the domain and
+   * `refuse_an_impossible_transition()` in the schema — for the reason every rule in this
+   * system is stated twice: the application half speaks to a person and the database half
+   * holds for every connection. What that arrangement costs is the pair drifting, and the
+   * drift here is silent in the worst direction. A destination added to the table and not
+   * to the trigger is refused at the write with a message about impossible transitions; a
+   * destination in the trigger and not the table is a state the database will happily
+   * accept and nothing knows how to reach or leave.
+   *
+   * So the trigger is read back out of `pg_get_functiondef` and held to the table, the
+   * same way `leave_request_never_overlaps` is held to `LIVE_STATUSES`.
+   */
+  it('and the trigger permits exactly the endings the table holds', async () => {
+    const { rows } = await admin.query<{ definition: string }>(
+      `SELECT pg_get_functiondef(oid) AS definition
+         FROM pg_proc WHERE proname = 'refuse_an_impossible_transition'`,
+    );
+
+    expect(rows).toHaveLength(1);
+
+    const named = [...new Set([...rows[0].definition.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]))];
+
+    expect(named.sort()).toEqual([...new Set(TRANSITIONS.map(({ to }) => to))].sort());
+  });
+
+  /**
    * And a request that ends without giving its days back is refused at COMMIT.
    *
    * The acceptance criterion the story is named for, held where no service can forget it.
@@ -1564,6 +1593,100 @@ describe('withdrawing, refusing and cancelling', () => {
         [people.officer, annualId, y2026.id, request.id],
       ),
     ).rejects.toMatchObject({ constraint: 'leave_request_releases_once' });
+  });
+
+  /* ------------------------------------------- and every move is on the record */
+
+  /**
+   * Every transition writes an audit entry. §6, NFR AUD 01. LMS 313's third criterion.
+   *
+   * The story is a request nobody can explain, and this is the half that makes it
+   * explicable *afterwards* rather than merely correct at the time: the state a request
+   * is in, and the person who put it there, are two different facts and only one of them
+   * is on the row.
+   *
+   * **Nothing in the application writes the entry**, which is the whole design and is
+   * argued for in the audit-log migration: an entry a service composes is one it can
+   * compose wrongly, or forget, or write outside the transaction that made the change.
+   * `leave_request_is_audited` fires on the UPDATE, inside the same transaction as the
+   * status and the `RELEASE`, so a rolled-back settlement leaves no entry either.
+   *
+   * What the application supplies is the one thing the database cannot know — who — and
+   * it reaches the trigger through `recording()`. That is why this asserts the actor
+   * rather than only the row's existence: an entry recording that *something* withdrew
+   * the leave is the entry a dispute cannot use.
+   */
+  it.each([
+    ['WITHDRAWN', () => asThemselves(), () => people.officer],
+    ['REFUSED', () => asTheirManager(), () => people.teamLead],
+    ['CANCELLED', () => asOfficer(), () => people.hrOfficer],
+  ] as const)('%s is on the record, with the person who did it', async (status, who, actor) => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await ending(status)(who(), request.id);
+
+    const { rows } = await admin.query<{
+      actor: string;
+      action: string;
+      after: { status: string };
+    }>(
+      `SELECT actor, action, after FROM audit_log
+        WHERE entity = 'leave_request' AND entity_id = $1 AND action = 'UPDATE'`,
+      [request.id],
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].actor).toContain(actor());
+    expect(rows[0].after.status).toBe(status);
+  });
+
+  /**
+   * And the entry says what it moved *from*, which is what makes it a transition rather
+   * than a state.
+   *
+   * `before` and `after` are both on the row, so the log answers "who moved this request
+   * out of SUBMITTED, and when" without joining anything. A log recording only the new
+   * value would tell somebody the request is refused, which they can already see.
+   */
+  it('and the entry carries the state it moved out of as well as into', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.withdraw(asThemselves(), request.id);
+
+    const { rows } = await admin.query<{
+      before: { status: string };
+      after: { status: string };
+    }>(
+      `SELECT before, after FROM audit_log
+        WHERE entity = 'leave_request' AND entity_id = $1 AND action = 'UPDATE'`,
+      [request.id],
+    );
+
+    expect(rows[0].before.status).toBe('SUBMITTED');
+    expect(rows[0].after.status).toBe('WITHDRAWN');
+  });
+
+  /**
+   * And a settlement that was refused leaves no entry, because it left no change.
+   *
+   * The trigger fires inside the transaction that made the change, so a rolled-back one
+   * takes its audit entry with it. An audit log with a window in it — where the row moved
+   * and the entry had not landed, or the entry landed and the row did not — is wrong
+   * exactly when somebody is investigating.
+   */
+  it('and a refused settlement is not on the record at all', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(requests.withdraw(asAColleague(), request.id)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
+
+    const { rows } = await admin.query(
+      `SELECT 1 FROM audit_log
+        WHERE entity = 'leave_request' AND entity_id = $1 AND action = 'UPDATE'`,
+      [request.id],
+    );
+
+    expect(rows).toHaveLength(0);
   });
 
   /** The three endings, as the methods that reach them. */

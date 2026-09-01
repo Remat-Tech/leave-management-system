@@ -1,7 +1,7 @@
 /**
  * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 14, FR 15, FR 16,
- * FR 26, §8. LMS 301, the refusals of LMS 303, LMS 304 and LMS 305, and the three
- * endings of LMS 306.
+ * FR 26, §6, §8. LMS 301, the refusals of LMS 303, LMS 304 and LMS 305, the three
+ * endings of LMS 306, and the state machine of LMS 313.
  *
  * The story is an employee who wants no surprises when the days come off their
  * balance, and the whole of this file follows from taking that literally: the figure
@@ -11,9 +11,15 @@
  *
  * LMS 306 is the same sentence read from the other end. Days held are days gone from what
  * somebody may book, so the moment a request stops standing they have to come back — and
- * come back *once*. {@link RELEASING_STATUSES}, {@link assertMayBeSettled} and
+ * come back *once*. {@link RELEASING_STATUSES}, {@link settlementTo} and
  * {@link reasonForRelease} are that story's whole share of this file; the movement is
  * `BalanceService.releaseForRequest` and the desks are in ../auth/leave-request-policy.ts.
+ *
+ * LMS 313 gathered the state machine those two stories had left in three places — the
+ * from-state in one function, the destination at each call site, the actor in each policy
+ * decision — into {@link TRANSITIONS}. Every one of the three was correct; none of them
+ * could answer "what can happen to a submitted request", which is the question somebody
+ * has when a request is stuck. §6, and see the note on that table.
  *
  * ## The quote and the request are the same arithmetic
  *
@@ -243,7 +249,7 @@ export function blocksTheCalendar(status: RequestStatus): boolean {
  * ended" and "does it hold days" are two questions that agree now and part company the
  * moment `APPROVED` arrives, which holds days and has certainly not ended.
  */
-export function isSettled(status: RequestStatus): boolean {
+export function isSettled(status: RequestStatus): status is ReleasingStatus {
   return (RELEASING_STATUSES as readonly RequestStatus[]).includes(status);
 }
 
@@ -272,7 +278,7 @@ export class LeaveAlreadySettled extends Error {
   /** FR 26. What a client branches on, as `CROSS_LEAVE_YEAR` and the others are. */
   readonly code = 'ALREADY_SETTLED';
   readonly leaveRequestId: string;
-  /** Where it had already got to. Never a live status; see {@link assertMayBeSettled}. */
+  /** Where it had already got to. Never a live status; see {@link settlementTo}. */
   readonly status: RequestStatus;
 
   constructor(request: LeaveRequest) {
@@ -287,31 +293,212 @@ export class LeaveAlreadySettled extends Error {
   }
 }
 
+/* ------------------------------------------------------- the state machine, §6 */
+
 /**
- * Refuses to end a request that has already ended. FR 26, §8.2. LMS 306.
+ * What somebody may do to a request. §6, LMS 313.
  *
- * The one rule the three transitions share, and the reason they share a private path
- * through `LeaveRequestService`: withdrawing, cancelling and refusing are three different
- * decisions by three different desks, but "may this request be ended at all" has one
- * answer and should be given in one place.
+ * Verbs rather than destinations, and the difference is the whole reason
+ * {@link TRANSITIONS} is keyed by one of these instead of by a target status. "Withdraw"
+ * is a thing a person does; `WITHDRAWN` is where it leaves the request. Keying a state
+ * machine by its destinations reads fine while every act has its own — and stops the
+ * afternoon two acts land in one state, at which point the table can no longer say which
+ * happened and the audit log is the only thing that knows.
  *
- * **It is not the guarantee**, and the arrangement is the one LMS 305 and LMS 304 both
- * made. Two tabs withdrawing the same request both read `SUBMITTED` here and both pass.
- * What closes that window is the balance lock in `BalanceService.releaseForRequest` —
- * both withdrawals move the same balance, so the second waits and re-reads a request the
- * first has already settled — and `leave_request_releases_once` behind even that, for a
- * writer that found another way in. What this buys is the sentence.
- *
- * Today every non-live status is a settled one, so this reads as "not live". It is
- * written against {@link isSettled} rather than against `blocksTheCalendar` because the
- * two part company when `APPROVED` arrives: an approved request holds days and has not
- * ended, and cancelling one is a real act that story will define — releasing nothing,
- * because approval already turned the hold into days taken.
+ * `APPROVE` is not here. It is the approval story's, it moves a request to a state that
+ * still holds days, and it commits rather than releases them; see {@link REQUEST_STATUSES}.
  */
-export function assertMayBeSettled(request: LeaveRequest): void {
-  if (isSettled(request.status)) {
+export const REQUEST_ACTIONS = ['WITHDRAW', 'REFUSE', 'CANCEL'] as const;
+
+export type RequestAction = (typeof REQUEST_ACTIONS)[number];
+
+/**
+ * Where somebody stands towards a request. §6, §10. LMS 313.
+ *
+ * **These are not roles, and the distinction is load bearing rather than pedantic.** Two
+ * of the three transitions turn on a *relationship* — it is your leave, or you are the
+ * manager it was addressed to — and a table keyed by role codes could not express either.
+ * It would have to widen them into "anybody with a role that reads every record", which
+ * is how a manager comes to be able to withdraw a stranger's leave.
+ *
+ * They are also what lets the table live here at all. `/domain` holds plain types and
+ * pure functions and imports nothing — the layering rule — so it cannot name a
+ * {@link RoleCode}. What it can name is the standing a transition requires, leaving
+ * ../auth/leave-request-policy.ts to say which roles satisfy `LEAVE_ADMINISTRATION`. The
+ * rule and the roster stay in the layers that own them, and neither can drift from the
+ * other, because there is one list of standings and the policy has a branch for each.
+ */
+export const STANDINGS = ['THE_REQUESTER', 'THEIR_LINE_MANAGER', 'LEAVE_ADMINISTRATION'] as const;
+
+export type Standing = (typeof STANDINGS)[number];
+
+/**
+ * One permitted move: from this state, by this act, performed by somebody standing
+ * thus, to that state.
+ */
+export interface Transition {
+  from: RequestStatus;
+  action: RequestAction;
+  to: RequestStatus;
+  /** Any one of these is enough. Empty would be a move nobody can make. */
+  by: readonly Standing[];
+}
+
+/**
+ * Every move a request may make, and there are no others. §6. LMS 313.
+ *
+ * The story's first criterion, and the reason it is a *table* rather than three methods
+ * that each know their own rule. Before this, the same state machine was spread over
+ * three places: the from-state in `assertMayBeSettled`, the destination in whichever
+ * service method you were reading, and the actor in whichever policy decision it called.
+ * Every one of those was correct. None of them could answer "what can happen to a
+ * submitted request", which is the question somebody actually has when a request is stuck
+ * — and the story is precisely about a request nobody can explain or resolve.
+ *
+ * Read down the `from` column and that question is answered by looking.
+ *
+ * ## What the table does not contain, and why each absence is a decision
+ *
+ * **No row out of a settled state.** `WITHDRAWN`, `CANCELLED` and `REFUSED` appear in the
+ * `to` column and never in the `from` column, which is what makes them terminal — not a
+ * separate rule saying so, and not a flag on the status. A request ends once, and the
+ * absence of a row is where that is written. `refuse_an_impossible_transition()` holds
+ * the same shape where no service can reach.
+ *
+ * **No `APPROVE`.** It moves a request to a state that still holds days and commits them
+ * rather than releasing them, and which desk in FR 38a's chain may perform it needs the
+ * chain, the type and how far the request has got. That story adds a row here, a status
+ * to {@link REQUEST_STATUSES} and a migration extending the CHECK — and the shape of this
+ * table is what makes those three obviously one change rather than three.
+ *
+ * **No `to` that is live.** Every destination here is settled, because every action here
+ * releases days. That is a property of *today's* table rather than of the design, and
+ * ../../tests/unit/leave-request.test.ts asserts it as such, so the approval story's row
+ * — the first with a live destination — fails that test and has to say so deliberately.
+ */
+export const TRANSITIONS: readonly Transition[] = [
+  /* Taking back your own request, or HR doing it for somebody who was away and could
+     not. The undoing of submitting, so it carries the standings `submit` carries. */
+  {
+    from: 'SUBMITTED',
+    action: 'WITHDRAW',
+    to: 'WITHDRAWN',
+    by: ['THE_REQUESTER', 'LEAVE_ADMINISTRATION'],
+  },
+
+  /* Turning down somebody else's request. Deliberately not the requester's: marking your
+     own leave refused is a record of a decision nobody made. */
+  {
+    from: 'SUBMITTED',
+    action: 'REFUSE',
+    to: 'REFUSED',
+    by: ['THEIR_LINE_MANAGER', 'LEAVE_ADMINISTRATION'],
+  },
+
+  /* Unwinding a request that should not be on the books — the wrong person, entered
+     twice, days in the wrong year. Nobody's own leave and nobody's own report. */
+  { from: 'SUBMITTED', action: 'CANCEL', to: 'CANCELLED', by: ['LEAVE_ADMINISTRATION'] },
+];
+
+/**
+ * The move this action makes from this state, or undefined where there is not one.
+ *
+ * The one way the table is read. Every caller — the service before it writes, the policy
+ * deciding who may, `BalanceService` inside its lock — goes through here rather than
+ * filtering {@link TRANSITIONS} itself, because a second `find` written somewhere else is
+ * a second answer waiting to disagree with this one.
+ */
+export function transitionFor(from: RequestStatus, action: RequestAction): Transition | undefined {
+  return TRANSITIONS.find((transition) => transition.from === from && transition.action === action);
+}
+
+/** Everything that can happen to a request in this state. What a screen offers. */
+export function transitionsFrom(from: RequestStatus): readonly Transition[] {
+  return TRANSITIONS.filter((transition) => transition.from === from);
+}
+
+/**
+ * Who may perform this action, wherever the table permits it at all. §6, §10. LMS 313.
+ *
+ * The projection ../auth/leave-request-policy.ts decides on, and it is deliberately
+ * **not** keyed by the from-status even though {@link TRANSITIONS} is.
+ *
+ * The two layers are answering two questions and the order they are asked in is a
+ * disclosure rule rather than a preference. The policy asks *is this your business* —
+ * your leave, your report, your desk — and it has to answer that before anything reads
+ * the request's state aloud, or a colleague probing ids learns that somebody's leave was
+ * refused. {@link settlementTo} then asks *is this move available*, and answers a
+ * request that has already ended with {@link LeaveAlreadySettled}, which is the sentence
+ * the person pressing the button twice actually needs.
+ *
+ * Refusing on the from-status here instead would collapse both into `NotAuthorised`:
+ * somebody withdrawing their own withdrawn leave would be told they may not, which is
+ * untrue and unactionable, and the specific refusal would be unreachable.
+ *
+ * **A union across the rows for that action, and today each action has exactly one.**
+ * The unit suite pins that, so the union is that row. A story giving one action
+ * different desks in different states — cancelling an approved request being HR's alone
+ * where cancelling a submitted one is wider — makes this a genuine union and too
+ * permissive, and the test that fails is the one asserting each action has a single row.
+ * That story passes the from-status through here and this becomes a lookup.
+ */
+export function standingsFor(action: RequestAction): readonly Standing[] {
+  return [
+    ...new Set(
+      TRANSITIONS.filter((transition) => transition.action === action).flatMap(
+        (transition) => transition.by,
+      ),
+    ),
+  ];
+}
+
+/**
+ * Where this settlement leaves the request, refusing a move the table does not hold.
+ * §6, FR 26. LMS 313.
+ *
+ * **The destination is read off the table rather than passed in**, which is the half of
+ * the story that makes the table load bearing instead of documentation. Before LMS 313
+ * the service named the target status at each call site — `settle(actor, id, 'WITHDRAWN',
+ * …)` — so the table could have said anything and the code would still have written
+ * whatever the caller asked for. Now there is nowhere to say it.
+ *
+ * **It is not the guarantee**, and the arrangement is the one LMS 304, LMS 305 and LMS
+ * 306 all made. Two tabs withdrawing the same request both read `SUBMITTED` here and both
+ * pass. What closes that window is the balance lock in
+ * `BalanceService.releaseForRequest` — both withdrawals move the same balance, so the
+ * second waits and re-reads a request the first has already settled — and
+ * `leave_request_ends_once` behind even that, for a writer that found another way in.
+ * What this buys is the sentence.
+ *
+ * Every miss today is a request that has already ended, so that is what the refusal says.
+ * That is a fact about the current table rather than an assumption about tables in
+ * general: the unit suite asserts every state that is *not* settled has a row for every
+ * action, so the first story to add a live state with a gap in it fails there and has to
+ * bring a refusal that can explain itself.
+ */
+export function settlementTo(request: LeaveRequest, action: RequestAction): ReleasingStatus {
+  const transition = transitionFor(request.status, action);
+
+  if (transition === undefined) {
     throw new LeaveAlreadySettled(request);
   }
+
+  if (!isSettled(transition.to)) {
+    /* Unreachable today: every row in the table ends the request, and the unit suite
+       asserts it. It is answered rather than asserted because the approval story is the
+       one that makes it reachable — `APPROVE` moves a request to a state that still
+       holds days — and the failure it would otherwise cause is silent and expensive:
+       `releaseForRequest` would give back days approval had just committed, and both the
+       status and the ledger would look entirely reasonable afterwards. */
+    throw new Error(
+      `A ${action} leaves this request ${transition.to}, which does not end it, so its ` +
+        `days are not the release door's to give back. A transition that keeps a request ` +
+        `alive needs the movement that matches it — approval commits days rather than ` +
+        `releasing them. §6.`,
+    );
+  }
+
+  return transition.to;
 }
 
 /** What somebody fills in. FR 10's four fields, and nothing else. */
