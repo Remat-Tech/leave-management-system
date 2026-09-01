@@ -3349,6 +3349,66 @@ appeal, and it reads these rows rather than adding any.
 
 ---
 
+### Days come back on rejection
+
+**Rejection at any stage gives back everything the request was holding, at the moment of the
+rejection.** FR 43, LMS 317. The employee asks for the same fortnight again in the next
+breath, and nothing and nobody has to release anything first.
+
+**Most of this has held since [LMS 306](#the-days-come-back)**, and it is worth saying so
+rather than restating it as new. That story built the three endings as one movement: refusing
+writes the `RELEASE` and the status in one transaction, so the days are back before the
+approver's screen has finished reloading, and `REFUSED` is not in
+`leave_request_never_overlaps`, so the dates stop blocking the calendar in the same instant.
+Neither waits on HR, a job, or a nightly anything. What the chain added is that a rejection
+can now happen at a *later* stage, and the answer is the same: only the last approval commits,
+so a request refused after two approvals was still holding all six days as `pending`.
+
+**What LMS 306 did not say is how many days come back.** `leave_request_gives_its_days_back`
+asked whether a `RELEASE` existed, which is the right question asked short. A request that
+ends having given back one day of the six it held satisfies it perfectly and leaves five in
+`pending` that nothing will ever return — a balance permanently short, against a request that
+says it ended, with a ledger that reconciles. That is worse than releasing nothing, because
+nobody notices.
+
+So the rule is **widened rather than joined**: `CREATE OR REPLACE` on the function, with the
+trigger, its `WHEN` and its constraint name untouched. The rule was "a request that ended gave
+its days back"; it is now "gave *its days* back", which is the same sentence read properly
+rather than a second one beside it. A separate trigger would be two rules about one act firing
+on the same `WHEN`, of which the older is implied by the newer, and `LeaveRequestRepository`
+would have to learn a second constraint name to say the same thing about. The same widening
+LMS 314 made to `refuse_an_impossible_transition()`.
+
+**It is judged against the request's own `days`**, frozen since submission by
+`refuse_rewriting_what_a_request_cost()`, so the figure that has to come back is the figure
+that was taken and neither can move. **Not against the balance** — `pending` is per employee,
+leave type and leave year, so somebody with two requests in flight has one figure covering
+both and nothing about it can say which days are whose. That is the same reason
+`LeaveAlreadySettled` guards on the status: a wrong release is "the request state machine's
+integrity to keep rather than the balance's".
+
+**And it covers all three endings**, because a withdrawal that gave back one day of six is
+the same defect wearing another name. A rule that covered only refusals would be a rule about
+which button was pressed rather than about what a request was holding.
+
+Nothing that goes through the door can produce a partial release: `daysToRelease()` refuses to
+give back more than is held and is handed the request's own frozen count, so a release is for
+the whole hold or it raises `NotEnoughHeld` and nothing is written at all. What the widened
+trigger catches is the second writer LMS 306 named and only half-covered — "a data fix in psql
+marking a batch REFUSED, a migration correcting somebody's leave" — each of which can as
+easily release the wrong figure as none.
+
+**One thing this story did not change, and it is worth knowing.** *Who* may reject is still
+`leaveRequestPolicy.refuse` — the line manager or HR — and it is [still not the
+chain](#routing-a-request-to-its-approvers). So a request sitting at the `CEO` desk cannot be
+rejected by the Chief Executive unless they happen to be that employee's line manager: they
+can approve it or leave it. "Rejection at any stage" is true of the *release* at every stage,
+and true of the *rejecting* at two desks of the three. Closing that is one standing added to
+the `REFUSE` row of `TRANSITIONS`, and it hands a power to a desk that does not have it today
+— which is somebody's decision to make rather than a side effect of giving days back faster.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.

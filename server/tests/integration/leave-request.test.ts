@@ -159,15 +159,21 @@ beforeEach(async () => {
     "UPDATE leave_type SET is_active = true, counting_basis = 'WORKING_DAYS' WHERE code = 'ANNUAL'",
   );
 
-  /* And the approval chains, for the same reason and since LMS 314: two tests below change
-     one to show that routing reads the rows rather than anything in the code, and
-     `leave_type_approval_step` is the migration's rather than the seed's. Put back through
-     the owner's repair function, which is what an operator would use — it gives a chain to
-     every type that has none and leaves alone every type that has one, so clearing first is
-     what makes it a restore. */
-  await admin.query('DELETE FROM leave_type_approval_step');
-  await admin.query('SELECT ensure_statutory_approval_chains()');
+  /* And the approval chains, for the same reason and since LMS 314: several tests below
+     change annual leave's to show that routing reads the rows rather than anything in the
+     code, and `leave_type_approval_step` is the migration's rather than the seed's. Put back
+     through the owner's repair function, which is what an operator would use — it gives a
+     chain to every type that has none and leaves alone every type that has one, so clearing
+     first is what makes it a restore.
 
+     **Annual leave's rows only, and inside a transaction**, both of which are about the
+     other suites rather than this one. The integration files run against one database at the
+     same time, so a restore that emptied `leave_type_approval_step` outright left a window —
+     short, and once per test in this file — in which ../integration/approval-chain.test.ts
+     and ../integration/leave-type.test.ts could read a type with no approvers and fail on
+     something neither of them is about. Narrowing the delete to the one type these tests
+     actually rewrite, and committing the pair as one act, closes it: another session sees
+     the chains before or after and never in between. */
   const codes = await admin.query(
     "SELECT code, id FROM leave_type WHERE code IN ('ANNUAL','MATERNITY','SICK')",
   );
@@ -176,6 +182,13 @@ beforeEach(async () => {
   annualId = byCode.ANNUAL;
   maternityId = byCode.MATERNITY;
   sickId = byCode.SICK;
+
+  /* The ids are read before the restore below rather than after it, because the restore now
+     names the type it is putting back and `annualId` is undefined on the first pass. */
+  await admin.query('BEGIN');
+  await admin.query('DELETE FROM leave_type_approval_step WHERE leave_type_id = $1', [annualId]);
+  await admin.query('SELECT ensure_statutory_approval_chains()');
+  await admin.query('COMMIT');
 
   /* Twenty days of annual leave, so there is something to spend. Granted the way the
      annual run grants it, which is through the one door. */
@@ -3178,5 +3191,258 @@ describe('leave that is agreed only once every stage has agreed', () => {
   /* Kwame Asante, the one employee with no line manager. FR 04. */
   function asTheChiefExecutive() {
     return signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
+  }
+});
+
+/* ------------------------------------------ days come back on rejection, FR 43 */
+
+/**
+ * The days are back the moment a request is rejected, at whatever stage. FR 43. LMS 317.
+ *
+ * Most of this has held since LMS 306, which built the three endings as one movement and
+ * writes the RELEASE and the status in one transaction. What this suite adds is the two
+ * things that story could not say:
+ *
+ *   **At any stage.** LMS 306 refused requests that were still with their first approver,
+ *   because that was the only place a request could be. A chain has stages now, and a
+ *   rejection in the middle of one has to give back exactly as much as a rejection at the
+ *   start — the days were never partly spent, because only the last approval commits.
+ *
+ *   **All of them.** `leave_request_gives_its_days_back` asked whether anything came back and
+ *   not how much, and a release of one day out of six satisfied it while leaving five in
+ *   `pending` that nothing would ever return. That is worse than releasing nothing, because
+ *   nobody notices.
+ *
+ * And the story's "so that", which is the only assertion here that is about the employee
+ * rather than about the ledger: the same dates can be asked for again straight away.
+ */
+describe('the days a rejected request was holding', () => {
+  /* The first stage, which is where LMS 306 left it: the whole hold, at once, with the
+     balance reading exactly what it did before the request was made. */
+  it('come back in full when the first approver rejects it', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    const refused = await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+    expect(refused.request.status).toBe('REFUSED');
+    expect(refused.entry.days).toBe(6);
+    expect(refused.balance.pending).toBe(0);
+    expect(refused.balance.available).toBe(20);
+  });
+
+  /**
+   * And in full when a middle stage rejects it, which is the case a chain of three makes
+   * possible for the first time.
+   *
+   * Two desks have approved. Nothing has been taken — a `DEDUCTION` is written by the last
+   * approval and by nothing else — so what comes back is the same six days, and the earlier
+   * approvals cost the employee nothing.
+   */
+  it('and in full when a stage in the middle of the chain rejects it', async () => {
+    await rewriteTheAnnualChain('MANAGER', 'HR', 'CEO');
+
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), request.id);
+
+    const waiting = await requests.byId(asThemselves(), request.id);
+    expect(waiting.awaitingApprovalFrom).toBe('HR');
+
+    const refused = await requests.refuse(asOfficer(), request.id, WHY_NOT);
+
+    expect(refused.request.status).toBe('REFUSED');
+    expect(refused.entry.days).toBe(6);
+    expect(refused.balance.pending).toBe(0);
+    expect(refused.balance.available).toBe(20);
+    expect(refused.balance.taken).toBe(0);
+  });
+
+  /* And the RELEASE says which of the three endings it was, because five days coming back
+     look identical whether the person changed their mind or a manager turned them down. */
+  it('and the movement says the request was refused', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    const refused = await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+    expect(refused.entry.entryType).toBe('RELEASE');
+    expect(refused.entry.reason).toContain('6 days of Annual Leave given back');
+    expect(refused.entry.reason).toContain('the request was refused');
+  });
+
+  /**
+   * And nobody has to do anything for it. The story's "so that", end to end.
+   *
+   * The same fortnight, refused, and asked for again in the next breath — which needs two
+   * separate things to have happened at the moment of the rejection and not later. The days
+   * have to be back in the balance, or the second request is refused with `NotEnoughDays`;
+   * and the first request has to have stopped blocking the calendar, or it is refused with
+   * `LeaveOverlapsAnother`. Neither waits on HR, a job, or a nightly anything.
+   */
+  it('and the same dates can be asked for again at once, with nobody releasing anything', async () => {
+    const first = await requests.submit(asThemselves(), aRequest());
+
+    await requests.approve(asTheirManager(), first.request.id);
+    await requests.refuse(asOfficer(), first.request.id, WHY_NOT);
+
+    const again = await requests.submit(asThemselves(), aRequest());
+
+    expect(again.request.status).toBe('SUBMITTED');
+    expect(again.request.awaitingApprovalFrom).toBe('MANAGER');
+    expect(again.balance.pending).toBe(6);
+    expect(again.balance.available).toBe(14);
+  });
+
+  /* And the days went back exactly once on the way. A second RELEASE against one request is
+     refused by the index, and the balance is what it would have been had neither request
+     ever existed but the second. */
+  it('and the days were given back exactly once', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT).catch(() => undefined);
+
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'RELEASE' AND leave_request_id = $1",
+          [request.id],
+        )
+      ).rows[0].count,
+    ).toBe('1');
+
+    expect((await balances.forOne(asThemselves(), theBalance())).available).toBe(20);
+  });
+
+  /* ------------------------------------- and what the database holds anyway */
+
+  /**
+   * A request that ended having given back part of what it held is refused at COMMIT.
+   *
+   * The hole LMS 306 left, and the one this story is for. Its trigger asked whether a
+   * RELEASE existed; one day out of six satisfied that and left five in `pending` that
+   * nothing would ever return — a balance permanently short against a request that says it
+   * ended, with a ledger that reconciles.
+   *
+   * The writer here is the one that story named: a data fix marking a request refused and
+   * releasing a figure it worked out for itself.
+   */
+  it('cannot be released in part by a writer that works out its own figure', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await admin.query('BEGIN');
+    await admin.query(
+      `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of, comment)
+       VALUES ($1, 'REFUSE', 'MANAGER', 'No cover that week')`,
+      [request.id],
+    );
+    await admin.query(
+      `UPDATE leave_request SET status = 'REFUSED', awaiting_approval_from = NULL
+        WHERE id = $1`,
+      [request.id],
+    );
+    await admin.query(
+      `INSERT INTO leave_ledger_entry
+         (employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+       VALUES ($1, $2, $3, 'RELEASE', 1, 'Some of them back', $4)`,
+      [people.officer, annualId, y2026.id, request.id],
+    );
+
+    await expect(admin.query('COMMIT')).rejects.toMatchObject({
+      constraint: 'leave_request_gives_its_days_back',
+    });
+
+    expect(await requests.byId(asThemselves(), request.id)).toMatchObject({
+      status: 'SUBMITTED',
+    });
+  });
+
+  /* And the refusal names both figures, because the reader is holding a writer that reached
+     its own number and has to see which one was wanted. */
+  it('and the refusal names what was held and what came back', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await admin.query('BEGIN');
+    await admin.query(
+      `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of, comment)
+       VALUES ($1, 'REFUSE', 'MANAGER', 'No cover that week')`,
+      [request.id],
+    );
+    await admin.query(
+      `UPDATE leave_request SET status = 'REFUSED', awaiting_approval_from = NULL
+        WHERE id = $1`,
+      [request.id],
+    );
+    await admin.query(
+      `INSERT INTO leave_ledger_entry
+         (employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+       VALUES ($1, $2, $3, 'RELEASE', 1, 'Some of them back', $4)`,
+      [people.officer, annualId, y2026.id, request.id],
+    );
+
+    await expect(admin.query('COMMIT')).rejects.toThrow(/holding 6 day\(s\) and gave back 1/);
+  });
+
+  /* And releasing nothing is still refused, in the sentence LMS 306 wrote. Widening a rule
+     is only safe if it goes on refusing what it refused before. */
+  it('and a request that ended releasing nothing is refused as it always was', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await admin.query('BEGIN');
+    await admin.query(
+      `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of, comment)
+       VALUES ($1, 'REFUSE', 'MANAGER', 'No cover that week')`,
+      [request.id],
+    );
+    await admin.query(
+      `UPDATE leave_request SET status = 'REFUSED', awaiting_approval_from = NULL
+        WHERE id = $1`,
+      [request.id],
+    );
+
+    await expect(admin.query('COMMIT')).rejects.toThrow(/without giving its days back/);
+  });
+
+  /* And the rule is about what a request was holding rather than about which button was
+     pressed, so a withdrawal that gave back part of it is refused too. */
+  it('and a withdrawal that gives back part of the hold is refused the same way', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await admin.query('BEGIN');
+    await admin.query(
+      `UPDATE leave_request SET status = 'WITHDRAWN', awaiting_approval_from = NULL
+        WHERE id = $1`,
+      [request.id],
+    );
+    await admin.query(
+      `INSERT INTO leave_ledger_entry
+         (employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+       VALUES ($1, $2, $3, 'RELEASE', 2, 'Some of them back', $4)`,
+      [people.officer, annualId, y2026.id, request.id],
+    );
+
+    await expect(admin.query('COMMIT')).rejects.toMatchObject({
+      constraint: 'leave_request_gives_its_days_back',
+    });
+  });
+
+  /** The balance every test here moves: her annual leave, this year. */
+  function theBalance() {
+    return { employeeId: people.officer, leaveTypeId: annualId, leaveYearId: y2026.id };
+  }
+
+  /** As an HR Administrator would, and restored by the outer `beforeEach`. FR 31. */
+  async function rewriteTheAnnualChain(...desks: readonly string[]): Promise<void> {
+    await admin.query('BEGIN');
+    await admin.query('DELETE FROM leave_type_approval_step WHERE leave_type_id = $1', [annualId]);
+
+    for (const [index, desk] of desks.entries()) {
+      await admin.query(
+        `INSERT INTO leave_type_approval_step (leave_type_id, step_order, approver_role)
+         VALUES ($1, $2, $3)`,
+        [annualId, index + 1, desk],
+      );
+    }
+
+    await admin.query('COMMIT');
   }
 });
