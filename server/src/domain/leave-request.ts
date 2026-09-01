@@ -1,6 +1,6 @@
 /**
- * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 15, FR 16, §8.
- * LMS 301, and the refusals of LMS 303 and LMS 304.
+ * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 14, FR 15, FR 16,
+ * §8. LMS 301, and the refusals of LMS 303, LMS 304 and LMS 305.
  *
  * The story is an employee who wants no surprises when the days come off their
  * balance, and the whole of this file follows from taking that literally: the figure
@@ -67,7 +67,17 @@
  *   the predicate and the list while the service does the reading — and
  *   `leave_request_never_overlaps` holds the same rule where two submissions race.
  *
- * **All three are refusals about a request, and none of them is the calculator's.**
+ * LMS 305 added a fifth, which is not about the days being taken but about their not
+ * being there at all:
+ *
+ *   **The balance does not hold what is being asked for.**
+ *   {@link assertTheDaysAreThere}, and then {@link NotEnoughDays} naming the figure and
+ *   the number of days that could be asked for instead. Like the overlap it is a rule
+ *   about something the domain cannot see, so the service reads the balance and this
+ *   judges it — and `daysToReserve` holds the same rule inside the lock, which is
+ *   where the guarantee is. See that function's note below.
+ *
+ * **All five are refusals about a request, and none of them is the calculator's.**
  * LMS 303 moved the second one here from ./leave-calculator.ts, and the reason is the
  * reason it belongs beside the other two: that a fortnight over Christmas costs eight
  * days, or that a Saturday costs none, is arithmetic about a calendar, and the
@@ -85,10 +95,16 @@
  * the holiday calendar and the counting basis meet. This file is handed the answer and
  * judges it.
  *
- * **No balance.** Whether the days are there is the ledger's, through
- * `BalanceService.reserve`, and the check happens inside the lock rather than here —
- * §8.2. A domain function that decided affordability would be deciding it a moment
- * before the decision was acted on.
+ * **No balance, and no arithmetic on one.** {@link assertTheDaysAreThere} is handed the
+ * figure and compares it; it does not read a balance, add one up, or know what the five
+ * columns are. ./balance.ts owns all of that, and the number arrives from
+ * `BalanceService.forOne` through the service.
+ *
+ * **And this is not where affordability is guaranteed.** §8.2: the figure a domain
+ * function is handed was read a moment before it was judged, and somebody else may be
+ * spending it in that moment. `daysToReserve` decides it again inside the lock, and that
+ * is the answer that binds. What this one buys is the sentence, said while the form is
+ * still open — see {@link NotEnoughDays}.
  *
  * **No transitions.** {@link REQUEST_STATUSES} holds one value. The state machine of
  * §8 — approve, refuse, withdraw, cancel — is the next story's, it brings its own
@@ -103,6 +119,7 @@
 import type { DayCount, FreeDay, LeavePeriod } from './leave-calculator.js';
 import {
   approvalChainInWords,
+  balanceMayBeExceededWithDocument,
   type CountingBasis,
   documentationRequired,
   type LeaveType,
@@ -456,6 +473,97 @@ export class LeaveOverlapsAnother extends Error {
   }
 }
 
+/**
+ * Leave asked for that the balance does not hold. FR 14, FR 26, NFR USA 03. LMS 305.
+ *
+ * The story is being told *at once* rather than waiting days for a rejection, and the
+ * word doing the work is "told". A person who is refused has to be able to act on the
+ * refusal without going and looking anything up, so the sentence carries all three
+ * figures they would otherwise have to assemble: what they asked for, what they have,
+ * and what they could ask for instead.
+ *
+ * ## Why this exists when `daysToReserve` already refuses
+ *
+ * It is the same rule at a different altitude, and the pair is the same arrangement
+ * {@link LeaveOverlapsAnother} makes with `leave_request_never_overlaps`.
+ *
+ * `daysToReserve` is the **guarantee**. It is the only check made against a figure held
+ * still — §8.2 — so it is the one that cannot be beaten by two submissions racing, and
+ * it must stay where it is. What it cannot do is speak: it is handed a number of days
+ * and a balance and knows nothing about leave, so {@link BalanceOverdrawn} says "That is
+ * 6 days against a balance of 3" with no leave type in it, no dates, and nothing to do
+ * about it. That is the ledger's voice, and it is correct for the ledger.
+ *
+ * This one is the **sentence**, for everybody who is not in a race — which is everybody.
+ * It is raised from the submission path, where the leave type and the period are in
+ * hand, so a refusal reads as a refusal about leave.
+ *
+ * ## What the message says instead of no
+ *
+ * > This is 6 days of Annual Leave and you have 3 left — 3 days more than the balance
+ * > holds. Ask for 3 days or fewer, or speak to HR if the balance itself looks wrong.
+ *
+ * The second sentence is the useful one, exactly as it is in
+ * {@link LeaveCrossesAYearEnd}: a refusal that only says no leaves somebody at a form
+ * guessing, and the guess this one produces is "try four days" followed by another
+ * refusal. So the figure they may actually ask for is in it.
+ *
+ * **And it is a whole number of days, floored.** FR 24. A balance of 2.5 — §8.6d
+ * pro rates a mid year joiner, so fractions are ordinary — is two days somebody may
+ * book, and telling them to ask for 2.5 would be telling them to do the one thing
+ * `requireWholeDays` refuses. Where the floor is nought there is nothing to suggest and
+ * the sentence stops offering, rather than inviting a request for no days.
+ *
+ * `available` may itself be negative, which is not a contradiction: §8.6b lets a type
+ * that {@link balanceMayBeExceededWithDocument} go past its allowance, and a balance
+ * left below nought by one of those is still a balance somebody may later ask against
+ * for a type that may not. The figure is reported as it stands rather than clamped —
+ * see the note at the top of ./balance.ts about what a clamped figure stops explaining.
+ */
+export class NotEnoughDays extends Error {
+  /**
+   * FR 14. What a client branches on, as `CROSS_LEAVE_YEAR` and `OVERLAPPING_REQUEST`
+   * are — and deliberately the same token as the {@link QuoteWarning} of that name.
+   *
+   * The warning and the refusal are one condition seen twice: before somebody commits,
+   * where it is worth saying, and at the moment they do, where it stops them. A form
+   * that highlights the balance on the quote highlights it on the refusal with the same
+   * branch, which is what stops the two being drawn as unrelated problems.
+   */
+  readonly code = 'NOT_ENOUGH_DAYS';
+  readonly leaveTypeId: string;
+  readonly period: LeavePeriod;
+  /** What the request costs. Whole days, FR 24. */
+  readonly requested: number;
+  /** What the balance held when this was judged. May be fractional, and may be below nought. */
+  readonly available: number;
+  /** Positive. How many days short the request is. */
+  readonly shortBy: number;
+  /** The largest whole request this balance would take. Nought where there is nothing. */
+  readonly couldAskFor: number;
+
+  constructor(type: LeaveType, period: LeavePeriod, requested: number, availableDays: number) {
+    const couldAskFor = Math.max(0, Math.floor(availableDays));
+
+    super(
+      `${daysAgainstTheBalance(type, requested, availableDays)}` +
+        (couldAskFor > 0
+          ? ` — ${inDays(round(requested - availableDays))} more than the balance holds. ` +
+            `Ask for ${inDays(couldAskFor)} or fewer, or speak to HR if the balance ` +
+            `itself looks wrong.`
+          : `, so there is nothing left to book against. Speak to HR if the balance ` +
+            `itself looks wrong.`),
+    );
+    this.name = 'NotEnoughDays';
+    this.leaveTypeId = type.id;
+    this.period = period;
+    this.requested = requested;
+    this.available = availableDays;
+    this.shortBy = round(requested - availableDays);
+    this.couldAskFor = couldAskFor;
+  }
+}
+
 /* ------------------------------------------------------- refusing the dates */
 
 /**
@@ -515,6 +623,77 @@ export function assertItCostsSomething(
 }
 
 /**
+ * Refuses a request the balance does not hold. FR 14, FR 26. LMS 305.
+ *
+ * Takes the count and the figure rather than fetching either, which is what keeps the
+ * number a person is refused on the same number they were quoted: `LeaveRequestService`
+ * reads the balance once and both the quote's warning and this refusal are made from it.
+ *
+ * **A type that may be exceeded is not refused, and that is a column rather than a
+ * judgement here.** {@link balanceMayBeExceededWithDocument} is FR 32a: sick leave's
+ * allowance is the point at which a medical certificate is asked for and not a cap, so
+ * going past it is a request for evidence — §8.6b, "sick balances go negative, and that
+ * is correct". The quote still warns; see {@link quoteFor}, which says so in the other
+ * of its two sentences. That helper has sat in ./leave-type.ts since LMS 201 saying the
+ * check "belongs to the submission path, which is the only thing that knows what the
+ * balance is". This is that path.
+ *
+ * **It is not the guarantee**, and {@link NotEnoughDays} says at length why not. The
+ * figure was read outside the lock, so between this line and the write somebody's
+ * approval may spend it; `daysToReserve` decides again inside the lock and its answer is
+ * the one that binds. What is bought here is that almost nobody meets the other one.
+ */
+export function assertTheDaysAreThere(
+  type: LeaveType,
+  period: LeavePeriod,
+  count: DayCount,
+  availableNow: number,
+): void {
+  if (balanceMayBeExceededWithDocument(type)) {
+    return;
+  }
+
+  if (count.days > availableNow) {
+    throw new NotEnoughDays(type, period, count.days, availableNow);
+  }
+}
+
+/**
+ * What is being asked for against what is there, in the one clause both say.
+ *
+ * The quote's `NOT_ENOUGH_DAYS` warning and {@link NotEnoughDays} open with this and
+ * then diverge, because they are the same fact told at two moments and a person who
+ * meets both should not be shown two descriptions of it. What differs is what follows —
+ * "so this can still be submitted" against the figure to ask for instead — and that
+ * difference is the whole of what each is for.
+ *
+ * The leave type is named because a balance is per type. "You have 3 left" is a figure
+ * somebody will check against the wrong number on their own leave page; "3 days of
+ * Annual Leave" is one they can find.
+ */
+function daysAgainstTheBalance(type: LeaveType, requested: number, availableDays: number): string {
+  return `This is ${inDays(requested)} of ${type.name} and you have ${availableDays} left`;
+}
+
+/** A count with its noun agreeing, for the sentences that read as sentences. */
+function inDays(days: number): string {
+  return `${days} ${days === 1 ? 'day' : 'days'}`;
+}
+
+/**
+ * Two decimal places, which is the precision a balance is held to.
+ *
+ * The same rounding ./balance.ts applies to {@link BalanceOverdrawn}'s shortfall and
+ * for the same reason: `6 - 2.52` in doubles is a figure with a tail of decimal places
+ * on it, and a refusal telling somebody they are `3.4800000000000004` days short is a
+ * refusal that has stopped being a sentence. It changes no decision — the comparison
+ * above is made on the figures as they were read.
+ */
+function round(days: number): number {
+  return Math.round(days * 100) / 100;
+}
+
+/**
  * The free days as a person would say them, for the one message that needs it.
  *
  * Named rather than counted, because "the twenty fifth is Christmas Day" is what makes a
@@ -554,7 +733,15 @@ export const QUOTE_WARNINGS = [
   'SHORT_NOTICE',
   /** FR 13. This length of this type needs something attached to it. */
   'DOCUMENTATION_REQUIRED',
-  /** The days are not there. Refused at submission by the balance's own check. */
+  /**
+   * FR 14. The days are not there.
+   *
+   * The one warning that is usually a refusal: {@link assertTheDaysAreThere} raises
+   * {@link NotEnoughDays} on the same condition at submission, under the same code.
+   * It stays a *warning* here because of the one type it is not a refusal for — FR
+   * 32a's exceedable allowance — and because a quote's job is to tell somebody where
+   * they stand rather than to stop them reading it.
+   */
   'NOT_ENOUGH_DAYS',
 ] as const;
 
@@ -666,10 +853,10 @@ export function quoteFor(input: {
   if (count.days > availableNow) {
     warnings.push({
       code: 'NOT_ENOUGH_DAYS',
-      message: type.exceedableWithDocument
-        ? `This is ${count.days} days and you have ${availableNow} left. ${type.name} may go ` +
+      message: balanceMayBeExceededWithDocument(type)
+        ? `${daysAgainstTheBalance(type, count.days, availableNow)}. ${type.name} may go ` +
           `past its allowance with documentation, so this can still be submitted.`
-        : `This is ${count.days} days and you have ${availableNow} left, so it cannot be ` +
+        : `${daysAgainstTheBalance(type, count.days, availableNow)}, so it cannot be ` +
           `submitted as it stands.`,
     });
   }

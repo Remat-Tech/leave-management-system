@@ -1,5 +1,6 @@
 /**
- * Asking for leave, and being told what it costs first. FR 10, FR 11, §8. LMS 301.
+ * Asking for leave, and being told what it costs first. FR 10, FR 11, FR 14, §8. LMS 301,
+ * and the balance refusal of LMS 305.
  *
  * The first service of Phase 3, and the story is one sentence: no surprises when the
  * days come off the balance. Two methods follow from it and they are deliberately the
@@ -62,16 +63,32 @@
  *   nothing in which is charged is refused on that answer — {@link countFor} — rather
  *   than by the calculator, which since LMS 303 reports rather than judges.
  *
- *   **Are the days there?** Not asked here at all. It is asked inside
- *   `BalanceService.reserveForRequest`'s lock, because a service that checked
- *   affordability and then wrote would be checking it a moment before it mattered —
- *   §8.2. The quote reports what the balance holds so that a person is not surprised;
- *   the refusal comes from the door.
+ *   **Are the days there?** FR 14, LMS 305. Asked last, because it is the only question
+ *   here that needs the day count — there is nothing to compare against a balance until
+ *   the period has been priced. {@link LeaveRequestService.availableFor} reads the
+ *   figure and {@link assertTheDaysAreThere} judges it, and a request the balance cannot
+ *   take is refused with {@link NotEnoughDays} naming what is left and what could be
+ *   asked for instead.
  *
- * **Every one of those is asked by `quote` as well as by `submit`**, because they share
- * {@link LeaveRequestService.resolve} and {@link LeaveRequestService.countFor}. A quote
+ *   **And asked again inside `BalanceService.reserveForRequest`'s lock**, which is the
+ *   half that guarantees anything. The figure read here was true when it was read;
+ *   §8.2 is about the moment after that, and `daysToReserve` is the only check made
+ *   against a balance held still. The two are the same rule at two altitudes, exactly as
+ *   the overlap check and `leave_request_never_overlaps` are — see {@link NotEnoughDays}
+ *   for why the one that cannot be beaten is not the one that can speak.
+ *
+ * **Every one of those is asked by `quote` as well as by `submit`** — the first four
+ * because they share {@link LeaveRequestService.resolve} and
+ * {@link LeaveRequestService.countFor}, and the balance because
+ * {@link LeaveRequestService.availableFor} is what feeds the quote's figures. A quote
  * that accepted what a submission would refuse is the surprise this whole story exists
  * to prevent, arriving two days later in an approver's queue.
+ *
+ * The balance is the one of them the quote **reports rather than refuses on**, and that
+ * is deliberate. A quote is what somebody reads to decide what to ask for, so it shows
+ * the figures and warns — `NOT_ENOUGH_DAYS`, under the code the refusal carries — where
+ * refusing would mean declining to tell a person how far short they are. The refusal
+ * belongs at the moment of committing, which is where LMS 305 put it.
  *
  * ## What it does not do
  *
@@ -96,6 +113,7 @@ import type { DayCount, LeavePeriod } from '../domain/leave-calculator.js';
 import { validateLeavePeriod } from '../domain/leave-calculator.js';
 import {
   assertItCostsSomething,
+  assertTheDaysAreThere,
   InvalidLeaveRequest,
   LeaveCrossesAYearEnd,
   type LeaveRequest,
@@ -203,17 +221,12 @@ export class LeaveRequestService {
     const { employee, type, year, period } = await this.resolve(actor, input);
 
     const count = await this.countFor(actor, employee, type, period);
-    const balance = await this.balances.forOne(actor, {
-      employeeId: employee.id,
-      leaveTypeId: type.id,
-      leaveYearId: year.id,
-    });
 
     return quoteFor({
       type,
       period,
       count,
-      availableNow: balance.available,
+      availableNow: await this.availableFor(actor, employee, type, year),
       daysOfNotice: noticeGiven(this.today(), period.from),
     });
   }
@@ -234,8 +247,11 @@ export class LeaveRequestService {
    * {@link NotEligibleForTheType} for a type that may not be asked for,
    * {@link LeaveCrossesAYearEnd} for a period spanning a year end,
    * {@link LeaveOverlapsAnother} for leave over leave already booked,
-   * {@link LeaveYearIsClosed} for a settled year, and {@link BalanceOverdrawn} from the
-   * door where the days are not there.
+   * {@link LeaveYearIsClosed} for a settled year, and {@link NotEnoughDays} where the
+   * balance does not hold what is being asked for — or {@link BalanceOverdrawn} from the
+   * door instead, in the one case this method's check cannot cover: a balance spent
+   * between the read here and the lock there. Same refusal, and the difference is only
+   * which of them got to say it.
    */
   async submit(actor: Actor, input: NewLeaveRequest): Promise<LeaveRequested> {
     const { employee, type, year, period } = await this.resolve(actor, input);
@@ -254,6 +270,17 @@ export class LeaveRequestService {
     /* Counted again, inside no transaction yet but from the same facts, and it is this
        answer that is stored. See the module note for why it is not the caller's. */
     const count = await this.countFor(actor, employee, type, period);
+
+    /* FR 14, LMS 305. The days, checked while the form is still open and against the
+       same figure the quote showed. `daysToReserve` checks it again inside the lock and
+       that is the answer that binds; this is the one that can name the leave type, the
+       figure and what to ask for instead. */
+    assertTheDaysAreThere(
+      type,
+      period,
+      count,
+      await this.availableFor(actor, employee, type, year),
+    );
 
     const request = validateNewLeaveRequest({
       employeeId: employee.id,
@@ -425,6 +452,40 @@ export class LeaveRequestService {
          than one that says less. */
       typeName: type?.name ?? 'leave',
     });
+  }
+
+  /**
+   * What this person has left of this type, this year. FR 14, FR 53.
+   *
+   * The one place either method asks, for the reason {@link LeaveRequestService.countFor}
+   * is the one place either counts: the figure a person is shown in a quote and the
+   * figure they are refused against have to be the same figure, read the same way. Two
+   * call sites assembling the same three-part key is how they stop being.
+   *
+   * `BalanceService.forOne` rather than a repository, because reading somebody's balance
+   * is a permission of its own — ../auth/ledger-policy.ts — and it is that service's to
+   * enforce. A balance nothing has moved yet comes back as nought rather than as an
+   * absence, so somebody asking for a type they have never used is refused with a figure
+   * rather than met with an error about a missing row.
+   *
+   * **No lock, and this is not where affordability is decided.** §8.2. The figure is
+   * true when it is read and may be spent a moment later by an approval landing in
+   * another connection; `daysToReserve` inside `BalanceService.reserveForRequest` is the
+   * check that cannot be beaten. See {@link NotEnoughDays}.
+   */
+  private async availableFor(
+    actor: Actor,
+    employee: Employee,
+    type: LeaveType,
+    year: LeaveYear,
+  ): Promise<number> {
+    const balance = await this.balances.forOne(actor, {
+      employeeId: employee.id,
+      leaveTypeId: type.id,
+      leaveYearId: year.id,
+    });
+
+    return balance.available;
   }
 
   /**
