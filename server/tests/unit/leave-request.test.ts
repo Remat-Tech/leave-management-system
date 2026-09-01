@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { DayCount } from '../../src/domain/leave-calculator.js';
 import {
   assertItCostsSomething,
+  assertMayBeSettled,
   assertTheDaysAreThere,
   blocksTheCalendar,
   countingBasisInWords,
   InvalidLeaveRequest,
+  LeaveAlreadySettled,
   type LeaveRequest,
   LeaveCountsNoDays,
   LeaveCrossesAYearEnd,
@@ -17,7 +19,9 @@ import {
   QUOTE_WARNINGS,
   quoteFor,
   reachesPastTheEndOf,
+  reasonForRelease,
   reasonForReservation,
+  RELEASING_STATUSES,
   REQUEST_STATUSES,
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
@@ -701,6 +705,136 @@ describe('which requests hold the days', () => {
   it('and a submitted request holds them, because it is waiting to be decided', () => {
     expect(blocksTheCalendar('SUBMITTED')).toBe(true);
   });
+
+  /**
+   * And none of LMS 306's three endings holds them, which is what the list was for.
+   *
+   * Until they existed this list and `REQUEST_STATUSES` held the same single value and
+   * every query filtering by it filtered nothing. Three statuses arrived, none joined
+   * this list, and the queries written against it started excluding rows without a line
+   * of them changing — which is the whole of "days that came back are days somebody may
+   * book again".
+   */
+  it('and none of the three endings does, because their days came back', () => {
+    for (const status of RELEASING_STATUSES) {
+      expect(blocksTheCalendar(status)).toBe(false);
+      expect(LIVE_STATUSES).not.toContain(status);
+    }
+  });
+
+  /* And every one of them is a status the schema can actually hold. */
+  it('and every ending is a status in its own right', () => {
+    for (const status of RELEASING_STATUSES) {
+      expect(REQUEST_STATUSES).toContain(status);
+    }
+  });
+});
+
+/* --------------------------------------------------- the three endings, LMS 306 */
+
+/**
+ * A request ends once, and gives its days back when it does. FR 26, §8.2. LMS 306.
+ *
+ * The domain's whole share of the story: which statuses end a request, whether one may
+ * be ended, and what the movement says it was for. The movement itself is
+ * `BalanceService.releaseForRequest` and the desks are in the policy, so what is provable
+ * without a database is exactly this.
+ */
+describe('ending a request', () => {
+  it('is allowed while it is still waiting to be decided', () => {
+    expect(() => assertMayBeSettled(aStoredRequest({ status: 'SUBMITTED' }))).not.toThrow();
+  });
+
+  /**
+   * And refused once it has ended, whichever of the three ended it.
+   *
+   * The rule that makes "my days cannot be given back twice" true rather than hoped for.
+   * The balance cannot be the guard here: `pending` is per employee, leave type and leave
+   * year, so where the person has other leave waiting there would be days for a second
+   * release to take and the ledger would accept it — crediting them for a fortnight
+   * nobody was holding, with every entry reconciling.
+   */
+  it.each([...RELEASING_STATUSES])('and refused once it is already %s', (status) => {
+    expect(() => assertMayBeSettled(aStoredRequest({ status }))).toThrow(LeaveAlreadySettled);
+  });
+
+  it('and the refusal says which ending it already had, in words', () => {
+    const refusal = refusalFor('WITHDRAWN');
+
+    expect(refusal.message).toContain('already withdrawn');
+    expect(refusal.message).toMatch(/ask for them again/i);
+    expect(refusal.status).toBe('WITHDRAWN');
+    expect(refusal.leaveRequestId).toBe('request-1');
+  });
+
+  /* Said the way a person says it, never as the stored value. The same rule
+     `countingBasisInWords` follows, and one mapping rather than one per message. */
+  it.each([
+    ['WITHDRAWN', 'withdrawn'],
+    ['CANCELLED', 'cancelled'],
+    ['REFUSED', 'refused'],
+  ] as const)('and %s reads as "%s" rather than as the value', (status, said) => {
+    expect(refusalFor(status).message).toContain(`already ${said}`);
+    expect(refusalFor(status).message).not.toContain(status);
+  });
+
+  it('and carries the code a client branches on', () => {
+    expect(refusalFor('REFUSED').code).toBe('ALREADY_SETTLED');
+  });
+
+  /** The refusal, caught, for the tests that are about what it says. */
+  function refusalFor(status: (typeof RELEASING_STATUSES)[number]): LeaveAlreadySettled {
+    try {
+      assertMayBeSettled(aStoredRequest({ status }));
+    } catch (error) {
+      return error as LeaveAlreadySettled;
+    }
+
+    throw new Error(`A ${status} request was not refused.`);
+  }
+});
+
+describe('what the release says it is for', () => {
+  /**
+   * The other half of the reservation's sentence, and they read as a pair in a history.
+   *
+   * "6 days of Annual Leave requested … held while it is decided", then "6 days of Annual
+   * Leave given back … the request was withdrawn". That pairing is what makes a balance
+   * explain itself to the person reading it rather than merely reconcile.
+   */
+  it('says how much, of what, when, and which ending it was', () => {
+    expect(reasonForRelease('Annual Leave', PERIOD, 6, 'WITHDRAWN')).toBe(
+      '6 days of Annual Leave given back, 2026-03-02 to 2026-03-10, ' + 'the request was withdrawn',
+    );
+  });
+
+  /**
+   * And which of the three is in the sentence, because nothing else records it.
+   *
+   * Five days coming back look identical whether the person changed their mind, a
+   * manager turned it down or HR unwound it — and those are three different
+   * conversations. The status on the request says so too, but a balance history is read
+   * on its own.
+   */
+  it.each([
+    ['WITHDRAWN', 'withdrawn'],
+    ['CANCELLED', 'cancelled'],
+    ['REFUSED', 'refused'],
+  ] as const)('and names %s as "%s"', (status, said) => {
+    expect(reasonForRelease('Annual Leave', PERIOD, 6, status)).toContain(
+      `the request was ${said}`,
+    );
+  });
+
+  it('and counts a single day as a day', () => {
+    expect(reasonForRelease('Sick Leave', PERIOD, 1, 'REFUSED')).toContain('1 day of Sick Leave');
+  });
+
+  /* The request id is deliberately not in it. `leave_ledger_entry.leave_request_id` is
+     the join, and a reason full of identifiers is a reason nobody reads. */
+  it('and does not carry an identifier anybody would have to look up', () => {
+    expect(reasonForRelease('Annual Leave', PERIOD, 6, 'WITHDRAWN')).not.toMatch(/request-\d/);
+  });
 });
 
 describe('the refusal, which names the leave already in the way', () => {
@@ -949,15 +1083,32 @@ describe('a request the balance does not hold', () => {
 
 describe('where this story stops', () => {
   /**
-   * One status, and its shortness is the boundary rather than an omission.
+   * Four statuses, and the shortness of the list is still the boundary.
    *
-   * A list of six with five unreachable would be a promise the schema cannot keep, so
-   * `leave_request_status_known` holds exactly this one and the approval story extends
-   * it in a migration of its own — as LMS 218 extended the ledger's entry types to
-   * admit LAPSE. This test is what fails if somebody adds a status here without the
-   * migration that lets the database hold it.
+   * A list of six with two unreachable would be a promise the schema cannot keep, so
+   * `leave_request_status_known` holds exactly these four and the approval story extends
+   * it in a migration of its own — as LMS 218 extended the ledger's entry types to admit
+   * LAPSE, and as LMS 306 extended this one to admit the three endings. This test is what
+   * fails if somebody adds a status here without the migration that lets the database
+   * hold it.
    */
-  it('has one status, because nothing yet moves a request', () => {
-    expect([...REQUEST_STATUSES]).toEqual(['SUBMITTED']);
+  it('has the four statuses something can actually reach', () => {
+    expect([...REQUEST_STATUSES]).toEqual(['SUBMITTED', 'WITHDRAWN', 'CANCELLED', 'REFUSED']);
+  });
+
+  /**
+   * And `APPROVED` is not one of them, which is the boundary this story stopped at.
+   *
+   * The three that arrived release days. Approval *commits* them — the hold becomes days
+   * taken and available does not move — and which desk in FR 38a's chain may agree needs
+   * the chain, the type and how far the request has got, none of which exists yet. The
+   * story that brings it brings its own migration.
+   *
+   * Written as an assertion rather than a comment because the tempting thing, on the
+   * afternoon somebody starts the approval story, is to add the status here and reach the
+   * migration later.
+   */
+  it('and nothing here approves one, which is the next story’s', () => {
+    expect(REQUEST_STATUSES).not.toContain('APPROVED');
   });
 });

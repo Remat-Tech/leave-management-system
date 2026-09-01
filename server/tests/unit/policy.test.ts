@@ -1266,16 +1266,82 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       }
     });
 
-    /* There is no `approve` in that file and its absence is deliberate: a decision here
-       would be a way to reach the transition without passing the check that knows which
-       desk FR 38a's chain has the request sitting on. */
+    /* There is still no `approve` in that file and its absence is still deliberate: a
+       decision here would be a way to reach the transition without passing the check that
+       knows which desk FR 38a's chain has the request sitting on. The three LMS 306 added
+       do not have that problem, because none of them is a step in the chain — they end a
+       request rather than advancing it. */
     it('and has no decision for approving one, which is the next story’s', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
+        'cancel',
         'read',
+        'refuse',
         'resource',
         'reword',
         'submit',
+        'withdraw',
       ]);
+    });
+
+    /**
+     * And the three endings are three different desks, which is the point of them being
+     * three decisions rather than one.
+     *
+     * A single `settle` would have to be the union — `ledgerPolicy.release` — and would
+     * let a manager withdraw a report's leave and let somebody mark their own leave
+     * refused. Both write a valid RELEASE and a record of something that did not happen.
+     */
+    it('and the three endings are decided by three different desks', () => {
+      /* Ama asked for the leave and Akosua is her line manager. */
+      const ama = employee('ama');
+      const akosua = manager('akosua');
+
+      /* Withdrawing is the undoing of submitting, so it is the requester's — and, by
+         the same FR 18 argument, HR's on their behalf. Not the manager's: emptying
+         somebody's calendar without refusing anything leaves no decision on the
+         record. */
+      expect(leaveRequestPolicy.withdraw(ama, hers).allowed).toBe(true);
+      expect(leaveRequestPolicy.withdraw(akosua, hers).allowed).toBe(false);
+
+      /* Refusing is a decision about somebody else's request. Not the requester's:
+         taking back your own leave is withdrawing it, and `reasonForRelease` writes
+         which of the two happened into the ledger. */
+      expect(leaveRequestPolicy.refuse(akosua, hers).allowed).toBe(true);
+      expect(leaveRequestPolicy.refuse(ama, hers).allowed).toBe(false);
+
+      /* Cancelling is HR unwinding something that should not be on the books, and is
+         the narrowest of the three: neither the requester's nor the manager's. */
+      expect(leaveRequestPolicy.cancel(ama, hers).allowed).toBe(false);
+      expect(leaveRequestPolicy.cancel(akosua, hers).allowed).toBe(false);
+    });
+
+    /* And which roles carry each, read off the role lists rather than written out — the
+       same way every other decision in this file is checked, so a role added to
+       MAINTAINS_EMPLOYEE_RECORDS reaches all three without this test being edited. */
+    it('and the roles that carry them are the ones that maintain records', () => {
+      for (const [code, roles] of EACH_ROLE) {
+        const holder = employee('adwoa', roles);
+        const carries = MAINTAINS_EMPLOYEE_RECORDS.includes(code);
+
+        expect(leaveRequestPolicy.withdraw(holder, hers).allowed).toBe(carries);
+        expect(leaveRequestPolicy.refuse(holder, hers).allowed).toBe(carries);
+        expect(leaveRequestPolicy.cancel(holder, hers).allowed).toBe(carries);
+      }
+    });
+
+    /* Every one of the three is refused openly. Anybody reaching them can already read
+       the request, so there is no existence to disclose and the person meeting the
+       refusal is doing legitimate work at the wrong window. */
+    it('and each of them says why, and names the desk that can', () => {
+      for (const decision of [
+        leaveRequestPolicy.refuse(employee('ama'), hers),
+        leaveRequestPolicy.cancel(employee('ama'), hers),
+        leaveRequestPolicy.withdraw(manager('akosua'), hers),
+      ]) {
+        expect(decision.allowed).toBe(false);
+        expect(decision.told).not.toBeNull();
+        expect(decision.because).not.toBeNull();
+      }
     });
   });
 

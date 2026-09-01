@@ -1,6 +1,6 @@
 /**
  * The one place a balance changes. FR 26, FR 30, FR 36, FR 37, §5.7, §8.2. LMS 211 to
- * LMS 217.
+ * LMS 217, and the two ends of a request's life — LMS 301 and LMS 306.
  *
  * LMS 211 built the cache and this class read it. LMS 212 is the story that gives it
  * the other half, and the story's own sentence is the design: "one place responsible
@@ -69,6 +69,22 @@
  * matters: not that a second commit is silently ignored, which would hide a bug, but
  * that it is refused with a sentence naming how many days are actually held.
  *
+ * ## A request's days arrive and leave through two methods, and both move two rows
+ *
+ * {@link BalanceService.reserveForRequest} and {@link BalanceService.releaseForRequest}
+ * are the pair, and neither is a movement with a status change bolted on: **the row and
+ * the entry are one act in both directions**, because each of the four ways they could
+ * come apart is a balance nobody can explain. A request that reserved nothing could be
+ * submitted three times against five days; a reservation with no request is days missing
+ * with nothing to say why; a request that ended holding its days is a balance
+ * permanently short; a release with the status left behind is days that the next
+ * withdrawal gives back again.
+ *
+ * The database holds all four — `leave_request_holds_its_days` and
+ * `leave_request_gives_its_days_back` at COMMIT, `leave_request_reserves_once` and
+ * `leave_request_releases_once` at the write — so the pairing is a guarantee rather than
+ * a convention these two methods happen to follow.
+ *
  * ## Not lost between two screens. The row is held while it is checked
  *
  * §8.2, and the criterion is exact: the balance is locked *for the duration of
@@ -110,7 +126,13 @@ import {
 import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
 import { type LeaveEvent, validateNewLeaveEvent } from '../domain/leave-event.js';
-import type { LeaveRequest, ValidatedLeaveRequest } from '../domain/leave-request.js';
+import {
+  assertMayBeSettled,
+  type LeaveRequest,
+  LeaveRequestNotFound,
+  type ReleasingStatus,
+  type ValidatedLeaveRequest,
+} from '../domain/leave-request.js';
 import { LeaveTypeNotFound } from '../domain/leave-type.js';
 import { LeaveYearNotFound } from '../domain/leave-year.js';
 import type { CalendarDate } from '../domain/time.js';
@@ -259,6 +281,26 @@ export interface RequestToSubmit {
 }
 
 /**
+ * What `LeaveRequestService` supplies to end one. FR 26, §8.2. LMS 306.
+ *
+ * The mirror of {@link RequestToSubmit}, and the same division between the two strings:
+ * `reason` is what the `RELEASE` says, which is the sentence beside five days arriving
+ * back in a balance, and {@link reasonForRelease} composes it.
+ *
+ * The request arrives as it was read, rather than as an id, because the caller has
+ * already read it to decide whether this actor may end it. It is **read again inside the
+ * lock** all the same — see {@link BalanceService.releaseForRequest} — so what is passed
+ * here identifies the row rather than being trusted for its status.
+ */
+export interface RequestToSettle {
+  request: LeaveRequest;
+  /** Which of the three endings. The type admits no way to un-end a request. */
+  to: ReleasingStatus;
+  /** FR 27. What the movement says, which is not what the request says. */
+  reason: string;
+}
+
+/**
  * The request, the movement it caused, and the balance it left.
  *
  * All three, for the reason {@link EventGranted} carries all three: a caller that has
@@ -269,6 +311,16 @@ export interface RequestToSubmit {
 export interface LeaveRequested extends BalanceMoved {
   request: LeaveRequest;
 }
+
+/**
+ * The same three, from the other end of a request's life. LMS 306.
+ *
+ * Named apart from {@link LeaveRequested} for the reason {@link EventLapsed} is named
+ * apart from {@link EventGranted}: a signature should say which act produced it, and
+ * "the request, the entry and the balance" is true of both while only one of them gives
+ * days back.
+ */
+export type LeaveReleased = LeaveRequested;
 
 /**
  * A movement, the balance it left, and the event it belongs to.
@@ -427,6 +479,94 @@ export class BalanceService {
           days: -days,
           reason,
           leaveRequestId: written.id,
+        }),
+      );
+
+      return {
+        request: written,
+        entry,
+        balance: withAvailable(await repositories.balances.forOne(key)),
+      };
+    });
+  }
+
+  /**
+   * Ends a leave request and gives back the days it was holding. FR 26, §8.2. LMS 306.
+   *
+   * The last movement of a request's life as this system knows it, and the exact mirror
+   * of {@link BalanceService.reserveForRequest}. The balance is held still, the request
+   * re-read, the ending checked, the status moved and the `RELEASE` written — all inside
+   * one transaction, so a caller reading the balance afterwards reads the figure this
+   * produced.
+   *
+   * **The status and the movement are one act**, and the failure modes on either side of
+   * that are why. A status moved without a release is days held forever by a request that
+   * has ended — a balance permanently short with nothing to explain it. A release without
+   * the status is days given back by a request that still says it is waiting, which the
+   * *next* withdrawal would release again. `leave_request_gives_its_days_back` holds the
+   * first half at COMMIT and `leave_request_releases_once` holds the second.
+   *
+   * ## The request is read again inside the lock, and that is the whole concurrency story
+   *
+   * `LeaveRequestService` has already read it and already refused an ending that had
+   * ended — that refusal is the sentence a person sees. This read is the one that binds,
+   * and it works because of a property the balance lock happens to have: **two endings of
+   * one request are two movements on one balance**, so `holdStill` serialises them. The
+   * second waits, re-reads a request the first has already settled, and meets
+   * {@link LeaveAlreadySettled} rather than releasing the days a second time.
+   *
+   * That is a stronger position than {@link BalanceService.reserveForRequest} is in,
+   * where two submissions are two *different* requests and no lock can make one see the
+   * other. Here the lock closes the window, and `leave_request_releases_once` is the
+   * backstop for a writer that never took it.
+   *
+   * **How many days is not this method's to choose.** It is what the request was priced
+   * at — the figure `refuse_rewriting_what_a_request_cost()` has frozen since it was
+   * submitted — so what comes back is exactly what was held. `daysToRelease` refuses to
+   * give back more than the balance is holding, which is the second line of that defence
+   * and the one that catches a release aimed at the wrong balance.
+   */
+  async releaseForRequest(actor: Actor, settlement: RequestToSettle): Promise<LeaveReleased> {
+    const { request, to, reason } = settlement;
+    const owner = await this.ownerOf(request.employeeId);
+
+    this.guard.enforce(ledgerPolicy.release(actor, owner));
+
+    const key = keyOf(request);
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      /* The lock first, before the request is re-read: the point of reading it again is
+         to see what a concurrent ending did, and a read taken before the lock would see
+         exactly the stale row this is guarding against. */
+      const held = await repositories.balances.holdStill(key);
+
+      const current = await repositories.requests.findById(request.id);
+
+      /* Unreachable: the caller read this row a moment ago and `leave_request_is_never_
+         deleted` refuses to remove one on any connection. Answered rather than asserted,
+         because the alternative is releasing days against a request that is not there. */
+      if (current === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      assertMayBeSettled(current);
+
+      const days = daysToRelease(held, current.days);
+      const written = await repositories.requests.settle(actor, current.id, to);
+
+      /* Unreachable for the same reason, and one statement later. */
+      if (written === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      const entry = await repositories.entries.post(
+        actor,
+        validateNewLedgerEntry({
+          ...key,
+          entryType: 'RELEASE',
+          days,
+          reason,
+          leaveRequestId: current.id,
         }),
       );
 
@@ -683,7 +823,7 @@ export class BalanceService {
   }
 
   /**
-   * Gives held days back, when a request is withdrawn, refused or cancelled.
+   * Gives held days back. The movement, without the request that occasioned it.
    *
    * The mirror of {@link BalanceService.reserve}, and refused by the same rule as
    * {@link BalanceService.commit}: days can only be given back out of days that are
@@ -694,6 +834,20 @@ export class BalanceService {
    * is a different act with a different entry behind it — FR 25's `RECALCULATION` for
    * a holiday inside approved leave, or an `ADJUSTMENT` where HR has decided — and
    * neither is a release.
+   *
+   * **Ending a request goes through {@link BalanceService.releaseForRequest} instead**,
+   * and the difference is the status. This method posts the entry and leaves the request
+   * saying it is still waiting to be decided; that one moves both in a single
+   * transaction, which is what LMS 306's story actually asks for. A request whose days
+   * came back while it still reads `SUBMITTED` holds nothing and blocks the calendar
+   * anyway — `blocksTheCalendar` reads the status, not the ledger.
+   *
+   * So this is the primitive rather than the door for a withdrawal, and it stays because
+   * `leave_request_releases_once` draws the line where the design does: **one RELEASE per
+   * request, because a request ends once.** Giving back *part* of what a live request
+   * holds — FR 32b converting a day of booked annual leave into sick leave — is a
+   * `RECALCULATION`, which is the entry type that exists for exactly that and is
+   * deliberately not this one.
    */
   async release(actor: Actor, movement: RequestMovement): Promise<BalanceMoved> {
     const owner = await this.ownerOf(movement.employeeId);

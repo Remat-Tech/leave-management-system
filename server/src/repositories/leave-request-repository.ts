@@ -1,5 +1,6 @@
 /**
- * Database access for a leave request. FR 10, FR 11, FR 15, §8. LMS 301, LMS 304.
+ * Database access for a leave request. FR 10, FR 11, FR 15, FR 26, §8. LMS 301, LMS 304,
+ * LMS 306.
  *
  * Queries and row mapping, nothing else. What a valid request is lives in
  * ../domain/leave-request.ts, what a period costs in ../domain/leave-calculator.ts,
@@ -30,6 +31,13 @@
  * makes the legitimate order possible at all: the entry cannot name a request that does
  * not exist yet. A caller that has gone through `BalanceService.reserveForRequest`
  * never meets it; a caller that has found another way in meets it and is told so.
+ *
+ * **And the release check fires at COMMIT too, for exactly the same reason.** LMS 306's
+ * `leave_request_gives_its_days_back` is the mirror of it: the status has to move before
+ * an entry can be written against the settled row, so a request that has ended and
+ * released nothing is a legitimate intermediate state that only a check at COMMIT can
+ * judge. Its sibling `leave_request_ends_once` fires at the UPDATE, because a request
+ * moving out of a state it already left is wrong the moment it is attempted.
  */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
@@ -42,6 +50,7 @@ import {
   type LeaveRequest,
   LeaveOverlapsAnother,
   LIVE_STATUSES,
+  type ReleasingStatus,
   type RequestStatus,
   type ValidatedLeaveRequest,
 } from '../domain/leave-request.js';
@@ -55,6 +64,10 @@ const RESTRICT_VIOLATION = '23001';
 const OUTSIDE_ITS_YEAR = 'leave_request_falls_in_its_leave_year';
 const HOLDS_NO_DAYS = 'leave_request_holds_its_days';
 const ALREADY_PRICED = 'leave_request_says_what_it_said';
+
+/** The triggers from the release-days-when-a-request-ends migration. LMS 306. */
+const ENDS_ONCE = 'leave_request_ends_once';
+const KEPT_ITS_DAYS = 'leave_request_gives_its_days_back';
 
 /** The exclusion constraint from the prevent-overlapping-requests migration. */
 const OVERLAPS_ANOTHER = 'leave_request_never_overlaps';
@@ -250,6 +263,39 @@ export class LeaveRequestRepository {
   }
 
   /**
+   * Ends a request, which is the only move `status` makes today. FR 26. LMS 306.
+   *
+   * Called only from inside `BalanceService.releaseForRequest`'s transaction, which
+   * writes the RELEASE naming the row this returns. Called anywhere else,
+   * `leave_request_gives_its_days_back` refuses it at COMMIT and says why — the mirror
+   * of what `leave_request_holds_its_days` does to a submission that reserved nothing.
+   *
+   * Takes a {@link ReleasingStatus} rather than a {@link RequestStatus}, so the one
+   * status this method cannot be asked to write is `SUBMITTED` — a request cannot be
+   * un-ended, and the type says so before the trigger has to. Which of the three is
+   * legitimate for a given actor is ../auth/leave-request-policy.ts's, and whether the
+   * request may be ended at all is `assertMayBeSettled`.
+   */
+  async settle(
+    by: Attribution,
+    id: string,
+    to: ReleasingStatus,
+  ): Promise<LeaveRequest | undefined> {
+    return this.catchRefusals(async () => {
+      const row = await recording(this.db, by, (on) =>
+        on
+          .updateTable('leave_request')
+          .set({ status: to })
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirst(),
+      );
+
+      return row === undefined ? undefined : toRequest(row);
+    });
+  }
+
+  /**
    * Runs a write and turns whatever the database refused it for into a domain error.
    *
    * The constraint name is read from the driver's error rather than guessed from the
@@ -307,6 +353,19 @@ export class LeaveRequestRepository {
         }
         if (constraint === ALREADY_PRICED) {
           throw new InvalidLeaveRequest('id', (error as Error).message);
+        }
+
+        /* LMS 306's two, and both are backstops rather than paths. `assertMayBeSettled`
+           asks the first question inside the balance lock, which is what makes a second
+           withdrawal wait and then be refused with a sentence; `BalanceService` writes
+           the RELEASE in the same transaction as the status, which is what keeps the
+           second from ever being reached. What they catch is a writer that found
+           another way in, and it is told what it broke rather than which trigger. */
+        if (constraint === ENDS_ONCE) {
+          throw new InvalidLeaveRequest('status', (error as Error).message);
+        }
+        if (constraint === KEPT_ITS_DAYS) {
+          throw new InvalidLeaveRequest('status', (error as Error).message);
         }
       }
 

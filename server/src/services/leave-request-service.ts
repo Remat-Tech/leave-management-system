@@ -1,10 +1,16 @@
 /**
- * Asking for leave, and being told what it costs first. FR 10, FR 11, FR 14, §8. LMS 301,
- * and the balance refusal of LMS 305.
+ * Asking for leave, being told what it costs first, and taking it back. FR 10, FR 11,
+ * FR 14, FR 26, §8. LMS 301, the balance refusal of LMS 305, and the three endings of
+ * LMS 306.
  *
  * The first service of Phase 3, and the story is one sentence: no surprises when the
  * days come off the balance. Two methods follow from it and they are deliberately the
  * same arithmetic twice.
+ *
+ * LMS 306 added the other end of a request's life, and it is the same sentence again
+ * read forwards: days held are days gone from what somebody may book, so the moment a
+ * request stops standing they come back. Three verbs — withdraw, refuse, cancel — one
+ * transition, and one movement underneath all of it.
  *
  * ## `quote` and `submit` count the same way, on purpose
  *
@@ -92,10 +98,16 @@
  *
  * ## What it does not do
  *
- * **No approving, refusing, withdrawing or cancelling.** Those move `status`, and the
- * README's rule is that only the state machine does — one service method, one
- * authorisation check, one audit write. That is the next story's, and this one leaves
- * `REQUEST_STATUSES` holding a single value so nothing can pretend otherwise.
+ * **No approving.** Approval *commits* days — a `DEDUCTION` turning a hold into days
+ * taken, leaving available exactly where it was — and which desk in FR 38a's chain may
+ * agree is the approval story's. `BalanceService.commit` has been built and waiting for
+ * it since LMS 212, and `REQUEST_STATUSES` holds no `APPROVED` so nothing can pretend
+ * otherwise.
+ *
+ * The three endings that *release* days are here, and arrived together in LMS 306
+ * because they are one movement: {@link LeaveRequestService.withdraw},
+ * {@link LeaveRequestService.refuse} and {@link LeaveRequestService.cancel}, all through
+ * the one {@link LeaveRequestService.settle}.
  *
  * **No notice or documentation enforcement.** FR 17 is a warning by design — leave is
  * sometimes needed at short notice — and the quote carries it so the person sees it
@@ -106,13 +118,14 @@
 import type { Actor } from '../auth/actor.js';
 import { leaveRequestPolicy } from '../auth/leave-request-policy.js';
 import type { BalanceOwner } from '../auth/ledger-policy.js';
-import type { Guard } from '../auth/policy.js';
+import type { Decision, Guard } from '../auth/policy.js';
 import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
 import type { DayCount, LeavePeriod } from '../domain/leave-calculator.js';
 import { validateLeavePeriod } from '../domain/leave-calculator.js';
 import {
   assertItCostsSomething,
+  assertMayBeSettled,
   assertTheDaysAreThere,
   InvalidLeaveRequest,
   LeaveCrossesAYearEnd,
@@ -124,7 +137,9 @@ import {
   noticeGiven,
   quoteFor,
   reachesPastTheEndOf,
+  reasonForRelease,
   reasonForReservation,
+  type ReleasingStatus,
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
 } from '../domain/leave-request.js';
@@ -144,7 +159,7 @@ import type {
 } from '../repositories/leave-request-repository.js';
 import type { LeaveTypeRepository } from '../repositories/leave-type-repository.js';
 import type { LeaveYearRepository } from '../repositories/leave-year-repository.js';
-import type { BalanceService, LeaveRequested } from './balance-service.js';
+import type { BalanceService, LeaveReleased, LeaveRequested } from './balance-service.js';
 import type { LeaveCalculatorService } from './leave-calculator-service.js';
 
 /**
@@ -298,6 +313,117 @@ export class LeaveRequestService {
     return this.balances.reserveForRequest(actor, {
       request,
       reason: reasonForReservation(type.name, period, count.days),
+    });
+  }
+
+  /**
+   * Takes back leave that was asked for, and gives the days back. FR 26. LMS 306.
+   *
+   * The requester's own act, or HR's on their behalf. What it writes is a `RELEASE` and
+   * a status, in one transaction — see {@link BalanceService.releaseForRequest} — and
+   * what a caller gets back is the settled request, the movement and the balance it left,
+   * because a screen that has just withdrawn something has to say what came back.
+   */
+  async withdraw(actor: Actor, id: string): Promise<LeaveReleased> {
+    return this.settle(actor, id, 'WITHDRAWN', (owner) =>
+      leaveRequestPolicy.withdraw(actor, owner),
+    );
+  }
+
+  /**
+   * Turns down leave somebody asked for, and gives the days back. FR 26. LMS 306.
+   *
+   * The line manager's, or HR's. See {@link leaveRequestPolicy.refuse} for why this is
+   * not yet FR 38a's chain and why the approval story narrows it rather than replacing
+   * it.
+   *
+   * **The days come back at the moment of the refusal**, which is the half of the story
+   * that matters to the person who asked: leave they were turned down for is not leave
+   * that goes on being deducted from what they may book while somebody gets round to
+   * tidying it up.
+   */
+  async refuse(actor: Actor, id: string): Promise<LeaveReleased> {
+    return this.settle(actor, id, 'REFUSED', (owner) => leaveRequestPolicy.refuse(actor, owner));
+  }
+
+  /**
+   * Unwinds a request that should not be on the books, and gives the days back. FR 26.
+   *
+   * HR's alone — leave booked against the wrong person, a request entered twice, days
+   * that belong in another year. See {@link leaveRequestPolicy.cancel}.
+   */
+  async cancel(actor: Actor, id: string): Promise<LeaveReleased> {
+    return this.settle(actor, id, 'CANCELLED', (owner) => leaveRequestPolicy.cancel(actor, owner));
+  }
+
+  /**
+   * The one path a request ends by. FR 26, §8.2. LMS 306.
+   *
+   * The README's rule is that only the state machine moves a request, and this is it:
+   * three public verbs, one transition. What each of them supplies is the decision — the
+   * three differ in *who* may do it and in nothing else — so the guard is a parameter
+   * and everything after it is written once.
+   *
+   * That shape is the point rather than a tidiness. A `withdraw` that assembled its own
+   * release reason, read its own leave type and called the door itself would be a second
+   * implementation of ending a request, and the day one of the three forgot
+   * {@link assertMayBeSettled} it would be the one that released days twice.
+   *
+   * ## The order, and what each step is for
+   *
+   *   **The request, then the employee, then the decision.** The policy needs to know
+   *   whose leave it is and who their line manager is, and neither is knowable from an
+   *   id. {@link LeaveRequestNotFound} comes before the guard because there is no
+   *   standing to have towards a request that does not exist.
+   *
+   *   **Then whether it may be ended at all.** {@link assertMayBeSettled}, which is the
+   *   sentence a person reads when they press twice. It is asked again inside the lock,
+   *   where it is the answer that binds — see {@link BalanceService.releaseForRequest}
+   *   for why the lock closes that window completely here, unlike at submission.
+   *
+   *   **Then the leave type, and only for its name.** The `RELEASE` says "6 days of
+   *   Annual Leave given back", and a row carries a `leaveTypeId` that nobody reading a
+   *   balance would recognise. The same read the overlap refusal makes, for the same
+   *   reason.
+   *
+   * Throws {@link LeaveRequestNotFound} for an id that is nobody's, {@link NotAuthorised}
+   * for a desk that may not, and {@link LeaveAlreadySettled} for leave that has already
+   * ended.
+   */
+  private async settle(
+    actor: Actor,
+    id: string,
+    to: ReleasingStatus,
+    decide: (owner: BalanceOwner) => Decision,
+  ): Promise<LeaveReleased> {
+    const request = await this.requests.findById(id);
+
+    if (request === undefined) {
+      throw new LeaveRequestNotFound(id);
+    }
+
+    const employee = await this.employeeFor(request.employeeId);
+
+    this.guard.enforce(decide(ownerOf(employee)));
+
+    assertMayBeSettled(request);
+
+    const type = await this.types.findById(request.leaveTypeId);
+
+    return this.balances.releaseForRequest(actor, {
+      request,
+      to,
+      reason: reasonForRelease(
+        /* Unreachable: `leave_request.leave_type_id` is NOT NULL with a foreign key
+           behind it, and nothing deletes a leave type — retiring one clears `is_active`.
+           Answered rather than asserted, for the reason the overlap refusal answers it:
+           a ledger entry reading "6 days of undefined given back" is worse than one that
+           says less. */
+        type?.name ?? 'leave',
+        request,
+        request.days,
+        to,
+      ),
     });
   }
 

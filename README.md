@@ -2672,15 +2672,16 @@ are not there](#days-that-are-not-there).
 **What this story deliberately does not bring**, each named so it is inherited rather
 than rediscovered:
 
-* **No state machine.** `leave_request_status_known` holds one value, and that is LMS
+* **No state machine.** `leave_request_status_known` held one value, and that was LMS
   209's rule applied honestly rather than an oversight papered over: a CHECK listing six
-  states of which one is reachable is a promise the schema cannot keep. The approval story
-  extends the list in its own migration, exactly as LMS 218 extended
-  `leave_ledger_entry_type_known` to admit `LAPSE`. The README's "only the state machine
-  moves a request" is what that story inherits; what this one guarantees is that nothing
-  else has moved one first.
+  states of which one is reachable is a promise the schema cannot keep. Each story that
+  needs a status brings it, with the transition that reaches it and the migration that
+  lets the database hold it — exactly as LMS 218 extended `leave_ledger_entry_type_known`
+  to admit `LAPSE`. LMS 306 was the first to collect, adding [the three
+  endings](#the-days-come-back); the approval story adds `APPROVED`.
 * **No approval, withdrawal or cancellation.** All three move `status` and two of them
-  release days. `ledgerPolicy.release` is already written and waiting for them.
+  release days. `ledgerPolicy.release` is already written and waiting for them. *(The two
+  that release arrived in LMS 306, along with refusal, which is the third.)*
 
 ---
 
@@ -2861,6 +2862,81 @@ design principle 5.
 
 ---
 
+### The days come back
+
+**A request ends, and what it was holding goes back into what the person may book.** FR
+26, §8.2, LMS 306. The story is "the balance I see is what I can actually still book",
+and its first two halves were built with [the request
+itself](#asking-for-leave): submitting writes a `RESERVATION` in the same transaction, and
+available drops the moment it does. This is the third half, and it is the one that keeps
+the sentence true over time — a hold that is never released is a balance that only ever
+goes down, and after a month of ordinary refusals and changes of mind it stops being a
+figure anybody trusts.
+
+**Three endings, one movement.** Days that were held stop being held, whoever decided it
+and for whatever reason. `ledgerPolicy.release` has said exactly that since LMS 212 —
+"yours to withdraw, your manager's to refuse, HR's to cancel… they share a rule here
+because they are one movement" — and this is the story that took it up.
+
+They are nonetheless **three decisions** in `leaveRequestPolicy`, because they are three
+different acts:
+
+| | May | Because |
+|---|---|---|
+| `withdraw()` | the requester, or HR | it is the undoing of submitting, so it is the rule `submit()` already has |
+| `refuse()` | the line manager, or HR | a decision about somebody else's request, which is what a manager is for |
+| `cancel()` | HR | an administrative unwinding — leave against the wrong person, a request entered twice |
+
+A single `settle` decision would have to be the union of those, which is
+`ledgerPolicy.release` itself — and it would let a manager withdraw a report's leave and
+let somebody mark their own leave refused. Both write a perfectly valid `RELEASE` and a
+record of something that did not happen. **Which of the three it was is written into the
+ledger**, because five days coming back look identical in a balance whether the person
+changed their mind, a manager turned it down or HR unwound it, and those are three
+different conversations.
+
+**`APPROVED` is deliberately not here.** Approval *commits* days — the hold becomes days
+taken and available does not move at all — so it is a different movement with a different
+entry type, and which desk in FR 38a's chain may agree needs the chain, the type and how
+far the request has got. `BalanceService.commit` has been built and waiting for it since
+LMS 212.
+
+**The status and the `RELEASE` are one act**, in both directions and held by the database
+rather than by the two methods that happen to do it properly:
+
+| | Covers | Does not cover |
+|---|---|---|
+| `leave_request_releases_once`, a unique partial index | a second `RELEASE` against one request, immediately, on every connection | a request that ended holding its days |
+| `leave_request_gives_its_days_back`, a deferred constraint trigger | a request that ended and released nothing, at `COMMIT` | `TRUNCATE`, which no row trigger sees |
+| `leave_request_ends_once`, a `BEFORE UPDATE` trigger | a settled request being moved again, or moved anywhere but an ending | — |
+
+That is the exact mirror of the pair [submission
+built](#asking-for-leave), and the failure modes mirror too: a request that ends without
+releasing is a balance permanently short with nothing to explain it, and a release with
+the status left behind is days the next withdrawal gives back again. Neither is a crash
+and neither shows up as an inconsistent ledger — both reconcile perfectly, and both are
+wrong. The third trigger is the one the other two cannot supply: nothing else stops a
+withdrawn request being marked refused a week later, which writes no entry at all and
+quietly rewrites what happened to somebody's leave.
+
+**`assertMayBeSettled()` is the sentence and the lock is the guarantee**, which is the
+arrangement [the overlap check](#leave-over-leave-already-booked) and [the balance
+check](#days-that-are-not-there) both make. What is different here is that the lock
+actually closes the window: two endings of one request are two movements on *one*
+balance, so `holdStill()` serialises them and the second re-reads a request the first has
+already settled. Two submissions are two different requests and no lock can make one see
+the other, which is why that one needs a constraint as a real path and this one does not.
+
+**And this is where `LIVE_STATUSES` stopped being a formality.** LMS 304 wrote the list
+separately from `REQUEST_STATUSES` when the two held the same single value, and said at
+the time that was "the whole point of it existing this early". Three statuses arrived,
+none of them joined it, and every query written against it — the overlap probe, the
+exclusion constraint's `WHERE`, `blocksTheCalendar()` — started excluding rows without a
+line of them changing. Somebody whose leave was refused in January can book those days
+again, which is the ordinary thing to do after a refusal.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.
@@ -2990,6 +3066,17 @@ service's and `daysToReserve()`'s, reached by going straight to the door — and
 asserts the two agree on the available figure, the days requested and the
 shortfall, so [neither can be loosened alone](#days-that-are-not-there).
 `unit/leave-request.test.ts` covers the sentence, which is most of that story.
+
+And since LMS 306 it carries [the three endings](#the-days-come-back), where the
+database half is again a real path rather than a psql backstop. The test the story
+exists for is one: submit a fortnight, be refused the same fortnight, withdraw the
+first, and book it. That cannot be written without a real exclusion constraint and a
+real balance, and it is the assertion that `LIVE_STATUSES` stopped being a
+tautology. Beside it the suite reads `leave_request_status_known` back out of
+`pg_constraint` and asserts it admits exactly `REQUEST_STATUSES`, and drives all
+three database guarantees from the owner connection — a status moved with no
+`RELEASE`, a settled request moved again, and a second `RELEASE` against one
+request.
 
 **`unit/leave-type.test.ts` is where LMS 201 is proved and
 `integration/leave-type.test.ts` is what stops it being proved against itself.**
