@@ -11,8 +11,11 @@ import {
   requireAComment,
   theRefusal,
   validateDecision,
-} from '../../src/domain/leave-decision.js';
-import { RELEASING_ACTIONS, REQUEST_ACTIONS } from '../../src/domain/leave-request.js';
+} from '../../src/features/leave-request/leave-decision.js';
+import {
+  RELEASING_ACTIONS,
+  REQUEST_ACTIONS,
+} from '../../src/features/leave-request/leave-request.js';
 
 /**
  * Approving or turning down leave, with a comment. FR 39, FR 52. LMS 315.
@@ -300,7 +303,7 @@ describe('one writer of a decision', () => {
     const inserts = /insertInto\(\s*['"]leave_request_decision['"]\s*\)/;
 
     const repository = sources.find(
-      ({ file }) => file === 'repositories/leave-decision-repository.ts',
+      ({ file }) => file === 'features/leave-request/leave-decision.db.ts',
     );
 
     expect(repository?.code).toMatch(inserts);
@@ -309,7 +312,7 @@ describe('one writer of a decision', () => {
       sources
         .filter(
           ({ file, code }) =>
-            file !== 'repositories/leave-decision-repository.ts' && inserts.test(code),
+            file !== 'features/leave-request/leave-decision.db.ts' && inserts.test(code),
         )
         .map(({ file }) => file),
     ).toEqual([]);
@@ -326,7 +329,7 @@ describe('one writer of a decision', () => {
   it('and one file calls the repository method that writes it', () => {
     const calling = sources.filter(({ code }) => /decisions\.record\s*\(/.test(code));
 
-    expect(calling.map(({ file }) => file)).toEqual(['services/balance-service.ts']);
+    expect(calling.map(({ file }) => file)).toEqual(['features/balance/balance.service.ts']);
   });
 
   /* And the rule about the comment is consulted only where a row is composed. A third
@@ -335,8 +338,8 @@ describe('one writer of a decision', () => {
     const composing = sources.filter(({ code }) => /\bvalidateDecision\s*\(/.test(code));
 
     expect(composing.map(({ file }) => file).sort()).toEqual([
-      'domain/leave-decision.ts',
-      'services/balance-service.ts',
+      'features/balance/balance.service.ts',
+      'features/leave-request/leave-decision.ts',
     ]);
   });
 

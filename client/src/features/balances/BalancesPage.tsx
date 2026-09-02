@@ -2,45 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { type BalanceLine, isNotSignedIn, myBalances, type Statement, type Year } from '../../api';
 import { days, sentenceCase, signed } from '../../format';
 
-/**
- * My balances. FR 53. LMS 401.
- *
- * The screen the story is about: every leave type with what was granted, carried over,
- * taken and spoken for, and what is left — for a leave year the person picks.
- *
- * ## It renders. It does not calculate
- *
- * There is no leave arithmetic in this file. `available` and `owed` arrive as fields, the
- * counting basis arrives as a sentence, and what a nought on an event type means arrives
- * as another one. See `client/src/api.ts` for why that is a rule rather than a habit.
- *
- * The one exception is **geometry**, in {@link Meter}: the width of a bar is worked out
- * here from figures the server already sent. That is not the same act and the line is
- * worth stating exactly — a *day count* is a fact somebody plans around and must have one
- * implementation; a *percentage of a bar* is a picture of facts already on the wire, and
- * no number derived from it is ever shown. If this file ever prints a figure it computed,
- * that is the bug.
- *
- * ## A card, and the workings folded underneath it
- *
- * A table gave every one of the six figures the same weight, which is the wrong shape for
- * the question people actually arrive with — "can I book a fortnight in December". So the
- * headline is `available`, at the size of the thing being asked, with `of 20 days` beside
- * it and a bar showing where the year has gone.
- *
- * **The six figures are still all there**, in a `<details>` under each card. That is not a
- * compromise: a balance that cannot be added up by the person reading it is the thing
- * design principle 1 is against, and `adjustment` in particular — "somebody decided this"
- * — is the figure people query. Folded is not hidden; it is one click, on the card the
- * question is about, and it means the ordinary case is legible.
- *
- * ## And a nought is never shown on its own
- *
- * FR 32g divides leave types in two, and an event type at nought in January is not
- * somebody who has used it all — it is somebody nothing has happened to. Those cards drop
- * the big number entirely and say what they are instead, which is the strongest form of
- * the argument the server's `allowanceInWords` is making.
- */
+/** My balances. FR 53, LMS 401, FR 32g. */
 export function BalancesPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [statement, setStatement] = useState<Statement | undefined>(undefined);
   const [problem, setProblem] = useState<string | undefined>(undefined);
@@ -61,9 +23,7 @@ export function BalancesPage({ onSignedOut }: { onSignedOut: () => void }) {
             return;
           }
 
-          /* The server's own sentence, verbatim. Every refusal in this system is written
-             to say what is wrong and what to do about it, and replacing one with
-             "Something went wrong" throws away the only useful half. NFR USA 03. */
+          /** The server's own sentence, verbatim. NFR USA 03. */
           setProblem(error instanceof Error ? error.message : 'Something went wrong.');
         })
         .finally(() => {
@@ -73,8 +33,6 @@ export function BalancesPage({ onSignedOut }: { onSignedOut: () => void }) {
     [onSignedOut],
   );
 
-  /* The first load names no year on purpose. Which year is "this" one depends on a clock
-     and on which years this person was employed for, and both are the server's. */
   useEffect(() => {
     load();
   }, [load]);
@@ -99,9 +57,7 @@ export function BalancesPage({ onSignedOut }: { onSignedOut: () => void }) {
         <YearPicker years={statement.years} showing={statement.year} busy={loading} onPick={load} />
       </div>
 
-      {/* A statement is already on screen, so a failure to load a *different* year is a
-          notice above it rather than a blank page — the figures they were looking at are
-          still true. */}
+      {}
       {problem === undefined ? null : <p className="notice">{problem}</p>}
 
       <ul className="cards">
@@ -118,15 +74,7 @@ export function BalancesPage({ onSignedOut }: { onSignedOut: () => void }) {
   );
 }
 
-/**
- * One leave type.
- *
- * Two shapes, and which one it takes is a fact from the server rather than a judgement
- * made here: a type that has never been granted and never will be until something happens
- * — `entitlementBasis: 'EVENT'` with nothing moved — gets no headline figure, because a
- * large `0` on a compassionate leave card tells somebody the opposite of the truth on
- * what is by definition a bad week.
- */
+/** One leave type. */
 function BalanceCard({ line }: { line: BalanceLine }) {
   const awaitingAnOccasion = line.entitlementBasis === 'EVENT' && !line.hasMoved;
   const overdrawn = line.available < 0;

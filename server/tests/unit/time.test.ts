@@ -13,7 +13,7 @@ import {
   isoWeekdayOf,
   withoutMidnight,
   type CalendarDate,
-} from '../../src/domain/time.js';
+} from '../../src/shared/time.js';
 
 /**
  * Dates, instants, and the line between them. NFR DAT 03. LMS 114.
@@ -99,7 +99,7 @@ describe('a calendar date', () => {
 /**
  * The one piece of arithmetic this file does on a day. LMS 205.
  *
- * It exists for `earliestOpenDayOf` in ../../src/domain/leave-year.ts — the day
+ * It exists for `earliestOpenDayOf` in ../../src/features/leave-year/leave-year.ts — the day
  * after a closed year ends — and everything worth asserting about it is a
  * boundary somebody would otherwise have written by hand and got wrong once.
  *

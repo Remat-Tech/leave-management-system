@@ -1,5 +1,6 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
@@ -9,12 +10,15 @@ import {
   HolidayInASettledYear,
   HolidayNotFound,
   InvalidHoliday,
-} from '../../src/domain/holiday.js';
-import type { LeaveYear } from '../../src/domain/leave-year.js';
-import { HolidayRepository } from '../../src/repositories/holiday-repository.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { HolidayService } from '../../src/services/holiday-service.js';
-import { earliestOpenDayFrom, LeaveYearService } from '../../src/services/leave-year-service.js';
+} from '../../src/features/holiday/holiday.js';
+import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
+import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { HolidayService } from '../../src/features/holiday/holiday.service.js';
+import {
+  earliestOpenDayFrom,
+  LeaveYearService,
+} from '../../src/features/leave-year/leave-year.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
@@ -48,7 +52,7 @@ import { Guard, NotAuthorised } from '../../src/auth/policy.js';
  * mistake is permanent.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 /** Every role and nobody, so that no policy refuses the fixtures. */
 const system = theSystem('holiday integration fixtures');

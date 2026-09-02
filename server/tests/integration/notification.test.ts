@@ -1,29 +1,36 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NOT_AUTHORISED_MESSAGE, NotAuthorised } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { AUDITED_ENTITIES } from '../../src/domain/audit.js';
-import { type NewLeaveRequest, NotEnoughDays } from '../../src/domain/leave-request.js';
-import type { LeaveYear } from '../../src/domain/leave-year.js';
-import { NOTICE_EVENTS, NoticeNotFound } from '../../src/domain/notification.js';
-import { BalanceRepository } from '../../src/repositories/balance-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { HolidayRepository } from '../../src/repositories/holiday-repository.js';
-import { LeaveDecisionRepository } from '../../src/repositories/leave-decision-repository.js';
-import { LeaveRequestRepository } from '../../src/repositories/leave-request-repository.js';
-import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { NotificationRepository } from '../../src/repositories/notification-repository.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { Transactions } from '../../src/repositories/transaction.js';
-import { BalanceService } from '../../src/services/balance-service.js';
-import { LeaveCalculatorService } from '../../src/services/leave-calculator-service.js';
-import { LeaveRequestService } from '../../src/services/leave-request-service.js';
-import { LeaveYearService } from '../../src/services/leave-year-service.js';
-import { noticeEmail, NotificationService } from '../../src/services/notification-service.js';
+import { AUDITED_ENTITIES } from '../../src/features/audit/audit.js';
+import {
+  type NewLeaveRequest,
+  NotEnoughDays,
+} from '../../src/features/leave-request/leave-request.js';
+import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
+import { NOTICE_EVENTS, NoticeNotFound } from '../../src/features/notification/notification.js';
+import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
+import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
+import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
+import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { NotificationRepository } from '../../src/features/notification/notification.db.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { Transactions } from '../../src/db/transaction.js';
+import { BalanceService } from '../../src/features/balance/balance.service.js';
+import { LeaveCalculatorService } from '../../src/features/leave-calculator/leave-calculator.service.js';
+import { LeaveRequestService } from '../../src/features/leave-request/leave-request.service.js';
+import { LeaveYearService } from '../../src/features/leave-year/leave-year.service.js';
+import {
+  noticeEmail,
+  NotificationService,
+} from '../../src/features/notification/notification.service.js';
 import { recordingDenials } from '../support/recording-denials.js';
 import { recordingMailer, type RecordingMailer } from '../support/recording-mailer.js';
 import { recordingNotices } from '../support/recording-notices.js';
@@ -54,7 +61,7 @@ import { seed } from '../../seeds/seed.mjs';
  *   request itself.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 const system = theSystem('notification integration fixtures');
 

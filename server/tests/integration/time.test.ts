@@ -1,9 +1,10 @@
 import { Client } from 'pg';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import { type Kysely, sql } from 'kysely';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { isCalendarDate } from '../../src/domain/time.js';
+import { isCalendarDate } from '../../src/shared/time.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
@@ -33,8 +34,8 @@ import { seed } from '../../seeds/seed.mjs';
  *   The zone people read in is a setting, and moves nothing that is stored.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
-const testDatabaseName = inject('testDatabaseName');
+const testDatabaseUrl = await databaseForThisFile();
+const testDatabaseName = new URL(testDatabaseUrl).pathname.slice(1);
 
 const ORIGINAL_TIMEZONE = process.env.TZ;
 

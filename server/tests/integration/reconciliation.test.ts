@@ -1,15 +1,16 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { columnsThatDiffer, isClean } from '../../src/domain/reconciliation.js';
-import { BalanceReconciliation } from '../../src/jobs/balance-reconciliation.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { ReconciliationRepository } from '../../src/repositories/reconciliation-repository.js';
-import { RoleRepository } from '../../src/repositories/role-repository.js';
+import { columnsThatDiffer, isClean } from '../../src/features/balance/reconciliation.js';
+import { BalanceReconciliation } from '../../src/features/balance/balance-reconciliation.job.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { ReconciliationRepository } from '../../src/features/balance/reconciliation.db.js';
+import { RoleRepository } from '../../src/features/role/role.db.js';
 import { recordingMailer, type RecordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
 
@@ -43,7 +44,7 @@ import { seed } from '../../seeds/seed.mjs';
  * reconciliation that quietly put things right would pass every other test in this file.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 /** Every role and nobody, which is what the nightly run is. */
 const nightly = theSystem('the nightly balance reconciliation');
@@ -145,7 +146,7 @@ async function post(
   await insertEntry(row);
 }
 
-/** The four kinds of movement a leave request causes. See ../../src/domain/ledger.ts. */
+/** The four kinds of movement a leave request causes. See ../../src/features/balance/ledger.ts. */
 const REQUEST_SHAPED = ['RESERVATION', 'DEDUCTION', 'RELEASE', 'RECALCULATION'];
 
 /** The request the request-shaped entries of the current test are filed under. */

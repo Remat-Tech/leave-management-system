@@ -7,8 +7,8 @@ import {
   validateEntitlementRuleChanges,
   validateNewEntitlementRule,
   type EntitlementRule,
-} from '../../src/domain/entitlement-rule.js';
-import { countLeaveDays } from '../../src/domain/leave-calculator.js';
+} from '../../src/features/entitlement/entitlement-rule.js';
+import { countLeaveDays } from '../../src/features/leave-calculator/leave-calculator.js';
 import {
   assertWithinBackdatingWindow,
   documentationRequired,
@@ -17,9 +17,12 @@ import {
   type NewLeaveType,
   noticeShortfall,
   validateNewLeaveType,
-} from '../../src/domain/leave-type.js';
-import { MONDAY_TO_FRIDAY, type WorkPattern } from '../../src/domain/work-pattern.js';
-import { isWholeDays, WHOLE_DAYS_ONLY } from '../../src/domain/whole-days.js';
+} from '../../src/features/leave-type/leave-type.js';
+import {
+  MONDAY_TO_FRIDAY,
+  type WorkPattern,
+} from '../../src/features/work-pattern/work-pattern.js';
+import { isWholeDays, WHOLE_DAYS_ONLY } from '../../src/shared/whole-days.js';
 
 /**
  * Leave is recorded in whole days only. FR 24. LMS 209.
@@ -251,7 +254,7 @@ describe('no figure in days takes half of one', () => {
   });
 
   /* Both refusals reach a form, and each names the field the message goes beside.
-     A shared thrower in ../../src/domain/whole-days.ts would have had to invent a
+     A shared thrower in ../../src/shared/whole-days.ts would have had to invent a
      third error type that reaches no form at all, which is why the predicate is
      shared and the refusal is not. */
   it('blames the field the message has to appear next to', () => {

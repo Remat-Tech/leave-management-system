@@ -1,31 +1,32 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { type Actor, signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { BalanceRepository } from '../../src/repositories/balance-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { HolidayRepository } from '../../src/repositories/holiday-repository.js';
-import { LeaveDecisionRepository } from '../../src/repositories/leave-decision-repository.js';
-import { LeaveRequestRepository } from '../../src/repositories/leave-request-repository.js';
-import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { NotificationRepository } from '../../src/repositories/notification-repository.js';
-import { RoleRepository } from '../../src/repositories/role-repository.js';
-import { SignInAccountRepository } from '../../src/repositories/sign-in-account-repository.js';
-import { Transactions } from '../../src/repositories/transaction.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { buildApp } from '../../src/routes/app.js';
-import { mintSession, SESSION_COOKIE } from '../../src/routes/session-cookie.js';
-import { BalanceService } from '../../src/services/balance-service.js';
-import { LeaveCalculatorService } from '../../src/services/leave-calculator-service.js';
-import { LeaveRequestService } from '../../src/services/leave-request-service.js';
-import { NotificationService } from '../../src/services/notification-service.js';
-import { SignInService } from '../../src/services/sign-in-service.js';
+import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
+import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
+import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
+import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { NotificationRepository } from '../../src/features/notification/notification.db.js';
+import { RoleRepository } from '../../src/features/role/role.db.js';
+import { SignInAccountRepository } from '../../src/features/sign-in/sign-in-account.db.js';
+import { Transactions } from '../../src/db/transaction.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { buildApp } from '../../src/http/app.js';
+import { mintSession, SESSION_COOKIE } from '../../src/features/sign-in/session-cookie.routes.js';
+import { BalanceService } from '../../src/features/balance/balance.service.js';
+import { LeaveCalculatorService } from '../../src/features/leave-calculator/leave-calculator.service.js';
+import { LeaveRequestService } from '../../src/features/leave-request/leave-request.service.js';
+import { NotificationService } from '../../src/features/notification/notification.service.js';
+import { SignInService } from '../../src/features/sign-in/sign-in.service.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
 
@@ -49,13 +50,13 @@ import { seed } from '../../seeds/seed.mjs';
  *   reachable through this route by construction rather than by a guard being asked.
  *
  *   **The mounting order.** A route added behind `identify` cannot be reached without a
- *   session, and that is asserted rather than read off `routes/app.ts`.
+ *   session, and that is asserted rather than read off `http/app.ts`.
  *
  * `buildApp` is the same function ../../src/main.ts calls, given this suite's disposable
  * database. There is no second assembly.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 /** Long enough for `sessionSecretFrom`, and nowhere near any real one. */
 const SECRET = 'a-test-signing-secret-of-at-least-32-chars';

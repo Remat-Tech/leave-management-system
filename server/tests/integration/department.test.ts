@@ -1,5 +1,6 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
@@ -8,12 +9,12 @@ import {
   DepartmentStillStaffed,
   DuplicateDepartmentName,
   InvalidDepartment,
-} from '../../src/domain/department.js';
-import { DepartmentRepository } from '../../src/repositories/department-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { DepartmentService } from '../../src/services/department-service.js';
-import { EmployeeService } from '../../src/services/employee-service.js';
+} from '../../src/features/department/department.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { DepartmentService } from '../../src/features/department/department.service.js';
+import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import { theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
@@ -28,7 +29,7 @@ import { Guard } from '../../src/auth/policy.js';
  * anybody is in.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 const DOMAINS = ['rematholdings.com'];
 

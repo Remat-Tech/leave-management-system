@@ -1,58 +1,24 @@
-/**
- * The server entry point. LMS 401.
- *
- * The composition root, and the first one this system has had. Three phases of jobs and
- * services have each said they had nowhere to be hung — "no server entry point, no route
- * layer and no scheduler" — and this is where that stops for the route layer. It is
- * deliberately still not a scheduler: nothing here runs the reconciliation, the annual
- * grant or the expiry job, because when to run those is a deployment decision and hanging
- * them off a web process is the arrangement where they stop running the day somebody adds
- * a second one.
- *
- * ## Everything is constructed once, here, and passed down
- *
- * One pool, one guard, one of each repository, and the two services that have routes.
- * Nothing below this file constructs a dependency for itself, which is what makes
- * ./routes/app.ts buildable against a disposable database by the integration suite — the
- * same assembly, different connection, rather than a second wiring that could differ from
- * the real one in the way that matters.
- *
- * ## It fails at start-up rather than on the first request
- *
- * `sessionSecretFrom` throws on a missing or default `SESSION_SECRET`, `createDatabase`
- * throws on a missing `DATABASE_URL`, and `SignInService` resolves its domains and code
- * settings in its constructor for exactly this reason — "so that a misconfigured
- * environment stops the application starting rather than letting the first sign in
- * attempt discover it".
- *
- * That is the whole argument for doing the work here rather than lazily: a process that
- * starts and then refuses every request is one a health check calls healthy.
- */
+/** The server entry point. LMS 401. */
 
 import { config as loadEnv } from 'dotenv';
 import { Guard } from './auth/policy.js';
 import { createDatabase } from './db/index.js';
 import { createMailer } from './mail/mailer.js';
-import { BalanceRepository } from './repositories/balance-repository.js';
-import { EmployeeRepository } from './repositories/employee-repository.js';
-import { LeaveDecisionRepository } from './repositories/leave-decision-repository.js';
-import { LeaveRequestRepository } from './repositories/leave-request-repository.js';
-import { LeaveTypeRepository } from './repositories/leave-type-repository.js';
-import { LeaveYearRepository } from './repositories/leave-year-repository.js';
-import { RoleRepository } from './repositories/role-repository.js';
-import { SignInAccountRepository } from './repositories/sign-in-account-repository.js';
-import { buildApp } from './routes/app.js';
-import { sessionSecretFrom } from './routes/session-cookie.js';
-import { SignInService } from './services/sign-in-service.js';
+import { BalanceRepository } from './features/balance/balance.db.js';
+import { EmployeeRepository } from './features/employee/employee.db.js';
+import { LeaveDecisionRepository } from './features/leave-request/leave-decision.db.js';
+import { LeaveRequestRepository } from './features/leave-request/leave-request.db.js';
+import { LeaveTypeRepository } from './features/leave-type/leave-type.db.js';
+import { LeaveYearRepository } from './features/leave-year/leave-year.db.js';
+import { RoleRepository } from './features/role/role.db.js';
+import { SignInAccountRepository } from './features/sign-in/sign-in-account.db.js';
+import { buildApp } from './http/app.js';
+import { sessionSecretFrom } from './features/sign-in/session-cookie.routes.js';
+import { SignInService } from './features/sign-in/sign-in.service.js';
 
 loadEnv();
 
-/**
- * The port, checked rather than coerced.
- *
- * `Number('')` is 0 and `Number('http')` is NaN, and both would be listened on or bound
- * to nothing with no complaint. A port that is not a port stops the process here.
- */
+/** The port, checked rather than coerced. */
 function portFrom(env: NodeJS.ProcessEnv): number {
   const port = Number(env.PORT ?? '3000');
 

@@ -7,7 +7,7 @@ import {
   sessionCookieOptions,
   sessionSecretFrom,
   whoIsThis,
-} from '../../src/routes/session-cookie.js';
+} from '../../src/features/sign-in/session-cookie.routes.js';
 
 /**
  * The session cookie. LMS 401.

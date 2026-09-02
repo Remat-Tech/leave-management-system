@@ -5,7 +5,7 @@ import {
   isCompanyEmail,
   NotACompanyEmail,
   parseDomains,
-} from '../../src/auth/company-email.js';
+} from '../../src/features/sign-in/company-email.js';
 
 /**
  * NFR SEC 01. Most of these are about the ways a domain check can be talked

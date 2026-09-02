@@ -69,9 +69,9 @@ const sources = readdirSync(SOURCE, { recursive: true, encoding: 'utf8' })
  * nothing after LMS 212 moved `adjust` and `correct` out of it.
  */
 const MAY_POST = [
-  'repositories/ledger-repository.ts',
-  'repositories/transaction.ts',
-  'services/balance-service.ts',
+  'features/balance/ledger.db.ts',
+  'db/transaction.ts',
+  'features/balance/balance.service.ts',
 ];
 
 describe('one writer of balance movements', () => {
@@ -95,7 +95,7 @@ describe('one writer of balance movements', () => {
     const holding = sources.filter(
       ({ file, code }) =>
         !MAY_POST.includes(file) &&
-        file !== 'services/ledger-service.ts' &&
+        file !== 'features/balance/ledger.service.ts' &&
         /LedgerRepository/.test(code),
     );
 
@@ -111,7 +111,7 @@ describe('one writer of balance movements', () => {
    * post an entry is asserted not to.
    */
   it('and the ledger service reads the account without writing to it', () => {
-    const ledger = sources.find(({ file }) => file === 'services/ledger-service.ts');
+    const ledger = sources.find(({ file }) => file === 'features/balance/ledger.service.ts');
 
     expect(ledger).toBeDefined();
     expect(ledger?.code).toMatch(/entriesFor|correctionsAround/);
@@ -128,7 +128,7 @@ describe('one writer of balance movements', () => {
    * proves the lock works; this notices if it stops being asked for.
    */
   it('and the one writer holds the balance still before it checks one', () => {
-    const service = sources.find(({ file }) => file === 'services/balance-service.ts');
+    const service = sources.find(({ file }) => file === 'features/balance/balance.service.ts');
 
     expect(service?.code).toMatch(/holdStill\(/);
     expect(service?.code).toMatch(/allOrNothing\(/);
@@ -140,8 +140,8 @@ describe('one writer of balance movements', () => {
   it('and nothing else decides whether the days are there', () => {
     const deciding = sources.filter(
       ({ file, code }) =>
-        file !== 'services/balance-service.ts' &&
-        file !== 'domain/balance.ts' &&
+        file !== 'features/balance/balance.service.ts' &&
+        file !== 'features/balance/balance.ts' &&
         /daysTo(Reserve|Commit|Release)\s*\(/.test(code),
     );
 

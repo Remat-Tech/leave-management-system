@@ -1,22 +1,23 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { EmployeeNotFound } from '../../src/domain/employee.js';
-import { InvalidLedgerEntry, LedgerEntryNotFound } from '../../src/domain/ledger.js';
-import { LeaveTypeNotFound } from '../../src/domain/leave-type.js';
-import { type LeaveYear, LeaveYearNotFound } from '../../src/domain/leave-year.js';
-import { BalanceRepository } from '../../src/repositories/balance-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { LedgerRepository } from '../../src/repositories/ledger-repository.js';
-import { Transactions } from '../../src/repositories/transaction.js';
-import { type Adjustment, BalanceService } from '../../src/services/balance-service.js';
-import { LedgerService } from '../../src/services/ledger-service.js';
-import { LeaveYearService } from '../../src/services/leave-year-service.js';
+import { EmployeeNotFound } from '../../src/features/employee/employee.js';
+import { InvalidLedgerEntry, LedgerEntryNotFound } from '../../src/features/balance/ledger.js';
+import { LeaveTypeNotFound } from '../../src/features/leave-type/leave-type.js';
+import { type LeaveYear, LeaveYearNotFound } from '../../src/features/leave-year/leave-year.js';
+import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { LedgerRepository } from '../../src/features/balance/ledger.db.js';
+import { Transactions } from '../../src/db/transaction.js';
+import { type Adjustment, BalanceService } from '../../src/features/balance/balance.service.js';
+import { LedgerService } from '../../src/features/balance/ledger.service.js';
+import { LeaveYearService } from '../../src/features/leave-year/leave-year.service.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
@@ -67,7 +68,7 @@ import { seed } from '../../seeds/seed.mjs';
  *   unit suite.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 /** Every role and nobody, so that no policy refuses the fixtures. */
 const system = theSystem('adjustment integration fixtures');

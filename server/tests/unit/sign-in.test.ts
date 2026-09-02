@@ -9,8 +9,8 @@ import {
   SignInRefused,
   WeakPassword,
   whyNotSignIn,
-} from '../../src/auth/sign-in.js';
-import type { Employee, EmploymentStatus } from '../../src/domain/employee.js';
+} from '../../src/features/sign-in/sign-in.js';
+import type { Employee, EmploymentStatus } from '../../src/features/employee/employee.js';
 
 /**
  * NFR SEC 01, the rules half. LMS 109.

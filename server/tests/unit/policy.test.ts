@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { type Actor, holdsAny, isSelf, signedInAs, theSystem } from '../../src/auth/actor.js';
-import { auditPolicy } from '../../src/auth/audit-policy.js';
-import { departmentPolicy } from '../../src/auth/department-policy.js';
-import { employeePolicy } from '../../src/auth/employee-policy.js';
-import { MANDATORY_ROLES } from '../../src/auth/mfa.js';
+import { auditPolicy } from '../../src/features/audit/policy.js';
+import { departmentPolicy } from '../../src/features/department/policy.js';
+import { employeePolicy } from '../../src/features/employee/policy.js';
+import { MANDATORY_ROLES } from '../../src/features/sign-in/mfa.js';
 import { Guard, NOT_AUTHORISED_MESSAGE, NotAuthorised, policyFor } from '../../src/auth/policy.js';
-import { rolePolicy } from '../../src/auth/role-policy.js';
+import { rolePolicy } from '../../src/features/role/policy.js';
 import {
   ADMINISTERS_ACCESS,
   APPROVES_AS_HR,
@@ -16,19 +16,19 @@ import {
   type RoleCode,
   ROLE_CODES,
   SETS_UP_THE_ORGANISATION,
-} from '../../src/auth/roles.js';
-import { entitlementRulePolicy } from '../../src/auth/entitlement-rule-policy.js';
-import type { EntitlementRule } from '../../src/domain/entitlement-rule.js';
-import { holidayPolicy } from '../../src/auth/holiday-policy.js';
-import { leaveRequestPolicy } from '../../src/auth/leave-request-policy.js';
-import { leaveTypePolicy } from '../../src/auth/leave-type-policy.js';
-import { ledgerPolicy } from '../../src/auth/ledger-policy.js';
-import { leaveYearPolicy } from '../../src/auth/leave-year-policy.js';
-import { signInPolicy } from '../../src/auth/sign-in-policy.js';
-import { workPatternPolicy } from '../../src/auth/work-pattern-policy.js';
+} from '../../src/features/role/roles.js';
+import { entitlementRulePolicy } from '../../src/features/entitlement/policy.js';
+import type { EntitlementRule } from '../../src/features/entitlement/entitlement-rule.js';
+import { holidayPolicy } from '../../src/features/holiday/policy.js';
+import { leaveRequestPolicy } from '../../src/features/leave-request/policy.js';
+import { leaveTypePolicy } from '../../src/features/leave-type/policy.js';
+import { ledgerPolicy } from '../../src/features/balance/policy.js';
+import { leaveYearPolicy } from '../../src/features/leave-year/policy.js';
+import { signInPolicy } from '../../src/features/sign-in/policy.js';
+import { workPatternPolicy } from '../../src/features/work-pattern/policy.js';
 import { denialsNowhere } from '../../src/auth/denials.js';
 import { recordingDenials } from '../support/recording-denials.js';
-import type { Employee } from '../../src/domain/employee.js';
+import type { Employee } from '../../src/features/employee/employee.js';
 
 /**
  * Authorisation, with no database. NFR SEC 02 and NFR SEC 03. §10. LMS 112.
@@ -222,7 +222,7 @@ describe('an employee record', () => {
 
   it('is not readable by the manager of the manager', () => {
     /* Direct reports and not the subtree. A deliberate line, argued in
-       ../../src/auth/employee-policy.ts, and one somebody will want to move —
+       ../../src/features/employee/policy.ts, and one somebody will want to move —
        when they do, this test is where the decision is recorded. */
     const kwame = manager('kwame');
 
@@ -517,7 +517,7 @@ describe('the public holiday calendar, FR 22 and LMS 206', () => {
   /**
    * The one that is different from every other table in §5.5, and the test is
    * written against {@link MAINTAINS_THE_CALENDAR} rather than against a list of
-   * codes so that widening or narrowing it is one edit in ../../src/auth/roles.ts.
+   * codes so that widening or narrowing it is one edit in ../../src/features/role/roles.ts.
    *
    * Leave types, entitlement figures and leave years are all
    * {@link SETS_UP_THE_ORGANISATION}, because each holds a decision about what
@@ -1516,7 +1516,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        * Withdrawing your own request is the point of withdrawing — a rule that caught it
        * would refuse a person the right to change their mind — and cancelling is HR unwinding
        * a row that should not be on the books. `isADecision` is the line, and it is the same
-       * line ../../src/domain/leave-decision.ts draws for what gets recorded.
+       * line ../../src/features/leave-request/leave-decision.ts draws for what gets recorded.
        */
       it('and leaves withdrawing and cancelling exactly where they were', () => {
         expect(leaveRequestPolicy.withdraw(employee('ama'), hers).allowed).toBe(true);

@@ -1,15 +1,6 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 
-/**
- * Outbound mail.
- *
- * In development SMTP_HOST and SMTP_PORT point at Mailpit, which accepts
- * everything and delivers nothing. Run it with `npm run mail` and read what the
- * system sent at http://localhost:8025.
- *
- * NotificationService will sit on top of this. Nothing here knows what a leave
- * request is, and it should stay that way.
- */
+/** Outbound mail. */
 export interface Mail {
   to: string;
   subject: string;

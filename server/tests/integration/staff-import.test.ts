@@ -1,5 +1,6 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import {
@@ -8,14 +9,14 @@ import {
   ImportWouldRejectRows,
   InvalidColumnMapping,
   summarise,
-} from '../../src/domain/staff-import.js';
-import { DepartmentRepository } from '../../src/repositories/department-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { Transactions } from '../../src/repositories/transaction.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { DepartmentService } from '../../src/services/department-service.js';
-import { EmployeeService } from '../../src/services/employee-service.js';
-import { StaffImportService } from '../../src/services/staff-import-service.js';
+} from '../../src/features/staff-import/staff-import.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { Transactions } from '../../src/db/transaction.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { DepartmentService } from '../../src/features/department/department.service.js';
+import { EmployeeService } from '../../src/features/employee/employee.service.js';
+import { StaffImportService } from '../../src/features/staff-import/staff-import.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import type { Kysely } from 'kysely';
 import { theSystem } from '../../src/auth/actor.js';
@@ -37,7 +38,7 @@ import { Guard } from '../../src/auth/policy.js';
  * including the one person who reports to nobody.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 // The suite supplies its own rather than reading ALLOWED_EMAIL_DOMAINS, which is
 // set in .env but not in CI.

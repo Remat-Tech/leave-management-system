@@ -1,32 +1,36 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { AlreadyCarried } from '../../src/domain/balance.js';
-import { type LeaveYear, LeaveYearNotFinished } from '../../src/domain/leave-year.js';
+import { AlreadyCarried } from '../../src/features/balance/balance.js';
+import { type LeaveYear, LeaveYearNotFinished } from '../../src/features/leave-year/leave-year.js';
 import {
   daysCarried,
   needsAttention,
   type YearRolloverRun,
-} from '../../src/domain/year-rollover.js';
+} from '../../src/features/leave-year/year-rollover.js';
 import {
   LeaveYearAheadIsClosed,
   NoLeaveYearAhead,
   YearRollover,
-} from '../../src/jobs/year-rollover.js';
-import { AnnualGrant } from '../../src/jobs/annual-grant.js';
-import { BalanceRepository } from '../../src/repositories/balance-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { EntitlementRuleRepository } from '../../src/repositories/entitlement-rule-repository.js';
-import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { Transactions } from '../../src/repositories/transaction.js';
-import { BalanceService } from '../../src/services/balance-service.js';
-import { EntitlementRuleService } from '../../src/services/entitlement-rule-service.js';
-import { earliestOpenDayFrom, LeaveYearService } from '../../src/services/leave-year-service.js';
+} from '../../src/features/leave-year/year-rollover.job.js';
+import { AnnualGrant } from '../../src/features/entitlement/annual-grant.job.js';
+import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { EntitlementRuleRepository } from '../../src/features/entitlement/entitlement-rule.db.js';
+import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { Transactions } from '../../src/db/transaction.js';
+import { BalanceService } from '../../src/features/balance/balance.service.js';
+import { EntitlementRuleService } from '../../src/features/entitlement/entitlement-rule.service.js';
+import {
+  earliestOpenDayFrom,
+  LeaveYearService,
+} from '../../src/features/leave-year/leave-year.service.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
@@ -57,7 +61,7 @@ import { seed } from '../../seeds/seed.mjs';
  * a test below rather than a sentence in a comment.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 /** Every role and nobody, which is what the first of January is. */
 const firstOfJanuary = theSystem('the year rollover');

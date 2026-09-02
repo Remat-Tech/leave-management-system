@@ -1,6 +1,6 @@
 import type { Transporter } from 'nodemailer';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { codeEmail } from '../../src/auth/mfa.js';
+import { codeEmail } from '../../src/features/sign-in/mfa.js';
 import { createTransport, sendMail } from '../../src/mail/transport.js';
 
 /**

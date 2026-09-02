@@ -1,5 +1,6 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
@@ -11,12 +12,12 @@ import {
   STANDARD_PATTERN_NAME,
   WorkPatternInUse,
   WorkPatternNotFound,
-} from '../../src/domain/work-pattern.js';
-import { DepartmentRepository } from '../../src/repositories/department-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { EmployeeService } from '../../src/services/employee-service.js';
-import { WorkPatternService } from '../../src/services/work-pattern-service.js';
+} from '../../src/features/work-pattern/work-pattern.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { EmployeeService } from '../../src/features/employee/employee.service.js';
+import { WorkPatternService } from '../../src/features/work-pattern/work-pattern.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import { theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
@@ -37,7 +38,7 @@ import { Guard } from '../../src/auth/policy.js';
  * difference between "deferred" and "not" is visible.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 const DOMAINS = ['rematholdings.com'];
 

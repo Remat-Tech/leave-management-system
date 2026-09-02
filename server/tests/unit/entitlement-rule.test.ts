@@ -18,7 +18,7 @@ import {
   specificityOf,
   validateEntitlementRuleChanges,
   validateNewEntitlementRule,
-} from '../../src/domain/entitlement-rule.js';
+} from '../../src/features/entitlement/entitlement-rule.js';
 
 /**
  * What a leave type is worth, and from when. FR 31, §5.5. LMS 203.

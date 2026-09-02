@@ -1,49 +1,10 @@
-/**
- * The one place this application talks to the server. LMS 401.
- *
- * Every type here is a description of what the API sends rather than a model of anything.
- * That distinction is the whole architecture of this client and it is worth stating
- * plainly, because the pressure to break it will arrive with the second screen:
- *
- * **Nothing in the browser computes a leave figure. Ever.**
- *
- * Not `available`, which is a subtraction over five columns and is
- * `rebuild_one_balance_from_the_ledger()`'s in the database, `available()` in
- * `server/src/domain/balance.ts`, and nowhere else. Not a day count, which is the
- * calculator's and depends on a working pattern and a public holiday calendar this
- * application does not have. Not which leave year today is in, which depends on a clock
- * and on rows only the server can see.
- *
- * The reason is not tidiness. A figure computed here is a second implementation of a rule,
- * running on a machine no test in this repository can reach, and the first sign that the
- * two disagree is somebody planning a fortnight around a number that was never true. The
- * server sends the answers; this renders them.
- *
- * So {@link BalanceLine} carries `available` and `owed` as fields, and there is no
- * function in this folder that adds anything up.
- *
- * ## Dates are strings and stay strings
- *
- * `startDate` and `endDate` are ten characters — `2026-12-31` — and are never given to
- * `new Date()`. A leave year runs to a day rather than to an instant, and turning one into
- * a `Date` in a browser is how the last day of the year becomes the second to last for
- * anybody west of Greenwich. There is no timezone conversion anywhere in this client, and
- * the only value here that is genuinely an instant is `updatedAt`.
- *
- * ## The session is a cookie, and this file never sees it
- *
- * `credentials: 'same-origin'` is on every call, which sends the `HttpOnly` cookie the
- * server set and which no script here can read — that is the point of `HttpOnly`. There is
- * no token in `localStorage`, no `Authorization` header, and nothing that identifies the
- * user in any request this file builds. Who somebody is is a question the server answers
- * from the cookie.
- */
+/** The one place this application talks to the server. LMS 401. */
 
 /** A leave year, as the picker and the heading show it. */
 export interface Year {
   id: string;
   label: string;
-  /** Ten characters. Not an instant. See the module note. */
+  /** Ten characters. */
   startDate: string;
   endDate: string;
   isClosed: boolean;
@@ -55,7 +16,7 @@ export interface BalanceLine {
   code: string;
   name: string;
   countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
-  /** FR 22. "Working days" or "Calendar days". The server writes it; this shows it. */
+  /** FR 22. */
   countingBasisLabel: string;
   entitlementBasis: 'QUOTA' | 'EVENT';
   /** What the figures on this line are, so a nought says which kind of nought. */
@@ -71,7 +32,7 @@ export interface BalanceLine {
   pending: number;
   /** `entitled + carriedOver + adjustment`, computed on the server. */
   owed: number;
-  /** May be negative. Sick leave goes below nought on purpose — §8.6b. */
+  /** May be negative. §8.6. */
   available: number;
 
   hasMoved: boolean;
@@ -86,29 +47,15 @@ export interface Statement {
   lines: BalanceLine[];
 }
 
-/* ------------------------------------------------ my request history. FR 54. LMS 402 */
+/** ------------------------------------------------ my request history. FR 54, LMS 402. */
 
-/**
- * A desk in an approval chain — not a role somebody holds.
- *
- * `HR` covers an HR Officer and an HR Administrator alike, and `MANAGER` is a reporting line
- * rather than a grant. This client never resolves one to a person and never says one aloud:
- * every sentence naming a desk arrives written, because "your line manager" is a phrase the
- * server owns and a second translation table here is a second place it can be worded
- * differently.
- */
+/** A desk in an approval chain — not a role somebody holds. */
 export type Desk = 'MANAGER' | 'HR' | 'CEO';
 
-/** Where a request has got to. §6. Shown through `statusInWords`, never as this. */
+/** Where a request has got to. §6.. */
 export type RequestStatus = 'SUBMITTED' | 'APPROVED' | 'WITHDRAWN' | 'CANCELLED' | 'REFUSED';
 
-/**
- * What kind of thing one step of a trail is.
- *
- * The only machine-readable field on a step, and it is here so that the four can be given
- * four shapes — a decision reads differently from a stage nobody has been asked yet. It is
- * **not** here to compose the sentence, which arrives as `inWords`.
- */
+/** What kind of thing one step of a trail is. */
 export type TrailStepKind = 'ASKED' | 'DECIDED' | 'ENDED' | 'STILL_TO_ASK';
 
 /** One thing that happened to a request, or one thing that has not happened yet. */
@@ -116,13 +63,7 @@ export interface TrailStep {
   kind: TrailStepKind;
   /** The desk this step belongs to, where it belongs to one. */
   desk: Desk | null;
-  /**
-   * FR 39. What the approver wrote, verbatim.
-   *
-   * Shown in full or not at all. A refusal is the only account of that decision anybody
-   * will have next year, and a screen that truncated it to a line would be hiding the half
-   * the person came to read.
-   */
+  /** FR 39. */
   comment: string | null;
   /** Who, in words, where a record names somebody. */
   by: string | null;
@@ -138,13 +79,13 @@ export interface RequestEntry {
   leaveTypeId: string;
   typeName: string;
   leaveYearId: string;
-  /** Ten characters. Not an instant. See the module note. */
+  /** Ten characters. */
   from: string;
   to: string;
   reason: string;
   countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
   countingBasisLabel: string;
-  /** FR 11, FR 24. What it cost when it was asked for. Never recomputed here or there. */
+  /** FR 11, FR 24. */
   days: number;
   calendarDays: number;
   status: RequestStatus;
@@ -152,19 +93,19 @@ export interface RequestEntry {
   statusInWords: string;
   submittedAt: string;
 
-  /** FR 41. Whether this leave is agreed and may be taken. The one field to act on. */
+  /** FR 41. */
   agreed: boolean;
   /** The desk it is sitting on, or null once it is sitting nowhere. */
   awaiting: Desk | null;
   chain: Desk[];
   approvedBy: Desk[];
   stillToApprove: Desk[];
-  /** Stages of today's chain with no approval on this request. Normally empty. */
+  /** Stages of today's chain with no approval on this request. */
   stagesMissing: Desk[];
-  /** FR 41. Where it stands, in one sentence. */
+  /** FR 41. */
   progressInWords: string;
 
-  /** The story's second criterion. Oldest first, which is the order it happened in. */
+  /** The story's second criterion. */
   trail: TrailStep[];
 }
 
@@ -172,18 +113,12 @@ export interface History {
   employeeId: string;
   /** The year being shown, or null for every request there is. */
   year: Year | null;
-  /** The years this person has asked for leave in. Empty for somebody who never has. */
+  /** The years this person has asked for leave in. */
   years: Year[];
   entries: RequestEntry[];
 }
 
-/**
- * Who the session belongs to.
- *
- * A name and an id, and deliberately **no roles**. A client that knew what it held would
- * start deciding what to draw from it, and the day the two disagree the server is right
- * and the screen has been lying. What somebody may do is answered by asking for the thing.
- */
+/** Who the session belongs to. */
 export interface Me {
   employeeId: string;
   firstName: string;
@@ -203,18 +138,11 @@ export interface CodeSent {
   expiresAt: string;
 }
 
-/**
- * A refusal the server wrote, carried rather than replaced.
- *
- * The message is the server's own sentence, and this client shows it verbatim. Every one
- * of them was written to say what is wrong *and what to do about it* — NFR USA 03 — and a
- * front end that substituted "Something went wrong" would throw away the only part of a
- * refusal that helps anybody.
- */
+/** A refusal the server wrote, carried rather than replaced. NFR USA 03. */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
-  /** Which input, where the server said. For putting the message beside it. */
+  /** Which input, where the server said. */
   readonly field?: string;
 
   constructor(status: number, code: string, message: string, field?: string) {
@@ -231,15 +159,7 @@ export function isNotSignedIn(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401;
 }
 
-/**
- * Who the session belongs to, or a 401 where there is no usable one.
- *
- * The browser cannot answer this for itself and that is deliberate: the session is an
- * `HttpOnly` cookie, so no script here can read it, and a flag kept in `localStorage`
- * beside it would be a second answer that goes stale the moment the cookie expires, the
- * account is closed, or the employment ends. Asking is the only honest way, and the reply
- * accounts for all three.
- */
+/** Who the session belongs to, or a 401 where there is no usable one. */
 export async function currentSession(): Promise<Me> {
   return request<Me>('GET', '/api/me');
 }
@@ -256,14 +176,7 @@ export async function signOut(): Promise<void> {
   await request<void>('DELETE', '/api/session');
 }
 
-/**
- * My balances, for one leave year or for the one the server picks.
- *
- * `leaveYearId` is left off on the first load on purpose. Which year is "this" one depends
- * on a clock and on which years this person was employed for, and both of those are the
- * server's — a browser that worked it out would disagree with the database on the first of
- * January for anybody not on UTC.
- */
+/** My balances, for one leave year or for the one the server picks. */
 export async function myBalances(leaveYearId?: string): Promise<Statement> {
   const query = leaveYearId === undefined ? '' : `?leaveYearId=${encodeURIComponent(leaveYearId)}`;
 

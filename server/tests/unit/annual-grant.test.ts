@@ -10,8 +10,11 @@ import {
   reasonFor,
   summaryOf,
   wasGranted,
-} from '../../src/domain/annual-grant.js';
-import { BY_COMPLETED_TWELFTHS, type ProRataRule } from '../../src/domain/pro-rata.js';
+} from '../../src/features/entitlement/annual-grant.js';
+import {
+  BY_COMPLETED_TWELFTHS,
+  type ProRataRule,
+} from '../../src/features/entitlement/pro-rata.js';
 
 /**
  * The annual grant of entitlement. FR 30. LMS 214.
@@ -223,7 +226,7 @@ describe('what somebody is granted for a year', () => {
 
   /* Whether a year has already been granted is deliberately not asked here: a pure
      function would be asking it a moment before the write, which is the window LMS 212
-     built a lock to close. `daysToGrant` in domain/balance.ts asks it inside that lock. */
+     built a lock to close. `daysToGrant` in features/balance/balance.ts asks it inside that lock. */
   it('and has no opinion about whether it has been granted before', () => {
     expect(Object.keys(FULL_YEAR)).not.toContain('alreadyGranted');
     expect(granted(FULL_YEAR)).toBe(20);

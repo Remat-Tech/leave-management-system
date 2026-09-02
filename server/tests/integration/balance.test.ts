@@ -1,5 +1,6 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
@@ -11,8 +12,8 @@ import {
   BalanceOverdrawn,
   InvalidBalanceMovement,
   NotEnoughHeld,
-} from '../../src/domain/balance.js';
-import { EmployeeNotFound } from '../../src/domain/employee.js';
+} from '../../src/features/balance/balance.js';
+import { EmployeeNotFound } from '../../src/features/employee/employee.js';
 import {
   BUCKETS,
   InvalidLedgerEntry,
@@ -20,15 +21,15 @@ import {
   type LedgerEntryType,
   REQUEST_MOVEMENTS,
   validateNewLedgerEntry,
-} from '../../src/domain/ledger.js';
-import type { LeaveYear } from '../../src/domain/leave-year.js';
-import { BalanceRepository } from '../../src/repositories/balance-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { LedgerRepository } from '../../src/repositories/ledger-repository.js';
-import { Transactions } from '../../src/repositories/transaction.js';
-import { BalanceService } from '../../src/services/balance-service.js';
-import { LeaveYearService } from '../../src/services/leave-year-service.js';
+} from '../../src/features/balance/ledger.js';
+import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
+import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { LedgerRepository } from '../../src/features/balance/ledger.db.js';
+import { Transactions } from '../../src/db/transaction.js';
+import { BalanceService } from '../../src/features/balance/balance.service.js';
+import { LeaveYearService } from '../../src/features/leave-year/leave-year.service.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
@@ -61,7 +62,7 @@ import { seed } from '../../seeds/seed.mjs';
  *   all still there.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 /** Every role and nobody, so that no policy refuses the fixtures. */
 const system = theSystem('balance integration fixtures');
@@ -470,7 +471,7 @@ describe('a balance is opened by the first movement in it', () => {
 /* --------------------------------------- the projection, checked against the domain */
 
 /**
- * `BUCKETS` in domain/ledger.ts against the trigger that performs it.
+ * `BUCKETS` in features/balance/ledger.ts against the trigger that performs it.
  *
  * This is the test the whole story turns on. LMS 210 wrote down which of the five
  * columns each kind of movement moves, in the file that knows what an entry means,
@@ -945,7 +946,7 @@ describe('who may read a balance', () => {
   });
 
   /* FR 55. Direct reports only — the argument for stopping at one level is
-     auth/employee-policy.ts's and is not repeated here. */
+     features/employee/policy.ts's and is not repeated here. */
   it('their line manager', async () => {
     expect(await balances.forEmployee(asTheirManager(), people.officer)).toHaveLength(1);
   });

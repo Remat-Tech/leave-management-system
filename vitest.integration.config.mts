@@ -5,15 +5,23 @@ export default defineConfig({
     include: ['server/tests/integration/**/*.test.ts'],
     environment: 'node',
 
-    // Creates a throwaway database, migrates it, and drops it afterwards.
+    // Migrates one template database, and drops it and every copy afterwards.
     globalSetup: ['server/tests/setup/integration-database.ts'],
 
-    // One disposable database is shared by every integration file, so they run
-    // one at a time rather than fighting over the same rows. Revisit only when
-    // the suite is slow enough to be worth a database per file.
-    fileParallelism: false,
+    /**
+     * Files run in parallel, each against a database of its own.
+     *
+     * They used to share one database and so had to run one at a time, which was most
+     * of what the suite cost — the work is a few hundred milliseconds a test and almost
+     * none of it is the database's. server/tests/setup/test-database.ts gives each file
+     * a copy of the migrated template instead, so nothing is shared and nothing has to
+     * queue.
+     */
 
     testTimeout: 30_000,
+
+    // Copying a database is about a second, and it happens before the first test of
+    // every file, inside this hook.
     hookTimeout: 120_000,
   },
 });

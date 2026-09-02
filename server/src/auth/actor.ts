@@ -1,85 +1,16 @@
-/**
- * Who is asking. NFR SEC 02. LMS 112.
- *
- * Every service method that reaches a record takes one of these as its first
- * argument. That is the whole mechanism of this story: the question "who is
- * this" cannot be forgotten, because a call that does not answer it does not
- * compile.
- *
- * An actor is not a session and not a token. It is the answer to three
- * questions, and nothing else:
- *
- *   Which employee is this? {@link Actor.employeeId}, which is what "my own
- *   record" means and the only thing that lets somebody read their own leave
- *   without holding a role.
- *
- *   What were they granted? {@link Authority.roles}, read from user_role at the
- *   moment they signed in.
- *
- *   What is true of them? {@link Authority.isManager}, derived from the
- *   reporting lines. Never granted, never stored, and never an entry in the role
- *   list — see {@link Authority} for the whole of that argument.
- *
- * It is {@link Authority} with a name attached, which is deliberate: LMS 111
- * wrote that shape saying it was what the authorisation layer would authorise
- * from, and this is that layer taking it at its word rather than inventing a
- * second one beside it.
- *
- * There is exactly one place a person's actor is minted — {@link
- * SignInService.signIn}, which has just proved who they are — and one place
- * anything else's is: {@link theSystem}, below, which is named so that it can be
- * grepped for. Nothing constructs an `Actor` object literal, and nothing should
- * start to.
- *
- * What is deliberately not here is a session, a cookie or a token. Those are the
- * route layer's, and there is no route layer; minting a signed token in this
- * file would be a security decision made in the wrong place and several stories
- * early. SESSION_SECRET is still in the environment, still unread, and the note
- * beside it in the README still says what it is waiting for. What this story
- * settles is what happens *after* a request has been identified, which is the
- * half that has to be right on the server whatever the interface does.
- */
+/** Who is asking. NFR SEC 02, LMS 112, LMS 111. */
 
-import type { Authority, RoleCode } from './roles.js';
+import type { Authority, RoleCode } from '../features/role/roles.js';
 
-/**
- * Somebody, or something, making a request of a service.
- *
- * `employeeId` is null for {@link theSystem} and for nothing else. A null can
- * never match a record's owner or a record's manager, which is the property that
- * makes the null safe: the system passes every role check and no "this is mine"
- * check, so a system actor can never be mistaken for a person by a policy that
- * forgot to consider it.
- *
- * `description` is for the denial log and for nothing else. It is words rather
- * than an id because the person reading that log at nine on a Monday morning is
- * trying to work out what happened, and `0193b2c4-…` is not the beginning of an
- * answer. It deliberately holds no name and no email address — see
- * ./denials.ts, which explains why a log of refused attempts is a poor place to
- * accumulate staff details.
- */
+/** Somebody, or something, making a request of a service. */
 export interface Actor extends Authority {
-  /** The employee making the request, or null for {@link theSystem}. */
+  /** The employee making the request, or null for theSystem. */
   employeeId: string | null;
-  /** What to call this in the denial log. Never a name, never an address. */
+  /** What to call this in the denial log. */
   description: string;
 }
 
-/**
- * The actor for somebody who has just signed in.
- *
- * Called by {@link SignInService} at the moment the last factor is answered, and
- * nowhere else. Passing the authority in rather than reading it here keeps this
- * file free of a database, exactly as ./sign-in.ts and ./mfa.ts are free of one.
- *
- * The roles are a snapshot, taken at sign in. That is a real property and worth
- * saying rather than discovering: somebody whose HR_ADMIN role is revoked while
- * they are working keeps it until they sign in again. The alternative — reading
- * user_role on every authorisation decision — is a round trip per policy check
- * and would still be a snapshot, just a fresher one. Where freshness genuinely
- * matters the answer is to close the account, which {@link SignInService.close}
- * does and which the next request cannot survive.
- */
+/** The actor for somebody who has just signed in. */
 export function signedInAs(employeeId: string, authority: Authority): Actor {
   return {
     employeeId,

@@ -1,25 +1,31 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { type Actor, theSystem } from '../../src/auth/actor.js';
 import { Guard, NOT_AUTHORISED_MESSAGE, NotAuthorised } from '../../src/auth/policy.js';
-import { AUDITED_ENTITIES, changedFields, REDACTED, UNATTRIBUTED } from '../../src/domain/audit.js';
-import { AuditRepository } from '../../src/repositories/audit-repository.js';
-import { DepartmentRepository } from '../../src/repositories/department-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { RoleRepository } from '../../src/repositories/role-repository.js';
-import { SignInAccountRepository } from '../../src/repositories/sign-in-account-repository.js';
-import { Transactions } from '../../src/repositories/transaction.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { AuditService } from '../../src/services/audit-service.js';
-import { DepartmentService } from '../../src/services/department-service.js';
-import { EmployeeService } from '../../src/services/employee-service.js';
-import { RoleService } from '../../src/services/role-service.js';
-import { SignInService } from '../../src/services/sign-in-service.js';
-import { StaffImportService } from '../../src/services/staff-import-service.js';
-import { WorkPatternService } from '../../src/services/work-pattern-service.js';
+import {
+  AUDITED_ENTITIES,
+  changedFields,
+  REDACTED,
+  UNATTRIBUTED,
+} from '../../src/features/audit/audit.js';
+import { AuditRepository } from '../../src/features/audit/audit.db.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { RoleRepository } from '../../src/features/role/role.db.js';
+import { SignInAccountRepository } from '../../src/features/sign-in/sign-in-account.db.js';
+import { Transactions } from '../../src/db/transaction.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { AuditService } from '../../src/features/audit/audit.service.js';
+import { DepartmentService } from '../../src/features/department/department.service.js';
+import { EmployeeService } from '../../src/features/employee/employee.service.js';
+import { RoleService } from '../../src/features/role/role.service.js';
+import { SignInService } from '../../src/features/sign-in/sign-in.service.js';
+import { StaffImportService } from '../../src/features/staff-import/staff-import.service.js';
+import { WorkPatternService } from '../../src/features/work-pattern/work-pattern.service.js';
 import { recordingMailer, type RecordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
 
@@ -52,7 +58,7 @@ import { seed } from '../../seeds/seed.mjs';
  *   log with one row per morning.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 const DOMAINS = ['rematholdings.com'];
 const PASSWORD = 'a passphrase nobody guesses';
@@ -170,7 +176,7 @@ async function auditedTables(): Promise<string[]> {
 
 describe('what is audited', () => {
   it('is every table the application can change, and nothing else', async () => {
-    /* The list in ../../src/domain/audit.ts and the triggers the migration
+    /* The list in ../../src/features/audit/audit.ts and the triggers the migration
        created, asserted against each other. A table given a trigger and not named
        there is a table whose history nothing can read; a name there with no
        trigger is a promise of history that was never recorded. */
