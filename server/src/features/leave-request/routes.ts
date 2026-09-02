@@ -1,36 +1,145 @@
-/** The request history screen, over HTTP. FR 54, LMS 402, FR 55, FR 56, LMS 405. */
+/** The request screens, over HTTP. FR 54, LMS 402, LMS 403, FR 10, FR 11, FR 13, FR 55, FR 56, LMS 405. */
 
 import { type Request, type Response, Router } from 'express';
 import type { LeaveYear } from '../leave-year/leave-year.js';
+import { type FreeDay, freeDayInWords } from '../leave-calculator/leave-calculator.js';
+import type { FormRule, RequestableLeaveType, RequestForm } from './request-form.js';
+import type { LeaveRequestQuote, RequestWarning } from './leave-request.js';
+import type { LeaveRequested } from '../balance/balance.service.js';
 import type { RequestHistory, RequestHistoryEntry, TrailStep } from './request-history.js';
+import type { LeaveRequestService } from './leave-request.service.js';
+import type { RequestFormService } from './request-form.service.js';
 import type { RequestHistoryService } from './request-history.service.js';
 import { actorOf } from '../../http/identify.js';
 
 export interface RequestRoutes {
   history: RequestHistoryService;
+  /** LMS 403. What each kind of leave asks of somebody, before any dates. */
+  form: RequestFormService;
+  /** LMS 403, LMS 301. What a period would cost, and the one door that writes a request. */
+  requests: LeaveRequestService;
 }
 
-export function requestRoutes({ history }: RequestRoutes): Router {
+export function requestRoutes({ history, form, requests }: RequestRoutes): Router {
   const routes = Router();
 
   /** Every request I have made, newest first, with what became of each. */
   routes.get('/me/requests', (request: Request, response: Response, next) => {
-    const actor = actorOf(response);
-
-    if (actor.employeeId === null) {
-      next(new Error('This route was reached by an actor with no employee behind it.'));
-      return;
-    }
-
     void history
-      .forEmployee(actor, actor.employeeId, { leaveYearId: oneYearIn(request) })
+      .forEmployee(actorOf(response), employeeIdOf(response), {
+        leaveYearId: oneYearIn(request),
+      })
       .then((found) => {
-        response.json(asJson(found));
+        response.json(historyAsJson(found));
+      })
+      .catch(next);
+  });
+
+  /**
+   * The kinds of leave I may ask for, and what each of them asks of me. LMS 403.
+   *
+   * The whole of the story's second and third criteria, and a separate call from the quote
+   * below rather than a field on it, because the two become answerable at different moments.
+   * This one is answerable the instant the screen opens; a quote is not answerable until
+   * somebody has chosen two dates. Folding the rules into the quote would give a form that
+   * could not say maternity leave needs a certificate until after the fortnight had been
+   * picked, which is precisely the "not after" the story is written about.
+   */
+  routes.get('/me/request-form', (_request: Request, response: Response, next) => {
+    void form
+      .forEmployee(actorOf(response), employeeIdOf(response))
+      .then((found) => {
+        response.json(formAsJson(found));
+      })
+      .catch(next);
+  });
+
+  /**
+   * What this period would cost me, before anything is written. LMS 403's first criterion.
+   *
+   * **A GET, and the method is load bearing rather than a preference.** The service writes
+   * nothing, reserves nothing, and is documented as safe to call on every keystroke that
+   * changes a date — which is exactly what this route is for. A POST would say the opposite
+   * to every proxy, every log and every developer reading the route table, and the first
+   * person to see `POST /me/requests/quote` beside `POST /me/requests` would reasonably
+   * wonder which of the two created something.
+   *
+   * `reason` is not a parameter. It is not an input to what a period costs — see
+   * `LeaveRequestService.quote`, whose signature says so — and a form pricing a fortnight
+   * while somebody is still typing would otherwise put a half-written sentence in a query
+   * string and from there into an access log.
+   *
+   * Every refusal this can raise is a sentence the form shows beside the dates: a period that
+   * costs nothing, one that crosses a year end, one over leave already booked. What stops
+   * those arriving as a five hundred is ../../http/problems.ts.
+   */
+  routes.get('/me/requests/quote', (request: Request, response: Response, next) => {
+    void requests
+      .quote(actorOf(response), {
+        employeeId: employeeIdOf(response),
+        leaveTypeId: asString(request.query.leaveTypeId),
+        from: asString(request.query.from),
+        to: asString(request.query.to),
+      })
+      .then((quote) => {
+        response.json(quoteAsJson(quote));
+      })
+      .catch(next);
+  });
+
+  /**
+   * Asks for the leave. FR 10, LMS 301.
+   *
+   * 201, carrying the request that was written and the balance it left, because a screen
+   * that has just submitted something has to say what happened: what it cost, and what is
+   * left.
+   *
+   * The day count is not accepted and could not be. `LeaveRequestService.submit` counts the
+   * period again inside the transaction that holds the days, and the reason it does is the
+   * reason this route takes only the four fields somebody actually filled in: a caller that
+   * can supply a figure can supply a smaller one.
+   */
+  routes.post('/me/requests', (request: Request, response: Response, next) => {
+    const sent = bodyOf(request);
+
+    void requests
+      .submit(actorOf(response), {
+        employeeId: employeeIdOf(response),
+        leaveTypeId: asString(sent.leaveTypeId),
+        from: asString(sent.from),
+        to: asString(sent.to),
+        reason: asString(sent.reason),
+      })
+      .then((submitted) => {
+        response.status(201).json(submittedAsJson(submitted));
       })
       .catch(next);
   });
 
   return routes;
+}
+
+/**
+ * Whose session this is. FR 55, FR 56.
+ *
+ * `me` means the same thing on all four routes above: the id off the verified cookie, never
+ * anything a caller wrote down. There is no way to name somebody else, so those two
+ * requirements are unreachable here by construction rather than by a guard being asked.
+ *
+ * Throws rather than answering, and the throw is unreachable: `identify` puts an actor on
+ * every response behind it, and an actor with no employee is a service account, which has no
+ * business on a route called `/me`. Express hands a synchronous throw from a handler to
+ * ../../http/problems.ts, which logs it and answers a five hundred — which is the right
+ * answer, because that state is a wiring mistake rather than anything the caller did.
+ */
+function employeeIdOf(response: Response): string {
+  const actor = actorOf(response);
+
+  if (actor.employeeId === null) {
+    throw new Error('This route was reached by an actor with no employee behind it.');
+  }
+
+  return actor.employeeId;
 }
 
 /** The leave year asked for, where one string was asked for. */
@@ -40,8 +149,30 @@ function oneYearIn(request: Request): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
-/** The history as JSON. */
-function asJson(history: RequestHistory): unknown {
+/**
+ * One string from whatever arrived, and the empty string for anything else.
+ *
+ * A query value can be an array or an object — `?from=a&from=b`, `?from[x]=y` — and a JSON
+ * body can hold anything at all. Coerced here rather than validated, deliberately: the domain
+ * already refuses an empty id, an empty reason and a date that is not a date, each with the
+ * sentence NFR USA 03 asks for and each naming the field a form puts it beside. A second set
+ * of checks here would be a second set of messages, and they would disagree eventually. All
+ * this guarantees is that the domain is handed a string to refuse.
+ */
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+/** The parsed body, where something object shaped arrived. */
+function bodyOf(request: Request): Record<string, unknown> {
+  const body: unknown = request.body;
+
+  return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+}
+
+/* -------------------------------------------------------------- the history, as JSON */
+
+function historyAsJson(history: RequestHistory): unknown {
   return {
     employeeId: history.employeeId,
     year: history.year === null ? null : yearAsJson(history.year),
@@ -100,5 +231,112 @@ function stepAsJson(step: TrailStep): unknown {
     by: step.by,
     at: step.at === null ? null : step.at.toISOString(),
     inWords: step.inWords,
+  };
+}
+
+/* ----------------------------------------------------------------- the form, as JSON */
+
+function formAsJson(form: RequestForm): unknown {
+  return {
+    employeeId: form.employeeId,
+    types: form.types.map(leaveTypeAsJson),
+  };
+}
+
+function leaveTypeAsJson(type: RequestableLeaveType): unknown {
+  return {
+    leaveTypeId: type.leaveTypeId,
+    code: type.code,
+    name: type.name,
+    countingBasis: type.countingBasis,
+    countingBasisLabel: type.countingBasisLabel,
+    isPaid: type.isPaid,
+    /** FR 17, FR 18. The figures as well as the sentences; a date input needs a number. */
+    minNoticeCalendarDays: type.minNoticeCalendarDays,
+    maxBackdateCalendarDays: type.maxBackdateCalendarDays,
+    /** FR 13, FR 32a. What a client branches on, where `rules` is what it shows. */
+    documentation: type.documentation,
+    documentationAfterDays: type.documentationAfterDays,
+    exceedableWithDocument: type.exceedableWithDocument,
+    /** FR 38a. */
+    approvedBy: type.approvedBy,
+    rules: type.rules.map(ruleAsJson),
+  };
+}
+
+function ruleAsJson(rule: FormRule): unknown {
+  return { kind: rule.kind, inWords: rule.inWords, asks: rule.asks };
+}
+
+/* ---------------------------------------------------------------- the quote, as JSON */
+
+function quoteAsJson(quote: LeaveRequestQuote): unknown {
+  return {
+    leaveTypeId: quote.leaveTypeId,
+    leaveTypeName: quote.leaveTypeName,
+    /** Ten characters, each way. NFR DAT 03. */
+    from: quote.from,
+    to: quote.to,
+    /** FR 11. The basis this was counted under, and what submission would copy onto it. */
+    countingBasis: quote.countingBasis,
+    countingBasisInWords: quote.countingBasisInWords,
+    /** FR 24. The story's first criterion. */
+    days: quote.days,
+    calendarDays: quote.calendarDays,
+    /* What turns the number into an explanation: the days inside the period that cost
+       nothing, and why each of them did. NFR USA 03. */
+    free: quote.free.map(freeDayAsJson),
+    availableNow: quote.availableNow,
+    /** May be negative, legitimately. §8.6b. */
+    availableAfter: quote.availableAfter,
+    /** FR 38a. */
+    approvedBy: quote.approvedBy,
+    /** FR 13, FR 17, FR 14. Not refusals — the request may still go ahead. */
+    warnings: quote.warnings.map(warningAsJson),
+  };
+}
+
+function warningAsJson(warning: RequestWarning): unknown {
+  return { code: warning.code, message: warning.message };
+}
+
+/**
+ * One day inside the period that cost nothing. FR 22, FR 24.
+ *
+ * The token and the sentence both. A screen groups by `because` — every free day rendered
+ * the same way is a list, and public holidays picked out of it are an answer — and shows
+ * `inWords`, which is composed by the file that defines the reason rather than here.
+ */
+function freeDayAsJson(day: FreeDay): unknown {
+  return {
+    date: day.date,
+    because: day.because,
+    /** The holiday's name, where that is the reason. */
+    name: day.name,
+    inWords: freeDayInWords(day),
+  };
+}
+
+/* ------------------------------------------------------- what was submitted, as JSON */
+
+/** The request that was written, and the balance it left. LMS 301. */
+function submittedAsJson(submitted: LeaveRequested): unknown {
+  return {
+    requestId: submitted.request.id,
+    leaveTypeId: submitted.request.leaveTypeId,
+    leaveYearId: submitted.request.leaveYearId,
+    from: submitted.request.from,
+    to: submitted.request.to,
+    reason: submitted.request.reason,
+    /** FR 11. Read off the request, never off the type — always. */
+    countingBasis: submitted.request.countingBasis,
+    days: submitted.request.days,
+    calendarDays: submitted.request.calendarDays,
+    status: submitted.request.status,
+    /** FR 38a. The desk it is now sitting on. */
+    awaitingApprovalFrom: submitted.request.awaitingApprovalFrom,
+    submittedAt: submitted.request.submittedAt.toISOString(),
+    /** What the RESERVATION left, so the screen can say what is left without asking again. */
+    availableAfter: submitted.balance.available,
   };
 }

@@ -129,6 +129,9 @@ beforeAll(async () => {
     types,
     years,
     requests: requestRepository,
+    /* The same service the fixtures above are written through, so a request made over HTTP
+       and a request made in this file go through one object. LMS 403. */
+    leaveRequests: requests,
     decisions,
     accounts,
     roles,

@@ -103,8 +103,72 @@ export function problemFor(error: unknown): { status: number; body: Problem } {
     };
   }
 
+  const refusal = REFUSED_BY_A_RULE[error.name];
+  if (refusal !== undefined) {
+    return { status: refusal, body: { error: error.name, message: error.message } };
+  }
+
   return unexpected();
 }
+
+/**
+ * The refusals a leave request can meet, and the status each is answered with. LMS 403.
+ *
+ * Every one of these is a well formed request that a rule says no to. Without this table they
+ * fall through to {@link unexpected} and reach the browser as "Something went wrong. It has
+ * been logged." — which is the exact failure LMS 403 is written against, because each of them
+ * already carries the sentence that tells somebody what to do instead. `LeaveCrossesAYearEnd`
+ * names the two dates to submit; `NotEnoughDays` names how many days could be asked for;
+ * `TooLateToRecord` names who can still enter it. Throwing that away and logging a stack
+ * trace sends a developer to the logs instead of the person who can fix it.
+ *
+ * ## Why a table rather than a family test
+ *
+ * The rules above match on shape — `Invalid*`, `*NotFound` — because those genuinely are
+ * families with one answer between them. These are not. A retired leave type and a balance
+ * with nothing left are both refusals and they are not the same kind of news, and a prefix
+ * that happened to catch both would catch the next error somebody names similarly without
+ * anybody deciding it should. Listing them is the decision being written down.
+ *
+ * ## Which status, and why only two of them
+ *
+ * **400** where the answer is to change what was typed: the dates cost nothing, or they run
+ * past a year end. The form puts those beside the date inputs and the person edits them.
+ *
+ * **409** where what was typed is fine and the *state of the world* refuses it: leave already
+ * booked over those days, a balance without the days in it, a type retired or unapproved, a
+ * settled year, a date further back than the window allows. Nothing the person retypes fixes
+ * those; they are told what stands in the way, exactly as `NoLeaveYearToShow` above is.
+ *
+ * `NotEligibleForLeaveType` is the one that could be argued to 403, and is not. FR 05 says
+ * the column is "limited to eligibility checks only", and answering a leave type's gender
+ * restriction with the status the authorisation layer uses would put a policy refusal and a
+ * configuration fact behind one code. It is a conflict between the request and the record,
+ * and the sentence says which — including the case where the record simply does not say.
+ */
+const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
+  /** FR 16a. The dates are the fix. */
+  LeaveCountsNoDays: 400,
+  /** FR 16. Two requests instead of one; the message names both dates. */
+  LeaveCrossesAYearEnd: 400,
+
+  /** FR 15, §5.6. Leave over leave already booked. */
+  LeaveOverlapsAnother: 409,
+  /** FR 14. And the same condition the quote shows as a warning. */
+  NotEnoughDays: 409,
+  /** §8.2. The same refusal from inside the lock, when a balance was spent mid form. */
+  BalanceOverdrawn: 409,
+  /** FR 21. Taken out of use on purpose. */
+  LeaveTypeRetired: 409,
+  /** FR 05. */
+  NotEligibleForLeaveType: 409,
+  /** FR 38a. A gap in the configuration, like `NoLeaveYearToShow`. */
+  NobodyApprovesLeaveType: 409,
+  /** FR 18. Only HR can enter it now, which the message says. */
+  TooLateToRecord: 409,
+  /** §8.9. */
+  LeaveYearIsClosed: 409,
+};
 
 /**
  * The last handler mounted, and the only thing that answers an unhandled throw.

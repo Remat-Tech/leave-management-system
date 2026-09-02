@@ -155,8 +155,15 @@ export class LeaveRequestService {
    * again on Friday, and if a public holiday was gazetted inside the period in between,
    * the second answer is the one that is charged. That is the honest behaviour and the
    * reason the count is never passed in.
+   *
+   * **The reason is not one of its inputs**, and the signature says so since LMS 403. What
+   * a period costs is a question about a type, two dates and a working pattern; a form that
+   * prices a fortnight on every keystroke would otherwise have to send whatever half-written
+   * sentence was in the box, and a reader of this method would be entitled to wonder whether
+   * it counted for something. `submit` takes the whole of {@link NewLeaveRequest}, which
+   * still satisfies this.
    */
-  async quote(actor: Actor, input: NewLeaveRequest): Promise<LeaveRequestQuote> {
+  async quote(actor: Actor, input: Omit<NewLeaveRequest, 'reason'>): Promise<LeaveRequestQuote> {
     const { employee, type, year, period } = await this.resolve(actor, input);
 
     const count = await this.countFor(actor, employee, type, period);
@@ -829,7 +836,9 @@ export class LeaveRequestService {
    */
   private async resolve(
     actor: Actor,
-    input: NewLeaveRequest,
+    /* Without the reason, which nothing here reads and which `validateNewLeaveRequest`
+       checks on the submission path where it is actually going to be stored. */
+    input: Omit<NewLeaveRequest, 'reason'>,
   ): Promise<{ employee: Employee; type: LeaveType; year: LeaveYear; period: LeavePeriod }> {
     const employee = await this.employeeFor(input.employeeId);
     const type = await this.typeFor(input.leaveTypeId);

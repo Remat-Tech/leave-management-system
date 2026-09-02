@@ -239,11 +239,16 @@ button:hover:not(:disabled) {
 }
 
 /**
- * The two screens, in the top bar. LMS 402.
+ * The three screens, in the top bar. LMS 402, LMS 403.
  *
- * Buttons rather than links, because there are no addresses yet — `App.tsx` says why the
- * router is still one story away and names what that costs. When it arrives these become
- * anchors and nothing else here changes.
+ * **Anchors since the third screen arrived**, which is what LMS 402 said would happen: it left
+ * these as buttons "because there are no addresses yet" and named the story that would bring
+ * them. They are addresses now, so they are links — and a tab somebody can middle click,
+ * bookmark and go back from is the whole of what that bought.
+ *
+ * The declarations that follow are the ones `button` was getting from the control block above
+ * and an `<a>` is not. They are written out rather than the anchor being given `appearance:
+ * button`, which would hand the operating system a say in a control that is not one.
  *
  * Which one you are on is `aria-current="page"`, and the weight and background follow that
  * attribute rather than a second class. A tab that looked selected without saying so is one
@@ -256,15 +261,19 @@ button:hover:not(:disabled) {
 
 .screen-tab {
   background: transparent;
-  border-color: transparent;
+  border: 1px solid transparent;
   color: var(--ink-soft);
   border-radius: 999px;
   padding: 0.35rem 0.75rem;
+  font: inherit;
   font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
   white-space: nowrap;
+  cursor: pointer;
 }
 
-.screen-tab:hover:not(:disabled) {
+.screen-tab:hover {
   color: var(--ink);
   background: var(--line);
   border-color: transparent;
@@ -679,6 +688,219 @@ button:hover:not(:disabled) {
 .trail .said {
   margin-top: 0.5rem;
   font-size: 0.875rem;
+}
+
+/* ------------------------------------------------------------------ the request form */
+
+/**
+ * Two columns: what somebody is deciding, and what the system says about it. LMS 403.
+ *
+ * The form is the wider of the two and comes first in the source, so that on a narrow screen
+ * they stack as question then answer. A cost that reflowed above the dates it was about would
+ * be a figure with nothing to attach it to.
+ */
+.asking {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--gap-lg);
+  align-items: start;
+}
+
+@media (max-width: 56rem) {
+  .asking {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* First and last day, side by side, because they are one decision. */
+.dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.dates > * {
+  flex: 1 1 10rem;
+}
+
+textarea {
+  font: inherit;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-small);
+  background: var(--card);
+  color: var(--ink);
+  resize: vertical;
+}
+
+textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------- what a type asks */
+
+/**
+ * The rules for the chosen kind of leave, inside the form rather than beside it.
+ *
+ * Inset against the panel it sits in, so that it reads as belonging to the select above it
+ * rather than as a third field. It appears the moment a type is chosen and before any date
+ * has been picked, which is the whole of the story: somebody finds out about documentation
+ * while they can still go and fetch it.
+ */
+.rulebook {
+  background: color-mix(in srgb, var(--accent) 5%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+  border-radius: var(--radius-small);
+  padding: 0.875rem var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rulebook h3 {
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.rulebook ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rule {
+  position: relative;
+  padding-left: 1.1rem;
+  font-size: 0.9375rem;
+}
+
+.rule::before {
+  content: '';
+  position: absolute;
+  left: 0.15rem;
+  top: 0.55rem;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+
+/* The ones that ask something. Weightier than the explanations, and never *only* weightier:
+   the sentence says what it wants, which is the rule the file header sets out. */
+.asks .rule {
+  font-weight: 500;
+}
+
+.asks .rule::before {
+  background: var(--accent);
+}
+
+.explains .rule {
+  color: var(--ink-soft);
+}
+
+/* HR's own sentence about this kind of leave — including, for compassionate leave, that
+   whether it qualifies is the approvers' judgement. FR 32f. Set apart as a quotation for the
+   reason a reason and a comment are: they are somebody's words rather than the system's. */
+.rule.is-description {
+  padding-left: 0.875rem;
+  border-left: 2px solid var(--line-strong);
+  font-style: italic;
+}
+
+.rule.is-description::before {
+  display: none;
+}
+
+.rulebook .breakdown {
+  border: none;
+  padding: 0;
+}
+
+.rulebook .breakdown summary {
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------- what it costs */
+
+.cost {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  /* Follows the dates down a long form rather than scrolling off the top of it, so the
+     figure is on screen at the moment somebody presses the button. */
+  position: sticky;
+  top: 5rem;
+}
+
+@media (max-width: 56rem) {
+  .cost {
+    position: static;
+  }
+}
+
+/* A count on its way out of date. Faded rather than blanked: the previous figure is still
+   the honest answer to the previous question, and a panel that emptied on every keystroke
+   would flicker through nothing on the way to the number. */
+.cost[aria-busy='true'] .card {
+  opacity: 0.55;
+}
+
+/* Which days inside the period cost nothing, and why. NFR USA 03. */
+.free {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+}
+
+/* What the balance holds, and what it would hold. FR 14. */
+.standing {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.2rem 0.75rem;
+  margin: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.875rem;
+}
+
+.standing dt {
+  color: var(--ink-soft);
+}
+
+.standing dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* §8.6b. Sick leave past its allowance is legitimately below nought, and saying so plainly
+   is better than a figure that looks like a mistake. */
+.standing dd.overdrawn {
+  color: var(--warn);
+}
+
+/* Not a refusal — the request may still go ahead. Marked with the accent rather than the
+   warning red, which is kept for the refusals the server actually sent. */
+.notice.warning {
+  border-left-color: var(--accent);
+}
+
+.asked .progress {
+  font-size: 1.0625rem;
 }
 
 /* --------------------------------------------------------------------- notices */

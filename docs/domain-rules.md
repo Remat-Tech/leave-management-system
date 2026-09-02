@@ -2963,6 +2963,122 @@ than one place to go"; two places is not where the argument turns, because what 
 *addresses* — a link, a bookmark, the back button — and a URL scheme chosen before the request
 form and the team calendar have said what they need to link to is a scheme chosen too early. The
 cost is named rather than hidden: **neither screen can be linked to, and the back button leaves
-the application.** The story that adds a third screen brings the router.
+the application.** The story that adds a third screen brings the router. (LMS 403 is that story,
+and it did — see below.)
+
+---
+
+### The request form
+
+**The rules arrive while somebody is filling it in, not after they have submitted.** FR 11,
+FR 32f, §7.4, LMS 403. The story's "so that" is the whole design brief: *I find out about
+documentation or notice before submitting, not after*. The failure it is written against is
+concrete and it is a person's afternoon: a fortnight submitted, then a message saying it needed
+a certificate nobody mentioned, or that compassionate leave was never anybody's to promise.
+
+**Three criteria, and they become answerable at two different moments.** That is the whole
+shape of the story and it is why there are two calls rather than one:
+
+| When | What is true | Where it comes from |
+|---|---|---|
+| The screen opens | What each kind of leave asks of you | `GET /api/me/request-form` |
+| Two dates exist | What this period costs | `GET /api/me/requests/quote` |
+
+`quoteFor` in `features/leave-request/leave-request.ts` already answers the second, and has since
+LMS 301 — the day count, the days inside the period that were free and why, what the balance
+holds and would hold, and the warnings. **It cannot answer the other two, because a quote needs
+a period.** A form built on the quote alone would tell somebody maternity leave needs
+documentation on the keystroke after they had settled the dates, and would tell somebody
+choosing compassionate leave nothing at all until they had committed to a week. Both are later
+than the story asks and later than the facts are available: the rules are properties of the
+type, and they were true before anybody opened the page.
+
+So `features/leave-request/request-form.ts` is a second read model beside the history's, and
+**one fact is deliberately said twice in two voices**. The standing rule is *this kind of leave
+needs documentation*; the quote's `DOCUMENTATION_REQUIRED` warning is *these nine days need it*.
+Neither is a duplicate and the second cannot replace the first, because the first is the one
+that arrives in time to change what somebody does.
+
+**Compassionate leave's discretion is configuration, not a flag and not an `if`.** The story
+names one leave type, which is exactly the shape FR 31 and design principle 5 forbid answering
+with a branch. It is answered with the column the business already wrote it in:
+`leave_type.description` says *"Granted per occasion. Say what it is for; whether it qualifies
+is for your manager and HR to decide."* — and the seven-leave-types migration says why there is
+nothing more structural to read: "no list of qualifying relationships anywhere in the system:
+that is the approvers' judgement on the reason given."
+
+The `ENTITLEMENT` rule states the structural half from `entitlement_basis` — *granted per
+occasion rather than as a yearly allowance, so there is nothing standing to your name until an
+occasion arises* — which is the same sentence `allowanceInWords` makes on the balance screen and
+for the same reason. Neither knows which type it is about. `unit/request-form.test.ts` ends by
+configuring two types with the same code and opposite rules and asserting they say opposite
+things; `integration/request-form-api.test.ts` is the other half, and is the only place the
+claim can be made about the row the migration actually wrote rather than about a fixture.
+
+**A rule that asks something is marked as one.** `FormRule.asks` divides *fetch a certificate,
+give a fortnight's warning, do not leave it more than a week* from *counted in working days,
+goes to your line manager then HR*. It is the same division `RequestWarning` draws for a priced
+period, and it is what stops the one sentence the story exists for being the fourth bullet in a
+list of eight. A type that asks for nothing says nothing rather than saying "no documentation
+required": half a list reporting the absence of a rule is a list nobody finishes.
+
+#### The quote is a GET, and the method is load bearing
+
+It writes nothing, reserves nothing, and is documented as safe to call on every keystroke that
+changes a date. A POST would say the opposite to every proxy, every log and every developer
+reading the route table — and the first person to see `POST /me/requests/quote` beside
+`POST /me/requests` would reasonably wonder which of them created something.
+
+`reason` is not one of its parameters, and `LeaveRequestService.quote` now says so in its
+signature: it takes `Omit<NewLeaveRequest, 'reason'>`. What a period costs is a question about a
+type, two dates and a working pattern. A form pricing a fortnight on every keystroke would
+otherwise put a half-written explanation into a query string and from there into an access log.
+
+The browser debounces and drops stale answers, and neither is about the server. A native date
+input fires a change for every part of a date somebody types, and two dates typed quickly are
+two requests that can land in either order — a screen without the sequence counter shows the
+cost of the date somebody has already changed.
+
+#### Refusals had to stop being five hundreds
+
+The refusals a form provokes are the ones carrying the instruction: `LeaveCrossesAYearEnd` names
+the two dates to submit instead, `NotEnoughDays` names how many days could be asked for,
+`TooLateToRecord` names who can still enter it. Every one of them reached a browser as
+"Something went wrong. It has been logged." — because `http/problems.ts` matched `Invalid*` and
+`*NotFound` and nothing else. That sends a developer to the logs instead of the person who can
+fix it, and it is the exact failure this story is about.
+
+`REFUSED_BY_A_RULE` is a table rather than another prefix test, because these are not a family
+with one answer between them. **400** where the answer is to change what was typed — a period
+that costs nothing, one that crosses a year end. **409** where what was typed is fine and the
+state of the world refuses it — leave already booked, a balance without the days, a retired
+type, a settled year. Nothing retyped fixes the second kind.
+
+#### And the third screen brought the router
+
+LMS 402 named the moment: "The story that adds a third screen brings the router." This is it.
+
+It is not a dependency. Three static screens with no parameters and no nesting need the
+*address* — a link, a bookmark, a back button that moves between screens instead of leaving the
+application — and nothing else a routing library sells. `useSyncExternalStore` over `hashchange`
+is that, in a dozen lines, and the tabs became anchors so that middle click, copy-link and
+history are the browser's behaviour rather than something `App.tsx` reimplements.
+
+**The hash rather than a path**, because a path needs the server to answer every URL with
+`index.html` and `http/app.ts` does not: a reload on `/requests` would hit the API's own 404.
+The hash never reaches the server. When the deployment grows a static file server with a
+fallback, this becomes the History API and nothing else changes.
+
+#### Still not here
+
+**FR 18 is stated and not enforced.** `assertWithinBackdatingWindow` has existed since LMS 201,
+is tested, and is called from nowhere on the request path — so the form says leave can be
+entered up to seven days after the fact and the server would accept it from a month back. The
+gap predates this story and closing it changes what `submit` accepts, which is LMS 301's rule
+rather than this screen's. What this story does is stop the window being invisible.
+
+**No attachment.** FR 13 is a rule the form explains and a document nobody can upload yet:
+`storage/` exists and nothing on this path writes to it. "Have it ready — whoever approves this
+will ask for it" is the honest sentence until the story that adds the upload.
 
 ---
