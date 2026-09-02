@@ -164,6 +164,7 @@ import {
   approvalChainInWords,
   balanceMayBeExceededWithDocument,
   type CountingBasis,
+  countingBasisInWords,
   documentationRequired,
   type LeaveType,
   noticeShortfall,
@@ -1647,24 +1648,6 @@ export interface LeaveRequestQuote {
   /** Who would decide it, in words. FR 38a. */
   approvedBy: string;
   warnings: RequestWarning[];
-}
-
-/**
- * The counting basis, said to a person rather than to a database.
- *
- * On the quote because the story asks for the basis to be *shown*, and `WORKING_DAYS`
- * is not shown to anybody. The sentence names what is skipped, because that is the
- * part somebody is checking: a person looking at "7 days" for a nine day period wants
- * to know the weekend is why.
- *
- * A function of the basis and never of the type's code, exactly as
- * {@link countsWorkingDays} is. A type HR adds next year renders correctly the moment
- * the row exists.
- */
-export function countingBasisInWords(basis: CountingBasis): string {
-  return basis === 'WORKING_DAYS'
-    ? 'working days — days you are not scheduled to work, and public holidays, cost nothing'
-    : 'calendar days — every day of the period counts, weekends and public holidays included';
 }
 
 /**

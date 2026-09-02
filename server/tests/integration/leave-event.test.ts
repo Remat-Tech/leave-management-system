@@ -396,17 +396,33 @@ describe('what an event may be recorded against', () => {
     await expect(aBirthFor(people.ceo, maternityId)).rejects.toBeInstanceOf(NotEligibleForTheType);
   });
 
-  /* Unpaid leave is an event type with no entitlement rule at all — FR 32h is agreed
-     occasion by occasion — so there is a figure to be had from nowhere. Reported by
-     name rather than granted as nought, because a ledger entry of no days is not a
-     movement. */
+  /**
+   * A type with no entitlement rule at all, so there is a figure to be had from nowhere.
+   * Reported by name rather than granted as nought, because a ledger entry of no days is
+   * not a movement.
+   *
+   * **The example is made rather than borrowed, and that is LMS 401's doing.** This used
+   * to reach for unpaid leave, which was an event type with no figure — FR 32h read as
+   * agreed occasion by occasion. Unpaid leave is now ten working days a year and every
+   * statutory type carries a figure, so there is no longer a shipped type in this state.
+   *
+   * Which is the better test anyway. A rule proved against a fixture that happens to have
+   * the right shape is a rule that stops being proved the day somebody prices that type —
+   * exactly what just happened. This one builds the condition it is about, so it goes on
+   * asserting the rule whatever HR does to the statutory set.
+   */
   it('nor a type nobody has said the worth of', async () => {
-    const unpaidId = (await admin.query("SELECT id FROM leave_type WHERE code = 'UNPAID'")).rows[0]
-      .id as string;
+    const { rows } = await admin.query<{ id: string }>(
+      `INSERT INTO leave_type (code, name, counting_basis, entitlement_basis, display_order)
+       VALUES ('UNPRICED', 'Unpriced Leave', 'WORKING_DAYS', 'EVENT', 99)
+       RETURNING id`,
+    );
 
-    await expect(aBirthFor(people.officer, unpaidId)).rejects.toBeInstanceOf(
+    await expect(aBirthFor(people.officer, rows[0].id)).rejects.toBeInstanceOf(
       NoEntitlementForTheEvent,
     );
+
+    await admin.query(`DELETE FROM leave_type WHERE code = 'UNPRICED'`);
   });
 
   it('nor against somebody who does not exist', async () => {

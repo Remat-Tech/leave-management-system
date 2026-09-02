@@ -190,10 +190,10 @@ describe('the seven types of FR 32', () => {
     expect((await types.list(system)).map((type) => type.code)).toEqual([
       'ANNUAL',
       'SICK',
+      'UNPAID',
       'COMPASSIONATE',
       'MATERNITY',
       'PATERNITY',
-      'UNPAID',
       'MAT_EXT_UNPAID',
     ]);
   });
@@ -213,12 +213,21 @@ describe('the seven types of FR 32', () => {
     expect(basis.get('PATERNITY')).toBe(false);
   });
 
-  /* FR 32g. Annual and sick are annual allowances that reset; everything else is
-     granted per qualifying occurrence. */
-  it('give a quota to annual and sick leave and to nothing else', async () => {
+  /**
+   * FR 32g. Annual, sick and unpaid are annual allowances that reset; everything else is
+   * granted per qualifying occurrence.
+   *
+   * Unpaid leave was on the other side of this line until LMS 401. FR 32g listed it with
+   * the event types on the reading that it is "agreed occasion by occasion rather than
+   * accrued" — and the business settled it as ten working days *for the year*, which is an
+   * allowance that resets whatever it is called. The classification moved with the figure,
+   * because it had to: `AnnualGrant` only ever loops over types this predicate is true of,
+   * so an entitlement rule against an event type is a figure nothing would grant.
+   */
+  it('give a quota to annual, sick and unpaid leave and to nothing else', async () => {
     const quota = (await types.list(system)).filter(hasRunningBalance).map((type) => type.code);
 
-    expect(quota).toEqual(['ANNUAL', 'SICK']);
+    expect(quota).toEqual(['ANNUAL', 'SICK', 'UNPAID']);
   });
 
   /* FR 32a, and the distinction this story is easiest to get wrong. Sick leave's
@@ -424,10 +433,10 @@ describe('putting the statutory set back, LMS 202', () => {
     expect((await types.list(system)).map((type) => type.code)).toEqual([
       'ANNUAL',
       'SICK',
+      'UNPAID',
       'COMPASSIONATE',
       'MATERNITY',
       'PATERNITY',
-      'UNPAID',
       'MAT_EXT_UNPAID',
     ]);
   });

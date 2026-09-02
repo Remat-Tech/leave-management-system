@@ -519,9 +519,21 @@ describe('what carries and what does not, on a migrated database', () => {
         WHERE leave_type.entitlement_basis = 'EVENT'`,
     );
 
+    const unpaidId = (
+      await admin.query<{ id: string }>("SELECT id FROM leave_type WHERE code = 'UNPAID'")
+    ).rows[0].id;
+
     expect(rows[0].n).toBe(0);
     expect(run.carried.every((carry) => carry.leaveTypeId === annualId)).toBe(true);
-    expect(run.notCarried.every((one) => [annualId, sickId].includes(one.leaveTypeId))).toBe(true);
+
+    /* Every type the run considered at all is a quota type, which since LMS 401 is three
+       of them rather than two: unpaid leave became a yearly allowance, so it reaches the
+       decision and is reported as carrying nothing. The claim is unchanged — no event
+       based type carries anything — and the list it is asserted against had to grow with
+       the classification. */
+    expect(
+      run.notCarried.every((one) => [annualId, sickId, unpaidId].includes(one.leaveTypeId)),
+    ).toBe(true);
   });
 
   it('and a balance with nothing left in it carries nothing, and says so', async () => {
