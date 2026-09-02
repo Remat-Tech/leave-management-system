@@ -35,6 +35,8 @@ import { createDatabase } from './db/index.js';
 import { createMailer } from './mail/mailer.js';
 import { BalanceRepository } from './repositories/balance-repository.js';
 import { EmployeeRepository } from './repositories/employee-repository.js';
+import { LeaveDecisionRepository } from './repositories/leave-decision-repository.js';
+import { LeaveRequestRepository } from './repositories/leave-request-repository.js';
 import { LeaveTypeRepository } from './repositories/leave-type-repository.js';
 import { LeaveYearRepository } from './repositories/leave-year-repository.js';
 import { RoleRepository } from './repositories/role-repository.js';
@@ -78,6 +80,8 @@ const app = buildApp({
   employees,
   types: new LeaveTypeRepository(db),
   years: new LeaveYearRepository(db),
+  requests: new LeaveRequestRepository(db),
+  decisions: new LeaveDecisionRepository(db),
   accounts,
   roles,
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process

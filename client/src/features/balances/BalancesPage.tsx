@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { type BalanceLine, isNotSignedIn, myBalances, type Statement, type Year } from '../../api';
+import { days, sentenceCase, signed } from '../../format';
 
 /**
  * My balances. FR 53. LMS 401.
@@ -310,33 +311,6 @@ function Skeletons() {
   );
 }
 
-/**
- * A number of days, as it is written down.
- *
- * **Not rounding, and not arithmetic.** The server sends figures already at the precision
- * its columns hold — two decimal places, because §8.6d pro rates a mid year joiner to
- * 10.08 days — and this only decides whether to print the decimals. A whole number shows
- * as `20`, because "20.00 days" reads like a bank statement; anything else shows both
- * places, because 10.08 and 10.8 are different figures and dropping a zero makes them look
- * alike.
- *
- * `toFixed(2)` on a value the server has already rounded cannot change it. If it ever
- * appears to, the bug is upstream and hiding it here would be the worst possible response.
- */
-function days(figure: number): string {
-  return Number.isInteger(figure) ? String(figure) : figure.toFixed(2);
-}
-
-/** An adjustment, with its sign kept. "+3" and "−2" are different news. */
-function signed(figure: number): string {
-  if (figure === 0) {
-    return '0';
-  }
-
-  return figure > 0 ? `+${days(figure)}` : `−${days(Math.abs(figure))}`;
-}
-
-/** The server writes its sentences to sit mid-line; a card starts one. */
-function sentenceCase(sentence: string): string {
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
-}
+/* `days`, `signed` and `sentenceCase` moved to `client/src/format.ts` in LMS 402, when the
+   history screen became their second caller. None of them is a rule about leave — they decide
+   decimal places and capital letters — and the module note there says where that line is. */

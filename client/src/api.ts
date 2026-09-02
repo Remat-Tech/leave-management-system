@@ -86,6 +86,97 @@ export interface Statement {
   lines: BalanceLine[];
 }
 
+/* ------------------------------------------------ my request history. FR 54. LMS 402 */
+
+/**
+ * A desk in an approval chain — not a role somebody holds.
+ *
+ * `HR` covers an HR Officer and an HR Administrator alike, and `MANAGER` is a reporting line
+ * rather than a grant. This client never resolves one to a person and never says one aloud:
+ * every sentence naming a desk arrives written, because "your line manager" is a phrase the
+ * server owns and a second translation table here is a second place it can be worded
+ * differently.
+ */
+export type Desk = 'MANAGER' | 'HR' | 'CEO';
+
+/** Where a request has got to. §6. Shown through `statusInWords`, never as this. */
+export type RequestStatus = 'SUBMITTED' | 'APPROVED' | 'WITHDRAWN' | 'CANCELLED' | 'REFUSED';
+
+/**
+ * What kind of thing one step of a trail is.
+ *
+ * The only machine-readable field on a step, and it is here so that the four can be given
+ * four shapes — a decision reads differently from a stage nobody has been asked yet. It is
+ * **not** here to compose the sentence, which arrives as `inWords`.
+ */
+export type TrailStepKind = 'ASKED' | 'DECIDED' | 'ENDED' | 'STILL_TO_ASK';
+
+/** One thing that happened to a request, or one thing that has not happened yet. */
+export interface TrailStep {
+  kind: TrailStepKind;
+  /** The desk this step belongs to, where it belongs to one. */
+  desk: Desk | null;
+  /**
+   * FR 39. What the approver wrote, verbatim.
+   *
+   * Shown in full or not at all. A refusal is the only account of that decision anybody
+   * will have next year, and a screen that truncated it to a line would be hiding the half
+   * the person came to read.
+   */
+  comment: string | null;
+  /** Who, in words, where a record names somebody. */
+  by: string | null;
+  /** An instant, ISO 8601 — or null for a step that has not happened. */
+  at: string | null;
+  /** The step in one sentence, written by the server. */
+  inWords: string;
+}
+
+/** One past request, with what became of it. */
+export interface RequestEntry {
+  requestId: string;
+  leaveTypeId: string;
+  typeName: string;
+  leaveYearId: string;
+  /** Ten characters. Not an instant. See the module note. */
+  from: string;
+  to: string;
+  reason: string;
+  countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
+  countingBasisLabel: string;
+  /** FR 11, FR 24. What it cost when it was asked for. Never recomputed here or there. */
+  days: number;
+  calendarDays: number;
+  status: RequestStatus;
+  /** The story's first criterion, in a word a person says. */
+  statusInWords: string;
+  submittedAt: string;
+
+  /** FR 41. Whether this leave is agreed and may be taken. The one field to act on. */
+  agreed: boolean;
+  /** The desk it is sitting on, or null once it is sitting nowhere. */
+  awaiting: Desk | null;
+  chain: Desk[];
+  approvedBy: Desk[];
+  stillToApprove: Desk[];
+  /** Stages of today's chain with no approval on this request. Normally empty. */
+  stagesMissing: Desk[];
+  /** FR 41. Where it stands, in one sentence. */
+  progressInWords: string;
+
+  /** The story's second criterion. Oldest first, which is the order it happened in. */
+  trail: TrailStep[];
+}
+
+export interface History {
+  employeeId: string;
+  /** The year being shown, or null for every request there is. */
+  year: Year | null;
+  /** The years this person has asked for leave in. Empty for somebody who never has. */
+  years: Year[];
+  entries: RequestEntry[];
+}
+
 /**
  * Who the session belongs to.
  *
@@ -177,6 +268,23 @@ export async function myBalances(leaveYearId?: string): Promise<Statement> {
   const query = leaveYearId === undefined ? '' : `?leaveYearId=${encodeURIComponent(leaveYearId)}`;
 
   return request<Statement>('GET', `/api/me/balances${query}`);
+}
+
+/**
+ * Every request I have made, or only those in one leave year. FR 54. LMS 402.
+ *
+ * `leaveYearId` is left off by default and that means **everything**, which is the opposite
+ * of what leaving it off means for {@link myBalances}. A balance is per leave year and cannot
+ * be shown without one, so the server picks; a history is a list of things that happened, and
+ * the story asks for all of them.
+ *
+ * So there is no year for a browser to work out here either, and nothing to hide behind a
+ * filter the person did not set.
+ */
+export async function myRequests(leaveYearId?: string): Promise<History> {
+  const query = leaveYearId === undefined ? '' : `?leaveYearId=${encodeURIComponent(leaveYearId)}`;
+
+  return request<History>('GET', `/api/me/requests${query}`);
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {

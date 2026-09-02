@@ -21,13 +21,16 @@
  * second handler beside it is the day that stops being obvious. A route that cannot name
  * anybody else needs no such argument.
  *
- * FR 55 and FR 56 — a manager's view of a report, HR's view of anybody — are LMS 402 and
- * LMS 405, and they are a different route with a different rule about who the subject may
- * be. The service already takes an employee id for them, and the policy is already
- * written and already refuses the wrong people. What is deliberately not here is the
- * *route*, because "a manager may see their direct reports" is a decision that should be
- * made once, in the open, by the story that owns it — not inherited by a query parameter
- * somebody added to this one.
+ * FR 55 and FR 56 — a manager's view of a report, HR's view of anybody — are LMS 405, and
+ * they are a different route with a different rule about who the subject may be. The service
+ * already takes an employee id for them, and the policy is already written and already
+ * refuses the wrong people. What is deliberately not here is the *route*, because "a manager
+ * may see their direct reports" is a decision that should be made once, in the open, by the
+ * story that owns it — not inherited by a query parameter somebody added to this one.
+ *
+ * LMS 402 followed this file rather than widening it: `GET /api/me/requests` in
+ * ./requests.ts is the same shape for the same reason, and the two are the whole of what
+ * `me` addresses today.
  *
  * ## Nothing is recalculated by the client, and this is where that is guaranteed
  *
