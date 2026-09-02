@@ -1,64 +1,4 @@
-/**
- * The year rollover. FR 36, FR 36a, §11. LMS 217.
- *
- * The third thing in `/jobs`, and the one the project structure named first: "scheduled
- * work: reminders, rollover, reconciliation". It is also the last piece of Phase 2 — the
- * point at which a balance stops being a thing that happens once and starts being a thing
- * that continues.
- *
- * The story is an employee on the second of January finding that the four days they never
- * got round to taking are still there. Not restored by somebody in HR after they asked;
- * there, because the boundary was crossed by a job rather than by a person remembering.
- *
- * ## Three acts, and each is somebody else's code
- *
- * This class is almost entirely sequencing, which is the point of it.
- *
- *   **Close the year that ended.** `LeaveYearService.close`, which refuses a year still
- *   running and refuses one already closed. LMS 205 wrote that and said this story would
- *   be its caller.
- *
- *   **Carry what is left of it forward.** `decideTheCarry` in
- *   ../domain/year-rollover.ts decides, `BalanceService.carryForward` writes, and this
- *   fetches the two facts each decision needs.
- *
- *   **Grant the year that began.** `AnnualGrant.run`, whole and unmodified. FR 30 is
- *   already a job that grants a year to everybody it is owed to and refuses to grant one
- *   twice; a rollover that reimplemented it would be a second answer to "what is somebody
- *   owed this year" living one directory away from the first.
- *
- * **The order is the argument, not a convenience**, and ../domain/year-rollover.ts sets
- * it out: closing first is what makes the figures final, so the carry is computed from a
- * year nothing can move any more. A carry read out of an open year is a number that was
- * true when it was read.
- *
- * ## Running it twice is safe, and that is the design rather than a caution
- *
- * The story asks for it and the first of January is why. A rollover is three acts over
- * four hundred people; the realistic failure is not somebody running it twice by accident
- * but the run that stopped at employee three hundred and the person who has to run it
- * again without knowing how far it got.
- *
- * So none of the three acts is guarded by this job remembering anything:
- *
- *   The close is refused by {@link LeaveYearAlreadyClosed} and reported as
- *   `ALREADY_CLOSED` rather than thrown.
- *
- *   Each carry is its own transaction and a second one against the same balance is
- *   refused inside the lock by {@link AlreadyCarried}, reported as `ALREADY_CARRIED`.
- *
- *   Each grant is refused by {@link AlreadyGranted}, which `AnnualGrant` already reports.
- *
- * A second run therefore does nothing and says, line by line, that it did nothing. That
- * is a stronger property than "no harm done": somebody can run it, read the report, and
- * know whether the first run finished.
- *
- * ## It is a class, not a schedule
- *
- * As with ./balance-reconciliation.ts and ./annual-grant.ts. §11 puts this on the first of
- * January and this build has no process to hang a timer on; what ships is the run, and the
- * README says which line calls it.
- */
+/** The year rollover. FR 36, FR 36a, §11., LMS 217, LMS 205, FR 30, §11. */
 
 import type { Actor } from '../auth/actor.js';
 import { AlreadyCarried } from '../domain/balance.js';
@@ -84,17 +24,7 @@ import type { EntitlementRuleService } from '../services/entitlement-rule-servic
 import type { LeaveYearService } from '../services/leave-year-service.js';
 import type { AnnualGrant } from './annual-grant.js';
 
-/**
- * A year being rolled over with nothing on the other side of it.
- *
- * The one precondition this job cannot work around, and it is refused before anything is
- * closed rather than discovered halfway through: closing a year and then finding there is
- * nowhere to carry it into would leave the days stranded in a year nobody can reopen.
- *
- * `leave_year_leaves_no_gap` means the next year is either defined or does not exist, so
- * this is HR not having got to next year yet — which is an ordinary thing to have
- * happened in December and needs a sentence saying what to do about it.
- */
+/** A year being rolled over with nothing on the other side of it. */
 export class NoLeaveYearAhead extends Error {
   readonly leaveYearId: string;
 

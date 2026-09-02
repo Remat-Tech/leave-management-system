@@ -1,72 +1,21 @@
 /**
- * The employee record. FR 01 and FR 05.
- *
- * This is the system's answer to "who works here". Almost everything else hangs
- * off it: a request needs a requester, a balance needs somebody to belong to,
- * and an approval chain needs a person to walk up from.
- *
- * The rules live here as pure functions rather than in the service, so they can
- * be tested without a database and so there is one description of a valid record
- * rather than one per caller. The database holds the same rules as CHECK
- * constraints and unique indexes; see the employee-record-rules migration. That
- * duplication is deliberate. The constraints are what make a bad record
- * impossible, including when something other than this code is writing; the
- * functions here are what make the refusal say which field was wrong and why.
- *
- * Deactivation, FR 06, is {@link planTermination}, added by LMS 102. The line
- * manager, FR 02 and FR 04, arrived with LMS 103, and the rule against a line
- * that loops, FR 03, with LMS 104: the halves of both that need no database are
- * here, and the halves that have to look another record up are in the service.
- * {@link assertNoManagerCycle} is the shape of that split at its clearest — the
- * walk belongs to the service, the judgement and the message belong here.
- *
- * The department, LMS 105, and the working pattern, FR 23 and LMS 106, are both
- * references to another table and are treated alike: this file decides whether
- * one was named at all, and the service decides whether the thing named exists
- * and may be used. What each record *is* lives in ./department.ts and
- * ./work-pattern.ts.
- *
- * What is still absent is who may end an employment or move a reporting line,
- * which is authorisation and belongs to LMS 112.
+ * The employee record. FR 01, FR 05, FR 06, LMS 102, FR 02, FR 04, LMS 103, FR 03, LMS 104, LMS 105, FR 23, LMS 106, LMS 112.
  */
 
 import { assertCompanyEmail } from '../auth/company-email.js';
 import { type CalendarDate, isCalendarDate } from './time.js';
 
-/* Each list is the same set as the matching CHECK constraint on the employee
-   table. The integration tests assert that, so adding a value to one and
-   forgetting the other fails the suite rather than production. */
-
 export const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'] as const;
 export const EMPLOYMENT_STATUSES = ['ACTIVE', 'SUSPENDED', 'TERMINATED'] as const;
 
-/**
- * FR 05. Optional, and read by one thing only: eligibility for the leave types
- * whose entitlement differs by it, which today means maternity and paternity.
- *
- * Not recorded is the resting state and is spelled `null`. Nobody has to declare
- * one to be employed, to book annual leave or to be paid, and no screen, report
- * or filter outside that eligibility check may read the column.
- */
+/** FR 05. */
 export const GENDERS = ['MALE', 'FEMALE'] as const;
 
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 export type Gender = (typeof GENDERS)[number];
 
-/**
- * A calendar date, `YYYY-MM-DD`, with no time and no timezone.
- *
- * A hire date is the day somebody started, everywhere in the world, and turning
- * it into an instant to store it is how a leaver acquires an exit date one day
- * either side of the one on their letter. The README says it plainly: leave
- * dates are dates, everything else is UTC.
- *
- * Defined in ./time.ts since LMS 114 and re-exported here, because it belongs to
- * no one record: a start date, an exit date and every day of a leave request are
- * the same kind of thing, and by Phase 3 most of them will not be in this file.
- * NFR DAT 03.
- */
+/** A calendar date, `YYYY-MM-DD`, with no time and no timezone. LMS 114, NFR DAT 03. */
 export type { CalendarDate } from './time.js';
 
 /** What the caller supplies to create a record. */
@@ -76,42 +25,11 @@ export interface NewEmployee {
   lastName: string;
   workEmail: string;
   jobTitle?: string | null;
-  /**
-   * Which team they are in. LMS 105.
-   *
-   * Required, and required in the type, for the reason the column is NOT NULL:
-   * leave is reported and planned by team, and somebody in no team appears in no
-   * team's figures. There is no `null` here and no exception for anybody — unlike
-   * {@link NewEmployee.managerId}, where the head of the organisation genuinely
-   * has nobody above them, everybody is in some team including them.
-   */
+  /** Which team they are in. LMS 105. */
   departmentId: string;
-  /**
-   * Which week they work. FR 23, LMS 106.
-   *
-   * Optional here and NOT NULL in the column, which is not a contradiction: it
-   * says that everybody works some week and that most people work the ordinary
-   * one. Omitting it is "the usual week", and the service resolves that to
-   * whichever pattern is the default rather than the caller having to look it up.
-   * A part timer's record names one.
-   *
-   * `null` means the same as omitting it, because a form that submitted its empty
-   * select box is saying "no preference" and not "no week"; there is no such
-   * thing as no week. Clearing one on an existing record is refused, which is a
-   * deliberate difference — see {@link validateEmployeeChanges}.
-   */
+  /** Which week they work. FR 23, LMS 106. */
   workPatternId?: string | null;
-  /**
-   * Who this person reports to. FR 02.
-   *
-   * Required, and required in the type rather than only at runtime, which is the
-   * point of the story: a record created without one is a record whose leave
-   * requests have nowhere to go, and nobody should be able to make one by
-   * forgetting a field.
-   *
-   * `null` is the head of the organisation and is a deliberate thing to say, not
-   * an omission. FR 04 permits exactly one, and the service refuses a second.
-   */
+  /** Who this person reports to. FR 02, FR 04. */
   managerId: string | null;
   startDate: CalendarDate;
   exitDate?: CalendarDate | null;
@@ -125,14 +43,7 @@ export type EmployeeChanges = Partial<Omit<NewEmployee, 'workPatternId'>> & {
   workPatternId?: string | null;
 };
 
-/**
- * What ending an employment needs to know. FR 06.
- *
- * One field, and it is still an object rather than a bare string, because the
- * reason for terminating and who authorised it are both coming — the first with
- * the audit trail, the second with LMS 112 — and adding them to an object is a
- * change nobody has to visit every caller for.
- */
+/** What ending an employment needs to know. FR 06, LMS 112. */
 export interface Termination {
   exitDate: CalendarDate;
 }
@@ -157,13 +68,7 @@ export interface Employee {
   updatedAt: Date;
 }
 
-/**
- * A record that was refused, and the field that caused it.
- *
- * The field is carried separately rather than only mentioned in the message,
- * because the form that will sit in front of this in Phase 5 needs to put the
- * message next to the input rather than at the top of the page.
- */
+/** A record that was refused, and the field that caused it. */
 export class InvalidEmployee extends Error {
   readonly field: string;
 
@@ -236,14 +141,7 @@ export class ManagerHasLeft extends Error {
   }
 }
 
-/**
- * A second employee with no line manager. FR 04, and the warning HR is shown.
- *
- * It names the person who already holds that position, because "somebody else
- * has no manager" is not something an HR officer can act on and "Kwame Asante
- * (RH-0001) does" is. The database refuses this as well, through the
- * employee_one_root index; this is the half that can say who.
- */
+/** A second employee with no line manager. FR 04. */
 export class SecondRootEmployee extends Error {
   /** The employee already recorded without a manager, where one could be identified. */
   readonly existingRootId: string | null;
@@ -262,25 +160,10 @@ export class SecondRootEmployee extends Error {
   }
 }
 
-/**
- * A manager change that would close a loop. FR 03.
- *
- * A loop is the one bad state in this table that nothing downstream survives.
- * FR 04 gives the tree a single root so that a walk upward terminates; a loop
- * makes it not terminate, and a request going round one is never approved, never
- * rejected and never seen again.
- *
- * The loop is carried rather than only described, because "that would create a
- * cycle" is not something an HR officer can act on. Which three people, and in
- * what order, is.
- */
+/** A manager change that would close a loop. FR 03, FR 04. */
 export class ManagerCycle extends Error {
   /**
-   * The loop that would have been closed: the proposed manager first, then each
-   * person above them, ending with the employee whose manager was being set.
-   *
-   * Empty when the loop was caught by the database rather than by the walk — see
-   * the repository — in which case there was a refusal but nobody to name.
+   * The loop that would have been closed: the proposed manager first, then each person above them, ending with the employee whose manager was being set.
    */
   readonly loop: readonly Employee[];
 
@@ -302,8 +185,6 @@ function describeCycle(loop: readonly Employee[]): string {
     );
   }
 
-  /* Everybody strictly between the two, which is what turns "these two cannot
-     both be right" into a route somebody can follow and correct. */
   const between = loop.slice(1, -1);
   const through = between.length === 0 ? '' : `, through ${between.map(fullName).join(', then ')}`;
 
@@ -314,25 +195,7 @@ function describeCycle(loop: readonly Employee[]): string {
   );
 }
 
-/**
- * The rule, given a walk somebody else did. FR 03 and Technical Design Document
- * section 5.2.
- *
- * `chain` is the reporting line above the *proposed manager*, nearest first,
- * beginning with the proposed manager themselves. If the employee whose manager
- * is being set appears anywhere in it, that employee is already above the
- * proposed manager, and making the proposed manager theirs joins the two ends.
- *
- * Walking up from the proposed manager rather than down from the employee finds
- * the same loop either way, and is bounded by the depth of the organisation
- * instead of by the number of people in it.
- *
- * The walk is not here, because it needs the table. This is only the judgement,
- * kept in the domain so that the rule and its message can be read and tested
- * without a database. The same rule is held again as a deferred constraint
- * trigger, which is what covers a bulk import that never passes through any of
- * this; see the reject-circular-reporting-lines migration.
- */
+/** The rule, given a walk somebody else did. FR 03. */
 export function assertNoManagerCycle(employee: Employee, chain: readonly Employee[]): void {
   const closesAt = chain.findIndex((above) => above.id === employee.id);
 
@@ -341,14 +204,7 @@ export function assertNoManagerCycle(employee: Employee, chain: readonly Employe
   }
 }
 
-/**
- * Somebody already recorded as having left.
- *
- * Separate from {@link InvalidEmployee} because it is not a bad field, it is a
- * request that has already happened, and the two want different answers in front
- * of an HR officer: one is "fix this box", the other is "this is already done,
- * and here is the date it was done with".
- */
+/** Somebody already recorded as having left. */
 export class AlreadyTerminated extends Error {
   readonly exitDate: CalendarDate;
 

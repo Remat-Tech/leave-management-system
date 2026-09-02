@@ -1,95 +1,12 @@
-/**
- * Dates, instants, and the line between them. NFR DAT 03. LMS 114.
- *
- * The story is an employee whose leave never appears to shift by a day. That
- * sounds like one rule and is two, and almost every off by one day bug in a
- * leave system is the two being confused:
- *
- *   **An instant is a moment in time.** When somebody signed in, when a code
- *   expires, when a record was changed. It happens at the same moment everywhere
- *   and is described differently in different places. It is stored as UTC —
- *   `timestamptz`, which PostgreSQL holds as UTC whatever anybody's session says
- *   — and it is *displayed* in whatever zone the reader is in. See
- *   {@link displayTimezone}.
- *
- *   **A date is a day.** The day somebody started, the day they left, the days
- *   they are away. It has no time and no zone, because there is nothing about it
- *   for a zone to move: the thirty first of July is the thirty first of July in
- *   Accra, in London and on a laptop somebody has set to Tokyo. It is stored as
- *   `date` and carried as the ten characters `YYYY-MM-DD`. See
- *   {@link CalendarDate}.
- *
- * The rule that follows, and the only one anybody has to remember:
- *
- *   **Never turn a calendar date into an instant, and never turn an instant into
- *   a calendar date without saying where.** `new Date('2026-07-31')` is midnight
- *   UTC, which is the thirtieth of July in Accra by one hour and in New York by
- *   five, and it is how a leaver's exit date ends up a day either side of the one
- *   on their letter. There is exactly one function here that crosses between the
- *   two, {@link calendarDateIn}, and it will not do it without a zone.
- *
- * ## What is here and what is not
- *
- * `/domain` holds what a record is, as plain types and pure functions that
- * import nothing and touch nothing. Everything here obeys that: no database, no
- * network, and no clock — an instant arrives as an argument, exactly as it does
- * in ../auth/mfa.ts, so that "which day is that" can be asked about any moment
- * rather than only about now.
- *
- * {@link displayTimezone} reads the environment, and takes it as an argument for
- * the same reason `codeSettings` does. It is a function of what it is given.
- *
- * Since LMS 207 there is also the small amount of calendar arithmetic the leave
- * calculator needs — {@link isoWeekdayOf}, {@link eachDay} and
- * {@link calendarDaysBetween}. They are here rather than beside the rule that wants
- * them for the reason {@link dayAfter} is: which weekday the sixth of March falls
- * on, and how many days there are between two dates, are facts about the calendar
- * rather than about leave. Each builds a `Date` at UTC midnight and reads it back
- * at UTC, so the zone cancels rather than being avoided — the same statable
- * argument, made once, in the one file allowed to make it.
- *
- * What is *not* here is the storage half of the rule, which is not code at all:
- * the columns are `timestamptz` and `date`, the session is pinned to UTC and
- * ISO dates by the timestamps-in-utc migration and by ../db/index.ts, and
- * server/tests/integration/time.test.ts refuses a future table that gets either
- * wrong.
- */
+/** Dates, instants, and the line between them. NFR DAT 03, LMS 114, LMS 207. */
 
-/**
- * A calendar date, `YYYY-MM-DD`, with no time and no timezone.
- *
- * A string rather than a `Date`, and that is the whole point rather than a
- * shortcut. A `Date` is an instant and cannot hold a day without also holding a
- * moment, so storing one means picking a time nobody chose and a zone nobody
- * asked about, and reading it back somewhere else gives a different day. Ten
- * characters have no such trapdoor.
- *
- * They also compare correctly. `'2026-07-31' < '2026-08-01'` is true, and is
- * true for every pair of dates in this form, because the fields run from the
- * most significant to the least and are zero padded. That is most of why the
- * form is fixed: a date comparison is a string comparison and needs no library
- * and no conversion.
- */
+/** A calendar date, `YYYY-MM-DD`, with no time and no timezone. */
 export type CalendarDate = string;
 
-/** `YYYY-MM-DD`, and nothing else. Shape only; see {@link isCalendarDate}. */
+/** `YYYY-MM-DD`, and nothing else. */
 const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * Whether this is a calendar date somebody could actually have been born on.
- *
- * Both halves are needed and only one of them is obvious. The shape rejects
- * `31/07/2026` and `2026-7-1`; it accepts `2026-02-31` and `2026-13-01`, which
- * match ten characters and are not days.
- *
- * The realness check round trips through UTC deliberately. A date built at UTC
- * midnight and formatted back at UTC is the same day it went in — the zone
- * cancels rather than being avoided, so this is the one place a `Date` is
- * allowed near a `CalendarDate` and it is safe for a reason that can be stated
- * rather than because it happens to work. `Date` also rolls over silently, so
- * the thirty first of February arrives back as the third of March and fails the
- * comparison, which is exactly the answer wanted.
- */
+/** Whether this is a calendar date somebody could actually have been born on. */
 export function isCalendarDate(value: unknown): value is CalendarDate {
   if (typeof value !== 'string' || !CALENDAR_DATE.test(value)) {
     return false;

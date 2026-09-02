@@ -1,26 +1,4 @@
-/**
- * Database access for the working pattern. FR 23.
- *
- * Queries and row mapping, nothing else. The rules about what a valid pattern
- * looks like are in ../domain/work-pattern.ts and the decisions about when to
- * apply them are in ../services/work-pattern-service.ts.
- *
- * Two pieces of judgement live here rather than above.
- *
- * A pattern is two tables and is written as one thing. Every write that touches
- * the week opens a transaction, because a pattern row without its seven day rows
- * is not a half written pattern, it is a pattern that answers "is this Saturday
- * worked" with nothing. The work_pattern_week_complete trigger is deferred so
- * that the intermediate state inside those transactions is nobody's business,
- * which is the whole reason it can be deferred and the whole reason this is safe.
- *
- * Refusals are translated rather than allowed to surface. Checking first and
- * writing afterwards would be a race — two HR admins making two different
- * patterns the default at the same moment both find the old one and both set
- * theirs — so the write is attempted and the database's answer is turned back
- * into the domain error for it. The index and the triggers are what actually
- * decide, which makes the answer right even under concurrency.
- */
+/** Database access for the working pattern. FR 23. */
 
 import type { Kysely, Selectable } from 'kysely';
 import type { Database } from '../db/index.js';
@@ -81,21 +59,7 @@ export class WorkPatternRepository {
     );
   }
 
-  /**
-   * Applies a change. Returns undefined if there is no such pattern, which the
-   * service turns into {@link WorkPatternNotFound}.
-   *
-   * A new week replaces the old one outright — seven rows deleted, seven
-   * written — rather than being reconciled day by day. There is nothing to
-   * preserve in a day row and no history kept in one; the pattern's history is
-   * `updated_at` on the row above it, which the trigger maintains.
-   *
-   * updated_at is not set here for the same reason it is not set in the other
-   * repositories: the trigger does it, so the seed and a data fixing migration
-   * get the same treatment as the application rather than only the writer who
-   * remembered. A change to the week alone still moves it, because the pattern
-   * row is touched deliberately below.
-   */
+  /** Applies a change. */
   async update(
     by: Attribution,
     id: string,
@@ -109,10 +73,6 @@ export class WorkPatternRepository {
 
     return this.catchRefusals(changes, () =>
       recording(this.db, by, async (trx) => {
-        /* Touched even when only the week changed, so that updated_at moves: the
-           question "when did this pattern last change" is asked of a pattern
-           producing a day count somebody disputes, and the days are the part
-           most likely to be behind it. */
         const row = await trx
           .updateTable('work_pattern')
           .set((eb) => ({ name: changes.name === undefined ? eb.ref('name') : changes.name }))
@@ -137,19 +97,7 @@ export class WorkPatternRepository {
     );
   }
 
-  /**
-   * Makes one pattern the default, and unmakes whichever was.
-   *
-   * The order is forced by the database and is worth knowing before it is needed:
-   * work_pattern_one_default is an immediate unique index, so two defaults are
-   * refused the moment the second is written, and the old one has to be cleared
-   * first. That leaves the table with no default at all for the length of one
-   * statement, which the work_pattern_always_has_a_default trigger permits only
-   * because it is deferred to COMMIT. Both halves therefore have to be one
-   * transaction; run as two statements they fail whichever way round they are put.
-   *
-   * Returns undefined if there is no such pattern.
-   */
+  /** Makes one pattern the default, and unmakes whichever was. */
   async makeDefault(by: Attribution, id: string): Promise<WorkPattern | undefined> {
     return this.catchRefusals({}, () =>
       recording(this.db, by, async (trx) => {
@@ -174,17 +122,7 @@ export class WorkPatternRepository {
     );
   }
 
-  /**
-   * Deletes one. The day rows go with it, by the cascade on the foreign key.
-   *
-   * Deleting rather than deactivating is the ending a pattern has, and the
-   * working-pattern-rules migration says why it differs from a department there.
-   * What is reachable is the pattern nobody works: the foreign key holds every
-   * pattern somebody is on, leavers included, and the trigger holds the default.
-   *
-   * Returns false if there was no such pattern, so that deleting one twice is
-   * answered rather than mistaken for success.
-   */
+  /** Deletes one. */
   async remove(by: Attribution, id: string): Promise<boolean> {
     try {
       const result = await recording(this.db, by, (on) =>
@@ -199,10 +137,6 @@ export class WorkPatternRepository {
         violation?.code === FOREIGN_KEY_VIOLATION &&
         violation.constraint === EMPLOYEE_PATTERN_KEY
       ) {
-        /* Somebody was moved onto it between the service's check and this
-           statement. Both facts are read back so the message can say whose
-           pattern it now is, which is the answer the check would have given a
-           moment earlier. */
         const pattern = await this.findById(id);
         if (pattern !== undefined) {
           throw new WorkPatternInUse(pattern, await this.headcount(id));
@@ -226,8 +160,7 @@ export class WorkPatternRepository {
   }
 
   /**
-   * By name, compared without regard to case, so that a lookup finds the same
-   * single record the unique index would have refused a second of.
+   * By name, compared without regard to case, so that a lookup finds the same single record the unique index would have refused a second of.
    */
   async findByName(name: string): Promise<WorkPattern | undefined> {
     const row = await this.db
@@ -241,14 +174,7 @@ export class WorkPatternRepository {
       : { ...toWorkPattern(row), workingDays: await this.weekFor(this.db, row.id) };
   }
 
-  /**
-   * The default pattern, which every database has exactly one of.
-   *
-   * Still written as "the first of them, ordered" rather than assuming, for the
-   * reason {@link EmployeeRepository.findRoot} is: an ordered read of a table
-   * that momentarily holds two is at least deterministic, and an unordered one is
-   * not.
-   */
+  /** The default pattern, which every database has exactly one of. */
   async findDefault(): Promise<WorkPattern | undefined> {
     const row = await this.db
       .selectFrom('work_pattern')
@@ -275,9 +201,6 @@ export class WorkPatternRepository {
       return [];
     }
 
-    /* One statement for every pattern's days rather than one per pattern. The
-       database is usually a Neon branch at the end of a network, where the round
-       trip costs far more than the work. */
     const days = await this.db
       .selectFrom('work_pattern_day')
       .selectAll()
@@ -299,14 +222,7 @@ export class WorkPatternRepository {
     }));
   }
 
-  /**
-   * How many employee records are on a pattern.
-   *
-   * Leavers included, deliberately, unlike a department's headcount. FR 37a
-   * settles a leaver's final figure by counting days against the week they
-   * worked, so their pattern is still load bearing after they have gone — and the
-   * foreign key counts them too, whatever this says.
-   */
+  /** How many employee records are on a pattern. FR 37a. */
   async headcount(id: string): Promise<number> {
     const { headcount } = await this.db
       .selectFrom('employee')
@@ -348,13 +264,7 @@ export class WorkPatternRepository {
   }
 
   /**
-   * Runs a write and turns whatever the database refused it for into the domain
-   * error for that refusal.
-   *
-   * The constraint name is read from the driver's error rather than guessed from
-   * the message text, so a violation of some future constraint is re-thrown
-   * rather than reported as a duplicate name. The two triggers name themselves in
-   * what they raise, which is what makes them tellable apart here.
+   * Runs a write and turns whatever the database refused it for into the domain error for that refusal.
    */
   private async catchRefusals<T>(
     attempted: { name?: string },
@@ -375,9 +285,6 @@ export class WorkPatternRepository {
         return new DuplicateWorkPatternName(attempted.name ?? '');
       }
       if (violation.constraint === DEFAULT_INDEX) {
-        /* Two admins making two different patterns the default at once. The
-           loser's transaction cleared nothing — the row it meant to clear was
-           already the winner's to clear — and then wrote a second default. */
         return new SecondDefaultWorkPattern();
       }
     }
@@ -387,8 +294,6 @@ export class WorkPatternRepository {
         return new DefaultWorkPatternRequired();
       }
       if (violation.constraint === WEEK_COMPLETE) {
-        /* Reachable only from outside this repository — every write here sends a
-           whole week — so it is reported as what it is rather than dressed up. */
         return new InvalidWorkPattern(
           'workingDays',
           error instanceof Error ? error.message : 'The pattern does not name a whole week.',
@@ -400,13 +305,7 @@ export class WorkPatternRepository {
   }
 }
 
-/**
- * The SQLSTATE and constraint name of a refusal, when the error carries both.
- *
- * The same shape as the employee repository's, and separate from it for the same
- * reason the two repositories are separate: neither imports the other, and a
- * shared copy of six lines would be the first thing to grow a parameter.
- */
+/** The SQLSTATE and constraint name of a refusal, when the error carries both. */
 function violationOf(error: unknown): { code: string; constraint: string } | undefined {
   if (typeof error !== 'object' || error === null) {
     return undefined;
@@ -425,7 +324,7 @@ function toWorkingDays(days: readonly WorkPatternDayRow[]): Weekday[] {
   );
 }
 
-/** The pattern row itself. The week is read separately and merged by the caller. */
+/** The pattern row itself. */
 function toWorkPattern(row: WorkPatternRow): Omit<WorkPattern, 'workingDays'> {
   return {
     id: row.id,

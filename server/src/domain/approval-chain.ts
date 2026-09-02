@@ -1,134 +1,28 @@
 /**
- * Who approves a kind of leave, and in what order. FR 38a, §5.5. LMS 204.
- *
- * The second of the two things design principle 5 of the Technical Design
- * Document says vary by leave type: "Two things vary by leave type, and both used
- * to be global... If either is written as an `if` on a type code, every future
- * leave type becomes a code change." The counting basis was the first and is
- * ./leave-type.ts. This is the other, and the README states it in the plainest
- * terms the document has: "Most types go manager then HR; unpaid leave goes HR
- * then CEO. Both are configuration. If either appears as an `if` on a type code,
- * that is a bug."
- *
- * So there is no maternity chain and no unpaid chain in this file. There is a
- * chain, it is a list of approver roles in order, it arrives from the database,
- * and everything here is a function of that list.
- *
- * ## The three approver roles are not the four role codes
- *
- * {@link APPROVER_ROLES} is MANAGER, HR and CEO. {@link RoleCode} in
- * ../auth/roles.ts is EMPLOYEE, HR_OFFICER, HR_ADMIN and SYS_ADMIN. The two sets
- * are disjoint, on purpose, and the fact that both could be called "roles" is the
- * trap this note exists to spring first.
- *
- * A chain names **a desk**. How the person at that desk is found is three
- * different questions with three different answers:
- *
- *   **MANAGER is a relationship.** You are one if some employee has your id as
- *   their manager_id, and ../auth/roles.ts refuses to make it a grant: "Holding
- *   it as a role too would create two sources of truth that drift the moment
- *   somebody changes team." {@link Authority} keeps `isManager` apart from
- *   `roles` for the same reason.
- *
- *   **HR is a granted role**, and in fact two of them — HR_OFFICER and HR_ADMIN
- *   both staff that desk. The chain says HR because that is what the policy says;
- *   which of the two codes the person on duty holds is not something an HR
- *   Administrator should have to encode to configure a leave type.
- *
- *   **CEO is a position.** FR 04: exactly one employee has no line manager, and
- *   `employee_one_root` is what makes that "exactly one" rather than "as many as
- *   anybody types". Nobody grants it.
- *
- * Nothing here resolves any of them to a person. That is FR 48, needs the request
- * and the reporting line in hand, and belongs to Phase 3; see the note at the
- * foot of this file.
- *
- * ## The walk asks which desk has not signed, rather than which comes next
- *
- * LMS 316, and it is the one thing in this file that has changed since it was
- * written. `approverAfter(chain, theDeskItWasAt)` was the walk from LMS 314 and
- * it is gone: it answers correctly only while the chain stands still, and FR 31
- * says it need not. {@link nextUnapproved} and {@link everyStageApproved} are
- * what replaced it, and the argument is in full on the first of them.
- *
- * `isFinalApprover` went with it, for the same reason and one worth stating on
- * its own: being last in the list is not the same as being the last to sign once
- * a stage can be added in front of a request in flight. Whether an approval was
- * the last word is `isTheLastWord()` in ./leave-request.ts, which reads the
- * outcome of the walk rather than the shape of the list.
- *
- * ## The default is data, and is here too
- *
- * {@link DEFAULT_APPROVAL_CHAIN} is manager then HR — the story's second
- * criterion — and it is stated twice on purpose: here, for the type somebody
- * creates without saying, and in the leave-type-approval-chain migration, for the
- * type an operator restores without saying. That is the same arrangement
- * {@link READS_EVERY_RECORD} has with `MANDATORY_ROLES` in ../auth/mfa.ts, and
- * it is held together the same way — the integration suite asserts that what the
- * database writes and what this file defaults to are the same two roles.
- *
- * What it is emphatically not is a fallback read. An empty chain does not quietly
- * become manager then HR when somebody asks who approves; a type whose chain is
- * missing is a type nobody approves, and it says so. The difference matters
- * because a fallback would make the configuration screen show nothing for annual
- * leave while the system routed it somewhere, which is the state in which nobody
- * can answer "who has to sign this off" without reading the source.
+ * Who approves a kind of leave, and in what order. FR 38a, §5.5., LMS 204, FR 04, FR 48, LMS 316, LMS 314, FR 31.
  */
 
-/**
- * The desks a stage of a chain can name. FR 38a.
- *
- * Ordered as a chain usually runs — the nearest approver first, the furthest
- * last — which is the order they read in a sentence and the order a screen offers
- * them. It is not a precedence: a chain is whatever order HR puts it in, and
- * nothing here sorts one.
- *
- * A closed set, held again as a CHECK on `leave_type_approval_step`. Adding a
- * fourth is a migration *and* a change to whatever resolves a desk to a person,
- * so it is deliberately not a row somebody can add — a desk nothing knows how to
- * find is a queue no request ever leaves.
- */
+/** The desks a stage of a chain can name. FR 38a. */
 export const APPROVER_ROLES = ['MANAGER', 'HR', 'CEO'] as const;
 
 export type ApproverRole = (typeof APPROVER_ROLES)[number];
 
-/**
- * Manager then HR. The story's second criterion, and what a type gets when
- * nobody says otherwise.
- *
- * Two stages rather than one because that is the policy, and the shape of it is
- * worth reading off: the manager knows whether the team can spare them and HR
- * knows whether the days are there. Neither question answers the other, which is
- * why almost every type asks both.
- */
+/** Manager then HR. */
 export const DEFAULT_APPROVAL_CHAIN: readonly ApproverRole[] = ['MANAGER', 'HR'];
 
 /**
- * The longest a chain can be, which follows from there being three desks rather
- * than from anybody's view about how many approvals are sensible.
- *
- * `leave_type_approval_step_role_once` is what actually holds it: one position
- * per desk, so a fourth stage would have to ask somebody who has already
- * answered.
+ * The longest a chain can be, which follows from there being three desks rather than from anybody's view about how many approvals are sensible.
  */
 export const LONGEST_CHAIN = APPROVER_ROLES.length;
 
 /** One stage of a chain, as it is stored: a position and the desk at it. */
 export interface ApprovalStep {
-  /** 1 is the first approver. Contiguous from there; a chain with a gap stops at it. */
+  /** 1 is the first approver. */
   stepOrder: number;
   approverRole: ApproverRole;
 }
 
-/**
- * A chain that was refused, and the field that caused it.
- *
- * Its own error rather than an {@link InvalidLeaveType}, because a chain is its
- * own thing: it is set by its own service method, guarded by its own policy
- * decision, and shown on its own part of the form. The field is carried
- * separately for the reason every refusal in this layer carries one — NFR USA 03
- * wants the message next to the input it is about.
- */
+/** A chain that was refused, and the field that caused it. NFR USA 03. */
 export class InvalidApprovalChain extends Error {
   readonly field: string;
 
@@ -139,31 +33,7 @@ export class InvalidApprovalChain extends Error {
   }
 }
 
-/**
- * Reads a chain, or refuses it.
- *
- * Tolerant about case and spacing, because this arrives from a form and `hr` is
- * not a different desk from `HR`. Strict about everything else, and each refusal
- * says what to do instead:
- *
- *   **An unknown desk is refused rather than dropped.** A chain quietly shortened
- *   by one is a chain missing an approval nobody will notice is missing.
- *   'MANAGER' spelled 'LINE_MANAGER', and the four role codes — 'HR_ADMIN' is the
- *   one somebody will actually type — all land here.
- *
- *   **An empty chain is refused.** A type nobody approves is a type whose
- *   requests are either approved by nobody or by everybody, and neither is a
- *   decision anybody made. Retiring the type is what "nobody may ask for this" is
- *   called.
- *
- *   **A repeated desk is refused.** Asking the same approver twice is either a
- *   mistake or a request waiting for somebody to approve what they have already
- *   approved, and §8 has no state for the second.
- *
- * Order is otherwise none of this function's business. HR then the manager is an
- * unusual chain and a legitimate one, and a rule about which desk may come first
- * would be a policy invented here rather than one the SRS asks for.
- */
+/** Reads a chain, or refuses it. §8. */
 export function validateApprovalChain(value: unknown): ApproverRole[] {
   if (!Array.isArray(value)) {
     throw new InvalidApprovalChain(

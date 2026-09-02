@@ -1,49 +1,18 @@
-/**
- * The department record. Technical Design Document section 5.2.
- *
- * A department is a team, and the reason this story exists is that leave has to
- * be reportable and plannable by team rather than one person at a time. That
- * purpose decides almost every rule here: a department is only useful if its name
- * means something, if there is exactly one row per team, and if everybody is in
- * one.
- *
- * The same split as ../domain/employee.ts. The rules that need nothing but the
- * record in hand are here as pure functions; the ones that have to count rows or
- * look another record up are in the service, which calls
- * {@link assertCanDeactivate} and {@link assertCanTakeEmployees} with the facts
- * it read. The database holds the same rules as constraints and a unique index;
- * see the department-rules migration. That duplication is deliberate, and the
- * division of labour is the same as everywhere else — the constraints make a bad
- * record impossible, including when something other than this code is writing,
- * and the functions here make the refusal say which field was wrong and why.
- *
- * What is deliberately absent is `parent_id`. The column is on the table and
- * nothing writes it, so a department hierarchy does not exist rather than half
- * existing; the department-rules migration says what a story that wants one has
- * to bring with it.
- */
+/** The department record. */
 
 /** What the caller supplies to create one. */
 export interface NewDepartment {
   name: string;
 }
 
-/**
- * The fields of an existing one that may change.
- *
- * `isActive` is not among them, deliberately. Deactivating has a rule attached —
- * a department nobody can be moved out of first must not be closed under them —
- * and putting the flag in an ordinary edit would give that rule two doors, one
- * of which nobody would remember to guard. It is
- * {@link DepartmentService.deactivate} instead.
- */
+/** The fields of an existing one that may change. */
 export type DepartmentChanges = Partial<NewDepartment>;
 
 /** A record as it comes back out. */
 export interface Department {
   id: string;
   name: string;
-  /** Present because the column is. Nothing writes it; see the module note. */
+  /** Present because the column is. */
   parentId: string | null;
   isActive: boolean;
   createdAt: Date;
@@ -55,13 +24,7 @@ export interface ValidatedDepartment {
   name: string;
 }
 
-/**
- * A record that was refused, and the field that caused it.
- *
- * The field is carried separately rather than only mentioned in the message, for
- * the same reason {@link InvalidEmployee} carries one: the form that will sit in
- * front of this needs to put the message next to the input.
- */
+/** A record that was refused, and the field that caused it. */
 export class InvalidDepartment extends Error {
   readonly field: string;
 

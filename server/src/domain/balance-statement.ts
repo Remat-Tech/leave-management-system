@@ -1,117 +1,5 @@
 /**
- * What somebody has left, for every kind of leave, on one screen. FR 53, §7.4. LMS 401.
- *
- * The story is the first sentence of Phase 4 and the shortest one in the backlog: "so
- * that I can plan without asking HR". Everything the answer is made of has existed since
- * Phase 2 — the ledger records the movements, `leave_balance` keeps the sum, and
- * `BalanceService.forEmployee` reads it — and none of it is a screen. This file is the
- * arrangement of those figures into something a person can read in one go, and it is
- * three decisions rather than a projection.
- *
- * ## Every leave type, including the ones nothing has happened in
- *
- * `BalanceRepository.forEmployee` returns **only balances something has moved**, says so,
- * and hands the rest of the question here by name: "which types a screen should offer
- * anyway is a different question with real rules in it — `entitlement_basis` for the ones
- * that arrive with an event, `gender_restriction` for FR 05 — and it belongs to the story
- * that builds the screen." This is that story, and {@link linesFor} is that rule.
- *
- * A type appears where **anything has moved it**, or where it is **still offered and open
- * to this person**. The two limbs catch different things and neither is redundant:
- *
- *   **Moved, whatever else is true of it.** A type HR retired in March is on the
- *   statement of everybody who took days under it, and so is a type somebody is no longer
- *   eligible for. A figure that exists has to be explainable — design principle 1 — and a
- *   screen that hid it would leave days gone from a balance with nothing to say why.
- *
- *   **Offered and eligible, even at nought.** Somebody who has been ill on no day this
- *   year still has three days of sick leave, and a statement that showed nothing until
- *   they used some would be answering a different question. FR 05 is the other side of
- *   it: maternity leave is not on a man's statement at all, because a line reading "0
- *   days" against a type he can never request is worse than no line.
- *
- * Nothing here reads {@link LeaveType.code}. Which types exist, what they are worth and
- * who may have them are columns, and design principle 5 is that they stay columns.
- *
- * ## The five figures are shown as five figures, and there are six of them
- *
- * The story asks for entitled, carried over, taken, pending and available, and
- * ./balance.ts has already argued at length why the first four are kept apart rather than
- * netted. {@link BalanceStatementLine} carries `adjustment` as well, and it is not
- * padding.
- *
- * Leave it off and the line does not add up. Available is
- * `entitled + carriedOver + adjustment − taken − pending`, so a statement showing four of
- * those five terms beside the answer is a subtraction the reader cannot perform — and the
- * missing term would be exactly the one they are querying, because FR 37's manual
- * movements are the figures people ask about. "Somebody decided this" is the sentence a
- * surprising balance most needs to be able to say.
- *
- * `owed` is the top half added up, because "3 left" is unreadable without "of what".
- *
- * **Nothing here totals the lines.** Twenty annual days and three sick days are not
- * twenty-three of anything, and a figure at the foot of the column would be a number the
- * screen invented. The lines are the answer.
- *
- * ## The counting basis, per type, in two words
- *
- * The story's third criterion. It matters more on a statement than anywhere else, because
- * a statement puts annual leave and maternity leave in adjacent rows where the same "14
- * days" means a fortnight of work in one and a fortnight of the calendar in the other. FR
- * 22, and the difference is invisible unless it is written.
- *
- * `countingBasisLabel` rather than `countingBasisInWords`, and the two live side by side
- * in ./leave-type.ts without either being a duplicate. The long sentence is the request
- * quote's, where somebody is committing to a fortnight and the explanation earns its
- * space; the short label is this screen's, where six types each already carry six figures
- * and the same explanation six times crowds out the numbers it explains.
- *
- * Both are functions of the column and neither is a client's business. `WORKING_DAYS` is
- * not shown to anybody, and a browser mapping it to "Working days" for itself would be the
- * second place this system decided what a basis is called.
- *
- * ## And a nought that means "not yet" is not a nought that means "none left"
- *
- * FR 32g divides the types in two and the statement has to say which side a line is on. A
- * quota type opens the year with an allowance; an event type's days arrive with the
- * event, so compassionate leave reading nought in January is not somebody who has used it
- * all — it is somebody nothing has happened to. Shown as a bare nought it says the
- * opposite of what is true, and the person it says it to is by definition having a bad
- * week.
- *
- * So {@link BalanceStatementLine.allowanceInWords} says what the figures on the line
- * *are*, and {@link BalanceStatementLine.hasMoved} is the fact behind it — the same
- * distinction a null `updatedAt` draws in ./balance.ts, carried up to the screen rather
- * than left for it to work out.
- *
- * ## Prior years, and which of them are this person's
- *
- * The story's second criterion is a picker, and a picker is a list plus a rule about what
- * is on it. {@link yearsToChooseFrom} is that rule, and it has two limbs for the same
- * reason {@link linesFor} does: **the years they were employed for**, which is what
- * somebody expects to be able to look back at, and **the years they hold a balance in**,
- * which is what stops a figure existing in a year nothing will show.
- *
- * The employment test is `employedPortionOf` in ./pro-rata.ts — the same function the pro
- * rata grant asks, so "was this person here for any part of it" has one answer in this
- * system rather than two. A leaver's statement stops at the year they left in; a joiner's
- * starts at the year they arrived, and 2025 is not on it merely because HR defined the
- * row.
- *
- * Years in the *future* are on the list on purpose. The rollover posts next year's
- * `CARRY_FORWARD` the moment this year closes, so the year ahead holds real figures
- * before it starts, and a picker that hid it would hide the days somebody is planning
- * around. FR 36.
- *
- * ## What is not here
- *
- * **No clock.** {@link theYearToOpenOn} is handed today rather than reading one, exactly
- * as every date rule in `/domain` is: a rule whose answer depends on when it was asked is
- * a rule that cannot be tested.
- *
- * **No history.** Why a figure is what it is remains `LedgerService.history`, one call
- * away, and putting a run of movements on the statement would make the screen this story
- * is about the slow read that LMS 211 built the cache to avoid.
+ * What somebody has left, for every kind of leave, on one screen. FR 53, §7.4., LMS 401, FR 05, FR 37, FR 22, FR 32g, FR 36, LMS 211.
  */
 
 import {
@@ -137,55 +25,42 @@ import { byStartDate, coversDay, type LeaveYear } from './leave-year.js';
 import { employedPortionOf, type Employment } from './pro-rata.js';
 import type { CalendarDate } from './time.js';
 
-/**
- * One leave type on one person's statement, for one leave year.
- *
- * The stored figures and the type's own facts on one row, because a screen that had to
- * join them itself is a screen that can join them wrongly — and because every one of the
- * type's facts here is something the figures beside it are unreadable without.
- */
+/** One leave type on one person's statement, for one leave year. */
 export interface BalanceStatementLine {
   leaveTypeId: string;
-  /** The stable handle, for an export and a report. Never something to branch on. */
+  /** The stable handle, for an export and a report. */
   code: string;
   name: string;
-  /** FR 21, FR 22. Whether days the person does not work fall inside a period. */
+  /** FR 21, FR 22. */
   countingBasis: CountingBasis;
-  /**
-   * The story's third criterion, in two words. `WORKING_DAYS` is not shown to anybody.
-   *
-   * The short rendering rather than `countingBasisInWords`, which is the request quote's:
-   * six types on one screen, each already carrying six figures, and the full explanation
-   * repeated six times is noise that crowds out the numbers it is explaining. See
-   * ./leave-type.ts, where both live and neither is a duplicate of the other.
-   */
+  /** The story's third criterion, in two words. */
   countingBasisLabel: string;
-  /** FR 32g. Whether the year opens with an allowance, or days arrive with an event. */
+  /** FR 32g. */
   entitlementBasis: EntitlementBasis;
   /** What the figures on this line are, so that a nought says which kind of nought. */
   allowanceInWords: string;
-  /** How the allowance is expressed to a person. "4 months", counted in days. */
+  /** How the allowance is expressed to a person. */
   unit: AllowanceUnit;
   isPaid: boolean;
-  /** FR 21. False for a retired type still shown because days moved in it. */
+  /** FR 21. */
   stillOffered: boolean;
 
-  /** GRANT entries. What the year's entitlement rule was worth to this person. */
+  /** GRANT entries. */
   entitled: number;
-  /** CARRY_FORWARD less EXPIRY. FR 36 and FR 36a. */
+  /** CARRY_FORWARD less EXPIRY. FR 36, FR 36a. */
   carriedOver: number;
-  /** FR 37. The only figure that goes either way, and the one people ask about. */
+  /** FR 37. */
   adjustment: number;
   /** Days consumed by approved leave. */
   taken: number;
   /** Days held for leave asked for and not yet decided. */
   pending: number;
-  /** `entitled + carriedOver + adjustment`. What the "of 25 days" is. */
+  /** `entitled + carriedOver + adjustment`. */
   owed: number;
-  /** What may still be booked. May be negative — §8.6b, sick leave. */
+  /** What may still be booked. §8.6. */
   available: number;
 
-  /** Whether anything has ever moved this balance. A nought that means "not yet". */
+  /** Whether anything has ever moved this balance. */
   hasMoved: boolean;
   /** When the figures last changed, or null where they never have. */
   updatedAt: Date | null;
@@ -198,7 +73,7 @@ export interface BalanceStatement {
   year: LeaveYear;
   /** Every type worth showing, in the order §7.4 lists a balance screen. */
   lines: BalanceStatementLine[];
-  /** The story's second criterion. Oldest first, which is the order a year runs. */
+  /** The story's second criterion. */
   years: LeaveYear[];
 }
 
@@ -209,26 +84,15 @@ export interface StatementFacts {
   gender: Gender | null;
   /** The year being shown. */
   year: LeaveYear;
-  /** The years this person may choose between, from {@link yearsToChooseFrom}. */
+  /** The years this person may choose between, from yearsToChooseFrom. */
   years: readonly LeaveYear[];
-  /** Every leave type there is, retired ones included. {@link linesFor} filters. */
+  /** Every leave type there is, retired ones included. */
   types: readonly LeaveType[];
-  /** This person's balances. Rows for other years are ignored rather than refused. */
+  /** This person's balances. */
   balances: readonly LeaveBalance[];
 }
 
-/**
- * A leave year somebody asked for that has nothing to do with this person.
- *
- * Told apart from {@link LeaveYearNotFound}, which is an id that is nobody's: this one is
- * a real year that this person was employed for no day of and holds no balance in, so a
- * statement for it would be seven rows of nought describing a year they were not here
- * for. A screen showing that has told somebody they have no leave.
- *
- * Refused rather than shown, and the message names what *is* available, because anybody
- * meeting this has picked from a list somewhere that was longer than it should have been.
- * NFR USA 03.
- */
+/** A leave year somebody asked for that has nothing to do with this person. NFR USA 03. */
 export class NotOneOfTheirLeaveYears extends Error {
   readonly employeeId: string;
   readonly leaveYearId: string;

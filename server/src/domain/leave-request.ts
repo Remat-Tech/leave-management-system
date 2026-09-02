@@ -1,154 +1,5 @@
 /**
- * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 14, FR 15, FR 16,
- * FR 26, §6, §8. LMS 301, the refusals of LMS 303, LMS 304 and LMS 305, the three
- * endings of LMS 306, and the state machine of LMS 313.
- *
- * The story is an employee who wants no surprises when the days come off their
- * balance, and the whole of this file follows from taking that literally: the figure
- * a person is shown before they submit and the figure that is stored afterwards are
- * produced by the same function from the same facts, and once stored the figure is
- * never derived again.
- *
- * LMS 306 is the same sentence read from the other end. Days held are days gone from what
- * somebody may book, so the moment a request stops standing they have to come back — and
- * come back *once*. {@link RELEASING_STATUSES}, {@link settlementTo} and
- * {@link reasonForRelease} are that story's whole share of this file; the movement is
- * `BalanceService.releaseForRequest` and the desks are in ../auth/leave-request-policy.ts.
- *
- * LMS 313 gathered the state machine those two stories had left in three places — the
- * from-state in one function, the destination at each call site, the actor in each policy
- * decision — into {@link TRANSITIONS}. Every one of the three was correct; none of them
- * could answer "what can happen to a submitted request", which is the question somebody
- * has when a request is stuck. §6, and see the note on that table.
- *
- * LMS 314 is the story that table was built for. Approval is the first verb that does not
- * always move the status — a manager approving stage one of manager-then-HR sends the
- * request on rather than deciding it — and the first destination that leaves a request
- * alive. {@link approvalTo} is the whole of the routing, {@link ApprovalOutcome} is what it
- * answers, and {@link LeaveRequest.awaitingApprovalFrom} is the second of the two facts a
- * request now carries about where it has got to. FR 38, FR 38a, FR 40.
- *
- * LMS 315 adds what the approver *said*, and adds none of it here. A decision is its own
- * record — the verb, the reason, the desk it was made at and the person who made it — so it
- * is ./leave-decision.ts and a table of its own, for the reason the chain is rows rather than
- * columns: a request collects one decision per stage, and anything whose shape follows from
- * how many desks there are cannot be a field on the request. What this file keeps is where a
- * request may go; what somebody said on the way is filed beside it. FR 39, FR 52.
- *
- * ## The quote and the request are the same arithmetic
- *
- * {@link LeaveRequestQuote} is what a form shows. {@link ValidatedLeaveRequest} is
- * what is stored. The second carries the first's numbers, unchanged, because
- * `LeaveRequestService` counts once for the quote and again inside the transaction
- * that writes — and if those two ever disagreed, the disagreement would be the
- * surprise the story exists to prevent. What makes them agree is that neither does
- * any arithmetic of its own: both call {@link countLeaveDays}, which is pure and
- * gives the same answer for the same period, pattern, calendar and basis.
- *
- * ## Why the basis is copied, and what it protects
- *
- * The story's third criterion, and it is a criterion about the *future* rather than
- * about today. `leave_type.counting_basis` is configuration — an HR Administrator may
- * change it, `leaveTypePolicy.update` says so, and moving one type from WORKING_DAYS
- * to CALENDAR_DAYS is one dropdown. If a request read the basis off the type every
- * time it was rendered, that single edit would restate every request ever made under
- * the old rule: last March's fortnight of annual leave would begin displaying as
- * fourteen days rather than ten, on a screen beside a ledger still saying ten, and
- * nothing anywhere would say which was right.
- *
- * So the basis, the day count and the calendar span are written onto the row at
- * submission and the database refuses to let them move —
- * `refuse_rewriting_what_a_request_cost()`. This file holds the same rule in the type
- * system: every one of those fields is on {@link ValidatedLeaveRequest} and none of
- * them is on {@link LeaveRequestChanges}.
- *
- * It is the same argument three other tables in this schema have already made, and
- * that is worth knowing rather than rediscovering. `leave_entitlement_event` stores
- * `expires_on` so that changing a type's expiry months cannot move a deadline already
- * given. `leave_ledger_entry` stores `days` so that changing an entitlement figure
- * cannot restate a grant. `leave_balance` is a cache checked nightly against the rows
- * it was built from. In each case the rule is design principle 1: **what was recorded
- * is what happened**, and configuration describes what happens *next*.
- *
- * ## Dates that are obviously wrong are refused here, and refused at once
- *
- * FR 16, FR 16a, §8.3, LMS 303. The story is somebody finding out while the form is
- * still open rather than after two days in a queue, and three refusals answer it:
- *
- *   **The dates run backwards.** {@link validateLeavePeriod}, which owns
- *   {@link LeavePeriod} and is asked before anything at all is fetched.
- *
- *   **Nothing in the period is charged.** {@link assertItCostsSomething}, on the
- *   {@link DayCount} the calculator gave back.
- *
- *   **The period runs past the end of its leave year.** {@link reachesPastTheEndOf},
- *   and then {@link LeaveCrossesAYearEnd} with both years named and the two dates to
- *   resubmit on.
- *
- * LMS 304 added a fourth, which is not about the dates being wrong but about the days
- * being taken:
- *
- *   **The period runs over leave the person already has.** {@link periodsOverlap} and
- *   {@link LIVE_STATUSES}, and then {@link LeaveOverlapsAnother} naming the leave in the
- *   way. Unlike the three above it is a rule about *another row*, so the domain holds
- *   the predicate and the list while the service does the reading — and
- *   `leave_request_never_overlaps` holds the same rule where two submissions race.
- *
- * LMS 305 added a fifth, which is not about the days being taken but about their not
- * being there at all:
- *
- *   **The balance does not hold what is being asked for.**
- *   {@link assertTheDaysAreThere}, and then {@link NotEnoughDays} naming the figure and
- *   the number of days that could be asked for instead. Like the overlap it is a rule
- *   about something the domain cannot see, so the service reads the balance and this
- *   judges it — and `daysToReserve` holds the same rule inside the lock, which is
- *   where the guarantee is. See that function's note below.
- *
- * **All five are refusals about a request, and none of them is the calculator's.**
- * LMS 303 moved the second one here from ./leave-calculator.ts, and the reason is the
- * reason it belongs beside the other two: that a fortnight over Christmas costs eight
- * days, or that a Saturday costs none, is arithmetic about a calendar, and the
- * calculator answers it for anybody who asks — including FR 25's recalculation, which
- * has to be able to ask "what does this cost now" and get *nought* rather than an
- * exception. Whether a person may submit that is a rule about submissions.
- *
- * The practical half of that division: the calculator stays pure and total, so every
- * one of its cases is arithmetic a unit test can assert without a database, and every
- * refusal a person can actually see is in one file with one voice.
- *
- * ## What is not here
- *
- * **No counting.** ./leave-calculator.ts counts, and it is where the working pattern,
- * the holiday calendar and the counting basis meet. This file is handed the answer and
- * judges it.
- *
- * **No balance, and no arithmetic on one.** {@link assertTheDaysAreThere} is handed the
- * figure and compares it; it does not read a balance, add one up, or know what the five
- * columns are. ./balance.ts owns all of that, and the number arrives from
- * `BalanceService.forOne` through the service.
- *
- * **And this is not where affordability is guaranteed.** §8.2: the figure a domain
- * function is handed was read a moment before it was judged, and somebody else may be
- * spending it in that moment. `daysToReserve` decides it again inside the lock, and that
- * is the answer that binds. What this one buys is the sentence, said while the form is
- * still open — see {@link NotEnoughDays}.
- *
- * **No resolving a desk to a person.** {@link approvalTo} says a request now waits on the
- * `HR` desk; which of the two HR role codes staffs it, and whether this actor holds one, is
- * ../auth/leave-request-policy.ts — the same division {@link Standing} makes for the other
- * three. FR 48's harder half is not here either: the manager who raised the request
- * themselves and the Chief Executive with nobody above them are FR 48b, and both are rules
- * about a reporting line rather than about a request.
- *
- * **No commitment of days.** Approval turns a hold into days taken, which is a `DEDUCTION`
- * and is `BalanceService`'s — the ledger has one door. This file says where the approval
- * leaves the request and whether it was the last word; what that costs the balance is
- * `daysToCommit` in ./balance.ts.
- *
- * **No policy.** There is no {@link Actor} here and there is none in a `/domain` file
- * anywhere. Who may ask for leave, and which of the three endings a given person may
- * reach, is ../auth/leave-request-policy.ts. What this file says is that a request ends
- * once.
+ * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 14, FR 15, FR 16, FR 26, §6, §8., LMS 301, LMS 303, LMS 304, LMS 305, LMS 306, LMS 313, LMS 314, FR 38, FR 38a, FR 40, LMS 315, FR 39, FR 52, FR 16a, §8.3, FR 25, §8.2, FR 48, FR 48b.
  */
 
 import {
@@ -178,26 +29,7 @@ import {
   isCalendarDate,
 } from './time.js';
 
-/**
- * Where a request has got to. LMS 301, the three endings of LMS 306, and the approval of
- * LMS 314.
- *
- * Five values, and the rule LMS 209 set is what keeps the list honest: a CHECK naming
- * states nothing can reach is a promise the schema cannot keep, so a status arrives in
- * the same story as the transition that reaches it. Every one of these is reachable by a
- * method that exists — the three endings through {@link RELEASING_STATUSES}, and
- * `APPROVED` through {@link approvalTo} once the last desk in FR 38a's chain has said
- * yes.
- *
- * **`APPROVED` is the only one of the five that is not an ending**, and that is the
- * distinction every list in this file turns on. It still holds the days — it holds them
- * harder, as `taken` rather than as `pending` — so it is in {@link LIVE_STATUSES} and not
- * in {@link RELEASING_STATUSES}, and nothing moves out of it yet.
- *
- * `leave_request_status_known` in the route-a-request-through-its-chain migration holds
- * exactly this list, and the integration suite reads it back out of `pg_constraint` and
- * asserts the two agree.
- */
+/** Where a request has got to. LMS 301, LMS 306, LMS 314, LMS 209, FR 38a. */
 export const REQUEST_STATUSES = [
   'SUBMITTED',
   'APPROVED',
@@ -208,117 +40,30 @@ export const REQUEST_STATUSES = [
 
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
-/**
- * The three endings that give the days back. FR 26, §8.2. LMS 306.
- *
- * Withdrawn by the person who asked, cancelled by HR, refused by a manager. Three
- * different acts by three different desks, and one movement: days that were held stop
- * being held. `ledgerPolicy.release` has said exactly that since LMS 212 — "yours to
- * withdraw, your manager's to refuse, HR's to cancel… they share a rule here because
- * they are one movement" — and this is the list that act can leave a request in.
- *
- * **It was the exact complement of {@link LIVE_STATUSES} until LMS 314, and it was never
- * defined as one.** The note here used to say why in the future tense: writing
- * `REQUEST_STATUSES.filter(not live)` would be a definition that silently absorbs whatever
- * arrives next, and `APPROVED` "is not live in the sense of *releasing* — it is live in the
- * sense of holding days, and it would land in this list by arithmetic and release the days
- * of every approved request in the system". `APPROVED` has now arrived, it joined
- * {@link LIVE_STATUSES} and not this one, and the arithmetic that would have caught it is
- * the arithmetic nobody wrote. A status joins this list because somebody decided it ends a
- * request and gives the days back, which is a decision rather than a subtraction.
- *
- * The same three are the transition trigger's list in the migration, and the integration
- * suite asserts the two agree — so neither can be extended alone.
- */
+/** The three endings that give the days back. FR 26, §8.2., LMS 306, LMS 212, LMS 314. */
 export const RELEASING_STATUSES = ['WITHDRAWN', 'CANCELLED', 'REFUSED'] as const;
 
 export type ReleasingStatus = (typeof RELEASING_STATUSES)[number];
 
-/**
- * The statuses that hold a person's days. FR 15, §5.6. LMS 304.
- *
- * **A request blocks the same days being asked for again only while it is still live**,
- * and this is the list of what live means. Everything in it is leave the person still
- * has or is still expecting: drafted, waiting to be decided, or agreed. Everything
- * outside it is leave that came back — withdrawn, cancelled, refused — and days that
- * came back are days somebody may book again, which is the ordinary thing to do after
- * a request is turned down.
- *
- * **Two values since LMS 314, and both halves of that were decisions.** Until the three
- * endings existed this list and {@link REQUEST_STATUSES} held the same single value, and
- * every query filtering by it was filtering nothing; LMS 306 added three statuses, none of
- * them joined this list, and the queries written against it started excluding rows without
- * a line of them changing. What that buys, concretely: a fortnight in March is no longer
- * blocked by leave that was refused in January, and somebody whose request was turned down
- * can book the same days again.
- *
- * LMS 314 then added `APPROVED`, which **is** live and does join it — and that is the
- * decision this list exists to force somebody to make. Leave that has been agreed is the
- * most live leave there is: the person will be away, the days are gone from the balance as
- * `taken`, and booking something else on top of them is the exact defect FR 15 is about. A
- * status added to `REQUEST_STATUSES` without a thought about this one either blocks days
- * that came back or lets somebody book over leave that was agreed.
- *
- * `leave_request_never_overlaps` holds the same list as the predicate on an exclusion
- * constraint, and the integration suite asserts the two agree — so neither can be
- * extended alone.
- */
+/** The statuses that hold a person's days. FR 15, §5.6., LMS 304, LMS 314, LMS 306. */
 export const LIVE_STATUSES: readonly RequestStatus[] = ['SUBMITTED', 'APPROVED'];
 
-/**
- * Whether a request in this state still holds the days it covers. FR 15.
- *
- * Asked of the status rather than of a list at each call site, for the reason
- * {@link countsWorkingDays} is asked of the basis rather than of the code: the question
- * "does this one block" should have one answer, and a second `includes` written
- * somewhere else is a second answer waiting to disagree.
- */
+/** Whether a request in this state still holds the days it covers. FR 15. */
 export function blocksTheCalendar(status: RequestStatus): boolean {
   return LIVE_STATUSES.includes(status);
 }
 
-/**
- * Whether this request has already been settled, and its days already given back.
- *
- * The complement of {@link blocksTheCalendar} for the five statuses that exist, and asked
- * separately for the reason neither list is defined as a subtraction. This note used to say
- * the two would "part company the moment `APPROVED` arrives, which holds days and has
- * certainly not ended", and what actually happened when it arrived is more instructive:
- * somebody had to answer both questions about it, the answers went opposite ways — live,
- * not ended — and the two lists came out complements again by agreement rather than by
- * arithmetic. A subtraction would have put it in {@link RELEASING_STATUSES} and released the
- * days of every approved request in the system.
- */
+/** Whether this request has already been settled, and its days already given back. */
 export function isSettled(status: RequestStatus): status is ReleasingStatus {
   return (RELEASING_STATUSES as readonly RequestStatus[]).includes(status);
 }
 
-/**
- * A request being ended a second time. FR 26, §8.2. LMS 306.
- *
- * The refusal that makes "my days cannot be given back twice" true rather than hoped for,
- * and the mirror of `NotEnoughHeld` in ./balance.ts. Withdrawing an already withdrawn
- * request would post a second `RELEASE` against a hold the first one emptied — and where
- * the person has other leave pending in the same balance there would be days there to
- * take, so the ledger would accept it and credit them for a fortnight nobody was holding.
- *
- * **Which is why the guard is the status and not the balance.** `daysToRelease` refuses
- * to give back more than the balance holds, but the balance is per employee, leave type
- * and leave year — it cannot tell one request's held days from another's.
- * `ledgerPolicy.release` says so in as many words: the worst a wrong release can do "is
- * unhold days that a request still thinks it has — which is the request state machine's
- * integrity to keep rather than the balance's". This is the state machine keeping it.
- *
- * The message names what happened rather than only refusing, because the overwhelmingly
- * likely reader is somebody who pressed the button twice, or two people acting on the
- * same request from different screens — and "this was already withdrawn" is the whole of
- * what either of them needs to know.
- */
+/** A request being ended a second time. FR 26, §8.2., LMS 306. */
 export class LeaveAlreadySettled extends Error {
-  /** FR 26. What a client branches on, as `CROSS_LEAVE_YEAR` and the others are. */
+  /** FR 26. */
   readonly code = 'ALREADY_SETTLED';
   readonly leaveRequestId: string;
-  /** Where it had already got to. Never a live status; see {@link settlementTo}. */
+  /** Where it had already got to. */
   readonly status: RequestStatus;
 
   constructor(request: LeaveRequest) {
@@ -750,94 +495,12 @@ export function settlementTo(request: LeaveRequest, action: ReleasingAction): Re
 }
 
 /**
- * Where an approval leaves the request: on to the next desk, or agreed. FR 38, FR 38a, FR
- * 40, FR 41, FR 42, §6. LMS 314, LMS 316.
- *
- * The whole of the routing in one function. It is handed the request — which carries the desk
- * it is sitting at — the chain off its leave type, and the desks that have already signed,
- * and it answers the only question an approval has: **is there anybody left to ask.**
- *
- * ## What "anybody left" means, and why it changed
- *
- * LMS 316, and it is one line of code and the whole of that story. LMS 314 asked
- * `approverAfter(chain, desk)` — the stage after the one signing — which is a question about
- * a position in a list, and answered it against a cursor the request carries. LMS 316 asks
- * {@link nextUnapproved} instead: the first stage in the chain that has no approval recorded
- * against it.
- *
- * The two agree in every ordinary case, and the case they part on is the one FR 41 is about.
- * A stage added *in front of* a request in flight — annual leave goes manager then HR, a
- * request is with HR because the manager has signed, and an HR Administrator changes the
- * chain to CEO, manager, HR — leaves the cursor pointing at the last position of the new
- * list. "The one after HR" is nothing, so HR's yes would approve the leave outright and the
- * Chief Executive, a stage the policy now names, would never see it. The employee is told
- * their leave is agreed. That is the sentence the story exists to make true, and asking which
- * desk has *not* signed cannot get it wrong, because it is a question about the whole chain.
- *
- * **The desks that have signed are a parameter rather than something read here**, for the
- * reason the day count and the balance are parameters: `/domain` imports nothing and touches
- * nothing, and the rows live in `leave_request_decision`. `desksThatApproved()` in
- * ./leave-decision.ts turns them into the list, and `LeaveRequestService` carries it across.
- *
- * **The desk approving now counts towards it.** The caller passes what was signed *before*
- * this approval, and this adds the one being given — so the last desk in a chain of two sees
- * both and finds nobody left. Doing it the other way round, with the caller adding its own
- * desk first, would make every call site responsible for the same increment.
- *
- * ## Two shapes of yes, and only one of them is a status change
- *
- * A manager approving the first stage of manager-then-HR has not approved the leave. They
- * have said their part of it, and the request goes on to HR still `SUBMITTED`, still
- * holding its days as `pending`, with {@link ApprovalOutcome.awaiting} moved along. The HR
- * officer who approves it afterwards is the last desk, and *that* is the transition —
- * `APPROVED`, and the hold becomes days taken.
- *
- * Writing both as status changes was the obvious alternative and it is the one that goes
- * wrong: it needs a state per stage — `AWAITING_HR`, `AWAITING_CEO` — so the number of
- * states grows with the number of desks, `TRANSITIONS` grows as their product, and adding a
- * fourth desk to FR 38a's three becomes a migration rather than a row in
- * `leave_type_approval_step`. Design principle 5 forbids exactly that: the chain is
- * configuration, so the *number of stages* cannot be in the schema.
- *
- * So the status says whether the request is still being decided and the desk says who is
- * deciding it, and those are two different facts held in two columns.
- *
- * **The destination still comes off {@link TRANSITIONS}.** This function names no status:
- * the last desk's answer is `transitionFor(status, 'APPROVE').to`, and an intermediate
- * stage returns the status the request already had. That is the same discipline
- * {@link settlementTo} keeps, and it matters for the same reason — a function that could
- * name `APPROVED` is a function that could name it one desk early.
- *
- * ## The chain is read now, not at submission, and this is what protects that
- *
- * FR 31 gives the chain to HR and `leaveTypePolicy.setApprovalChain` lets them change it,
- * which means the chain a request was submitted under is not necessarily the chain it is
- * being walked with. Where the change is a widening — HR adds the Chief Executive after
- * themselves — the walk simply finds a further stage and the request keeps going, which is
- * the behaviour HR asked for.
- *
- * Where it removes the desk the request is *standing on*, {@link ApprovalChainChanged} is
- * still the answer, and LMS 316 narrowed what that refusal is protecting rather than making
- * it unnecessary. The danger LMS 314 named — reading "no next stage" as "nobody left to ask"
- * and approving the leave — is gone, because a chain the desk has dropped still has stages
- * nobody has signed and the walk routes to the first of them. What remains is the reason to
- * refuse anyway: **every approval this system records has to belong to a stage**, or "every
- * stage has approved" is a claim about a set that has strangers in it. Letting a desk the
- * chain no longer names sign would put one there.
- *
- * Copying the whole chain onto the request at submission is the other answer, and it is the
- * one FR 11 gave for the counting basis. It is a table of its own and a story of its own;
- * what this does is make the gap loud instead of silent in the meantime.
+ * Where an approval leaves the request: on to the next desk, or agreed. FR 38, FR 38a, FR 40, FR 41, FR 42, §6., LMS 314, LMS 316, FR 31, FR 11.
  */
 export function approvalTo(
   request: LeaveRequest,
   chain: readonly ApproverRole[],
-  /**
-   * FR 41. The desks that had approved before this one. LMS 316.
-   *
-   * Empty for a request nobody has decided yet, which is what a first approval is handed.
-   * Read off `leave_request_decision` by the service — see `desksThatApproved()`.
-   */
+  /** FR 41. */
   approvedAlready: readonly ApproverRole[],
 ): ApprovalOutcome {
   const transition = transitionFor(request.status, 'APPROVE');
@@ -849,9 +512,6 @@ export function approvalTo(
   const desk = request.awaitingApprovalFrom;
 
   if (desk === null) {
-    /* Unreachable: `leave_request_waits_at_a_desk` makes the column present for exactly
-       the status this row is keyed from. Answered rather than asserted, because the
-       alternative is approving leave nobody was asked about. */
     throw new LeaveCannotBeMoved(request, 'APPROVE');
   }
 
@@ -871,77 +531,29 @@ export function isTheLastWord(outcome: ApprovalOutcome): boolean {
   return outcome.awaiting === null;
 }
 
-/**
- * How far through its chain a request has got. FR 41, FR 42. LMS 316.
- *
- * The reading half of the story, and the half its "so that" is about: *I never take leave
- * believing it was agreed when it was not*. Every fact needed to be wrong about that is
- * already stored — the status, the desk, the decisions, the chain — and it is stored in four
- * places, which is exactly the arrangement in which a screen shows the newest approval and a
- * person reads it as the answer.
- *
- * So there is one function that puts them together, and {@link ApprovalProgress.agreed} is
- * what anybody asking "is this leave mine to take" reads.
- *
- * ## `agreed` is the status, and the rest is the explanation
- *
- * It is `status === 'APPROVED'` and nothing cleverer, which is worth being explicit about
- * because the tempting definition is `everyStageApproved(chain, approvedBy)`. That second one
- * is a claim about the chain *as it stands this afternoon*, and a chain that has grown a stage
- * since a request was approved would make it false about leave that was properly agreed and
- * whose days are already taken. What was recorded is what happened — design principle 1 — and
- * the status is the record.
- *
- * {@link stagesNotApproved} is asked all the same, and disagreeing with the status is what
- * {@link ApprovalProgress.stagesMissing} reports rather than hides: an approved request whose
- * type has since gained a desk is a real and legitimate state, and a screen that wants to say
- * "agreed under the old policy" can. It is also the shape a defect would take, which is why
- * `leave_request_is_approved_by_every_stage` refuses one at the moment of approval and this
- * only describes what it finds afterwards.
- *
- * ## `stillToApprove` is empty for anything that is not being decided
- *
- * A withdrawn request is not waiting on its manager, and neither is an approved one. Both
- * would otherwise read as "still waiting on HR" for ever, which is the queue entry
- * `leave_request_waits_at_a_desk` exists to stop the schema holding — said here in the
- * reading rather than in a column.
- */
+/** How far through its chain a request has got. FR 41, FR 42, LMS 316. */
 export interface ApprovalProgress {
-  /**
-   * FR 41. Whether this leave is agreed and may be taken. The one field a person acts on.
-   */
+  /** FR 41. */
   agreed: boolean;
   /** The chain as the type has it now, in order. */
   chain: readonly ApproverRole[];
   /** The stages that have said yes, in chain order. */
   approvedBy: readonly ApproverRole[];
-  /** The stages still to be asked, in chain order. Empty unless it is being decided. */
+  /** The stages still to be asked, in chain order. */
   stillToApprove: readonly ApproverRole[];
   /** The desk it is sitting on now, or null once it is sitting nowhere. */
   awaiting: ApproverRole | null;
-  /**
-   * Stages of today's chain with no approval on this request, whatever its status.
-   *
-   * Empty for everything the system does normally. Non-empty means either a request still
-   * being decided — where it is the same list as `stillToApprove` — or an approved one whose
-   * type has gained a desk since, which is the honest reading rather than a fault.
-   */
+  /** Stages of today's chain with no approval on this request, whatever its status. */
   stagesMissing: readonly ApproverRole[];
-  /** NFR USA 03. What a person is told, in one sentence. */
+  /** NFR USA 03. */
   inWords: string;
 }
 
-/**
- * Where a request stands, from the four facts that say so.
- *
- * Pure, and assembled here rather than in the service for the reason {@link quoteFor} is: the
- * sentence somebody reads before they book a flight is a rule about what they are owed, and
- * it should be testable without a database.
- */
+/** Where a request stands, from the four facts that say so. */
 export function progressOf(input: {
   request: LeaveRequest;
   chain: readonly ApproverRole[];
-  /** FR 41. The desks that have approved, from `desksThatApproved()`. */
+  /** FR 41. */
   approvedBy: readonly ApproverRole[];
 }): ApprovalProgress {
   const { request, chain, approvedBy } = input;
@@ -962,16 +574,7 @@ export function progressOf(input: {
   };
 }
 
-/**
- * The sentence, and it says what has happened before it says what has not.
- *
- * NFR USA 03. A person reading this has an aeroplane ticket in the other tab, so the shape is
- * the answer first: agreed, or not yet and who is left. "Approved by your line manager" on its
- * own is the sentence this whole story exists to stop being the whole sentence — which is why
- * the two halves are one string composed once rather than two fields a screen may show one of.
- *
- * The chain is not consulted for the agreed case. See {@link progressOf}.
- */
+/** The sentence, and it says what has happened before it says what has not. NFR USA 03. */
 function progressInWords(
   request: LeaveRequest,
   approved: readonly ApproverRole[],

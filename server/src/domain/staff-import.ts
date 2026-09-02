@@ -1,45 +1,4 @@
-/**
- * Loading staff from a spreadsheet, with a dry run first. FR 08.
- *
- * This exists because go live is otherwise an HR officer typing several hundred
- * people into a form and hoping. The hoping is the part this story removes: the
- * file is read, every row is judged against the rules that would judge it on the
- * way in, and the answer — what would be created, what would be changed, what
- * would be refused and why — is handed back with **nothing written**. Only when
- * the HR officer confirms that answer does anything reach the database.
- *
- * The split is the usual one. ./spreadsheet.ts turns a file into rows. This file
- * says what a row has to contain to be an employee record, what a whole file has
- * to be true for, and what a plan is. ../services/staff-import-service.ts does
- * the half that needs the database: resolving the names the file uses into the
- * ids the tables hold, matching rows against people who are already here, and
- * writing the confirmed plan inside one transaction.
- *
- * Three decisions run through all of it and are worth reading before the code.
- *
- * **The spreadsheet speaks in names, not ids.** HR's file says `Operations` and
- * `RH-0010`, not two bigints nobody has ever seen. So every reference is carried
- * as the name or number the file used for as long as possible, and the report
- * the HR officer reads is in those terms too. The ids appear at the last moment,
- * in the service, which is the only layer that can look one up.
- *
- * **A blank cell says nothing; it does not say "clear this".** A mapped column
- * with an empty cell leaves the field alone on an existing record, and leaves it
- * at its default on a new one. The alternative — blank means empty — turns a
- * partial spreadsheet of new starters into an instruction that wipes the job
- * title of everybody it touches, which is precisely the go live disaster the dry
- * run is here to prevent. Clearing a field is an ordinary edit through
- * {@link EmployeeService.update}, where it is one person at a time and somebody
- * meant it.
- *
- * **The plan is advice; the rules are still the rules.** Nothing here is trusted
- * at write time. The confirmed plan is applied by calling the same
- * {@link EmployeeService} a single record goes through, so every check runs
- * again against the state the write actually sees, and the constraints and the
- * deferred cycle trigger sit under that. What the dry run buys is that the
- * refusal arrives with a line number in front of an HR officer who can fix it,
- * instead of arriving at COMMIT as one rolled back transaction.
- */
+/** Loading staff from a spreadsheet, with a dry run first. FR 08. */
 
 import {
   type CalendarDate,
@@ -57,13 +16,7 @@ import { cellOf, normaliseHeading, type SheetRow } from './spreadsheet.js';
 import { withoutMidnight } from './time.js';
 
 /**
- * The fields a spreadsheet can carry, which is every field of an employee record
- * that a person could reasonably type.
- *
- * The three references are the file's words for them — a department *name*, a
- * manager's *employee number*, a working pattern *name* — and are deliberately
- * named without the `Id` that {@link NewEmployee} uses. Nobody has ever had a
- * bigint in a spreadsheet.
+ * The fields a spreadsheet can carry, which is every field of an employee record that a person could reasonably type.
  */
 export const IMPORT_FIELDS = [
   'employeeNumber',
@@ -83,20 +36,7 @@ export const IMPORT_FIELDS = [
 
 export type ImportField = (typeof IMPORT_FIELDS)[number];
 
-/**
- * The columns a file has to have before it can be imported at all.
- *
- * These are not simply the NOT NULL columns. `manager` is required as a *column*
- * while an individual manager cell may be blank, and that asymmetry is the whole
- * of FR 02 restated for a file: a spreadsheet with no Line Manager column at all
- * is one where every row is silently the head of the organisation, and the
- * person who finds out is the employee whose first request vanishes. Requiring
- * the column forces HR to have thought about it once; leaving the cell blank is
- * then a deliberate statement about one person, reported as such in the dry run.
- *
- * `workPattern` is not required, because there is a right answer when nobody
- * says — the standard week, resolved by {@link EmployeeService.create}. FR 23.
- */
+/** The columns a file has to have before it can be imported at all. FR 02, FR 23. */
 export const REQUIRED_IMPORT_FIELDS: readonly ImportField[] = [
   'employeeNumber',
   'firstName',
@@ -107,36 +47,11 @@ export const REQUIRED_IMPORT_FIELDS: readonly ImportField[] = [
   'startDate',
 ];
 
-/**
- * Which heading in the file holds each field. The column mapping of FR 08.
- *
- * Written field to heading rather than heading to field, because that is the
- * question the reader asks — "where does the work email come from?" — and
- * because a field maps to exactly one column while a file may hold columns
- * nothing reads. Payroll numbers, cost centres and desk locations are all
- * perfectly reasonable things for HR's spreadsheet to contain and none of them
- * is any of this system's business; an unmapped column is ignored in silence.
- */
+/** Which heading in the file holds each field. FR 08. */
 export type ColumnMapping = Partial<Record<ImportField, string>>;
 
 /**
- * The headings each field answers to, normalised by
- * {@link normaliseHeading} — so case, spaces, underscores and punctuation are
- * already gone and `Employee Number`, `employee_number` and `EmployeeNo.` all
- * arrive here as `employeenumber`.
- *
- * These are guesses, and the mapping the caller supplies always wins. What they
- * buy is that the common file — the one exported from a payroll system with
- * sensible headings — imports without anybody building a mapping by hand.
- *
- * The list is deliberately shy of the ambiguous ones. `Title` is not here,
- * because in an HR spreadsheet it is as likely to be Mr and Mrs as it is to be
- * the job; `Type` is not here, because it could as easily be a contract type
- * this system does not model; `Number` is not here, because half the columns in
- * a payroll export are numbers. Guessing wrong is worse than not guessing: an
- * unmapped column is reported and fixed in one line of a mapping, whereas a
- * column mapped to the wrong field is a dry run that looks right and imports
- * everybody's salutation as their job title.
+ * The headings each field answers to, normalised by normaliseHeading — so case, spaces, underscores and punctuation are already gone and `Employee Nu…
  */
 const HEADING_SYNONYMS: Record<ImportField, readonly string[]> = {
   employeeNumber: [
@@ -172,18 +87,7 @@ const HEADING_SYNONYMS: Record<ImportField, readonly string[]> = {
   gender: ['gender', 'sex'],
 };
 
-/**
- * A file whose columns cannot be mapped to the fields of a record.
- *
- * A whole file problem rather than a row one, and so thrown rather than
- * reported: there is no per row answer to give when the column holding the
- * employee number was never identified.
- *
- * The headings the file actually has are carried, because "startDate is not
- * mapped" is not something an HR officer can act on and "startDate is not
- * mapped; the file has Staff No, Forename, Surname, Email, Dept, Reports To,
- * Commenced" is — the answer is sitting in that list.
- */
+/** A file whose columns cannot be mapped to the fields of a record. */
 export class InvalidColumnMapping extends Error {
   /** The fields that could not be mapped, or that were mapped to nothing. */
   readonly fields: ImportField[];
@@ -198,16 +102,7 @@ export class InvalidColumnMapping extends Error {
   }
 }
 
-/**
- * A row that cannot be read as a record at all, and the field that caused it.
- *
- * The sibling of {@link InvalidEmployee}, thrown by {@link readDraft} and caught
- * by the planner, which turns it into one line of the dry run report. It covers
- * what the *file* got wrong — a missing cell, a date in the wrong format, a
- * word that is not one of the permitted values. What the *record* rules refuse
- * is still {@link InvalidEmployee}, raised by the same validators a single
- * record goes through, and both end up in the same list of rejections.
- */
+/** A row that cannot be read as a record at all, and the field that caused it. */
 export class InvalidImportRow extends Error {
   readonly field: ImportField | null;
 
@@ -218,21 +113,7 @@ export class InvalidImportRow extends Error {
   }
 }
 
-/**
- * A confirmation of a dry run that is no longer the dry run it confirms.
- *
- * Between reading the plan and confirming it, somebody else created a joiner,
- * closed a department or moved a reporting line — and the import that was
- * approved is not the import that would now happen. Rather than write something
- * nobody agreed to, the confirmation is refused and the HR officer runs the dry
- * run again.
- *
- * This is the same instinct as every `catchRefusals` in the repositories: the
- * check and the write are not the same moment, so the write has to say what it
- * found. Here the window is minutes rather than milliseconds, because there is a
- * person reading a report in the middle of it, which makes it far more likely
- * rather than less.
- */
+/** A confirmation of a dry run that is no longer the dry run it confirms. */
 export class ImportChangedSinceDryRun extends Error {
   constructor() {
     super(
@@ -244,15 +125,7 @@ export class ImportChangedSinceDryRun extends Error {
   }
 }
 
-/**
- * A confirmation of a plan that still has rejected rows in it.
- *
- * Refused by default, and that default is the point of the story. An import that
- * quietly skips the eleven rows it could not read is how a company goes live
- * believing everybody is in the system. Fixing the file and running again is the
- * ordinary answer; importing the good rows anyway is available, and has to be
- * asked for in so many words.
- */
+/** A confirmation of a plan that still has rejected rows in it. */
 export class ImportWouldRejectRows extends Error {
   readonly rejected: RejectedRow[];
 

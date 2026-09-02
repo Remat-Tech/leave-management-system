@@ -1,17 +1,4 @@
-/**
- * Database access for the employee record.
- *
- * Queries and row mapping, nothing else. The rules about what a valid record
- * looks like are in ../domain/employee.ts and the decisions about when to apply
- * them are in ../services/employee-service.ts.
- *
- * The one piece of judgement here is turning a constraint violation back into
- * something a caller can act on. Checking for a duplicate first and inserting
- * afterwards would be a race — two HR officers creating the same joiner at the
- * same moment both find nothing and both insert — so the insert is attempted and
- * the database's answer is translated. The unique index is what actually decides
- * it, which means the answer is right even under concurrency.
- */
+/** Database access for the employee record. */
 
 import { sql, type Kysely, type Selectable } from 'kysely';
 import type { Database } from '../db/index.js';
@@ -46,8 +33,7 @@ const EMAIL_INDEX = 'employee_work_email_unique';
 const ROOT_INDEX = 'employee_one_root';
 
 /**
- * The deferred constraint trigger from the reject-circular-reporting-lines
- * migration, which names itself in the error it raises. FR 03.
+ * The deferred constraint trigger from the reject-circular-reporting-lines migration, which names itself in the error it raises. FR 03.
  */
 const CYCLE_TRIGGER = 'employee_no_manager_cycle';
 
@@ -57,16 +43,7 @@ type EmployeeRow = Selectable<EmployeeTable>;
 export class EmployeeRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  /**
-   * Writes a record.
-   *
-   * Takes a {@link StorableEmployee} rather than a {@link ValidatedEmployee}: by
-   * the time a record reaches here its working pattern has been resolved, because
-   * "the caller did not name one" is a question about which pattern is the
-   * default and that is a decision, not a query. LMS 106 moved it to
-   * {@link EmployeeService.create}, where the rest of the cross table checks
-   * already live.
-   */
+  /** Writes a record. LMS 106. */
   async create(by: Attribution, record: StorableEmployee): Promise<Employee> {
     const row = await this.catchRefusals(record, () =>
       recording(this.db, by, (on) =>
@@ -95,14 +72,7 @@ export class EmployeeRepository {
     return toEmployee(row);
   }
 
-  /**
-   * Applies a change. Returns undefined if there is no such employee, which the
-   * service turns into {@link EmployeeNotFound}.
-   *
-   * updated_at is not set here. The trigger does it, so that the seed and a data
-   * fixing migration get the same treatment as the application rather than only
-   * the writer who remembered.
-   */
+  /** Applies a change. */
   async update(
     by: Attribution,
     id: string,
@@ -146,8 +116,7 @@ export class EmployeeRepository {
   }
 
   /**
-   * By employee number, compared without regard to case, so that a lookup finds
-   * the same single record the unique index would have refused a second of.
+   * By employee number, compared without regard to case, so that a lookup finds the same single record the unique index would have refused a second of.
    */
   async findByNumber(employeeNumber: string): Promise<Employee | undefined> {
     const row = await this.db
@@ -171,15 +140,7 @@ export class EmployeeRepository {
     return row === undefined ? undefined : toEmployee(row);
   }
 
-  /**
-   * Everybody, leavers included.
-   *
-   * A leaver is still an employee record: FR 06 keeps it, and the leaver figure
-   * of FR 37a is calculated from it. Filtering them out by default here would
-   * make every caller that genuinely wants them ask specially, which is the
-   * wrong way round for a table that is the system's account of who has ever
-   * worked here.
-   */
+  /** Everybody, leavers included. FR 06, FR 37a. */
   async list(options: { activeOnly?: boolean } = {}): Promise<Employee[]> {
     let query = this.db.selectFrom('employee').selectAll();
 
@@ -191,13 +152,7 @@ export class EmployeeRepository {
     return rows.map(toEmployee);
   }
 
-  /**
-   * Several records by id, in employee number order.
-   *
-   * One statement rather than one per id, for the callers that already have a set
-   * of ids from somewhere else — today, everybody holding a role. An empty list
-   * asks nothing rather than asking for `id IN ()`, which is not valid SQL.
-   */
+  /** Several records by id, in employee number order. */
   async findAllById(ids: readonly string[]): Promise<Employee[]> {
     if (ids.length === 0) {
       return [];
@@ -213,20 +168,7 @@ export class EmployeeRepository {
     return rows.map(toEmployee);
   }
 
-  /**
-   * How many employees report to somebody. FR 02, and the whole of how being a
-   * manager is decided. LMS 111.
-   *
-   * A count rather than the records, because the question it answers is "is this
-   * person a manager", and that is a relationship rather than a role: there is no
-   * MANAGER row to read, role_code_known refuses the code outright, and this
-   * statement is the only thing in the system that knows.
-   *
-   * Leavers among the reports are counted. Somebody who has left is not going to
-   * raise a request, but a request already routed to their manager is still
-   * routed there, and filtering here would quietly answer a different question
-   * than the one asked.
-   */
+  /** How many employees report to somebody. FR 02, LMS 111. */
   async countReports(managerId: string): Promise<number> {
     const row = await this.db
       .selectFrom('employee')
@@ -239,14 +181,7 @@ export class EmployeeRepository {
     return Number(row.reports);
   }
 
-  /**
-   * The employee with no line manager, if there is one. FR 04.
-   *
-   * Singular because the employee_one_root index makes it so. It is still
-   * written as "the first of them, ordered", rather than assuming: an ordered
-   * read of a table that momentarily holds two is at least deterministic, which
-   * an unordered one is not.
-   */
+  /** The employee with no line manager, if there is one. FR 04. */
   async findRoot(): Promise<Employee | undefined> {
     const row = await this.db
       .selectFrom('employee')
@@ -258,24 +193,7 @@ export class EmployeeRepository {
     return row === undefined ? undefined : toEmployee(row);
   }
 
-  /**
-   * The reporting line above somebody, nearest first, starting with them. FR 03.
-   *
-   * `chainFrom(x)` is `[x, x's manager, their manager, ..., the root]`. An id
-   * that is nobody gives an empty array, which is how the service tells
-   * "no such manager" from "a manager with a short line" without a second read.
-   *
-   * One statement rather than one round trip per level, because the database is
-   * usually a Neon branch at the end of a network and a five level walk done a
-   * level at a time is five of them.
-   *
-   * Raw SQL rather than the query builder for one reason: the CYCLE clause. If
-   * the table already contains a loop — restored from a dump taken before the
-   * cycle trigger existed, or written while it was dropped — a plain recursive
-   * walk follows that loop for ever, and the thing that hangs is the check for
-   * cycles. CYCLE stops the recursion the moment a row repeats, and the repeated
-   * row is dropped on the way out so that callers see a line, not a lasso.
-   */
+  /** The reporting line above somebody, nearest first, starting with them. FR 03. */
   async chainFrom(id: string): Promise<Employee[]> {
     const { rows } = await sql<EmployeeRow>`
       WITH RECURSIVE chain AS (

@@ -1,68 +1,17 @@
 /**
- * A spreadsheet, as far as this system is concerned: a row of headings and rows
- * of text under them. FR 08.
- *
- * This is the mechanical half of the staff import — how a file becomes rows —
- * kept apart from ./staff-import.ts, which is what those rows have to say to be
- * an employee record. The split is worth having because the two fail for
- * completely different reasons and at completely different times: a file that is
- * not a spreadsheet at all fails once, before anything else runs, and a row with
- * a bad start date fails on its own and lets the other four hundred through.
- *
- * Pure, like the rest of /domain: text in, rows out, no filesystem and no
- * upload. Whatever hands the bytes over — a route in Phase 5, a test, a script —
- * decodes them to a string first.
- *
- * **What is read is the delimited export, not the .xlsx.** Comma separated,
- * semicolon separated (which is what Excel writes in most of Europe), or tab.
- * That is a deliberate line and not a shortcut:
- *
- *   An .xlsx is a zip of XML with a shared string table, a styles part, and
- *   dates held as a serial number counting from an epoch that is wrong on
- *   purpose for compatibility with a Lotus bug. Reading one properly is a
- *   dependency, and reading one improperly is how an import quietly moves
- *   everybody's start date by a day or two.
- *
- *   Every spreadsheet in existence exports CSV, and every one of them opens it.
- *   "Save as CSV" is one menu item for the HR officer and no attack surface for
- *   us.
- *
- * A story that genuinely needs the workbook itself — because HR will not accept
- * the extra step, or because a sheet has to be picked out of several — brings a
- * parser with it and hands {@link Sheet} to the rest of this unchanged. Nothing
- * above here knows what the file was.
+ * A spreadsheet, as far as this system is concerned: a row of headings and rows of text under them. FR 08.
  */
 
-/**
- * The delimiters that are sniffed for, in the order they win a tie.
- *
- * Semicolon is here because it is what Excel writes wherever the list separator
- * is a semicolon, which is most of Europe, and a file like that read as comma
- * separated is one enormous column with a heading nobody can map. Tab is what
- * "Unicode text" saves as and what a paste out of a browser produces.
- */
+/** The delimiters that are sniffed for, in the order they win a tie. */
 const DELIMITERS = [',', ';', '\t', '|'] as const;
 
 /** One row of the file, with the line it came from. */
 export interface SheetRow {
-  /**
-   * The line the row starts on, counting from 1 and counting the heading row.
-   *
-   * This is the number the HR officer sees down the side of their spreadsheet,
-   * which is the entire point of carrying it: a dry run report that says "row 4"
-   * when the file says 5 is worse than one that says nothing.
-   */
+  /** The line the row starts on, counting from 1 and counting the heading row. */
   line: number;
   /** The cells, by the heading above them, trimmed. */
   cells: Record<string, string>;
-  /**
-   * What is structurally wrong with this row, if anything.
-   *
-   * Carried rather than thrown, because one row with an unescaped delimiter in
-   * it should be reported next to every other refusal in the dry run rather than
-   * stopping the file from being read at all. {@link readSheet} throws only for
-   * what makes the whole file unreadable.
-   */
+  /** What is structurally wrong with this row, if anything. */
   problem: string | null;
 }
 
@@ -74,13 +23,7 @@ export interface Sheet {
   delimiter: string;
 }
 
-/**
- * A file that is not a spreadsheet, or is one nothing could be made of.
- *
- * Distinct from every per-row refusal, and thrown rather than reported, because
- * there is no partial answer to give: a dry run over a file with two columns
- * called "Email" cannot say which of them it read.
- */
+/** A file that is not a spreadsheet, or is one nothing could be made of. */
 export class UnreadableSpreadsheet extends Error {
   constructor(message: string) {
     super(message);
@@ -88,21 +31,7 @@ export class UnreadableSpreadsheet extends Error {
   }
 }
 
-/**
- * Reads a delimited file into headings and rows.
- *
- * The delimiter is sniffed from the heading row unless one is given, quoted
- * cells are unwrapped, and a byte order mark — which Excel puts on the front of
- * every CSV it saves as UTF-8 — is stripped, so the first heading is `Employee
- * Number` rather than a U+FEFF followed by `Employee Number`. That last one is
- * worth more than it looks: the mark is invisible in every editor, so without
- * this the first column silently fails to map, and it is the column holding the
- * identifier every other row is matched by.
- *
- * Rows that are entirely empty are dropped rather than reported. A trailing
- * blank line is what almost every exporter writes, and reporting it as a bad row
- * would put a refusal in the report of every well formed file.
- */
+/** Reads a delimited file into headings and rows. */
 export function readSheet(text: string, options: { delimiter?: string } = {}): Sheet {
   const body = stripByteOrderMark(text);
 
@@ -137,39 +66,17 @@ export function readSheet(text: string, options: { delimiter?: string } = {}): S
   };
 }
 
-/**
- * The value under a heading, or the empty string when the file has no such
- * column.
- *
- * Absent and blank deliberately come back the same. A column HR did not include
- * and a cell they left empty mean the same thing to an import — "this file says
- * nothing about that" — and making callers tell them apart would put the same
- * `?? ''` at every reading site.
- */
+/** The value under a heading, or the empty string when the file has no such column. */
 export function cellOf(row: SheetRow, heading: string | undefined): string {
   return heading === undefined ? '' : (row.cells[heading] ?? '');
 }
 
-/**
- * Headings compared the way a person compares them.
- *
- * `Employee Number`, `employee_number` and `EmployeeNo.` are the same column
- * wearing three different coats, and an HR officer who renamed a heading in
- * their own spreadsheet has not changed which column it is. Case, spaces,
- * underscores and punctuation all come out, so what is left is the letters and
- * digits.
- */
+/** Headings compared the way a person compares them. */
 export function normaliseHeading(heading: string): string {
   return heading.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/**
- * Excel writes a byte order mark on the front of every UTF-8 CSV it saves.
- *
- * It is invisible in every editor and it is part of the first heading as far as
- * a string comparison is concerned, so the first column — the one holding the
- * employee number — is the one that mysteriously fails to map.
- */
+/** Excel writes a byte order mark on the front of every UTF-8 CSV it saves. */
 function stripByteOrderMark(text: string): string {
   // Written as an escape rather than as the character itself, which is
   // invisible in the source too and which the linter rightly refuses.
@@ -177,14 +84,7 @@ function stripByteOrderMark(text: string): string {
 }
 
 /**
- * Which character separated the cells, decided by which one produces the most
- * columns in the heading row.
- *
- * A heading row is the best place to ask, because it is the one row guaranteed
- * to have a value in every column and no free text in it. A file whose winner
- * gives one column is treated as comma separated: it may genuinely be a single
- * column file, and if it is not, the mapping is about to fail with a message
- * that lists the headings it found, which is far more use than a guess.
+ * Which character separated the cells, decided by which one produces the most columns in the heading row.
  */
 function sniffDelimiter(text: string): string {
   let best = ',';
@@ -209,23 +109,7 @@ interface RawRecord {
   values: string[];
 }
 
-/**
- * The delimited format, as RFC 4180 describes it and as spreadsheets actually
- * write it.
- *
- * A hand written state machine rather than a split on the delimiter, because the
- * two differ exactly where the data gets interesting: `"Owusu-Ansah, Nana"` is
- * one cell, `"She said ""no"""` is one cell with quotes in it, and a quoted cell
- * may contain the newline of a two line address. Splitting on commas turns the
- * first of those into two columns and the whole row into a refusal HR cannot
- * explain.
- *
- * Line endings are whatever the file has. A CSV written on Windows and read on a
- * Mac, or the other way round, is the ordinary case rather than the exception.
- *
- * The line number counts newlines inside quoted cells too, so it is the line the
- * editor shows rather than the number of records read so far.
- */
+/** The delimited format, as RFC 4180 describes it and as spreadsheets actually write it. */
 function parseDelimited(text: string, delimiter: string): RawRecord[] {
   const records: RawRecord[] = [];
 
@@ -302,15 +186,7 @@ function parseDelimited(text: string, delimiter: string): RawRecord[] {
   return records;
 }
 
-/**
- * Drops the empty columns off the right hand end.
- *
- * A spreadsheet that once had a column in it keeps writing the delimiter for it
- * long after the heading was cleared, so a perfectly ordinary file arrives with
- * two nameless columns on the end. They are dropped only when nothing under them
- * has a value either — a nameless column with data in it is a heading somebody
- * deleted by accident, which is worth refusing rather than ignoring.
- */
+/** Drops the empty columns off the right hand end. */
 function trimTrailingBlankColumns(headings: string[], records: RawRecord[]): string[] {
   let width = headings.length;
 

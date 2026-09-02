@@ -1,66 +1,24 @@
-/**
- * The sign in account, and what makes one usable. NFR SEC 01. LMS 109.
- *
- * A login is an employee's work address and a password. It is not a second
- * identity: the address is the one on the employee record, the account belongs
- * to exactly one employee, and the two cannot come apart — the
- * sign-in-account-rules migration carries a change to a work address across to
- * the login and refuses any other value in the column. That is the whole of
- * "access is tied to the company account".
- *
- * The other half of the story is that access "ends when it does", and that is
- * {@link whyNotSignIn}. It is derived from the employee record at the moment
- * somebody knocks, rather than copied onto the account when they leave. A copy
- * is a second source of truth, and this one would be wrong in the direction that
- * matters: the leaver whose termination was recorded by a path that forgot to
- * revoke the login keeps their access, and nobody finds out until they use it.
- * Derived, there is nothing to forget and nothing to keep in step. It is the same
- * reasoning the organisation migration gives for not storing MANAGER as a role.
- *
- * The rules live here as pure functions, with the database access in
- * ../repositories/sign-in-account-repository.ts and the decisions about when to
- * apply them in ../services/sign-in-service.ts. Nothing in this file reads the
- * environment, hashes anything or touches a table, so what the system will and
- * will not open the door for can be read in one place and tested without either.
- *
- * The company domain check itself is ./company-email.ts, which is deliberately
- * separate: it is used at provisioning as well, by the employee record, and it
- * was settled before any of this existed. LMS 012.
- */
+/** The sign in account, and what makes one usable. NFR SEC 01, LMS 109, LMS 012. */
 
 import type { Employee } from '../domain/employee.js';
 
-/** A login as the rest of the application sees it. Never the password hash. */
+/** A login as the rest of the application sees it. */
 export interface SignInAccount {
   id: string;
   employeeId: string;
-  /** The employee's work address. The sign-in-account-rules migration is what makes that true. */
+  /** The employee's work address. */
   companyEmail: string;
-  /**
-   * Whether this login may be used at all.
-   *
-   * An administrative lock, and nothing to do with employment. Somebody who has
-   * left is refused by {@link whyNotSignIn} whatever this says; this is for the
-   * account that has to be closed for a reason of its own — a shared password, a
-   * lost laptop, an investigation — and for reopening it afterwards.
-   */
+  /** Whether this login may be used at all. */
   isActive: boolean;
-  /** LMS 110. Read by nothing yet; see {@link SignInService.signIn}. */
+  /** LMS 110. */
   mfaEnabled: boolean;
-  /** When this login was last used. Written by a successful sign in. */
+  /** When this login was last used. */
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
-/**
- * Why a sign in was refused, for the log rather than for the person.
- *
- * The first three are what an attacker sees, and they all produce the same
- * sentence: see {@link SignInRefused}. Keeping the reason as a separate value is
- * what lets the refusal be recorded accurately while being reported vaguely,
- * which is the only way to have both.
- */
+/** Why a sign in was refused, for the log rather than for the person. */
 export type RefusalReason =
   /** No login with that address. */
   | 'NO_ACCOUNT'
@@ -68,33 +26,16 @@ export type RefusalReason =
   | 'NO_PASSWORD'
   /** The password did not match. */
   | 'WRONG_PASSWORD'
-  /** The login is closed. `is_active` is false. */
+  /** The login is closed. */
   | 'ACCOUNT_CLOSED'
   /** The employee has left. FR 06. */
   | 'EMPLOYMENT_ENDED'
   /** The employee is suspended. */
   | 'EMPLOYMENT_SUSPENDED'
-  /** A login whose employee record has gone. Not reachable; see {@link whyNotSignIn}. */
+  /** A login whose employee record has gone. */
   | 'NO_EMPLOYEE';
 
-/**
- * A refused sign in.
- *
- * One message covers every reason that could be discovered by guessing, and it
- * is deliberately unhelpful: "no login with that address" and "wrong password"
- * as separate messages turn the sign in box into a way of finding out who works
- * here, which is a staff list an attacker did not have and now does.
- *
- * The reasons that are *not* generic are the ones that only become visible after
- * the right password has been given. At that point the person has proved they
- * are the account holder, nothing is being disclosed to a stranger, and telling
- * a leaver "your access ended when you left" rather than "wrong password" is the
- * difference between an answer and an afternoon.
- *
- * `reason` is carried for the log and for the tests. Nothing that reaches a
- * screen may read it and turn it back into a message; the point of the vagueness
- * is lost the moment something downstream is more specific than this class is.
- */
+/** A refused sign in. */
 export class SignInRefused extends Error {
   readonly reason: RefusalReason;
 
@@ -105,7 +46,7 @@ export class SignInRefused extends Error {
   }
 }
 
-/** The generic answer. Every reason an outsider could provoke gives this one. */
+/** The generic answer. */
 const CREDENTIALS_MESSAGE =
   'That email address and password do not match an account. Check both and try ' +
   'again, or ask HR to set your password if you have not signed in before.';

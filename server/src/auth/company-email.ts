@@ -1,18 +1,4 @@
-/**
- * Company email addresses.
- *
- * Sign in is by company address only. A personal address is refused when an
- * employee record is created and again when somebody tries to sign in, because
- * those are two different doors into the same building. NFR SEC 01.
- *
- * The accepted list is configuration, not code: it lives in
- * ALLOWED_EMAIL_DOMAINS so that adding a subsidiary's domain does not need a
- * release. Decided for Remat Holdings: `rematholdings.com`, and nothing else.
- *
- * Matching is exact. `hr.rematholdings.com` is not `rematholdings.com` and is
- * refused unless somebody adds it deliberately. Accepting subdomains would mean
- * anyone able to create one could mint themselves a valid company identity.
- */
+/** Company email addresses. NFR SEC 01. */
 
 export class NotACompanyEmail extends Error {
   constructor(email: string) {

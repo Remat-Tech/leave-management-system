@@ -1,50 +1,5 @@
 /**
- * Database access for a leave request. FR 10, FR 11, FR 15, FR 26, §8. LMS 301, LMS 304,
- * LMS 306.
- *
- * Queries and row mapping, nothing else. What a valid request is lives in
- * ../domain/leave-request.ts, what a period costs in ../domain/leave-calculator.ts,
- * and when to apply either in ../services/leave-request-service.ts.
- *
- * The one piece of judgement here is the same one every repository in this system
- * makes: turning what the database refused into something a caller can act on. Three of
- * those refusals are worth knowing before they are met.
- *
- * **The overlap check fires at INSERT, and is the only one an ordinary caller meets.**
- * `leave_request_never_overlaps` is a GiST exclusion constraint, and the service asks
- * the same question first so that the person gets {@link LeaveOverlapsAnother} naming
- * the leave in the way. Unlike the two below, that first ask cannot be made to close the
- * window: two tabs submitting the same fortnight at the same moment both read a table
- * with no conflict in it. So this one is a real path rather than a psql backstop, and it
- * is mapped to the same class and the same code the service raises — see
- * {@link LeaveRequestRepository.catchRefusals} for what it cannot carry.
- *
- * **The year check fires at INSERT, not at COMMIT.** A period running past the end of
- * its leave year is refused by `refuse_a_request_outside_its_leave_year()` with a
- * `restrict_violation`, and the service asks the same question first so that the person
- * gets {@link LeaveCrossesAYearEnd} with both years named. This is the backstop for
- * every other writer.
- *
- * **The reservation check fires at COMMIT.** `leave_request_holds_its_days` is a
- * deferred constraint trigger, so a request written without its RESERVATION is refused
- * when the transaction closes rather than when the row is inserted — which is what
- * makes the legitimate order possible at all: the entry cannot name a request that does
- * not exist yet. A caller that has gone through `BalanceService.reserveForRequest`
- * never meets it; a caller that has found another way in meets it and is told so.
- *
- * **And the release check fires at COMMIT too, for exactly the same reason.** LMS 306's
- * `leave_request_gives_its_days_back` is the mirror of it: the status has to move before
- * an entry can be written against the settled row, so a request that has ended and
- * released nothing is a legitimate intermediate state that only a check at COMMIT can
- * judge. LMS 314's `leave_request_takes_its_days` is the third of the family and says the
- * same thing about an approval that committed nothing.
- *
- * **`leave_request_moves_as_the_table_says` fires at the UPDATE**, because a request moving
- * somewhere the state machine does not permit is wrong the moment it is attempted rather
- * than at the end of the transaction. It is LMS 306's `leave_request_ends_once` widened by
- * LMS 314 and renamed with it: the rule was "a request ends once", and it is now "and it
- * moves only where §6 says", which the old name would have made a puzzle to read in an
- * error about approved leave.
+ * Database access for a leave request. FR 10, FR 11, FR 15, FR 26, §8., LMS 301, LMS 304, LMS 306, LMS 314, §6.
  */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
@@ -82,13 +37,7 @@ const KEPT_ITS_DAYS_ON_APPROVAL = 'leave_request_takes_its_days';
 /** The exclusion constraint from the prevent-overlapping-requests migration. */
 const OVERLAPS_ANOTHER = 'leave_request_never_overlaps';
 
-/**
- * Which field a refused row is reported against.
- *
- * Read from the constraint name the driver hands back rather than guessed from the
- * message, so a violation of some future constraint is re-thrown as itself rather than
- * blamed on whichever field this map happens to mention.
- */
+/** Which field a refused row is reported against. */
 const CHECKED_FIELDS: Record<string, string> = {
   leave_request_ends_after_it_starts: 'to',
   leave_request_reason_not_blank: 'reason',
@@ -110,21 +59,13 @@ const REFERENCED_FIELDS: Record<string, string> = {
 
 type LeaveRequestRow = Selectable<LeaveRequestTable>;
 
-/**
- * Which requests to read.
- *
- * `employeeId` is not optional and there is no method without it, for the reason
- * {@link LedgerReadOptions} gives: a read across everybody is a report, and a report is
- * a query written for the figures it needs rather than a history screen with its filter
- * left off. The approval story's queue is that report and will be its own method with
- * its own policy.
- */
+/** Which requests to read. */
 export interface LeaveRequestListOptions {
   employeeId: string;
   leaveTypeId?: string;
   leaveYearId?: string;
   status?: RequestStatus;
-  /** Requests overlapping this period. What a calendar asks, and the overlap check. */
+  /** Requests overlapping this period. */
   from?: string;
   to?: string;
 }
@@ -132,16 +73,7 @@ export interface LeaveRequestListOptions {
 export class LeaveRequestRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  /**
-   * Writes a request.
-   *
-   * Called only from inside `BalanceService.reserveForRequest`'s transaction, which
-   * writes the RESERVATION naming the row this returns. Called anywhere else, the
-   * deferred trigger refuses it at COMMIT and says why — see the module note.
-   *
-   * `submitted_at` is not sent and could not be honoured if it were:
-   * `stamp_when_a_request_was_submitted()` overwrites it.
-   */
+  /** Writes a request. */
   async submit(by: Attribution, request: ValidatedLeaveRequest): Promise<LeaveRequest> {
     return this.catchRefusals(
       async () => {
@@ -169,13 +101,7 @@ export class LeaveRequestRepository {
     return row === undefined ? undefined : toRequest(row);
   }
 
-  /**
-   * One person's requests, the leave they start with first.
-   *
-   * By `start_date` rather than by when they were submitted, because a leave page is
-   * read as a calendar: what somebody wants to see is the shape of their year, and a
-   * fortnight booked in January for August belongs in August.
-   */
+  /** One person's requests, the leave they start with first. */
   async list(options: LeaveRequestListOptions): Promise<LeaveRequest[]> {
     let query = this.db
       .selectFrom('leave_request')
@@ -192,10 +118,6 @@ export class LeaveRequestRepository {
       query = query.where('status', '=', options.status);
     }
 
-    /* Overlap, not containment: a request from the first to the thirtieth overlaps a
-       window of the fifteenth to the sixteenth, and a calendar that only found
-       requests wholly inside its month would show a fortnight on neither of the two
-       months it spans. */
     if (options.from !== undefined) {
       query = query.where('end_date', '>=', options.from);
     }
@@ -206,29 +128,7 @@ export class LeaveRequestRepository {
     return (await query.orderBy('start_date').orderBy('id').execute()).map(toRequest);
   }
 
-  /**
-   * The live leave this period would land on top of, if there is any. FR 15, §5.6.
-   *
-   * The earliest one, and one is enough: the refusal names a request the person has to
-   * do something about, and a list of three would still be answered by dealing with the
-   * first. `limit 1` keeps it a single index probe on the constraint's own GiST index.
-   *
-   * **Filtered by {@link LIVE_STATUSES} rather than by every status there is.** A
-   * withdrawn or refused request has given its days back and blocking against one would
-   * tell somebody to withdraw leave they had already withdrawn. The list is the domain's
-   * and it is the same list `leave_request_never_overlaps` carries as its predicate.
-   *
-   * The comparison is the two inequalities rather than a `daterange`, for the reason
-   * `list()` uses them: the dates are `DATE` columns and a range built per row could not
-   * use the index behind them. It is the same overlap either way, and
-   * {@link periodsOverlap} is the third statement of it — a unit test asserts that one
-   * against this one's answers.
-   *
-   * `except` is the request being amended, where there is one. Nothing amends dates
-   * today — `refuse_rewriting_what_a_request_cost()` refuses it — so it is unused and
-   * present because the alternative is an amendment story discovering that every request
-   * overlaps itself.
-   */
+  /** The live leave this period would land on top of, if there is any. FR 15, §5.6.. */
   async findOverlapping(
     employeeId: string,
     period: LeavePeriod,
@@ -251,14 +151,7 @@ export class LeaveRequestRepository {
     return row === undefined ? undefined : toRequest(row);
   }
 
-  /**
-   * Improves the reason, which is the only field of substance that may change.
-   *
-   * Every other column is refused by `refuse_rewriting_what_a_request_cost()` on every
-   * connection, so this method's narrowness is a convenience rather than the
-   * protection — the type has no other field to offer and the database would refuse it
-   * if it did.
-   */
+  /** Improves the reason, which is the only field of substance that may change. */
   async reword(by: Attribution, id: string, reason: string): Promise<LeaveRequest | undefined> {
     return this.catchRefusals(async () => {
       const row = await recording(this.db, by, (on) =>
@@ -275,32 +168,7 @@ export class LeaveRequestRepository {
   }
 
   /**
-   * Moves a request, which is the only thing that touches `status` or the desk it is
-   * waiting at. FR 26, FR 38a, §6. LMS 306, LMS 314.
-   *
-   * **One method rather than two, and that is the state machine's second criterion held
-   * literally.** LMS 306 called this `settle` and it wrote a status; LMS 314 needed a
-   * second kind of move — an approval that sends a request on to the next desk without
-   * changing its status at all — and the obvious shape for it was an `advance` beside this
-   * one. Two methods setting the same column is two writers of it, and
-   * ../../tests/unit/state-machine.test.ts reads the source and fails on the second. So
-   * both moves come through here, and the test counts one `.set({ status`.
-   *
-   * The pair is written in one statement for a reason beyond tidiness:
-   * `leave_request_waits_at_a_desk` is an equivalence between the two columns, so a writer
-   * that moved one and then the other would be refused halfway through every legitimate
-   * move it made.
-   *
-   * Called only from inside `BalanceService`'s transactions, which write the movement
-   * naming the row this returns. Called anywhere else, the deferred triggers refuse it at
-   * COMMIT and say why — `leave_request_gives_its_days_back` for an ending that released
-   * nothing, `leave_request_takes_its_days` for an approval that committed nothing.
-   *
-   * It takes a {@link RequestStatus} rather than a {@link ReleasingStatus}, which is what
-   * LMS 314 cost: `SUBMITTED` is now a legitimate destination, because a request that has
-   * moved on a stage is still submitted. What stops that being a way to un-end a request is
-   * `leave_request_moves_as_the_table_says`, which refuses every move out of a state that
-   * has ended, on every connection. The type used to carry that and no longer can.
+   * Moves a request, which is the only thing that touches `status` or the desk it is waiting at. FR 26, FR 38a, §6., LMS 306, LMS 314.
    */
   async moveTo(
     by: Attribution,
@@ -322,18 +190,7 @@ export class LeaveRequestRepository {
     });
   }
 
-  /**
-   * Runs a write and turns whatever the database refused it for into a domain error.
-   *
-   * The constraint name is read from the driver's error rather than guessed from the
-   * message text, so a violation of some future constraint is re-thrown rather than
-   * reported against a field it has nothing to do with.
-   *
-   * `period` is the one thing a refusal here cannot recover for itself. Postgres names
-   * the constraint that was violated and not the row that was being written, and the
-   * overlap refusal is about a period; the caller that has it hands it over. Absent for
-   * a write that cannot move a date, which is every write but the insert.
-   */
+  /** Runs a write and turns whatever the database refused it for into a domain error. */
   private async catchRefusals<T>(write: () => Promise<T>, period?: LeavePeriod): Promise<T> {
     try {
       return await write();
@@ -341,13 +198,7 @@ export class LeaveRequestRepository {
       const failure = error as { code?: string; constraint?: string };
       const constraint = failure.constraint ?? '';
 
-      /* FR 15. The one refusal here that a legitimate caller meets in normal use rather
-         than only from psql: two tabs submitting the same fortnight at the same moment
-         both pass the service's check and the second is refused as it writes.
-         `LeaveOverlapsAnother` rather than the driver's "conflicting key value violates
-         exclusion constraint", so both callers meet the same class and the same code —
-         and without a conflict named, because the transaction is aborted by the time
-         this runs and cannot be asked which row it collided with. */
+      /** FR 15. */
       if (
         failure.code === EXCLUSION_VIOLATION &&
         constraint === OVERLAPS_ANOTHER &&

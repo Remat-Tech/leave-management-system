@@ -1,99 +1,12 @@
 /**
- * What somebody is told when something happens to their leave, and in what words. FR 59,
- * §7.1. LMS 329.
- *
- * The story is one sentence and the whole file follows from it: *I am not refreshing a
- * screen to find out whether I can book a flight.* Read that literally and it is not a
- * request for messages — it is a request for a particular sentence to arrive at a
- * particular moment, and every decision here is about which sentence.
- *
- * Four stories have ended by pointing at this one. LMS 306: "Being *told* that a request
- * went away is FR 59's". LMS 315: "That somebody is *told* their leave was refused is a
- * story of its own; what this one guarantees is that there is something true to tell them."
- * LMS 316 built {@link progressOf} so that "is this agreed" had one answer. LMS 323 said
- * FR 59 "owns notification for every event in a request's life". This is that file, and
- * what those four left it is a system in which every event already has something true to
- * say about it.
- *
- * ## The composition is here, so that the email and the screen are one message
- *
- * {@link noticeOf} returns a subject and a body, both plain text, and both are stored on
- * the row. The email sends exactly them; the in-app notice shows exactly them. There is no
- * second template anywhere and there is deliberately nowhere to put one.
- *
- * That is the same argument {@link chainInWords} makes about naming a desk — "the same
- * sentence is wanted in an email, in an error and on a screen, and three copies of it would
- * drift" — and the drift here would be worse than a wording difference. Two templates
- * eventually disagree about whether leave is *agreed*, and the person reading the more
- * optimistic of the two books a flight.
- *
- * ## The six events are six different pieces of news
- *
- * {@link NOTICE_EVENTS}, and the one worth arguing about is that an approval is two of
- * them. `STAGE_APPROVED` and `APPROVED` differ by the only thing the story cares about:
- * whether the leave is yours to take. "Your line manager approved this" is the sentence
- * LMS 316 was written to stop being the whole answer, and a single `APPROVED` event
- * covering both would put that defect in an email — where it is worse, because an email is
- * read once, out of context, on a phone, by somebody with a booking page open.
- *
- * So `STAGE_APPROVED` says *do not book anything on it* in the body, in those words, and
- * `APPROVED` says *this is agreed and is yours to take*. Every other line in either message
- * is context around that sentence.
- *
- * ## What is not here
- *
- * **No email envelope.** A {@link Mail} has an address on it and `/domain` holds neither
- * addresses nor transports — `noticeEmail` sits beside the service, exactly as `codeEmail`
- * sits beside the code rules in ../auth/mfa.ts and `discrepancyEmail` beside the
- * reconciliation job.
- *
- * **No recipient.** {@link noticeOf} is handed whose leave it is and composes for them;
- * where the message is delivered is the service's, from the employee record. That division
- * is what lets the whole of the wording be tested without a person, a mailbox or a
- * database.
- *
- * **No decision about when to send.** These are pure functions over facts that have already
- * happened. That a notice is written *after* the transaction commits — never inside it — is
- * ../services/notification-service.ts and the migration, and it is the one rule about this
- * feature that a wrong answer to is unrecoverable.
- *
- * **No approver's queue.** FR 59 is what the *requester* is told. That the manager has
- * something waiting is FR 60, would put a different id in `notification.employee_id`, and
- * needs the desk resolved to a person — which is ../auth/leave-request-policy.ts's and not
- * a question this file can ask.
- *
- * **No override.** FR 59 lists one among the things somebody is told about and nothing in
- * this system overrides a decision yet: `REQUEST_ACTIONS` is withdraw, refuse, cancel and
- * approve. LMS 209's rule — a value nothing can write is a promise the schema cannot keep —
- * applies to this list exactly as it does to `REQUEST_STATUSES`, so the story that brings
- * the override brings its notice, which is one member here and one branch in
- * {@link noticeOf}.
+ * What somebody is told when something happens to their leave, and in what words. FR 59, §7.1., LMS 329, LMS 306, LMS 315, LMS 316, LMS 323, FR 60, LMS 209.
  */
 
 import { type ApproverRole, deskInWords } from './approval-chain.js';
 import type { LeaveRequest } from './leave-request.js';
 import { type CalendarDate, formatDay } from './time.js';
 
-/**
- * The things somebody is told about. FR 59.
- *
- * The story's list — "submission, each decision, override, cancellation and withdrawal
- * outcome" — with the override absent for the reason the module note gives, and with "each
- * decision" spelled as the three it actually is: a stage approving, the last stage
- * approving, and a refusal.
- *
- * `notification_event_known` holds the same six values, and the integration suite reads
- * that constraint back out of `pg_constraint` and asserts the two agree — so neither can
- * be extended alone.
- *
- * Written out rather than derived from {@link REQUEST_STATUSES} or {@link REQUEST_ACTIONS},
- * and it is the same discipline every list in ./leave-request.ts keeps. Neither derivation
- * works: there are five statuses and six events, because approval is one status and two
- * pieces of news, and there are four actions and six events, because submitting is not an
- * action in the state machine at all. A list that absorbed whatever arrived next would
- * either notify nobody about a new verb or notify everybody about a new status with no
- * words to say.
- */
+/** The things somebody is told about. FR 59. */
 export const NOTICE_EVENTS = [
   'SUBMITTED',
   'STAGE_APPROVED',
@@ -105,14 +18,7 @@ export const NOTICE_EVENTS = [
 
 export type NoticeEvent = (typeof NOTICE_EVENTS)[number];
 
-/**
- * The events after which the leave is not going to happen, and the days are back.
- *
- * The three {@link RELEASING_STATUSES} named as news rather than as states, and the reason
- * they are a list here is {@link noticeOf}'s closing paragraph: all three end with the same
- * two sentences about the balance, and writing those three times is how one of them comes
- * to say the days are back when they are not.
- */
+/** The events after which the leave is not going to happen, and the days are back. */
 const ENDED_AND_GAVE_THE_DAYS_BACK: readonly NoticeEvent[] = ['REFUSED', 'WITHDRAWN', 'CANCELLED'];
 
 /** Whether this is news that the leave is off and the balance has the days again. */
@@ -120,13 +26,7 @@ export function givesTheDaysBack(event: NoticeEvent): boolean {
   return ENDED_AND_GAVE_THE_DAYS_BACK.includes(event);
 }
 
-/**
- * What is written down, and what is sent. FR 59.
- *
- * `subject` and `body` are one composition used by both channels — see the module note on
- * why there is deliberately no second template. Neither carries the recipient: an address
- * is the service's business and an id is the row's.
- */
+/** What is written down, and what is sent. FR 59. */
 export interface NewNotice {
   /** Whose leave it is, which for FR 59 is also who is being told. */
   employeeId: string;
@@ -139,24 +39,16 @@ export interface NewNotice {
 /** A notice as it comes back out, with what became of its email beside it. */
 export interface Notice extends NewNotice {
   id: string;
-  /** FR 59's in-app half. Null until the person has seen it. */
+  /** FR 59's in-app half. */
   readAt: Date | null;
   /** When the email left, or null where it has not. */
   emailedAt: Date | null;
-  /** Why it did not, in the transport's own words. Null where it did. */
+  /** Why it did not, in the transport's own words. */
   emailFailure: string | null;
   createdAt: Date;
 }
 
-/**
- * A notice that was refused, and the field that caused it.
- *
- * The same shape every refusal in `/domain` carries, and it exists for one caller that is
- * not a person: nothing in this system lets somebody type a notice, so every one of these
- * is a bug in a composer rather than a form filled in wrongly. The field is carried anyway,
- * because the day FR 60 adds an approver's queue there will be a second composer and the
- * message should say which part of it was empty.
- */
+/** A notice that was refused, and the field that caused it. FR 60. */
 export class InvalidNotice extends Error {
   readonly field: string;
 

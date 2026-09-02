@@ -1,67 +1,4 @@
-/**
- * Loading staff from a spreadsheet, with a dry run first. FR 08, LMS 107.
- *
- * Two methods, and the relationship between them is the story:
- * {@link StaffImportService.dryRun} reads the file, judges every row and writes
- * nothing; {@link StaffImportService.confirm} takes the answer the HR officer
- * read and applies exactly that, or refuses.
- *
- * A route will sit in front of this when Phase 1 has an authorisation layer to
- * put behind it (LMS 112), and it is the route that will receive the upload and
- * hand the decoded text over. Until then this is the whole of the story's
- * surface, and it is deliberately the same surface a route would call.
- *
- * **Nothing here decides what a valid employee record is.** That is the point of
- * the arrangement rather than an omission. The plan is built by running the same
- * validators a single record goes through, and the confirmed plan is written by
- * calling the same {@link EmployeeService} a single joiner goes through, inside
- * one transaction. So the import cannot drift away from the form: a rule added
- * to ../domain/employee.ts is a rule the import gained the same afternoon, and
- * there is no second opinion about whether a personal email address is
- * acceptable in bulk.
- *
- * What is genuinely this service's own is the part that only exists in bulk:
- *
- *   **Names into ids.** The file says `Operations` and `RH-0010`. Everything
- *   below the service says `departmentId` and `managerId`. Somebody has to look
- *   those up, and it can only be the layer that can read another table.
- *
- *   **The whole file at once.** Two rows claiming the same employee number, a
- *   reporting line that loops through four lines of the file and touches no
- *   record already in the database, a second employee with no line manager —
- *   none of these is visible from any single row, and none of them is a question
- *   {@link EmployeeService} is ever asked.
- *
- *   **An order to write in.** A joiner cannot name a manager who is three lines
- *   further down the file and does not exist yet. See
- *   {@link orderForWriting}.
- *
- * What it does not do:
- *
- *   No deleting, and no absence handling. Somebody who is in the database and
- *   not in the file is left exactly as they are. A spreadsheet is not a
- *   statement about who does *not* work here — half of them are one team, or
- *   one intake of joiners — and reading it as one would terminate the entire
- *   company the first time HR imported the graduate scheme. Somebody who has
- *   left is {@link EmployeeService.terminate}, or an exit date in the file.
- *
- *   No creating departments or working patterns. A row naming a team that does
- *   not exist is rejected rather than quietly inventing it, because the usual
- *   cause is a typo and the result of guessing is two departments called
- *   Operations and a headcount report that splits in half. HR creates the team
- *   once, deliberately, and imports again.
- *
- *   No authorisation rules. Since LMS 112 both methods take an {@link Actor} and
- *   ask ../auth/employee-policy.ts whether they may import staff, which is the
- *   same standing as creating and changing records one at a time — because that
- *   is exactly what this does.
- *
- *   Checked at this door as well as row by row, and the reason is
- *   {@link dryRun}: it writes nothing, so it reaches no write check, and what it
- *   hands back is a report naming everybody in the organisation the file
- *   overlaps. An unauthorised dry run is a staff list with a spreadsheet in front
- *   of it.
- */
+/** Loading staff from a spreadsheet, with a dry run first. FR 08, LMS 107, LMS 112. */
 
 import type { Actor } from '../auth/actor.js';
 import { allowedDomains, NotACompanyEmail } from '../auth/company-email.js';
@@ -111,31 +48,14 @@ import type { Repositories, Transactions } from '../repositories/transaction.js'
 import { EmployeeService, type EmployeeServiceOptions } from './employee-service.js';
 
 export interface ImportOptions {
-  /**
-   * Which heading holds which field. FR 08.
-   *
-   * Anything not said is guessed from the headings, so a file with ordinary
-   * column names needs none of this. What it is for is the file whose columns
-   * are called `Ref` and `Commenced`, and the file with a `Personal Email`
-   * column next to the work one that must not be read by accident.
-   */
+  /** Which heading holds which field. FR 08. */
   mapping?: ColumnMapping;
-  /**
-   * What separates the cells. Sniffed from the heading row when not given, which
-   * is right for every file anybody has actually exported.
-   */
+  /** What separates the cells. */
   delimiter?: string;
 }
 
 export interface ConfirmOptions extends ImportOptions {
-  /**
-   * Import the readable rows even though some rows were rejected.
-   *
-   * Off by default, and the default is the story's own point: an import that
-   * quietly skips eleven unreadable rows is how a company goes live believing
-   * everybody is in the system. Asking for it is a deliberate second decision by
-   * somebody who has read the report and decided those eleven can wait.
-   */
+  /** Import the readable rows even though some rows were rejected. */
   withoutTheRejectedRows?: boolean;
 }
 
@@ -145,19 +65,12 @@ export interface ImportOutcome {
   changed: Employee[];
   /** Rows that named somebody whose record already said what the file said. */
   unchanged: number;
-  /** Rows that were rejected and deliberately left out. Empty unless asked for. */
+  /** Rows that were rejected and deliberately left out. */
   skipped: RejectedRow[];
 }
 
 /**
- * The organisation as it stands, in the shapes the planner needs to ask about it
- * a few hundred times.
- *
- * Read once per import rather than a query per row. Four hundred rows against a
- * database at the end of a network is four hundred round trips per lookup, and
- * there are four lookups per row; the whole organisation is a few hundred rows
- * and fits in memory with room to spare. It is read inside the transaction, so
- * it is one consistent picture rather than a moving one.
+ * The organisation as it stands, in the shapes the planner needs to ask about it a few hundred times.
  */
 interface Organisation {
   employeeByNumber: Map<string, Employee>;
@@ -171,7 +84,7 @@ interface Organisation {
   headNumber: string | null;
 }
 
-/** What {@link InvalidEmployee} calls a field, in the words the file uses for it. */
+/** What InvalidEmployee calls a field, in the words the file uses for it. */
 const IMPORT_FIELD_OF: Record<string, ImportField> = {
   employeeNumber: 'employeeNumber',
   firstName: 'firstName',
@@ -193,9 +106,7 @@ export class StaffImportService {
 
   constructor(
     private readonly transactions: Transactions,
-    /* NFR SEC 02. Held here and handed to the EmployeeService this service
-       builds inside the transaction, so that the four hundredth row is judged by
-       the same guard and written to the same denial log as the first. */
+    /** NFR SEC 02. */
     private readonly guard: Guard,
     options: EmployeeServiceOptions = {},
   ) {
@@ -205,29 +116,8 @@ export class StaffImportService {
     this.domains = options.domains ?? allowedDomains();
   }
 
-  /**
-   * Reads the file and says what would happen. Writes nothing. FR 08.
-   *
-   * Every row is judged against the rules that would judge it on the way in, and
-   * against the whole file and the whole organisation besides, so the report
-   * contains the refusals a real import would produce rather than a subset of
-   * them.
-   *
-   * It runs inside a transaction it never writes to, which is not a
-   * contradiction: what that buys is one consistent view of the tables for the
-   * length of the read. A report whose first hundred rows were judged before a
-   * colleague's edit and whose last hundred were judged after it describes an
-   * import that would never have happened.
-   *
-   * Throws — rather than reporting — only for what makes the file unreadable as
-   * a whole: {@link UnreadableSpreadsheet} for something that is not a
-   * spreadsheet, and {@link InvalidColumnMapping} when the columns cannot be
-   * matched to fields. There is no per row answer to give to either.
-   */
+  /** Reads the file and says what would happen. FR 08. */
   async dryRun(actor: Actor, source: string, options: ImportOptions = {}): Promise<ImportPlan> {
-    /* Before the transaction opens, because a refused caller should not so much
-       as take a snapshot of the tables, and because a plan is a report on the
-       organisation whether or not it is ever confirmed. */
     this.guard.enforce(employeePolicy.importStaff(actor));
 
     return this.transactions.allOrNothing(
@@ -235,27 +125,7 @@ export class StaffImportService {
     );
   }
 
-  /**
-   * Applies the plan the HR officer confirmed. The only thing here that writes.
-   *
-   * `fingerprint` is the one from the plan they read. The file is planned again
-   * from scratch, inside the transaction that will do the writing, and the two
-   * plans have to agree: if somebody created a joiner, closed a department or
-   * moved a reporting line in between, the import that was approved is not the
-   * import that would now happen, and {@link ImportChangedSinceDryRun} is thrown
-   * with nothing written. That is what makes "nothing is written until the dry
-   * run is confirmed" a guarantee about *this* dry run rather than about the
-   * caller having made two calls.
-   *
-   * A plan with rejected rows in it is refused unless
-   * {@link ConfirmOptions.withoutTheRejectedRows} says otherwise. See there for
-   * why that is the default.
-   *
-   * Everything commits together or nothing does. The rows are written through
-   * {@link EmployeeService}, so the four hundredth row is checked exactly as the
-   * first was and a refusal on any of them takes the other three hundred and
-   * ninety-nine back out with it.
-   */
+  /** Applies the plan the HR officer confirmed. */
   async confirm(
     actor: Actor,
     source: string,
@@ -279,18 +149,7 @@ export class StaffImportService {
     });
   }
 
-  /**
-   * The dry run itself: file to plan, with nothing written.
-   *
-   * In passes, and the order of them is load bearing. The row by row reading
-   * cannot know that two rows claim the same employee number; the duplicate pass
-   * cannot know that the reporting lines loop; the cycle pass has to run over
-   * the file's rows *and* the records already in the database, because a loop
-   * can be closed by one line of a file through four people none of whom the
-   * file otherwise touches. Each pass rejects what it finds, and later passes
-   * skip what earlier ones rejected, so one bad row produces one line in the
-   * report rather than four.
-   */
+  /** The dry run itself: file to plan, with nothing written. */
   private async plan(
     repositories: Repositories,
     source: string,
@@ -300,10 +159,6 @@ export class StaffImportService {
     const mapping = resolveColumnMapping(sheet.headings, options.mapping);
     const organisation = await readOrganisation(repositories);
 
-    /* Keyed by line, so a row rejected by one pass is not rejected again by the
-       next. The first reason is the useful one: a row whose employee number is
-       missing has no business also being reported as a duplicate of the other
-       row whose employee number is missing. */
     const rejected = new Map<number, RejectedRow>();
     const drafts: DraftRow[] = [];
 
@@ -374,17 +229,7 @@ export class StaffImportService {
     return { plan: { ...plan, fingerprint: fingerprintOf(plan) }, organisation };
   }
 
-  /**
-   * One row, against the organisation: what would this do?
-   *
-   * Refusals leave by being thrown, as {@link InvalidImportRow} for what the
-   * file got wrong and as the ordinary domain errors — {@link InvalidEmployee},
-   * {@link DuplicateWorkEmail}, {@link DepartmentDeactivated},
-   * {@link ManagerHasLeft} — for what the record rules refuse. The caller turns
-   * either into a line of the report. Reusing the domain errors rather than
-   * restating their messages is what keeps the dry run's answer and the write's
-   * answer the same sentence.
-   */
+  /** One row, against the organisation: what would this do? */
   private classify(
     draft: DraftRow,
     context: {
@@ -532,21 +377,8 @@ export class StaffImportService {
       ...(draft.gender !== undefined && { gender: draft.gender }),
     };
 
-    /* The record rules, run now rather than at write time, so a work address
-       outside the company domains is a line of the dry run report instead of a
-       rolled back transaction at the end of it.
-
-       The manager reference is stood in with the employee number the file used.
-       requireManagerReference() only asks that a reference was given at all —
-       whether it is anybody is settled by checkManagerReference() above, and
-       what its id is cannot be known until the write, because the manager may be
-       a row of this same file. */
     validateNewEmployee({ ...record, managerId: draft.manager }, this.domains);
 
-    /* A leaver being loaded from an old system may belong to a team that has
-       since closed, which is the latitude EmployeeService.create() allows and the
-       thing that makes history importable at all. Somebody who is actually going
-       to work here may not. */
     if ((draft.employmentStatus ?? 'ACTIVE') !== 'TERMINATED') {
       assertCanTakeEmployees(department);
     }

@@ -9,13 +9,7 @@ import {
   type StoredObject,
 } from './storage.js';
 
-/**
- * Stores attachments in a directory. For development and for tests.
- *
- * The directory must sit outside anything the web server serves. Files here are
- * medical certificates among other things, and a directory that is reachable by
- * URL makes every one of them public. NFR SEC 04, NFR SEC 06.
- */
+/** Stores attachments in a directory. NFR SEC 04, NFR SEC 06. */
 export class LocalStorage implements Storage {
   readonly #root: string;
 
@@ -62,15 +56,7 @@ export class LocalStorage implements Storage {
     await rm(this.#pathFor(key), { force: true });
   }
 
-  /**
-   * Maps a key to a path, and refuses anything this storage did not issue.
-   *
-   * The check matters because keys make a round trip through the database
-   * before coming back here. A key of `../../../etc/passwd` would otherwise
-   * resolve outside the root and turn attachment download into arbitrary file
-   * read. Validating the shape is the cheap defence; the resolve check below is
-   * the one that would still hold if the pattern were ever loosened.
-   */
+  /** Maps a key to a path, and refuses anything this storage did not issue. */
   #pathFor(key: string): string {
     if (!KEY_PATTERN.test(key)) {
       throw new InvalidKey();

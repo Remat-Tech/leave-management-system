@@ -1,120 +1,36 @@
 /**
- * What a leave type is worth, and from when. FR 31, §5.5. LMS 203.
- *
- * The leave type says what kind of arithmetic applies; this says what numbers go
- * into it. The whole of the difference between the two is the pair of dates every
- * rule carries, and FR 31 is why they are there: a change to an entitlement
- * "shall not retroactively alter closed leave years". Raise annual leave from
- * twenty days to twenty two next January and last year's balances have to stay
- * what they were — not because anybody remembers to leave them alone, but because
- * there is no arrangement of rows that could move them.
- *
- * ## The rule this file exists to implement once
- *
- * Every figure is asked for as of a day, and the answer is the rule that is
- * **most specific, then latest**:
- *
- *   A rule naming this employee beats one naming their department, which beats
- *   one naming nobody. Three rungs, because nothing narrower than a person exists
- *   and nothing sits between a department and everybody.
- *
- *   Within a rung, the latest `effectiveFrom` that has already arrived wins. That
- *   is what makes changing a figure an *insert*: HR adds "twenty two from 1
- *   January 2027" and the twenty day rule keeps answering every question about
- *   2026 for as long as anybody asks one.
- *
- * {@link resolve} is the only implementation of that. The repository fetches
- * candidate rows and does not order them, the migration creates no view, and
- * there is no second copy in SQL — which is the criterion the story states and
- * the one that is easiest to lose, because an `ORDER BY ... LIMIT 1` in a query
- * looks like an optimisation rather than like a duplicate rule.
- *
- * ## Why a closed year cannot move
- *
- * Three properties, and it takes all three:
- *
- *   **There is no undated question.** {@link resolve} takes a day and there is no
- *   overload that does not. A caller cannot ask what annual leave is worth; only
- *   what it was worth on a date, and a date in a closed year selects the rules
- *   that covered it.
- *
- *   **A rule that has taken effect is never rewritten.** Not by this service, and
- *   not by anybody: the entitlement-rule-effective-dates migration holds it as a
- *   trigger, so a correction typed at a psql prompt is refused the same way.
- *   {@link assertMayBeCorrected} is the message; the trigger is the guarantee.
- *
- *   **A new rule may not reach back into a closed year.** This is the one no
- *   constraint on this table can decide, because a closed leave year is a row in
- *   another one. It is held here as {@link assertDoesNotReachIntoAClosedYear},
- *   which takes the boundary as an argument the way {@link worksOn} takes a
- *   weekday — the domain knows the rule, the caller brings the fact. Since
- *   LMS 205 the fact comes from `leave_year`: {@link earliestOpenDayFrom} reads
- *   the day after the last closed year ends. On go live the whole of 2026 is
- *   open, nothing is closed, and entering the current policy from 1 January is
- *   exactly what HR has to be able to do.
- *
- * ## What is deliberately not here
- *
- * **No pro rating.** {@link EntitlementRule.prorateOnJoin} says whether a joiner's
- * first year is a proportion; what the proportion is, is LMS 013's formula and
- * LMS 215 applies it. One calculation for the whole company is not a figure per
- * rule.
- *
- * **No granting.** A resolved rule is a figure, not days somebody has. Turning it
- * into a balance is a ledger entry — LMS 210 and LMS 211 — and that is the other
- * half of why a closed year is safe: a grant is written once, with the amount it
- * was worth on the day it was written.
- *
- * **No leave year.** A rule covers days, and it goes on covering them whatever
- * anybody draws around them. Which days make a year, and whether that year is
- * closed, is ./leave-year.ts — read through {@link EarliestOpenDay} and nowhere
- * else, so that this file still needs nothing but the rules in hand.
+ * What a leave type is worth, and from when. FR 31, §5.5., LMS 203, LMS 205, LMS 013, LMS 215, LMS 210, LMS 211.
  */
 
 import { type CalendarDate, isCalendarDate } from './time.js';
 import { isWholeDays, WHOLE_DAYS_ONLY } from './whole-days.js';
 
-/**
- * How narrowly a rule is aimed, and therefore which one wins.
- *
- * Ordered from widest to narrowest, which is the order {@link specificityOf}
- * scores them in and the order they read in a sentence: everybody, then a
- * department, then a person.
- *
- * A rung is not a column of its own. It follows from which of the two scope
- * fields is set, so a rule cannot claim to be more specific than it is — the two
- * could disagree and the row would be sound and wrong.
- */
+/** How narrowly a rule is aimed, and therefore which one wins. */
 export const RULE_SCOPES = ['EVERYBODY', 'DEPARTMENT', 'EMPLOYEE'] as const;
 
 export type RuleScope = (typeof RULE_SCOPES)[number];
 
-/** What the caller supplies to create one. Everything with a sensible default has one. */
+/** What the caller supplies to create one. */
 export interface NewEntitlementRule {
   leaveTypeId: string;
-  /** The person this is for, or nothing. Never set beside a department. */
+  /** The person this is for, or nothing. */
   employeeId?: string | null;
-  /** The team this is for, or nothing. Never set beside an employee. */
+  /** The team this is for, or nothing. */
   departmentId?: string | null;
-  /** Whole days. FR 24. Per leave year, or per occurrence for an event type. */
+  /** Whole days. FR 24. */
   entitlementDays: number;
   prorateOnJoin?: boolean;
   carriesOver?: boolean;
   carryoverMaxDays?: number | null;
   carryoverExpiryMonth?: number | null;
-  /** The first day this figure applies to. Inclusive. */
+  /** The first day this figure applies to. */
   effectiveFrom: CalendarDate;
-  /** The last day, or nothing for a standing rule. Inclusive. */
+  /** The last day, or nothing for a standing rule. */
   effectiveTo?: CalendarDate | null;
   note?: string | null;
 }
 
-/**
- * A change to one.
- *
- * Only ever applied to a rule that has not yet taken effect; see
- * {@link assertMayBeCorrected}. Everything else is a new rule.
- */
+/** A change to one. */
 export type EntitlementRuleChanges = Partial<NewEntitlementRule>;
 
 /** A record as it comes back out. */
@@ -150,53 +66,20 @@ export interface ValidatedEntitlementRule {
   note: string | null;
 }
 
-/**
- * Who is asking, and about which day.
- *
- * Both scope fields are required rather than optional, because every employee is
- * in exactly one department and a caller who does not know which is a caller
- * asking about nobody in particular. The day is required for the reason the whole
- * file exists: there is no undated form of this question.
- */
+/** Who is asking, and about which day. */
 export interface AsAt {
   employeeId: string;
   departmentId: string;
   on: CalendarDate;
 }
 
-/**
- * The first day still open to change, or null where nothing has been closed.
- *
- * Supplied by the caller rather than read here, and it is a function rather than
- * a date because the answer moves: the year rollover of LMS 217 closes a year,
- * and a service holding a date read at start up would go on accepting rules into
- * it.
- *
- * LMS 205 brought `leave_year` and with it the real implementation:
- * {@link earliestOpenDayFrom} in ../services/leave-year-service.ts, which is the
- * day after the last closed year ends. That is what the composition root passes,
- * and swapping it in was the whole of what this seam was left for.
- */
+/** The first day still open to change, or null where nothing has been closed. LMS 217, LMS 205. */
 export type EarliestOpenDay = () => Promise<CalendarDate | null>;
 
-/**
- * No year has been closed.
- *
- * Still true of a fresh database, and still the answer
- * {@link earliestOpenDayOf} gives one — which is why this stayed after LMS 205
- * rather than being deleted with the seam it filled. It is what a caller that has
- * no leave years to read passes, and in this system that is a test asking what a
- * rule does when nothing is settled.
- */
+/** No year has been closed. LMS 205. */
 export const NOTHING_IS_CLOSED_YET: EarliestOpenDay = async () => null;
 
-/**
- * A rule that was refused, and the field that caused it.
- *
- * The same shape as {@link InvalidLeaveType} and for the same reason, NFR USA 03:
- * an error has to say what is wrong next to the input it is about, and this form
- * has two pairs of fields that can only be judged together.
- */
+/** A rule that was refused, and the field that caused it. NFR USA 03. */
 export class InvalidEntitlementRule extends Error {
   readonly field: string;
 

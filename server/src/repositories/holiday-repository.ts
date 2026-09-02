@@ -1,30 +1,4 @@
-/**
- * Database access for public holidays. FR 22, §5.4. LMS 206.
- *
- * Queries and row mapping, nothing else. What a holiday is and how a stretch of
- * days is read against the calendar is ../domain/holiday.ts; when the calendar may
- * be changed is ../services/holiday-service.ts.
- *
- * Refusals are translated rather than allowed to surface, the same way the leave
- * type, leave year and entitlement rule repositories do it and for the same
- * reason: checking first and writing afterwards is a race. Two officers
- * transcribing the same gazette in the same minute both find the sixth of March
- * free and both write it; `holiday_one_per_day` is what actually decides, and this
- * turns its answer back into the domain error for it.
- *
- * The other translated refusal is the settled year, which is *not* a race and is
- * here anyway. The service checks it first with a clearer message — it can name
- * the earliest day still open — but a leave year is closed by somebody else while
- * this officer has the form open, and a write either side of that instant has to
- * be refused rather than accepted by whichever half of the second it landed in.
- * The trigger is the guarantee; the service's check is the sentence.
- *
- * Unlike the other configuration repositories there is a {@link
- * HolidayRepository.remove}, and it is a real delete. `lms_app` holds DELETE on
- * this table because nothing is filed under a holiday: what a request stores is
- * the days it cost, not which days those were. See the privileges section of the
- * public-holiday-calendar migration.
- */
+/** Database access for public holidays. FR 22, §5.4., LMS 206. */
 
 import type { Insertable, Kysely, Selectable, Updateable } from 'kysely';
 import type { Database } from '../db/index.js';
@@ -46,21 +20,14 @@ const UNIQUE_VIOLATION = '23505';
 const CHECK_VIOLATION = '23514';
 
 /**
- * Postgres `restrict_violation`, which the settled-year trigger raises with a
- * constraint name of its own so that this file can recognise it the way it
- * recognises a real constraint.
+ * Postgres `restrict_violation`, which the settled-year trigger raises with a constraint name of its own so that this file can recognise it the way i…
  */
 const RESTRICT_VIOLATION = '23001';
 
 const ONE_PER_DAY = 'holiday_one_per_day';
 const SETTLED_YEARS = 'holiday_leaves_settled_years_alone';
 
-/**
- * Which field a refused row is reported against.
- *
- * Read from the constraint name the driver hands back rather than guessed from
- * the message, so a violation of some future constraint is re-thrown as itself.
- */
+/** Which field a refused row is reported against. */
 const CHECKED_FIELDS: Record<string, string> = {
   holiday_name_not_blank: 'name',
 };
@@ -68,9 +35,9 @@ const CHECKED_FIELDS: Record<string, string> = {
 type HolidayRow = Selectable<HolidayTable>;
 
 export interface HolidayListOptions {
-  /** The first day to include. Inclusive. */
+  /** The first day to include. */
   from?: CalendarDate;
-  /** The last day to include. Inclusive, because a calendar's last day is a day. */
+  /** The last day to include. */
   to?: CalendarDate;
 }
 
@@ -87,15 +54,7 @@ export class HolidayRepository {
     });
   }
 
-  /**
-   * Applies a change. Returns undefined if there is no such holiday, which the
-   * service turns into {@link HolidayNotFound}.
-   *
-   * updated_at is not set here, for the reason it is not set in any of the other
-   * repositories: the trigger does it, so a migration correcting data and the
-   * seed get the same treatment as the application rather than only the writer
-   * who remembered.
-   */
+  /** Applies a change. */
   async update(
     by: Attribution,
     holiday: Holiday,
@@ -123,13 +82,7 @@ export class HolidayRepository {
     });
   }
 
-  /**
-   * Takes a day off the calendar. A real delete.
-   *
-   * False rather than a throw when there was nothing to remove, so the service
-   * decides what a missing record means — which it does differently depending on
-   * whether it had already read one.
-   */
+  /** Takes a day off the calendar. */
   async remove(by: Attribution, holiday: Holiday): Promise<boolean> {
     return this.catchRefusals(holiday.date, async () => {
       const deleted = await recording(this.db, by, (on) =>
@@ -150,13 +103,7 @@ export class HolidayRepository {
     return row === undefined ? undefined : toHoliday(row);
   }
 
-  /**
-   * The holiday on a day, or undefined.
-   *
-   * The read every day count makes, and `holiday_one_per_day` is why there is no
-   * ORDER BY picking a winner: a query that ordered would be a second answer to a
-   * question the schema already answers once.
-   */
+  /** The holiday on a day, or undefined. */
   async findOn(day: CalendarDate): Promise<Holiday | undefined> {
     const row = await this.db
       .selectFrom('holiday')
@@ -167,14 +114,7 @@ export class HolidayRepository {
     return row === undefined ? undefined : toHoliday(row);
   }
 
-  /**
-   * The calendar, or a stretch of it, in the order the days fall.
-   *
-   * Both bounds inclusive, because a leave request's last day is a day somebody is
-   * away and a half open range here would drop a Christmas Day that a request
-   * ended on. `holiday_one_per_day` serves the range scan as well as the
-   * uniqueness — see the migration.
-   */
+  /** The calendar, or a stretch of it, in the order the days fall. */
   async list(options: HolidayListOptions = {}): Promise<Holiday[]> {
     let query = this.db.selectFrom('holiday').selectAll();
 
@@ -189,12 +129,7 @@ export class HolidayRepository {
   }
 
   /**
-   * Runs a write and turns whatever the database refused it for into the domain
-   * error for that refusal.
-   *
-   * `day` is the day the write was about, so that a duplicate can name it. On an
-   * edit that is the new date where one was given and the stored one otherwise,
-   * because a rename leaving the date alone can still collide with nothing else.
+   * Runs a write and turns whatever the database refused it for into the domain error for that refusal.
    */
   private async catchRefusals<T>(day: CalendarDate, write: () => Promise<T>): Promise<T> {
     try {
@@ -207,14 +142,6 @@ export class HolidayRepository {
       }
 
       if (violation?.code === RESTRICT_VIOLATION && violation.constraint === SETTLED_YEARS) {
-        /* Reached by losing a race — a leave year closed while this officer had
-           the form open — or by a writer that did not come through the service.
-           Reported as an {@link InvalidHoliday} against the date rather than as a
-           {@link HolidayInASettledYear}, the same choice the leave year repository
-           makes for its own trigger: that error promises to name the earliest day
-           still open, and the boundary is the service's to read. What is carried
-           instead is the database's own message, which names the year and the day
-           it was closed on — which is the half the person actually needs. */
         throw new InvalidHoliday(
           'date',
           error instanceof Error ? error.message : `The holiday breaks ${violation.constraint}.`,

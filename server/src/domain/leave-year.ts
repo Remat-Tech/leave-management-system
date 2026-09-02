@@ -1,90 +1,18 @@
-/**
- * The leave year, and what closing one means. §5.4. LMS 205.
- *
- * Every balance in this system is per person, per leave type, per leave year. The
- * first two have had tables since LMS 201; this is the third, and until now "the
- * leave year" was an idea several files referred to and nothing held.
- *
- * The story is closing one. An HR Administrator settles 2026 — every request
- * decided, every leaver's final figure paid, every late entry made — and says so,
- * and after that the year's numbers are what they were on the day it was said.
- *
- * ## The question this file exists to give one answer to
- *
- * **Which leave year is this day in?** {@link yearFor}, and it has to return
- * exactly one year or none, never two. Two rules hold that, and they are the same
- * rule from opposite sides:
- *
- *   **No two years overlap.** A day in two years draws its balance from two
- *   allowances, and every report of it is a choice about which to believe.
- *
- *   **No two years leave a gap between them.** A day in no year is worse, because
- *   it fails quietly — a request lands on it, the balance it should draw from was
- *   never opened, and nothing refuses anything.
- *
- * Both are held here as {@link assertFitsAmong} and again in the
- * leave-year-rules migration, as an exclusion constraint and a deferred trigger.
- * Neither copy is redundant and the division of labour is the usual one: the
- * database makes a bad row impossible for every writer, including a psql prompt,
- * and these make the refusal name the year it collided with.
- *
- * A gap *after* the last year is not a gap. This database ships with 2026 and
- * 2027 and nothing after, and 2028 is not missing — it is next year's decision.
- *
- * ## Closing is one way, and that is the point
- *
- * {@link assertMayBeClosed} refuses a year that has not ended yet, which is the
- * mistake that actually happens: it is the third of January, somebody is tidying
- * up, and the year they reach for is the one that started two days ago.
- *
- * Nothing here reopens one, and there is no method elsewhere that does. That is
- * what "locked" means — a flag that can be turned back is a flag that says the
- * year was settled until somebody decided otherwise. The database holds the same
- * refusal as a trigger, so it is true of every connection, and the way back is a
- * migration with an argument attached: the same price the audit log charges for
- * its own immutability, for the same reason.
- *
- * ## What closing actually locks today
- *
- * The boundary {@link earliestOpenDayOf} produces, which is what
- * {@link EarliestOpenDay} in ./entitlement-rule.ts has been asking for since
- * LMS 203 and getting `NOTHING_IS_CLOSED_YET` for. No entitlement figure may be
- * dated back into a settled year, and from this story on that sentence is about
- * rows rather than about an argument somebody passed.
- *
- * The balances themselves are `leave_balance` and `leave_ledger_entry`, which
- * arrive with LMS 210 and LMS 211 carrying a `leave_year_id` each. Not stubbed
- * here: a flag guarding nothing is a flag nobody trusts, and what those stories
- * need from this one is a row to point at and a boolean to read.
- */
+/** The leave year, and what closing one means. §5.4., LMS 205, LMS 201, LMS 203, LMS 210, LMS 211. */
 
 import { type CalendarDate, dayAfter, dayBefore, isCalendarDate } from './time.js';
 
 /** What the caller supplies to create one. */
 export interface NewLeaveYear {
-  /** What HR calls it. '2026', or '2026/27' for a year that runs April to March. */
+  /** What HR calls it. */
   label: string;
-  /** The first day the year covers. Inclusive. */
+  /** The first day the year covers. */
   startDate: CalendarDate;
-  /** The last day it covers. Inclusive, because that is how a person says it. */
+  /** The last day it covers. */
   endDate: CalendarDate;
 }
 
-/**
- * The fields of an existing one that may change.
- *
- * `isClosed` is not among them, for the reason it is not an ordinary leave type
- * edit either: closing a year is a decision about every figure in it rather than
- * a correction to what the year is, and putting the flag in an ordinary edit
- * would give that decision a second door nobody would remember to guard. It is
- * {@link LeaveYearService.close}, and there is no matching `reopen`.
- *
- * The dates are among them only while the year is open. A year that has settled
- * nothing may be corrected freely — the honest fix for one typed wrong in January
- * is to fix it — and one that has been closed may only be relabelled. Calling a
- * year by a better name does not change which days it covered, exactly as
- * improving the note on an entitlement rule in effect does not change the figure.
- */
+/** The fields of an existing one that may change. */
 export type LeaveYearChanges = Partial<NewLeaveYear>;
 
 /** A record as it comes back out. */
@@ -93,9 +21,9 @@ export interface LeaveYear {
   label: string;
   startDate: CalendarDate;
   endDate: CalendarDate;
-  /** Settled. Never goes back; see the module note. */
+  /** Settled. */
   isClosed: boolean;
-  /** When it was closed, stamped by the database. Null while it is open. */
+  /** When it was closed, stamped by the database. */
   closedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -108,13 +36,7 @@ export interface ValidatedLeaveYear {
   endDate: CalendarDate;
 }
 
-/**
- * A year that was refused, and the field that caused it.
- *
- * The same shape as {@link InvalidLeaveType} and for the same reason, NFR USA 03:
- * the message has to reach the form beside the input it is about, and this one
- * has a rule that spans both dates.
- */
+/** A year that was refused, and the field that caused it. NFR USA 03. */
 export class InvalidLeaveYear extends Error {
   readonly field: string;
 

@@ -1,35 +1,4 @@
-/**
- * Database access for entitlement rules. FR 31, §5.5. LMS 203.
- *
- * Queries and row mapping, nothing else. What a rule means and which of several
- * applies is ../domain/entitlement-rule.ts; when one may be written is
- * ../services/entitlement-rule-service.ts.
- *
- * ## The query that deliberately does not answer the question
- *
- * {@link EntitlementRuleRepository.candidatesFor} fetches every rule that could
- * apply to one person for one type and hands all of them back, unordered and
- * unfiltered by date. The obvious query is the other one — narrow by day, order
- * by specificity and starting date, take the first — and it would be a second
- * implementation of the rule the story says to implement once.
- *
- * The cost of not writing it is a handful of rows crossing the wire: one rule per
- * scope per change of policy, for one type, which is single digits for years.
- * The cost of writing it is that the precedence rule lives in two places, one of
- * which has no unit tests and cannot have any without a database.
- *
- * ## Refusals are translated rather than surfaced
- *
- * The same arrangement as the leave type and working pattern repositories: the
- * write is attempted and the database's answer is turned back into the domain
- * error for it, because checking first and writing afterwards is a race.
- *
- * One of them is not a race and is here anyway. The trigger that refuses to let a
- * rule already in effect be rewritten is checked by the service first, with a
- * clearer message — but a rule dated to start tomorrow becomes a rule in effect at
- * midnight, and a form submitted either side of that instant has to be refused
- * rather than accepted by whichever half of the second it landed in.
- */
+/** Database access for entitlement rules. FR 31, §5.5., LMS 203. */
 
 import type { Insertable, Kysely, Selectable, Updateable } from 'kysely';
 import type { Database } from '../db/index.js';
@@ -54,23 +23,14 @@ const CHECK_VIOLATION = '23514';
 const FOREIGN_KEY_VIOLATION = '23503';
 
 /**
- * Postgres `restrict_violation`, which the trigger raises with a constraint name
- * of its own so that this file can recognise it the same way it recognises a real
- * constraint. RAISE ... USING CONSTRAINT is what makes that possible.
+ * Postgres `restrict_violation`, which the trigger raises with a constraint name of its own so that this file can recognise it the same way it recogn…
  */
 const RESTRICT_VIOLATION = '23001';
 
 const SCOPE_AND_DAY_INDEX = 'leave_entitlement_rule_one_per_scope_and_day';
 const IN_EFFECT_IS_HISTORY = 'leave_entitlement_rule_in_effect_is_history';
 
-/**
- * Which field a refused row is reported against.
- *
- * Read from the constraint name the driver hands back rather than guessed from
- * the message, so a violation of some future constraint is re-thrown as itself.
- * Every one of these is also held in the domain, so reaching one means the write
- * came from outside this application, or from a race the domain cannot see.
- */
+/** Which field a refused row is reported against. */
 const CHECKED_FIELDS: Record<string, string> = {
   leave_entitlement_rule_scope_is_one_thing: 'departmentId',
   leave_entitlement_rule_days_not_negative: 'entitlementDays',
@@ -85,10 +45,10 @@ const CHECKED_FIELDS: Record<string, string> = {
 
 type EntitlementRuleRow = Selectable<LeaveEntitlementRuleTable>;
 
-/** Who a set of rules is being asked for. Every field narrows; none is required. */
+/** Who a set of rules is being asked for. */
 export interface EntitlementRuleListOptions {
   leaveTypeId?: string;
-  /** Rules naming this employee. Not "rules that apply to them"; see {@link resolve}. */
+  /** Rules naming this employee. */
   employeeId?: string;
   departmentId?: string;
   /** Only the rules nobody has been paid against yet, which are the editable ones. */
@@ -119,18 +79,7 @@ export class EntitlementRuleRepository {
     });
   }
 
-  /**
-   * Applies a change to a rule that has not taken effect yet.
-   *
-   * Takes the record rather than only its id, because the refusal the database
-   * may raise is about the date on it: "rule 12 cannot be changed" says less than
-   * it needs to, and re-reading the row to find out is a second round trip on the
-   * path that has just lost a race.
-   *
-   * updated_at is not set here, for the reason it is not set in any repository:
-   * the trigger does it, so a migration correcting data gets the same treatment
-   * as the application.
-   */
+  /** Applies a change to a rule that has not taken effect yet. */
   async update(
     by: Attribution,
     rule: EntitlementRule,
@@ -157,16 +106,7 @@ export class EntitlementRuleRepository {
     });
   }
 
-  /**
-   * Removes a rule that never applied to anybody. Returns whether there was one.
-   *
-   * There is a DELETE here, which there is not on `leave_type` and not on
-   * `employee`, and the difference is what the row is. A rule dated to start next
-   * January is a plan; nothing has been calculated from it, nothing is filed under
-   * it, and the honest correction for one entered by mistake is to remove it. The
-   * moment it starts applying it becomes history and the trigger refuses this for
-   * every writer, so the privilege is only ever exercised on drafts.
-   */
+  /** Removes a rule that never applied to anybody. */
   async remove(by: Attribution, rule: EntitlementRule): Promise<boolean> {
     return this.catchRefusals(rule.effectiveFrom, rule, async () => {
       const deleted = await recording(this.db, by, (on) =>
@@ -187,14 +127,7 @@ export class EntitlementRuleRepository {
     return row === undefined ? undefined : toEntitlementRule(row);
   }
 
-  /**
-   * Every rule that could apply to one person for one type.
-   *
-   * Three scopes in one read: the rules naming them, the rules naming their
-   * department, and the rules naming nobody. No date filter and no ordering —
-   * both of those are the resolution rule, and the resolution rule is
-   * {@link resolve}.
-   */
+  /** Every rule that could apply to one person for one type. */
   async candidatesFor(who: EntitlementCandidates): Promise<EntitlementRule[]> {
     const rows = await this.db
       .selectFrom('leave_entitlement_rule')
@@ -212,13 +145,7 @@ export class EntitlementRuleRepository {
     return rows.map(toEntitlementRule);
   }
 
-  /**
-   * Rules, newest starting date first, for a screen rather than for a decision.
-   *
-   * The order is presentation: HR reads the history of a figure downwards from the
-   * one in force now. Nothing decides anything from this order — see the note at
-   * the top of this file.
-   */
+  /** Rules, newest starting date first, for a screen rather than for a decision. */
   async list(options: EntitlementRuleListOptions = {}, today?: string): Promise<EntitlementRule[]> {
     let query = this.db.selectFrom('leave_entitlement_rule').selectAll();
 
@@ -255,9 +182,9 @@ export class EntitlementRuleRepository {
       }
 
       if (violation?.code === RESTRICT_VIOLATION && violation.constraint === IN_EFFECT_IS_HISTORY) {
-        /* Reached only by losing a race with midnight, or by a writer that did
-           not come through the service. Either way the database is right and the
-           refusal is the one FR 31 asks for. */
+        /**
+         * Reached only by losing a race with midnight, or by a writer that did not come through the service. FR 31.
+         */
         throw new EntitlementRuleAlreadyApplies(
           rule?.id ?? '',
           rule?.effectiveFrom ?? effectiveFrom,

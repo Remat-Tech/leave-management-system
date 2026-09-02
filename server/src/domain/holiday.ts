@@ -1,89 +1,17 @@
-/**
- * The gazetted public holiday calendar. FR 22, §5.4. LMS 206.
- *
- * The story's "so that" is the whole specification: nobody is charged leave for a
- * day the office was closed. That is one row per closed day, and everything here
- * is either what makes such a row valid or how a stretch of days is read against
- * the set of them.
- *
- * ## This table holds somebody else's decisions, and everything follows from that
- *
- * ./leave-type.ts, ./entitlement-rule.ts and ./leave-year.ts hold what Remat
- * Holdings decided. This holds what the Republic decided — the Public Holidays Act
- * 2001 as amended in 2019, and whatever the Minister for the Interior gazettes
- * during the year — and HR is transcribing rather than deciding. Three of the
- * story's requirements are that difference showing up:
- *
- *   **Holidays are added mid year.** A day of national mourning, an election day,
- *   a Monday declared in lieu of a Saturday Boxing Day. Not an exception handled
- *   gracefully; the ordinary way the calendar for a year finishes being written.
- *
- *   **Holidays are edited.** Eid al-Fitr and Eid al-Adha follow the sighting of
- *   the moon and are fixed by the Minister when it is sighted. Whatever date the
- *   calendar was seeded with is a projection, and moving it is the correction that
- *   actually happens.
- *
- *   **Holidays are removed.** A projected day the gazette did not confirm. A
- *   holiday is not a heading anything is filed under — nothing points a foreign key
- *   at one, because a request stores the days it cost rather than which days those
- *   were — so a real delete is honest here in a way it is not for a leave type or a
- *   leave year.
- *
- * ## Two rules, and one of them is about arithmetic nobody has written yet
- *
- * **One holiday to a day.** {@link DuplicateHoliday}, and `holiday_one_per_day` in
- * the database. "Was the office closed on this day" has one answer, and a day with
- * two rows on it would be subtracted twice by any counter that joined on it — a
- * request coming back a day cheaper than it was, on the one day of the year where
- * two feasts coincided. The gazette handles a coincidence by naming the day for
- * both, which is a name and not a second row.
- *
- * **A settled year keeps its days.** {@link assertNotInASettledYear}, and
- * `refuse_a_holiday_in_a_settled_year()` beside it. Adding a day to a closed leave
- * year changes what every working-day request over it cost, after those figures
- * were made final; removing one does the same in the other direction. The
- * boundary comes in as an argument the way {@link worksOn} takes a weekday and
- * {@link assertDoesNotReachIntoAClosedYear} takes this same date — the domain
- * knows the rule, the caller brings the fact.
- *
- * ## What is deliberately not here
- *
- * **No counting.** What a day off costs is the leave calculator of §7.3, which
- * reads a working pattern, a leave type's `counting_basis` and this calendar.
- * {@link isHoliday} is the primitive it will ask, and it is the only one this story
- * ships: a counter written now would be a rule with no requests to exercise it.
- *
- * **No recurrence.** There is no "every year" flag and no generator for next
- * year's rows, and the two Eids are why — a generator would be right about nine of
- * the fourteen, silent about two and overridden for three. What the next year needs
- * is somebody with the gazette open, which is what FR 22 asks for.
- *
- * **No days in lieu.** Moving a Saturday holiday to the Monday after is the
- * Minister's to declare and not always declared. A rule here would be this file
- * inventing law, and a day off the payroll believed in and the country did not.
- */
+/** The gazetted public holiday calendar. FR 22, §5.4., LMS 206, §7.3. */
 
 import { type CalendarDate, isCalendarDate } from './time.js';
 import { coversDay, type LeaveYear } from './leave-year.js';
 
 /** What the caller supplies to add one. */
 export interface NewHoliday {
-  /** What the gazette calls it. 'Christmas Day', 'Eid al-Fitr'. */
+  /** What the gazette calls it. */
   name: string;
   /** The day the office was closed. */
   date: CalendarDate;
 }
 
-/**
- * The fields of an existing one that may change.
- *
- * Both of them, and that is the difference from every other configuration record
- * in this system. A leave type may not change its code, an entitlement rule in
- * effect may not change at all, and a closed leave year may only be relabelled —
- * because each of those is a decision somebody made and the history of the
- * decision matters. A holiday is a transcription, and a transcription that turns
- * out to be of the wrong day is simply wrong.
- */
+/** The fields of an existing one that may change. */
 export type HolidayChanges = Partial<NewHoliday>;
 
 /** A record as it comes back out. */
@@ -101,12 +29,7 @@ export interface ValidatedHoliday {
   date: CalendarDate;
 }
 
-/**
- * A holiday that was refused, and the field that caused it.
- *
- * The same shape as {@link InvalidLeaveYear} and for the same reason, NFR USA 03:
- * the message has to reach the form beside the input it is about.
- */
+/** A holiday that was refused, and the field that caused it. NFR USA 03. */
 export class InvalidHoliday extends Error {
   readonly field: string;
 
@@ -149,15 +72,7 @@ export class DuplicateHoliday extends Error {
   }
 }
 
-/**
- * A holiday added to, taken out of, or moved into a leave year that has been
- * closed.
- *
- * The counterpart of {@link ReachesIntoAClosedYear}, arriving at the same rule from
- * the calendar instead of from an entitlement figure. The message says which day
- * is the earliest that may still be touched, because that is the fact somebody at a
- * form can act on.
- */
+/** A holiday added to, taken out of, or moved into a leave year that has been closed. */
 export class HolidayInASettledYear extends Error {
   readonly date: CalendarDate;
   readonly earliestOpenDay: CalendarDate;

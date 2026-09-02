@@ -1,38 +1,4 @@
-/**
- * Checking the cache against the record it is a cache of. §7.4. LMS 213.
- *
- * Design principle 1 says "the ledger is the truth; balances are a cache. If they ever
- * disagree, the ledger wins and the balance is rebuilt." Three stories have now taken
- * that on trust. This is where "if they ever disagree" stops being a hypothetical and
- * becomes something the system asks itself every night.
- *
- * ## What is here, and what is deliberately in SQL
- *
- * **No arithmetic.** What the ledger says a balance should be is
- * `what_the_ledger_says` in the nightly-balance-reconciliation migration, which is
- * §5.7's projection lifted out of `rebuild_one_balance_from_the_ledger()` so that the
- * writer and the checker read one definition. A reconciliation that computed its own
- * expected figures in TypeScript would be the second copy LMS 210 refused to write —
- * and it would have the special property of being able to agree only with itself.
- *
- * So this file takes a disagreement the database found and says what it *means*: which
- * columns differ, how many days are at stake, and how to put it into a sentence
- * somebody reading it at nine on a Monday can act on.
- *
- * ## Nothing here corrects anything, and nothing here can
- *
- * The third acceptance criterion. There is no function below that returns a repaired
- * balance, and the job that uses this holds a repository that can only read.
- *
- * The temptation is real rather than theoretical: the rebuild function exists, it is
- * correct, and calling it for every disagreeing balance would empty the report. It
- * would also destroy the evidence. A discrepancy is the only sign that something in
- * this system does not work; a job that erases that sign nightly is a job that
- * guarantees nobody ever finds the cause, and the second time it happens it will be
- * for a reason that also lost days.
- *
- * Putting a balance right is a person's decision, made after reading the ledger.
- */
+/** Checking the cache against the record it is a cache of. §7.4., LMS 213, §5.7, LMS 210. */
 
 import type { BalanceBucket } from './balance.js';
 
@@ -45,12 +11,7 @@ export interface FiveFigures {
   pending: number;
 }
 
-/**
- * One balance where the cache and the ledger do not agree.
- *
- * Named for the employee number, the leave type and the year rather than for three
- * ids, because the only thing anybody does with one of these is go and look.
- */
+/** One balance where the cache and the ledger do not agree. */
 export interface BalanceDisagreement {
   employeeId: string;
   employeeNumber: string;
@@ -58,14 +19,7 @@ export interface BalanceDisagreement {
   leaveTypeName: string;
   leaveYearId: string;
   leaveYearLabel: string;
-  /**
-   * False where the ledger has movements and there is no cached row at all.
-   *
-   * The worst of the three shapes and the one a join from `leave_balance` could never
-   * find: somebody's balance simply does not exist, so every screen shows them nought
-   * days while the ledger says otherwise. It reads identically to a genuine row of
-   * noughts, which is why it is carried as a field rather than inferred.
-   */
+  /** False where the ledger has movements and there is no cached row at all. */
   hasCachedRow: boolean;
   cached: FiveFigures;
   ledger: FiveFigures;
@@ -77,15 +31,9 @@ export interface Reconciliation {
   /** How many balances were compared, from both sides. */
   balancesChecked: number;
   disagreements: readonly BalanceDisagreement[];
-  /** The addresses the alert reached. Empty on a clean run. */
+  /** The addresses the alert reached. */
   told: readonly string[];
-  /**
-   * The addresses it could not reach, and the reason.
-   *
-   * Carried rather than thrown, because the job's contract is to report and a report
-   * that says "I could not tell Ama" is still a report. A throw would lose the
-   * discrepancy along with the failure, which is the one outcome worse than either.
-   */
+  /** The addresses it could not reach, and the reason. */
   couldNotTell: readonly { to: string; because: string }[];
 }
 
@@ -94,12 +42,7 @@ export function isClean(run: Reconciliation): boolean {
   return run.disagreements.length === 0;
 }
 
-/**
- * Which of the five columns differ. §5.7's own names.
- *
- * In the order a balance reads rather than in the order they were found, so that two
- * disagreements in a report line up under each other.
- */
+/** Which of the five columns differ. §5.7. */
 export function columnsThatDiffer(disagreement: BalanceDisagreement): BalanceBucket[] {
   const { cached, ledger } = disagreement;
 
@@ -108,33 +51,12 @@ export function columnsThatDiffer(disagreement: BalanceDisagreement): BalanceBuc
   );
 }
 
-/**
- * How many days the disagreement is worth, as the person whose balance it is would
- * feel it.
- *
- * The difference between the two availables, signed: positive means the cache is
- * showing more days than the ledger supports and somebody may book leave they have not
- * got; negative means it is showing fewer and somebody has quietly lost days.
- *
- * Both matter and they are not equally urgent, which is why this is signed rather than
- * an absolute size. The second one is the story's own case — a discrepancy discovered
- * by an employee is always this one, because nobody reports being given too much.
- */
+/** How many days the disagreement is worth, as the person whose balance it is would feel it. */
 export function daysAtStake(disagreement: BalanceDisagreement): number {
   return round(availableOf(disagreement.cached) - availableOf(disagreement.ledger));
 }
 
-/**
- * The report, as text somebody can read.
- *
- * Plain text and not a `Mail`, because `/domain` holds what a record is and imports
- * nothing. The job wraps this in an envelope; see ../jobs/balance-reconciliation.ts.
- *
- * Written for the person opening it at nine on a Monday rather than for a machine. It
- * says what was checked, what disagreed, by how much, and — the part a generated
- * report usually leaves out — what to do, which is to read the ledger before touching
- * anything.
- */
+/** The report, as text somebody can read. */
 export function reportOf(run: Reconciliation): string {
   const when = run.checkedAt.toISOString();
 

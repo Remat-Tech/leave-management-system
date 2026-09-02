@@ -1,52 +1,4 @@
-/**
- * Database access for the cached balance. §5.7. LMS 211.
- *
- * Queries and row mapping, nothing else. What a balance means is
- * ../domain/balance.ts; who may read one is ../services/balance-service.ts.
- *
- * ## There is no writer at all, and that is the file's shape
- *
- * ../repositories/ledger-repository.ts has `post` and reads, and says why it has no
- * update and no delete. This one has reads. Not because the writers were left out
- * but because there is nothing for them to call: `lms_app` holds SELECT on
- * `leave_balance` and had its INSERT revoked, `refuse_a_balance_written_by_hand()`
- * refuses the owner as well, and ../db/schema.ts types every column `never` for
- * insert and update so that a write does not compile either.
- *
- * A balance moves when a ledger entry is posted, in that entry's transaction, by
- * `rebuild_one_balance_from_the_ledger()`. That is the whole of the second
- * acceptance criterion, and the reason it lives in the database rather than here is
- * that six of the eight entry types have no writer yet — a trigger cannot be
- * forgotten by a story that has not been written.
- *
- * ## One of the reads takes a lock, and it is a different act
- *
- * {@link BalanceRepository.holdStill} is the ordinary read with a row lock in front
- * of it, held until the transaction ends. FR 26 and §8.2: checking whether five days
- * are there and writing down that they have been taken is one act, and anything that
- * gets in between them is two screens spending the same days.
- *
- * It is still not a write. The lock is taken by a database function rather than by a
- * `FOR UPDATE` here, because this application could not write one if it wanted to —
- * see the method.
- *
- * ## An absent row is a balance of nought, not a missing record
- *
- * {@link BalanceRepository.forOne} never returns `undefined`. A row appears the
- * first time something moves a balance, so a key with no row is somebody whose
- * grant has not run yet, and "nought days, nothing has moved" is the true answer
- * rather than an absence for every caller to translate. See `noMovementsYet` in
- * ../domain/balance.ts, which is what makes "has this ever moved" still askable.
- *
- * ## The three figures arrive as text
- *
- * `numeric` comes back from the driver as a string so that precision is not lost,
- * and ../db/schema.ts types `entitled`, `carried_over` and `adjustment` that way on
- * purpose. `taken` and `pending` are `integer` and arrive as numbers, which is the
- * same distinction the columns are declared with: what somebody is owed may carry a
- * fraction, what they have taken may not. {@link toBalance} is the one place either
- * becomes a number this file's callers can add.
- */
+/** Database access for the cached balance. §5.7., LMS 211, FR 26, §8.2. */
 
 import { type Kysely, type Selectable, sql } from 'kysely';
 import type { Database } from '../db/index.js';
@@ -58,14 +10,7 @@ type BalanceRow = Selectable<LeaveBalanceTable>;
 export class BalanceRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  /**
-   * One balance. Employee, leave type and leave year, which is all three of the
-   * columns `leave_balance_one_per_year` holds unique, so this reads at most one
-   * row.
-   *
-   * Returns a balance of nought where nothing has moved yet rather than
-   * `undefined`; see the note at the top of this file.
-   */
+  /** One balance. */
   async forOne(key: BalanceKey): Promise<LeaveBalance> {
     const row = await this.db
       .selectFrom('leave_balance')
@@ -78,31 +23,7 @@ export class BalanceRepository {
     return row === undefined ? noMovementsYet(key) : toBalance(row);
   }
 
-  /**
-   * One balance, held still until the transaction ends. §8.2, FR 26. LMS 212.
-   *
-   * The same read as {@link BalanceRepository.forOne} with a row lock in front of
-   * it, and the two are separate methods on purpose: a read that locks is a
-   * different act from a read that looks, and a caller should have to say which one
-   * it is doing.
-   *
-   * **This must be called inside a transaction, and there is exactly one caller that
-   * can be.** A row lock outside one is taken and released by the same statement,
-   * which would leave a check that reads like it is protected and is not.
-   * `BalanceService` reaches this only through `Transactions.allOrNothing`, which is
-   * the seam that owns the transaction; nothing else should start calling it.
-   *
-   * The lock is taken by `hold_one_balance_while_it_is_checked()` rather than by a
-   * `FOR UPDATE` written here, because `lms_app` cannot write one: every row locking
-   * clause Postgres offers requires UPDATE on the table, and this application holds
-   * SELECT on `leave_balance` and nothing else. See the
-   * hold-a-balance-while-it-is-checked migration for why that stays true rather than
-   * being granted around.
-   *
-   * A balance nothing has moved yet has no row to lock and comes back as nought, the
-   * same as it does from an ordinary read. That is safe rather than a gap: where
-   * there is no row there is no limit to race for. The migration argues it in full.
-   */
+  /** One balance, held still until the transaction ends. §8.2, FR 26, LMS 212. */
   async holdStill(key: BalanceKey): Promise<LeaveBalance> {
     const held = await sql<BalanceRow>`
       SELECT * FROM hold_one_balance_while_it_is_checked(

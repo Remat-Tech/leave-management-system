@@ -9,44 +9,7 @@ import {
 } from '../../api';
 import { inDays, moment, sentenceCase } from '../../format';
 
-/**
- * My request history. FR 54. LMS 402.
- *
- * The screen the story is about: every request somebody has made, with what became of it and
- * the account of how it got there — "so that I can check what happened without relying on
- * memory or email".
- *
- * ## It renders. It does not decide
- *
- * There is no leave arithmetic here and no judgement about state either. Whether a request is
- * agreed is `entry.agreed`, what its status is called is `entry.statusInWords`, and every
- * sentence on the trail arrives written. This file chooses type sizes and the order things sit
- * on a card.
- *
- * That is stricter than it sounds, and the temptation it is refusing is specific: it would be
- * one line to write `entry.status === 'APPROVED' ? 'Approved' : …` and never call the server
- * again. Then the day `progressOf` starts distinguishing "approved under the old chain", the
- * screen goes on saying the old thing, and the person reading it has no way to know which of
- * the two is current. `server/src/domain/request-history.ts` composes the words for that
- * reason.
- *
- * ## The trail shows what has not happened yet, and that is the point of it
- *
- * A list that stopped at the newest decision would read "approved by your line manager" under
- * a request nobody has agreed to, which is the exact misreading FR 41 exists to prevent. So a
- * step with no time on it renders as a step in waiting — dimmer, with no timestamp — rather
- * than being dropped, and the last thing on an undecided card is who has still to be asked.
- *
- * `step.at === null` is the whole test. The kinds are on the wire too, but a screen that
- * branched on `STILL_TO_ASK` would have to be told again the day a fifth kind arrives.
- *
- * ## The comment is shown in full
- *
- * FR 39, and the story's second criterion says "including comments" for a reason. A refusal's
- * reason is the only account of that decision anybody will have next year, and it is what the
- * person turned down has to act on. There is no truncation here, no "show more", and no line
- * clamp — a manager's two paragraphs about cover during month end are two paragraphs.
- */
+/** My request history. FR 54, LMS 402, FR 41, FR 39. */
 export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [history, setHistory] = useState<History | undefined>(undefined);
   const [problem, setProblem] = useState<string | undefined>(undefined);
@@ -67,8 +30,7 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
             return;
           }
 
-          /* The server's own sentence, verbatim. NFR USA 03; see `BalancesPage` for why
-             replacing one with "Something went wrong" throws away the useful half. */
+          /** The server's own sentence, verbatim. NFR USA 03. */
           setProblem(error instanceof Error ? error.message : 'Something went wrong.');
         })
         .finally(() => {
@@ -78,8 +40,6 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
     [onSignedOut],
   );
 
-  /* The first load names no year, and here that means every request there is rather than a
-     year the server picked. See `myRequests`. */
   useEffect(() => {
     load();
   }, [load]);

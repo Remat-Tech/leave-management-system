@@ -1,33 +1,4 @@
-/**
- * Database access for leave types. FR 21, FR 31, FR 32, §5.5. LMS 201.
- *
- * Queries and row mapping, nothing else. What a rule means is
- * ../domain/leave-type.ts and when to apply one is
- * ../services/leave-type-service.ts.
- *
- * Three pieces of judgement live here rather than above.
- *
- * Refusals are translated rather than allowed to surface, the same way the
- * working pattern repository does it and for the same reason: checking first and
- * writing afterwards is a race, so the write is attempted and the database's
- * answer is turned back into the domain error for it. The unique indexes are what
- * actually decide, which makes the answer right even when two administrators are
- * adding the same type at the same moment.
- *
- * A type is two tables since LMS 204, and is written as one thing. Every write
- * that touches the approval chain opens a transaction, and a chain is replaced
- * rather than reconciled — every step deleted, the new ones inserted — which is
- * the arrangement the working pattern repository has with a week and is why
- * `leave_type_approval_chain_is_whole` is deferred. Between those two statements
- * the type has no chain at all, and at COMMIT that state does not exist.
- *
- * There is no `remove`. lms_app holds no DELETE on `leave_type` — see the
- * privileges section of the leave-type-rules migration — so a delete method here
- * would be a method that always fails, which is worse than one that does not
- * exist. Retiring is {@link LeaveTypeRepository.setActive}. The DELETE it does
- * hold is on `leave_type_approval_step`, which is a different thing: a step is
- * part of a type rather than a record about one.
- */
+/** Database access for leave types. FR 21, FR 31, FR 32, §5.5., LMS 201, LMS 204. */
 
 import type { Insertable, Kysely, Selectable, Updateable } from 'kysely';
 import type { Database } from '../db/index.js';
@@ -63,16 +34,7 @@ const CHECK_VIOLATION = '23514';
 const CODE_INDEX = 'leave_type_code_unique';
 const NAME_INDEX = 'leave_type_name_unique';
 
-/**
- * Which field a refused row is reported against.
- *
- * The constraint name is read from the driver rather than guessed from the
- * message, so a violation of some future constraint is re-thrown as itself rather
- * than blamed on whichever field this table happened to know about. Every one of
- * these is also held in the domain, so reaching one of them means the write came
- * from outside this application — a migration correcting data, or somebody at a
- * psql prompt — and the honest thing is to say which rule refused it.
- */
+/** Which field a refused row is reported against. */
 const CHECKED_FIELDS: Record<string, string> = {
   leave_type_counting_basis_known: 'countingBasis',
   leave_type_entitlement_basis_known: 'entitlementBasis',
@@ -89,20 +51,7 @@ const CHECKED_FIELDS: Record<string, string> = {
   leave_type_name_not_blank: 'name',
 };
 
-/**
- * What the approval chain is refused for, all of it reported as one error.
- *
- * A chain has one field on a form and one thing wrong with it — the desks named,
- * or their order — so there is nothing for a {@link CHECKED_FIELDS} style mapping
- * to say that {@link InvalidApprovalChain} does not. The database's own message
- * is carried through, because reaching any of these means the write did not come
- * from this repository: every chain written here is validated and numbered by
- * ../domain/approval-chain.ts first.
- *
- * `leave_type_approval_chain_is_whole` is the deferred trigger, which raises with
- * a constraint name of its own so that it is recognisable here the same way a
- * real constraint is.
- */
+/** What the approval chain is refused for, all of it reported as one error. */
 const REFUSED_CHAINS = [
   'leave_type_approval_chain_is_whole',
   'leave_type_approval_step_role_known',
@@ -117,7 +66,7 @@ type LeaveTypeRow = Selectable<LeaveTypeTable>;
 type ApprovalStepRow = Selectable<LeaveTypeApprovalStepTable>;
 
 export interface LeaveTypeListOptions {
-  /** Only the types a request form should offer. Everything, unless asked. */
+  /** Only the types a request form should offer. */
   offeredOnly?: boolean;
 }
 
@@ -141,15 +90,7 @@ export class LeaveTypeRepository {
     );
   }
 
-  /**
-   * Applies a change. Returns undefined if there is no such type, which the
-   * service turns into {@link LeaveTypeNotFound}.
-   *
-   * updated_at is not set here, for the reason it is not set in any of the other
-   * repositories: the trigger does it, so a migration correcting data and the
-   * seed get the same treatment as the application rather than only the writer
-   * who remembered.
-   */
+  /** Applies a change. */
   async update(
     by: Attribution,
     id: string,
@@ -177,30 +118,7 @@ export class LeaveTypeRepository {
     });
   }
 
-  /**
-   * Replaces the approval chain. FR 38a.
-   *
-   * Separate from {@link update} rather than a field of it, for the reason
-   * {@link setActive} is separate: it is a decision about every request that will
-   * ever be raised against the type rather than a correction to what the type is,
-   * and the audit log should say which of the two happened.
-   *
-   * The chain is replaced rather than reconciled step by step. There is nothing
-   * to preserve in a step row and no history kept in one — the history is the
-   * audit entries, which are filed under the type — and reconciling would have to
-   * pass through an intermediate chain that is a real chain: rewriting 'manager
-   * then HR' to 'HR then CEO' in place is 'HR then HR' or 'manager then CEO' for
-   * a statement, depending on which row moves first. Deleting and inserting has
-   * no such state to be read, which is why `lms_app` holds DELETE on the steps and
-   * no UPDATE.
-   *
-   * `leave_type` itself is touched so that `updated_at` moves. "When did this last
-   * change" is asked of a type whose requests went to the wrong desk, and the
-   * chain is exactly the part most likely to be behind it — the same reason the
-   * working pattern repository touches the pattern when only the week changed.
-   *
-   * Returns undefined if there is no such type.
-   */
+  /** Replaces the approval chain. FR 38a. */
   async setApprovalChain(
     by: Attribution,
     id: string,
@@ -228,14 +146,7 @@ export class LeaveTypeRepository {
     );
   }
 
-  /**
-   * Retires a type, or brings it back. The ending this table has.
-   *
-   * Separate from {@link update} rather than a field of it, because it is a
-   * decision about every request that will ever be raised against the type rather
-   * than a correction to what the type is. Doing it twice writes the boolean that
-   * is already there and is allowed, like closing an already closed department.
-   */
+  /** Retires a type, or brings it back. */
   async setActive(by: Attribution, id: string, isActive: boolean): Promise<LeaveType | undefined> {
     const row = await recording(this.db, by, (on) =>
       on
@@ -260,13 +171,7 @@ export class LeaveTypeRepository {
   }
 
   /**
-   * By code, compared without regard to case, so a lookup finds the same single
-   * record the unique index would have refused a second of.
-   *
-   * This is the join a report and a staff import make, and it is the only reason
-   * the column exists. It is not a way to ask "is this the maternity type" in
-   * order to do something different: every rule is a column, and reading one is
-   * reading the row this hands back.
+   * By code, compared without regard to case, so a lookup finds the same single record the unique index would have refused a second of.
    */
   async findByCode(code: string): Promise<LeaveType | undefined> {
     const row = await this.db
@@ -288,14 +193,7 @@ export class LeaveTypeRepository {
     return row === undefined ? undefined : this.withChain(row);
   }
 
-  /**
-   * Every type, or only the ones still offered, in the order a form shows them.
-   *
-   * `display_order` first, which is the order §7.4 reads balances in, so a screen
-   * and a report agree without either of them sorting. Name second, so that two
-   * types HR left at the same order are still in a fixed order and the same table
-   * always produces the same list rather than whatever the planner returned.
-   */
+  /** Every type, or only the ones still offered, in the order a form shows them. §7.4. */
   async list(options: LeaveTypeListOptions = {}): Promise<LeaveType[]> {
     let query = this.db.selectFrom('leave_type').selectAll();
 
@@ -309,10 +207,6 @@ export class LeaveTypeRepository {
       return [];
     }
 
-    /* One statement for every type's chain rather than one per type, the way the
-       working pattern repository reads a list of weeks. The database is usually a
-       Neon branch at the end of a network, where the round trip costs far more
-       than the work. */
     const steps = await this.db
       .selectFrom('leave_type_approval_step')
       .selectAll()
@@ -365,9 +259,6 @@ export class LeaveTypeRepository {
 
       if (violation?.code === UNIQUE_VIOLATION) {
         if (violation.constraint === ROLE_ONCE_INDEX || violation.constraint === STEP_ORDER_KEY) {
-          /* Reachable only from outside this repository — every write here sends
-             a whole chain, validated, and numbers it itself. Reported as what it
-             is rather than dressed up as something this file decided. */
           throw new InvalidApprovalChain(
             error instanceof Error
               ? error.message

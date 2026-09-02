@@ -1,75 +1,24 @@
-/**
- * What a refusal looks like over HTTP. NFR USA 03, NFR SEC 03. LMS 401.
- *
- * Every service in this system refuses by throwing something with a sentence in it — the
- * sentences are most of what `/domain` is — and this is the one place those become status
- * codes. It is a translation and nothing more: **no rule is decided here**, and a status
- * code invented in a handler would be the beginning of a route layer with opinions.
- *
- * ## The two refusals stay two refusals
- *
- * ../auth/policy.ts draws the line this file has to keep. A refusal that says why has
- * already decided that saying so discloses nothing — "anybody who reaches this can
- * already read the balance" — and it becomes **403 with its own sentence**. A refusal
- * that says nothing is deliberately word for word identical to a record that is not
- * there, because "two messages that differ are a way of asking the server whether a
- * record exists", and it becomes **404 with that same sentence**.
- *
- * A silent refusal answered 403 would undo the whole arrangement in one line: 403 means
- * "it is there and you may not", which is precisely the fact the message declines to
- * state. So the status has to be as vague as the words are.
- *
- * `NotAuthorised.attempt` is never read. It carries the accurate account for the log, and
- * that class's own note is explicit that nothing reaching a screen may turn it back into
- * a message.
- *
- * ## Families rather than a list of imports
- *
- * The mapping is by the `name` every error in `/domain` sets on itself, in three families
- * — `…NotFound`, `Invalid…`, and the ones named here — rather than by importing three
- * dozen classes into the HTTP layer.
- *
- * That is a deliberate trade and worth stating. The cost is that renaming an error class
- * changes its status code silently; ../../tests/integration/balances-api.test.ts is what
- * makes that a failing test rather than a discovery. The gain is that a story adding a
- * domain error gets a sensible answer without editing this file — and a route layer that
- * had to import every error in the system to answer at all would be one nobody keeps up
- * to date.
- *
- * ## And an unrecognised error is a 500 that says nothing
- *
- * Everything not in a family is a bug in this application, and the browser is told so in
- * four words. Not the message, which for a Postgres error is a constraint name and for a
- * programming error is a stack — neither is any use to the person at the screen and both
- * describe the inside of the system to whoever asked. It is logged in full instead, which
- * is where somebody can act on it.
- */
+/** What a refusal looks like over HTTP. NFR USA 03, NFR SEC 03, LMS 401. */
 
 import type { NextFunction, Request, Response } from 'express';
 import { NOT_AUTHORISED_MESSAGE, NotAuthorised } from '../auth/policy.js';
 
-/** The body every refusal has. One shape, so a client has one thing to read. */
+/** The body every refusal has. */
 export interface Problem {
-  /** The error's own name, for a client that wants to branch. Never a stack. */
+  /** The error's own name, for a client that wants to branch. */
   error: string;
   /** The sentence, as the domain wrote it. NFR USA 03. */
   message: string;
-  /** Which input was wrong, where the domain said. `InvalidLeaveType.field` and friends. */
+  /** Which input was wrong, where the domain said. */
   field?: string;
 }
 
-/**
- * Where a failure that is nobody's fault but ours is written down.
- *
- * The same shape `DenialLog` and `NoticeLog` have and for the same reason: the thing that
- * must not happen is a failure disappearing, and an interface is what lets a test read one
- * back rather than watch stderr.
- */
+/** Where a failure that is nobody's fault but ours is written down. */
 export interface FailureLog {
   record(failure: { at: Date; method: string; path: string; error: unknown }): void;
 }
 
-/** The default. One JSON line per failure, on stderr, as the denial log writes one. */
+/** The default. */
 export function failuresToStderr(): FailureLog {
   return {
     record({ at, method, path, error }) {

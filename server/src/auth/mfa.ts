@@ -1,25 +1,4 @@
-/**
- * The one time code sent to a work address at sign in. NFR SEC 01. LMS 110.
- *
- * The second factor, and the reason it exists is in the story: a stolen password
- * alone must not open somebody's leave history and their medical certificates.
- * A password can be phished, reused from a breached site, or read over a
- * shoulder, and none of those get the attacker into the mailbox as well.
- *
- * The mailbox is the factor. That is worth saying plainly, because it is also the
- * limit of what this buys: somebody who has taken over the company mailbox has
- * both factors, and email is not as strong a second factor as an authenticator
- * app or a hardware key. It is the one every member of staff already has, on the
- * account this system already ties access to, with nothing to enrol and nothing
- * to lose. Where the roles make the stakes higher — HR and administrators, who
- * can see everybody's records — it is not optional. See {@link MANDATORY_ROLES}.
- *
- * The rules live here as pure functions. Nothing in this file reads the
- * database, sends anything, or knows what time it is unless it is told: the
- * clock arrives as an argument so that "expired" can be tested without waiting
- * ten minutes, and the sending is {@link SignInService}'s. What is here is what a
- * code is, who needs one, when one is dead, and what the message says.
- */
+/** The one time code sent to a work address at sign in. NFR SEC 01, LMS 110. */
 
 import { randomInt } from 'node:crypto';
 import type { Mail } from '../mail/transport.js';
@@ -27,45 +6,16 @@ import { hashPassword, verifyPassword } from './password.js';
 import type { RoleCode } from './roles.js';
 import type { SignInAccount } from './sign-in.js';
 
-/**
- * The roles for which a code is not optional.
- *
- * These three can read everybody's records — the sickness history, the
- * compassionate leave, the medical certificates attached to both — and can change
- * what the system does to everybody's entitlement. An ordinary employee's
- * password opens their own leave; an HR Administrator's opens the company's.
- *
- * MANAGER is not here and could not be: it is not a role, it is a relationship,
- * and the organisation migration says why. A manager sees their reports' dates
- * rather than their reasons, which is the ordinary employee's exposure and not
- * this one.
- *
- * The codes match the `role` table, which the organisation migration seeds. The
- * integration tests assert that, so a role renamed in one place and not the other
- * fails the suite rather than quietly making a code optional for somebody it is
- * mandatory for.
- */
+/** The roles for which a code is not optional. */
 export const MANDATORY_ROLES: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN', 'SYS_ADMIN'];
 
-/**
- * How many wrong answers a challenge survives.
- *
- * Five, then the code is gone and the sign in starts again. The number is a
- * compromise and both ends of it are real: a code is six digits typed from a
- * phone, so one or two mistakes are ordinary and locking on the first would make
- * the system unusable, while a million possibilities divided by unlimited guesses
- * is not a second factor at all.
- *
- * Five attempts against a million possibilities is a one in two hundred thousand
- * chance per challenge, and the challenge lasts ten minutes. That is the whole of
- * the arithmetic, and it is why the limit is not a detail.
- */
+/** How many wrong answers a challenge survives. */
 export const MAX_CODE_ATTEMPTS = 5;
 
-/** How long a code lives when nothing says otherwise. MFA_CODE_TTL_MINUTES. */
+/** How long a code lives when nothing says otherwise. */
 export const DEFAULT_TTL_MINUTES = 10;
 
-/** How many digits a code has when nothing says otherwise. MFA_CODE_LENGTH. */
+/** How many digits a code has when nothing says otherwise. */
 export const DEFAULT_CODE_LENGTH = 6;
 
 export interface CodeSettings {
@@ -73,19 +23,7 @@ export interface CodeSettings {
   ttlMinutes: number;
 }
 
-/**
- * The code settings from configuration.
- *
- * Both have defaults, unlike ALLOWED_EMAIL_DOMAINS, and the difference is what
- * silence means. An empty allow list is ambiguous in a way that must fail loudly:
- * it could be "nobody" or "everybody", and one of those is catastrophic. An unset
- * code length is not ambiguous, it is "the usual one", and there is a usual one.
- *
- * A value that is present and nonsense is a different matter and is refused. Six
- * digits is a sensible code and `abc` is not a number, but the failure that
- * actually matters is the quiet one: a length of 1 read from a typo would ship a
- * ten possibility second factor that looks exactly like a working one.
- */
+/** The code settings from configuration. */
 export function codeSettings(env: NodeJS.ProcessEnv = process.env): CodeSettings {
   return {
     length: wholeNumber(env.MFA_CODE_LENGTH, 'MFA_CODE_LENGTH', DEFAULT_CODE_LENGTH, 4, 12),
@@ -175,23 +113,10 @@ export type CodeRefusalReason =
   | 'EXPIRED'
   /** Wrong code, and there are attempts left. */
   | 'WRONG_CODE'
-  /** Wrong code, and that was the last attempt. The challenge is gone. */
+  /** Wrong code, and that was the last attempt. */
   | 'TOO_MANY_ATTEMPTS';
 
-/**
- * A code that was not accepted.
- *
- * Unlike {@link SignInRefused}, these messages are specific, and that is safe
- * because of where this sits: nobody reaches a code challenge without having
- * already given the right password. There is no stranger left to keep anything
- * from, and "that code has expired, here is a new one" is the difference between
- * a person getting into the system and a person telephoning IT.
- *
- * The one thing they never say is how many attempts remain in a form worth
- * counting on. Saying "two left" is fine; saying it in a way that lets somebody
- * work out that a *different* address has a challenge in progress is not, and
- * that is why every one of these is about the challenge rather than the account.
- */
+/** A code that was not accepted. */
 export class CodeRefused extends Error {
   readonly reason: CodeRefusalReason;
 

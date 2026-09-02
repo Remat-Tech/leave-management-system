@@ -1,52 +1,5 @@
 /**
- * Recording something that happened, and granting what it brings. FR 32g, FR 32e,
- * §8.6aa. LMS 218.
- *
- * The story is an employee expecting a child, and the sentence that matters is "when I
- * need it rather than tied to the leave year". Everything this service does is in
- * service of that: one call, from the desk somebody actually walks up to, and the days
- * are in the balance.
- *
- * ## Six questions, and then one write
- *
- * This class asks; `BalanceService.grantForAnEvent` writes. The order below is the
- * order the answers become possible in, and two of them are load bearing:
- *
- *   **Is this a type whose entitlement arrives with an event at all?** FR 32g.
- *   `hasRunningBalance` is false for exactly these types, and the check is the same
- *   column the annual grant and the rollover read to *skip* them. A quota type reaching
- *   here would be somebody granting themselves a second year of annual leave through a
- *   door built for births.
- *
- *   **Is the type open to them?** FR 05, the gender restriction, and the one refusal
- *   here that is about the person rather than the paperwork.
- *
- *   **Which leave year does the event fall in?** Not today's year: the balance the
- *   grant lands in is the one for the day the thing happened, because a birth in
- *   December told to HR in January belongs to December. The database holds the same
- *   rule — `refuse_an_event_outside_its_leave_year()` — so the two cannot drift.
- *
- *   **What is it worth?** The entitlement rule resolved **as at the day it happened**,
- *   which is FR 31's argument again: a figure changed in January must not restate what
- *   a birth in December was worth.
- *
- *   **When does it run out?** `expiryFor`, from `leave_type.entitlement_expiry_months`.
- *   Paternity's six months, and null everywhere else.
- *
- * ## What it does not do
- *
- * **No pro rating.** FR 29 proportions a *year* to the part of it somebody worked; an
- * event grant is not a year and has no part to take. Somebody who joined in November
- * and has a child in December is owed the whole fourteen days, which is what makes an
- * event grant an event grant.
- *
- * **No lapsing.** That is ../jobs/entitlement-expiry.ts, on a schedule, and it is a
- * different act by a different desk — see ../auth/ledger-policy.ts.
- *
- * **No correcting.** A birth recorded against the wrong person is put right the way
- * every other mistake in a balance is: an `ADJUSTMENT` on each side with a reason. The
- * table refuses to be rewritten and says so, which is FR 27 applied to the record
- * rather than to the movement.
+ * Recording something that happened, and granting what it brings. FR 32g, FR 32e, §8.6, LMS 218, FR 05, FR 31, FR 29, FR 27.
  */
 
 import type { Actor } from '../auth/actor.js';
@@ -74,14 +27,7 @@ import type { LeaveTypeRepository } from '../repositories/leave-type-repository.
 import type { LeaveYearRepository } from '../repositories/leave-year-repository.js';
 import type { BalanceService, EventGranted } from './balance-service.js';
 
-/**
- * A quota type being granted through the event door.
- *
- * Refused by name rather than by a generic invalid-input message, because the two
- * mistakes behind it are both worth naming: somebody has picked the wrong type in a
- * form, or somebody has found a way to grant a second year of annual leave that does
- * not go past `grantTheYear`'s once-a-year refusal.
- */
+/** A quota type being granted through the event door. */
 export class NotAnEventBasedType extends Error {
   readonly leaveTypeId: string;
 

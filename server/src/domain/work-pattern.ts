@@ -1,51 +1,11 @@
-/**
- * The working pattern. FR 23, LMS 106.
- *
- * A pattern is the week somebody works, and it exists so that leave is counted
- * against the days they actually work. Abena Sarpong works Monday, Tuesday,
- * Thursday and Friday: a week off costs her four days rather than five, and a
- * public holiday that falls on a Wednesday costs her nothing. Every one of those
- * answers comes out of this record.
- *
- * The same split as ./employee.ts and ./department.ts. The rules that need
- * nothing but the record in hand are here as pure functions; the ones that have
- * to count rows or look another record up are in the service. The database holds
- * the same rules as constraints, an index and two deferred triggers; see the
- * working-pattern-rules migration. That duplication is deliberate and the
- * division of labour is the usual one — the constraints make a bad pattern
- * impossible including when something other than this code is writing, and the
- * functions here make the refusal say which field was wrong and why.
- *
- * Two things are worth knowing before reading any of it.
- *
- * A week is always seven days. A pattern is stored as seven rows, one per day,
- * each saying whether it is worked, rather than as a list of the days that are.
- * The list is what a caller supplies and what {@link WorkPattern.workingDays}
- * hands back, because that is how somebody describes their own week; the seven
- * rows are how it is stored, so that "does this Saturday cost a day" has an
- * answer in the data rather than in whichever join the counting query used.
- *
- * Counting is not here. {@link worksOn} answers "is this weekday worked", which
- * is the primitive the leave calculator of Phase 2 is built from, and that is as
- * far as this story goes. Turning a date range into a number of days also needs
- * public holidays and the counting basis of the leave type, neither of which
- * exists yet.
- */
+/** The working pattern. FR 23, LMS 106. */
 
-/** ISO day numbering: 1 is Monday, 7 is Sunday. The database uses the same. */
+/** ISO day numbering: 1 is Monday, 7 is Sunday. */
 export const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
 
 export type Weekday = (typeof WEEKDAYS)[number];
 
-/**
- * The standard week, and the pattern every database has.
- *
- * The name matches the row the working-pattern-rules migration inserts. It is
- * here so that the seed, the tests and anything that wants to say "the ordinary
- * week" name the same string rather than each spelling it out; the row is found
- * by `is_default` rather than by this name, so renaming it in HR's own words does
- * not break the system.
- */
+/** The standard week, and the pattern every database has. */
 export const STANDARD_PATTERN_NAME = 'Standard Mon-Fri';
 
 /** Monday to Friday. */
@@ -54,28 +14,18 @@ export const MONDAY_TO_FRIDAY: readonly Weekday[] = [1, 2, 3, 4, 5];
 /** What the caller supplies to create one. */
 export interface NewWorkPattern {
   name: string;
-  /**
-   * The days that are worked, as ISO weekdays. The four days a part timer works,
-   * not the seven rows they are stored as.
-   */
+  /** The days that are worked, as ISO weekdays. */
   workingDays: readonly number[];
 }
 
-/**
- * The fields of an existing one that may change.
- *
- * `isDefault` is not among them, deliberately, and for the same reason
- * `isActive` is not an ordinary department edit: making a pattern the default
- * means unmaking the current one, which is two rows and one transaction rather
- * than a field. It is {@link WorkPatternService.makeDefault} instead.
- */
+/** The fields of an existing one that may change. */
 export type WorkPatternChanges = Partial<NewWorkPattern>;
 
 /** A record as it comes back out. */
 export interface WorkPattern {
   id: string;
   name: string;
-  /** The days worked, ascending. Exactly one pattern in the table is the default. */
+  /** The days worked, ascending. */
   workingDays: Weekday[];
   isDefault: boolean;
   createdAt: Date;
@@ -88,13 +38,7 @@ export interface ValidatedWorkPattern {
   workingDays: Weekday[];
 }
 
-/**
- * A record that was refused, and the field that caused it.
- *
- * The field is carried separately rather than only mentioned in the message, for
- * the reason {@link InvalidEmployee} carries one: the form that will sit in front
- * of this has to put the message next to the input.
- */
+/** A record that was refused, and the field that caused it. */
 export class InvalidWorkPattern extends Error {
   readonly field: string;
 

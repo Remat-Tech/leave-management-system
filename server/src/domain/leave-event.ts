@@ -1,72 +1,5 @@
 /**
- * Entitlement that arrives with an event. FR 32g, FR 32e, §8.6aa. LMS 218.
- *
- * The story is somebody expecting a child. Every grant this system has posted so far
- * arrives on the first of January, and a hundred and twenty days of maternity leave
- * has nothing to do with the first of January — it has to do with a birth, and it has
- * to be there when they need it.
- *
- * `entitlement_basis` has said so since LMS 201: "EVENT is granted per qualifying
- * occurrence, does not reset on 1 January and does not accumulate". Until this story
- * that column was only ever read to decide what to *skip* — the annual grant filters
- * event types out, and so does the rollover. This is the file that reads it the other
- * way round.
- *
- * ## An event is a row, and the grant names it
- *
- * The story's first criterion is "grant recorded against the event", and
- * `leave_entitlement_event` is what that means: a birth is a record with a date, and
- * the `GRANT` in the ledger carries its id. Otherwise "why have I got a hundred and
- * twenty days" is answered by an amount and a date and nothing else, which is exactly
- * the unexplainable figure design principle 1 is against.
- *
- * The two rows are written in one transaction by `BalanceService.grantForAnEvent`,
- * because a grant with no event behind it and an event that granted nothing are both
- * halves of something that did not happen.
- *
- * ## Two clocks, and this is the second one
- *
- * ./leave-type.ts named the collision before either clock existed: "**Not carry
- * over** — unused annual days rolling into the next year is FR 36 and lives on the
- * entitlement rule with the effective dates. Two clocks with similar names."
- *
- *   **FR 36a** expires *carried* days in a month HR named. That is the rollover's
- *   neighbour, it posts `EXPIRY`, and it takes days back out of `carriedOver`.
- *
- *   **FR 32e** lapses an *event grant* that was not used in time — paternity's
- *   fourteen days, "usable within six months". That is this file, it posts `LAPSE`,
- *   and it takes days out of `entitled` where the grant put them.
- *
- * Using one for the other would leave a paternity balance reading `carriedOver: -14`
- * on a type that cannot carry a single day. Available would come out right and the
- * column would be false, which is worse than an obvious error.
- *
- * ## The deadline is stored, not derived
- *
- * {@link expiryFor} is called once, when the event is recorded, and the answer is
- * written to the row. Recomputing it on every read would be one fewer column and one
- * more way to be wrong: `leave_type.entitlement_expiry_months` is configuration an
- * Administrator may change, and a grant already made must keep the deadline it was
- * made under. That is FR 31's argument about closed years — a rule written later does
- * not reach back — applied to a clock instead of a figure.
- *
- * ## What is deliberately not here
- *
- * **How much lapses.** {@link decideTheLapse} says whether and how much, but the
- * figure it is handed is `available` on the balance, and whether a lapse has already
- * been posted is a fact about the event row read inside the lock by
- * `BalanceService.lapse`. A pure function asking it would be asking a moment before
- * the write.
- *
- * **Which requests drew the grant down.** §8.6aa's `may_be_split` says one grant may
- * be taken as several absences, and the balance is what tracks that: `taken` and
- * `pending` move as requests are approved, and what is left is `available`. There is
- * no per-grant consumption anywhere in this system and there should not be one — it
- * would be a second account of the same days.
- *
- * **Correcting an event.** A birth recorded against the wrong person is put right the
- * way every other mistake in a balance is: an `ADJUSTMENT` with a reason on each side.
- * The table refuses to be rewritten and says so.
+ * Entitlement that arrives with an event. FR 32g, FR 32e, §8.6, LMS 218, LMS 201, FR 36, FR 36a, FR 31.
  */
 
 import type { CalendarDate } from './time.js';
@@ -78,7 +11,7 @@ export interface NewLeaveEvent {
   leaveTypeId: string;
   /** The day it happened, which is not the day it was recorded. */
   occurredOn: CalendarDate;
-  /** HR's words, for the person reading their own history. Optional; see the table. */
+  /** HR's words, for the person reading their own history. */
   note?: string | null;
 }
 
@@ -89,10 +22,10 @@ export interface LeaveEvent {
   leaveTypeId: string;
   leaveYearId: string;
   occurredOn: CalendarDate;
-  /** FR 32e. Null where this type's grant never runs out, which is most of them. */
+  /** FR 32e. */
   expiresOn: CalendarDate | null;
   note: string | null;
-  /** The `GRANT` this event caused. Never null; an event that granted nothing is not one. */
+  /** The `GRANT` this event caused. */
   grantedEntryId: string;
   /** The `LAPSE` that closed it off, or null while there is still time. */
   lapsedEntryId: string | null;
@@ -111,13 +44,7 @@ export interface ValidatedLeaveEvent {
   grantedEntryId: string;
 }
 
-/**
- * An event that was refused, and the field that caused it.
- *
- * The same shape as {@link InvalidLedgerEntry} and {@link InvalidLeaveYear}, and for
- * the same reason, NFR USA 03: the message has to reach the form beside the input it
- * is about, and this form has a date on it that half the refusals are about.
- */
+/** An event that was refused, and the field that caused it. NFR USA 03. */
 export class InvalidLeaveEvent extends Error {
   readonly field: string;
 

@@ -1,78 +1,5 @@
 /**
- * A leave type and the rules it carries. FR 21, FR 31, FR 32, §5.5. LMS 201.
- *
- * The story is an HR Administrator adding or changing a leave type without
- * waiting on a developer, and FR 31 puts it in the strongest terms the SRS uses:
- * "No leave rule shall require a code change or a deployment." The test of
- * whether that has been achieved is not whether there is a form. It is whether
- * the rules that differ between annual leave and maternity leave are *data*.
- * They are: every one of them is a field of {@link LeaveType}, and this file is
- * what a field means and what makes one nonsense.
- *
- * Design principle 5 of the Technical Design Document is what this serves. "Two
- * things vary by leave type, and both used to be global... If either is written
- * as an `if` on a type code, every future leave type becomes a code change."
- * Nothing here reads {@link LeaveType.code} to decide anything, and nothing above
- * here may either. The code is a stable handle for reports and imports; the
- * rules are the columns.
- *
- * ## The same split as everywhere else
- *
- * The rules that need nothing but the record in hand are here as pure functions.
- * The ones that have to look another row up are in the service. The database
- * holds the same rules again as constraints; see the leave-type-rules migration.
- * That duplication is deliberate: the constraints make a bad row impossible for
- * every writer, and the functions here make the refusal say which field was
- * wrong and why.
- *
- * ## What the readings take, and what they deliberately do not
- *
- * Each takes the type plus at most one fact the caller already has: a number of
- * days, a gender, a count of parts. None takes a leave request, a date, or a
- * working pattern.
- *
- * That is the discipline {@link worksOn} keeps in ./work-pattern.ts, and for the
- * same reason. `worksOn` takes an ISO weekday rather than a date, so it needs no
- * timezone and cannot acquire one; {@link noticeShortfall} takes a number of
- * calendar days of notice rather than two dates, so the one subtraction that
- * could go wrong across a timezone happens once, in the caller. Turning a request
- * into those numbers is the LeaveCalculator of §7.3 and the request workflow of
- * Phase 3. This file is the configuration they read.
- *
- * ## Two rules that look alike and are not
- *
- * **Notice warns; backdating refuses.** FR 17 is explicit that a short notice
- * annual leave request is warned about, acknowledged, and then allowed through,
- * "since whether short notice is workable is a judgement for the approvers".
- * FR 18 is equally explicit that beyond the backdating window the employee may
- * not enter the record at all and only HR may, with a reason. So
- * {@link noticeShortfall} returns a number and {@link assertWithinBackdatingWindow}
- * throws. Making them symmetrical would break one of the two requirements, and
- * the one it would break is the one people meet every December.
- *
- * **A documentation threshold is not a balance threshold.** {@link DocumentationRule}
- * `AFTER_DAYS` asks for a document when *this request* is longer than n days.
- * {@link LeaveType.exceedableWithDocument} asks for one when the request would
- * take the *yearly balance* past its allowance. Sick leave is the second, not the
- * first — FR 32a calls its three days "a documentation threshold, not a hard
- * cap" — and reading it as the first would demand a certificate for a four day
- * absence from somebody who had taken none all year.
- *
- * ## What is not here
- *
- * **No figures.** Twenty days of annual leave, a hundred and twenty of maternity.
- * FR 31 requires them versioned with an effective date and forbids them altering
- * closed leave years, and a column has no date on it. They are
- * `leave_entitlement_rule`.
- *
- * ## What arrived with LMS 204
- *
- * **The approval chain.** FR 38a, and it is the second of the two things design
- * principle 5 says vary by leave type. It is a field of {@link LeaveType} like
- * every other rule — {@link LeaveType.approvalChain}, an ordered list of desks —
- * but it is stored as its own rows and it is changed by its own operation rather
- * than as part of an ordinary edit, so what a chain *is* lives next door in
- * ./approval-chain.ts and only what it means for a leave type is here.
+ * A leave type and the rules it carries. FR 21, FR 31, FR 32, §5.5., LMS 201, §7.3, FR 17, FR 18, FR 32a, LMS 204, FR 38a.
  */
 
 import {
@@ -85,67 +12,32 @@ import {
 import type { Gender } from './employee.js';
 import { isWholeDays, WHOLE_DAYS_ONLY } from './whole-days.js';
 
-/**
- * FR 21. Whether a day inside the request that the person does not work still
- * costs them one.
- *
- * The most consequential thing a type says about itself. FR 22: annual, sick and
- * compassionate count working days; maternity and paternity count calendar days,
- * "since they are expressed as a continuous period of absence rather than an
- * allowance of workdays".
- *
- * Read together with the working pattern, never instead of it: this says whether
- * the pattern is consulted at all.
- */
+/** FR 21. */
 export const COUNTING_BASES = ['WORKING_DAYS', 'CALENDAR_DAYS'] as const;
 
 export type CountingBasis = (typeof COUNTING_BASES)[number];
 
-/**
- * Whether there is a running balance at all. The TDD's `is_quota_based`, as a
- * named pair rather than a boolean.
- *
- * FR 32g settles which is which. `QUOTA` is an annual allowance that resets each
- * leave year — annual and sick. `EVENT` is granted per qualifying occurrence,
- * does not reset on 1 January and does not accumulate: maternity, paternity,
- * compassionate, unpaid, and the unpaid maternity extension.
- */
+/** Whether there is a running balance at all. FR 32g. */
 export const ENTITLEMENT_BASES = ['QUOTA', 'EVENT'] as const;
 
 export type EntitlementBasis = (typeof ENTITLEMENT_BASES)[number];
 
-/**
- * How the allowance is expressed to a person, never how it is counted.
- *
- * Maternity is "4 months, 120 days" and paternity is "2 weeks, 14 days". Both
- * are stored and counted in days — FR 24, whole days only — and this is what
- * lets a screen say "4 months" without any part of the system doing arithmetic
- * in months.
- */
+/** How the allowance is expressed to a person, never how it is counted. FR 24. */
 export const ALLOWANCE_UNITS = ['DAYS', 'WEEKS', 'MONTHS'] as const;
 
 export type AllowanceUnit = (typeof ALLOWANCE_UNITS)[number];
 
-/**
- * FR 13. Whether the request needs something attached to it, judged on the
- * length of the request.
- *
- * Three states rather than the TDD's boolean-plus-threshold, because the pair
- * could disagree and neither half could stop it.
- *
- * Not to be confused with {@link LeaveType.exceedableWithDocument}, which is
- * about the balance rather than the request. See the module note.
- */
+/** FR 13. */
 export const DOCUMENTATION_RULES = ['NOT_REQUIRED', 'ALWAYS', 'AFTER_DAYS'] as const;
 
 export type DocumentationRule = (typeof DOCUMENTATION_RULES)[number];
 
-/** What the caller supplies to create one. Everything with a sensible default has one. */
+/** What the caller supplies to create one. */
 export interface NewLeaveType {
-  /** The stable handle. Uppercased and trimmed here. */
+  /** The stable handle. */
   code: string;
   name: string;
-  /** What staff read on the request form beside the name. HR's wording. */
+  /** What staff read on the request form beside the name. */
   description?: string | null;
   countingBasis: CountingBasis;
   entitlementBasis: EntitlementBasis;
@@ -154,58 +46,23 @@ export interface NewLeaveType {
   documentation?: DocumentationRule;
   /** Required exactly when the rule is `AFTER_DAYS`, and refused otherwise. */
   documentationAfterDays?: number | null;
-  /** FR 32a. Whether exceeding the balance asks for evidence rather than refusing. */
+  /** FR 32a. */
   exceedableWithDocument?: boolean;
-  /** FR 32e. Months after the event an unused grant lapses. Not carry over. */
+  /** FR 32e. */
   entitlementExpiryMonths?: number | null;
   mayBeSplit?: boolean;
-  /** FR 17. Calendar days. A threshold for a warning, not a refusal. */
+  /** FR 17. */
   minNoticeCalendarDays?: number;
-  /** FR 18. Calendar days after the fact it may still be entered. This one refuses. */
+  /** FR 18. */
   maxBackdateCalendarDays?: number;
-  /** FR 05. Null for a type open to everybody, which is most of them. */
+  /** FR 05. */
   genderRestriction?: Gender | null;
   displayOrder?: number;
-  /**
-   * FR 38a. The desks a request goes to, in order. Manager then HR when nobody
-   * says otherwise — {@link DEFAULT_APPROVAL_CHAIN}.
-   *
-   * Supplied here, on the one operation where the type and its chain are written
-   * together, and nowhere else. Changing it afterwards is
-   * {@link LeaveTypeService.setApprovalChain}; see {@link LeaveTypeChanges}.
-   */
+  /** FR 38a. */
   approvalChain?: readonly string[];
 }
 
-/**
- * The fields of an existing one that may change.
- *
- * `isActive` is not among them, deliberately, and for the same reason it is not
- * an ordinary department edit: retiring a type is a decision about every request
- * that will ever be raised against it, and putting the flag in an ordinary edit
- * would give that decision a second door nobody would remember to guard. It is
- * {@link LeaveTypeService.retire} and {@link LeaveTypeService.reinstate}.
- *
- * `deductsFromAnnual` is not among them either, and never will be. FR 33 says
- * sick leave, maternity leave and public holidays shall never reduce annual leave
- * entitlement; the column exists so that the requirement is a CHECK rather than a
- * comment, and there is nothing for a configuration screen to offer.
- *
- * `code` is among them, and only just. It is the handle a report from last year
- * joined on, so changing it is a rename of history rather than a correction — but
- * a typo made on the afternoon a type was created has to be fixable by somebody
- * other than a developer, which is the whole story. The audit log is what makes
- * the difference between the two visible afterwards.
- *
- * `approvalChain` is not among them either, and it is the same argument `isActive`
- * makes rather than a new one. Who signs a request off is a decision about every
- * request that will ever be raised against the type, not a correction to what the
- * type is, and leaving it in an ordinary edit would give that decision a second
- * door — one that the denial log and the audit log would both record as "changed
- * the leave type". It is {@link LeaveTypeService.setApprovalChain}, so that
- * "the administrator took the Chief Executive out of the unpaid leave chain" is a
- * sentence somebody can find afterwards.
- */
+/** The fields of an existing one that may change. FR 33. */
 export type LeaveTypeChanges = Partial<Omit<NewLeaveType, 'approvalChain'>>;
 
 /** A record as it comes back out. */
@@ -226,15 +83,9 @@ export interface LeaveType {
   minNoticeCalendarDays: number;
   maxBackdateCalendarDays: number;
   genderRestriction: Gender | null;
-  /** FR 33. Always false, held as a column so the requirement is a constraint. */
+  /** FR 33. */
   deductsFromAnnual: boolean;
-  /**
-   * FR 38a. The desks a request goes to, in order.
-   *
-   * Empty only for a type somebody left half configured — the database allows it
-   * and the leave-type-approval-chain migration says why — and
-   * {@link assertSomebodyApprovesIt} is where that is refused.
-   */
+  /** FR 38a. */
   approvalChain: ApproverRole[];
   displayOrder: number;
   /** Retired types are still readable and still head every report they ever did. */
@@ -261,23 +112,11 @@ export interface ValidatedLeaveType {
   maxBackdateCalendarDays: number;
   genderRestriction: Gender | null;
   displayOrder: number;
-  /**
-   * FR 38a. Not a column of `leave_type` at all — the repository writes it as
-   * rows in the same transaction, the way a working pattern's week is written.
-   */
+  /** FR 38a. */
   approvalChain: ApproverRole[];
 }
 
-/**
- * A record that was refused, and the field that caused it.
- *
- * The field is carried separately rather than only mentioned in the message, for
- * the reason {@link InvalidEmployee} carries one, and NFR USA 03 is the
- * requirement behind it: an error must say what is wrong *and what to do about
- * it*, next to the input it is about. It matters more here than anywhere else in
- * the system, because this form has fifteen inputs and two of the rules span two
- * of them.
- */
+/** A record that was refused, and the field that caused it. NFR USA 03. */
 export class InvalidLeaveType extends Error {
   readonly field: string;
 

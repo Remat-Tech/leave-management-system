@@ -1,38 +1,4 @@
-/**
- * Database access for the balance ledger. FR 27, §5.7. LMS 210.
- *
- * Queries and row mapping, nothing else. What an entry means is ../domain/ledger.ts;
- * who may post one is ../services/ledger-service.ts.
- *
- * ## There is no update and no delete, and that is the file's shape
- *
- * Every other repository here has three verbs. This one has `post` and reads. Not
- * because the methods were left out but because there is nothing for them to call:
- * `lms_app` holds SELECT and INSERT on this table and nothing more, and
- * `refuse_update()` and `refuse_delete()` refuse the owner as well. A method here
- * would be a method that always throws, which is a worse way of saying the same
- * thing than not having one.
- *
- * {@link LedgerRepository.post} is therefore the only writer, and everything that
- * looks like a change goes through it as a new row.
- *
- * ## Refusals are translated rather than allowed to surface
- *
- * As in the holiday, leave year and entitlement rule repositories, and for the same
- * reason: checking first and writing afterwards is a race. A leave year closed
- * while somebody had a form open is the case that actually happens here — the
- * service checks and the trigger decides — and the write either side of that
- * instant has to be refused rather than accepted by whichever half of the second it
- * landed in.
- *
- * ## `days` arrives as text
- *
- * The one thing in this file worth reading before changing anything. `numeric`
- * comes back from the driver as a string so that precision is not lost, and
- * ../db/schema.ts types it that way on purpose — `'20.00' + '5.00'` is
- * `'20.005.00'`, and a type that let that compile would eventually let it ship.
- * {@link toEntry} is the one place it becomes a number.
- */
+/** Database access for the balance ledger. FR 27, §5.7., LMS 210. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../db/index.js';
@@ -53,22 +19,14 @@ const CHECK_VIOLATION = '23514';
 const FOREIGN_KEY_VIOLATION = '23503';
 
 /**
- * Postgres `restrict_violation`, which both of this table's triggers raise with a
- * constraint name of their own so that this file can recognise them the way it
- * recognises a real constraint.
+ * Postgres `restrict_violation`, which both of this table's triggers raise with a constraint name of their own so that this file can recognise them t…
  */
 const RESTRICT_VIOLATION = '23001';
 
 const SETTLED_YEARS = 'leave_ledger_entry_leaves_settled_years_alone';
 const SAME_BALANCE = 'leave_ledger_entry_corrects_the_same_balance';
 
-/**
- * Which field a refused row is reported against.
- *
- * Read from the constraint name the driver hands back rather than guessed from the
- * message, so a violation of some future constraint is re-thrown as itself rather
- * than blamed on whichever field this map happens to mention.
- */
+/** Which field a refused row is reported against. */
 const CHECKED_FIELDS: Record<string, string> = {
   leave_ledger_entry_type_known: 'entryType',
   leave_ledger_entry_reason_not_blank: 'reason',
@@ -91,34 +49,19 @@ const REFERENCED_FIELDS: Record<string, string> = {
 
 type LedgerRow = Selectable<LeaveLedgerEntryTable>;
 
-/**
- * Which balance to read, and how much of it.
- *
- * `employeeId` is not optional and there is no method without it. A ledger read
- * across everybody is a report — FR 63's liability by department — and a report is
- * a query written for the figures it needs rather than a history screen with its
- * filter left off. Offering it here would make the expensive read the default one.
- */
+/** Which balance to read, and how much of it. FR 63. */
 export interface LedgerReadOptions {
   employeeId: string;
   leaveTypeId?: string;
   leaveYearId?: string;
-  /** Only these kinds of movement. For separating certified sick days, FR 32b. */
+  /** Only these kinds of movement. FR 32b. */
   entryTypes?: readonly LedgerEntryType[];
 }
 
 export class LedgerRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  /**
-   * Writes one entry. The only writer this table has.
-   *
-   * `created_by`, `created_by_employee_id` and `created_at` are not sent, and could
-   * not be honoured if they were: `stamp_the_writer_on_a_ledger_entry()` overwrites
-   * all three from the settings {@link recording} puts on the transaction. That is
-   * the same seam the audit log reads, so an entry posted inside an audited write is
-   * attributed to whoever was doing the writing.
-   */
+  /** Writes one entry. */
   async post(by: Attribution, entry: ValidatedLedgerEntry): Promise<LedgerEntry> {
     return this.catchRefusals(async () => {
       const row = await recording(this.db, by, (on) =>
@@ -133,23 +76,7 @@ export class LedgerRepository {
     });
   }
 
-  /**
-   * Several entries, in one transaction, attributed to one writer.
-   *
-   * A year rollover posts a `CARRY_FORWARD` and a `GRANT` together, and §8.6c's
-   * reclassification posts a pair that only makes sense as a pair — half of either
-   * landing is a balance that explains itself wrongly rather than not at all. So the
-   * transaction is the unit, and {@link recording} composes with one that is already
-   * open, which is what lets a caller wrap this in a wider piece of work.
-   *
-   * No service calls it yet, and it is here anyway rather than left to whichever
-   * job needs it first. The reason is what a caller does without it: two `post()`
-   * calls are two transactions, so half a rollover can land and a reclassification
-   * can credit one balance and fail to debit the other. That is a property of the
-   * ledger rather than of any one job, and a caller discovering it the hard way
-   * discovers it as a balance nobody can explain. ../tests/integration/ledger.test.ts
-   * is what exercises it.
-   */
+  /** Several entries, in one transaction, attributed to one writer. §8.6. */
   async postAll(by: Attribution, entries: readonly ValidatedLedgerEntry[]): Promise<LedgerEntry[]> {
     if (entries.length === 0) {
       return [];
@@ -159,9 +86,6 @@ export class LedgerRepository {
       recording(this.db, by, async (on) => {
         const written: LedgerEntry[] = [];
 
-        /* One statement at a time rather than a multi-row insert, because a
-           correction may name an entry written earlier in the same call and the
-           foreign key has to be able to find it. */
         for (const entry of entries) {
           written.push(
             toEntry(
@@ -189,15 +113,7 @@ export class LedgerRepository {
     return row === undefined ? undefined : toEntry(row);
   }
 
-  /**
-   * One balance's movements, oldest first.
-   *
-   * Ordered by `created_at` then `id`, which is `leave_ledger_entry_balance`'s own
-   * order. The tie break is not decoration: a rollover writes two entries in one
-   * transaction and `now()` is identical on both, so a sort on the timestamp alone
-   * would order them differently on different reads — and an account that reorders
-   * itself is one nobody can check twice.
-   */
+  /** One balance's movements, oldest first. */
   async entriesFor(options: LedgerReadOptions): Promise<LedgerEntry[]> {
     let query = this.db
       .selectFrom('leave_ledger_entry')
@@ -217,13 +133,7 @@ export class LedgerRepository {
     return (await query.orderBy('created_at').orderBy('id').execute()).map(toEntry);
   }
 
-  /**
-   * The entries put right by this one, and the ones that put it right.
-   *
-   * Both directions in one read, because "is this figure the one that counts" is
-   * the question somebody looking at a wrong-looking row actually has, and it is
-   * unanswerable from either end alone.
-   */
+  /** The entries put right by this one, and the ones that put it right. */
   async correctionsAround(id: string): Promise<LedgerEntry[]> {
     const rows = await this.db
       .selectFrom('leave_ledger_entry')
@@ -236,16 +146,7 @@ export class LedgerRepository {
     return rows.map(toEntry);
   }
 
-  /**
-   * Turns whatever the database refused a write for into the domain error for that
-   * refusal.
-   *
-   * Every one of these is also checked in ../domain/ledger.ts, and reaching one here
-   * means either a writer that did not come through the service or a race the
-   * service cannot win — a leave year closed between the check and the write. The
-   * database's own message is carried through in that case, because it names the
-   * year and the day it was closed on, which is the half the person needs.
-   */
+  /** Turns whatever the database refused a write for into the domain error for that refusal. */
   private async catchRefusals<T>(write: () => Promise<T>): Promise<T> {
     try {
       return await write();

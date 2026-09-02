@@ -1,37 +1,4 @@
-/**
- * Who may see and change a working pattern. NFR SEC 02. §10. LMS 112. FR 23,
- * LMS 106.
- *
- * The second policy about the shape of the organisation rather than about a
- * person, and it runs the same way as ./department-policy.ts: reading is open to
- * anybody signed in, writing is an HR Administrator's.
- *
- * ## Reading is open
- *
- * A pattern is a week — which days are worked — and every employee has a right
- * to know which week they are counted against, because it is the difference
- * between a week off costing four days and costing five. A pattern is not a
- * record about anybody: it holds a name, a flag and seven weekdays, and which
- * pattern a *person* is on is a field of the employee record, which
- * ./employee-policy.ts guards.
- *
- * So the open read here is narrower than it looks. Anybody may see that a
- * pattern called "Four days, Wednesdays off" exists. Finding out that it is
- * Abena's means reading Abena's record, and that is refused.
- *
- * ## The headcount is not open
- *
- * How many people are on a pattern is a fact about people, exactly as a
- * department's headcount is, and a small number on an unusual pattern is close
- * to naming somebody. It goes to {@link READS_EVERY_RECORD}.
- *
- * ## Writing is an HR Administrator's
- *
- * Editing a pattern changes what a day off costs for everybody on it, without
- * touching a single employee record — which is precisely the sort of change that
- * ought to need the rank that {@link SETS_UP_THE_ORGANISATION} names. Making one
- * the default changes which week every future joiner is given.
- */
+/** Who may see and change a working pattern. NFR SEC 02, §10., LMS 112, FR 23, LMS 106. */
 
 import { type Actor, holdsAny } from './actor.js';
 import { type Decision, policyFor } from './policy.js';
@@ -47,17 +14,17 @@ const WRITES_ARE_ADMINISTRATIVE =
 export const workPatternPolicy = {
   resource: about.resource,
 
-  /** One pattern, by id or by name. Anybody signed in. */
+  /** One pattern, by id or by name. */
   read(actor: Actor, workPatternId: string | null = null): Decision {
     return about.allow(actor, 'read', workPatternId);
   },
 
-  /** Every pattern, and the default among them. What a form offers as choices. */
+  /** Every pattern, and the default among them. */
   list(actor: Actor): Decision {
     return about.allow(actor, 'list');
   },
 
-  /** How many employee records are on one, leavers included. A fact about people. */
+  /** How many employee records are on one, leavers included. */
   headcount(actor: Actor, workPatternId: string): Decision {
     return holdsAny(actor, ...READS_EVERY_RECORD)
       ? about.allow(actor, 'headcount', workPatternId)
@@ -107,11 +74,7 @@ export const workPatternPolicy = {
         );
   },
 
-  /**
-   * Deleting one. The ending a pattern has, unlike a department, and refused by
-   * the service for the default and for one anybody is on — so what this decides
-   * is who may remove the pattern created by a typo on a Tuesday afternoon.
-   */
+  /** Deleting one. */
   remove(actor: Actor, workPatternId: string): Decision {
     return holdsAny(actor, ...SETS_UP_THE_ORGANISATION)
       ? about.allow(actor, 'remove', workPatternId)

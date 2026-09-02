@@ -1,120 +1,5 @@
 /**
- * The one place a balance changes. FR 26, FR 30, FR 36, FR 37, §5.7, §8.2. LMS 211 to
- * LMS 217, and the two ends of a request's life — LMS 301 and LMS 306.
- *
- * LMS 211 built the cache and this class read it. LMS 212 is the story that gives it
- * the other half, and the story's own sentence is the design: "one place responsible
- * for changing balances, so that my days cannot be deducted twice or lost between
- * two screens".
- *
- * Both halves of that sentence are load bearing, and they are different problems.
- *
- * ## One place. Every movement is posted from this file
- *
- * There is no other writer. `LedgerService` reads the account and posts nothing;
- * every other service that will one day move days — the rollover, the request state
- * machine, the expiry job — calls a method here rather than reaching for
- * `LedgerRepository`. ../../tests/unit/one-writer.test.ts is what keeps that true, by
- * reading the source and failing on a second caller.
- *
- * LMS 214 is the first story to take that arrangement up on its offer. The annual
- * grant needed a movement this file did not have, so it added
- * {@link BalanceService.grantTheYear} — where the lock, the rule and the policy already
- * are — rather than a second way in.
- *
- * That is worth a rule rather than a habit because of what the second writer looks
- * like when it arrives. It is not a rogue `UPDATE leave_balance` — the database has
- * refused those since LMS 211 — it is an honest service posting an honest
- * `DEDUCTION` and skipping the one check that made it safe. Days deducted twice, by
- * two files that each looked correct.
- *
- * ## Days arrive from a rule, and leave through a request
- *
- * Two movements put days into a balance from outside it, and both are a rule being
- * applied rather than anybody deciding this morning.
- *
- * {@link BalanceService.grantTheYear} is FR 30: a year's entitlement, granted once and
- * refused a second time inside the lock. {@link BalanceService.carryForward} is FR 36 and
- * LMS 217: what was left of the year before, carried across the boundary once and refused
- * a second time by the same arrangement. They are deliberately the same shape, because
- * "safely re-runnable" is one property held twice rather than two pieces of care.
- *
- * Everything else moves days that are already there, or is HR moving them by hand under
- * FR 37.
- *
- * ## And one movement is nobody's rule at all
- *
- * {@link BalanceService.adjust} is FR 37 and LMS 216: HR putting a figure right by
- * hand, signed, with a written reason, and no request or rule behind it. It is the
- * only method here that takes a negative figure from its caller and the only one that
- * checks nothing about what is already in the balance, because there is nothing to
- * check it against — which is also why it is the narrowest decision in
- * ../auth/ledger-policy.ts.
- *
- * {@link BalanceService.correct} is the same act aimed at one row: the exact opposite
- * of an entry, naming it. Between them they are the whole of "a mistake is a new row",
- * which is the property FR 27 asks for and the reason nothing in this class updates
- * anything.
- *
- * ## Not deducted twice. Held days can only be spent once
- *
- * The three request movements are a lifecycle rather than three writes.
- * {@link BalanceService.reserve} holds days, {@link BalanceService.commit} turns held
- * days into taken ones, {@link BalanceService.release} gives them back — and both of
- * the last two can only draw down what {@link BalanceService.reserve} put there.
- * `daysToCommit` in ../domain/balance.ts refuses the second approval of the same five
- * days because the first emptied the hold it would have to come out of.
- *
- * That is the property that makes approval idempotent-ish in the only way that
- * matters: not that a second commit is silently ignored, which would hide a bug, but
- * that it is refused with a sentence naming how many days are actually held.
- *
- * ## A request's days arrive, are committed and leave through three methods
- *
- * {@link BalanceService.reserveForRequest}, {@link BalanceService.approveForRequest} and
- * {@link BalanceService.releaseForRequest}, and none of them is a movement with a status
- * change bolted on: **the row and the entry are one act every time**, because each of the
- * ways they could come apart is a balance nobody can explain. A request that reserved
- * nothing could be submitted three times against five days; a reservation with no request
- * is days missing with nothing to say why; a request that ended holding its days is a
- * balance permanently short; a release with the status left behind is days that the next
- * withdrawal gives back again; and a request marked approved with no `DEDUCTION` is leave
- * that has been agreed and is still shown as waiting to be decided.
- *
- * The database holds all of them — `leave_request_holds_its_days`,
- * `leave_request_gives_its_days_back` and `leave_request_takes_its_days` at COMMIT,
- * `leave_request_reserves_once`, `leave_request_releases_once` and
- * `leave_request_commits_once` at the write — so the pairing is a guarantee rather than
- * a convention these three methods happen to follow.
- *
- * **The approval door is the one that sometimes writes no entry at all**, and LMS 314's
- * note on it says why: a request moving from its first approver to its second has not
- * moved a single day, so there is nothing for the ledger to record. It is here anyway,
- * because the approval that *does* move days is the same act and has to be written in the
- * same transaction as the status.
- *
- * ## Not lost between two screens. The row is held while it is checked
- *
- * §8.2, and the criterion is exact: the balance is locked *for the duration of
- * reserve and validate*, not for the read that precedes it. Two requests for five
- * days against a balance of five: without the lock both read five, both check five,
- * both write, and ten days are held. With it, the second waits at
- * `holdStill()` and re-reads a balance the first has already spent.
- *
- * The transaction is `Transactions.allOrNothing`, because a lock lasts exactly as
- * long as the transaction that took it. That is also what makes the movement and the
- * cache one act: the trigger of LMS 211 recomputes the balance inside the same
- * transaction, so the figure this returns is the figure the movement produced.
- *
- * ## What decides *whether* an operation should happen is not here
- *
- * This class asks two questions of every movement: has the actor any standing on
- * this balance — ../auth/ledger-policy.ts — and are the days there. It does not ask
- * whether the request giving rise to the movement is a valid request: the notice
- * period of FR 17, the documentation of FR 13, whether this approver is the one FR
- * 38a's chain is waiting on. Those belong to the request and approval stories, are
- * asked before these are called, and putting them here would make this the service
- * that knows everything.
+ * The one place a balance changes. FR 26, FR 30, FR 36, FR 37, §5.7, §8.2., LMS 211, LMS 217, LMS 301, LMS 306, LMS 212, LMS 214, LMS 216, FR 27, LMS 314, §8.2, FR 17, FR 13, FR 38a.
  */
 
 import type { Actor } from '../auth/actor.js';
@@ -165,93 +50,38 @@ import type { BalanceRepository } from '../repositories/balance-repository.js';
 import { EmployeeRepository } from '../repositories/employee-repository.js';
 import type { Repositories, Transactions } from '../repositories/transaction.js';
 
-/**
- * A balance with the figure the story is about beside it.
- *
- * The same shape `LedgerService.history` returns — the stored row, plus the one
- * derived number a screen would otherwise compute for itself. `available` is
- * `entitled + carriedOver + adjustment − taken − pending`, is not a column, and may
- * be negative: §8.6b, sick leave.
- */
+/** A balance with the figure the story is about beside it. §8.6. */
 export type BalanceWithAvailable = LeaveBalance & { available: number };
 
-/**
- * What a caller supplies to move a balance.
- *
- * **`days` is positive, always, in all five operations.** A reserve of five days is
- * `5`, and so is the release that gives them back — which way the balance moves is
- * decided by which method was called, not by the sign of the figure. The ledger's
- * signs are ../domain/ledger.ts's business, and a caller that had to remember that a
- * reservation is −5 and a release is +5 would eventually get one backwards and post a
- * perfectly valid entry that meant the opposite of what happened.
- *
- * The exception is {@link Adjustment}, which is signed because FR 37 says so.
- */
+/** What a caller supplies to move a balance. FR 37. */
 export interface BalanceMovement extends BalanceKey {
   /** Positive and whole. FR 24. */
   days: number;
-  /** FR 27. Why the days moved, in words somebody reading a balance can use. */
+  /** FR 27. */
   reason: string;
 }
 
-/**
- * What HR supplies to move a balance by hand. FR 37, LMS 216.
- *
- * Deliberately the same three keys and the same two fields as
- * {@link BalanceMovement} rather than something shaped for a form. An adjustment is a
- * movement in a balance like any other, and a type that said otherwise would be the
- * first place it stopped being one.
- */
+/** What HR supplies to move a balance by hand. FR 37, LMS 216. */
 export interface Adjustment extends BalanceKey {
-  /**
-   * Signed, and the only movement in this class that is. Positive gives days,
-   * negative takes them, and FR 37 asks for both by name.
-   *
-   * Not zero, and not finer than the hundredth of a day: `validateNewLedgerEntry`
-   * refuses both, the first because a movement of no days is a line in somebody's
-   * history that explains nothing, the second because §8.6d holds an accrued figure
-   * to two places and a third would be rounded away without saying so.
-   */
+  /** Signed, and the only movement in this class that is. FR 37, §8.6. */
   days: number;
-  /**
-   * Mandatory, and the whole point of the story. FR 27.
-   *
-   * Trimmed, never defaulted, and unconstrained beyond being something: a reason
-   * nobody can write freely is a reason everybody writes 'correction' in.
-   */
+  /** Mandatory, and the whole point of the story. FR 27. */
   reason: string;
 }
 
-/**
- * A movement, and what the balance became.
- *
- * Both, from every one of the five, because a caller needs both and reading the
- * balance again afterwards would read it outside the transaction that moved it — one
- * more window for somebody else's movement to arrive in, in a class whose whole
- * subject is windows.
- */
+/** A movement, and what the balance became. */
 export interface BalanceMoved {
   entry: LedgerEntry;
   balance: BalanceWithAvailable;
 }
 
-/**
- * What HR supplies to grant entitlement for something that happened. FR 32g, LMS 218.
- *
- * A {@link BalanceMovement} with the event's own three facts on it, because the grant
- * and the event are written together and neither is complete without the other.
- *
- * The figure and the deadline both arrive resolved: `days` is the entitlement rule as
- * at the day it happened, `expiresOn` is `expiryFor` applied to the type's
- * `entitlement_expiry_months`. Neither is this service's to work out — see
- * `LeaveEventService`, which is the one place either question is asked.
- */
+/** What HR supplies to grant entitlement for something that happened. FR 32g, LMS 218. */
 export interface EventGrant extends BalanceMovement {
   /** The day the thing happened, which is not the day it was recorded. */
   occurredOn: CalendarDate;
-  /** FR 32e. When an unused grant lapses, or null where this type's never does. */
+  /** FR 32e. */
   expiresOn: CalendarDate | null;
-  /** HR's words about the occurrence itself. The grant's own reason is separate. */
+  /** HR's words about the occurrence itself. */
   note?: string | null;
 }
 
@@ -261,271 +91,92 @@ export interface EventLapse extends BalanceMovement {
   leaveEventId: string;
 }
 
-/**
- * A movement caused by a leave request. LMS 301.
- *
- * The four request-shaped entry types each name the request they are about, and this
- * type is where that stops being a convention. `leave_request_id` is NOT NULL for
- * exactly these entries — `leave_ledger_entry_request_movements_name_a_request` — so a
- * caller that could omit it would be a caller writing rows the database refuses at the
- * last moment.
- *
- * {@link BalanceService.reserveForRequest} does not take one, because it is the method
- * that creates the request. Approval and release do, because by then there is one.
- */
+/** A movement caused by a leave request. LMS 301. */
 export interface RequestMovement extends BalanceMovement {
   leaveRequestId: string;
 }
 
-/**
- * What `LeaveRequestService` supplies to submit one. FR 10, LMS 301.
- *
- * Two fields, and they are two because the request and the movement it causes say
- * different things to different people. `request.reason` is why somebody wants the
- * leave, written by them and read by whoever approves it; `reason` here is what the
- * `RESERVATION` says, which is the sentence beside five days missing from a balance —
- * {@link reasonForReservation} composes it. Sharing one string would put "my sister's
- * wedding" in the ledger and "5 days of Annual Leave held while it is decided" in front
- * of the approver.
- *
- * The request arrives already priced. The day count, the calendar span and the counting
- * basis are resolved by `LeaveRequestService`, which is the one place the calculator is
- * asked — a service that recounted here would be a second answer to what a fortnight
- * costs, and the whole story is that there is one.
- */
+/** What `LeaveRequestService` supplies to submit one. FR 10, LMS 301. */
 export interface RequestToSubmit {
   request: ValidatedLeaveRequest;
-  /** FR 27. What the movement says, which is not what the request says. */
+  /** FR 27. */
   reason: string;
 }
 
-/**
- * What `LeaveRequestService` supplies to end one. FR 26, §8.2. LMS 306.
- *
- * The mirror of {@link RequestToSubmit}, and the same division between the two strings:
- * `reason` is what the `RELEASE` says, which is the sentence beside five days arriving
- * back in a balance, and {@link reasonForRelease} composes it.
- *
- * The request arrives as it was read, rather than as an id, because the caller has
- * already read it to decide whether this actor may end it. It is **read again inside the
- * lock** all the same — see {@link BalanceService.releaseForRequest} — so what is passed
- * here identifies the row rather than being trusted for its status.
- */
+/** What `LeaveRequestService` supplies to end one. FR 26, §8.2., LMS 306. */
 export type RequestToSettle = {
   request: LeaveRequest;
-  /**
-   * Where the table said that leaves it, as the caller read it a moment ago.
-   *
-   * Carried so the reason and the status cannot disagree — `reasonForRelease` has
-   * already been composed against this — and deliberately **not** what gets written:
-   * the value stored is looked up again from the request as it stands inside the lock.
-   * A caller that could choose the destination could settle a request into a state the
-   * table does not permit, which is the whole thing §6 is against.
-   */
+  /** Where the table said that leaves it, as the caller read it a moment ago. §6. */
   to: ReleasingStatus;
-  /** FR 27. What the movement says, which is not what the request says. */
+  /** FR 27. */
   reason: string;
 } & SettlingAct;
 
 /**
- * Which of the three endings this is, and what has to be said about it. §6, FR 39. LMS
- * 313, LMS 314, LMS 315.
- *
- * `action` is the act rather than the destination, because the destination is the
- * transition table's to give — and it is given again inside the lock, from the status
- * {@link BalanceService.releaseForRequest} re-reads. It is a {@link ReleasingAction} rather
- * than any action, so `APPROVE` cannot be handed to the release door at all: it reaches a
- * state that still holds days, and a release against it would give back days an approval had
- * just committed.
- *
- * **Written as a union so that the comment cannot be optional**, which is LMS 315's first
- * criterion drawn in the type system. Refusing is a decision at a desk and must say why;
- * withdrawing and cancelling are not decisions at all, and a comment supplied with either
- * would be a judgement recorded against a request nobody judged. A single `comment?: string`
- * would permit both mistakes and catch neither — and the second is the silent one, because
- * the field would simply go unread.
- *
- * So the door is handed either a refusal with its reason or one of the other two with an
- * explicit null, and {@link LeaveRequestService.refuse} is the only place the first is built.
+ * Which of the three endings this is, and what has to be said about it. §6, FR 39, LMS 313, LMS 314, LMS 315.
  */
 type SettlingAct =
   | { action: 'REFUSE'; comment: string }
   | { action: Exclude<ReleasingAction, 'REFUSE'>; comment: null };
 
-/**
- * What `LeaveRequestService` supplies to approve one. FR 38a, FR 40. LMS 314.
- *
- * The third of the family, and the one that differs from {@link RequestToSettle} in the
- * fact it carries instead of a destination: **the chain rather than where the request
- * lands**, because where it lands is what the chain decides. `approvalTo` is asked again
- * inside the lock with this list in hand, so a caller cannot approve a request one desk
- * early by naming a status.
- *
- * The chain arrives read rather than looked up here, for the reason the day count does: it
- * is the leave type's, `LeaveTypeRepository` is what reads it, and a door that fetched
- * configuration would be a second place deciding who approves what.
- */
+/** What `LeaveRequestService` supplies to approve one. FR 38a, FR 40, LMS 314. */
 export interface RequestToApprove {
   request: LeaveRequest;
-  /** FR 38a. The approvers for this kind of leave, in order, as the type has them now. */
+  /** FR 38a. */
   chain: readonly ApproverRole[];
-  /**
-   * FR 04. The one employee with no line manager, where this chain names the `CEO` desk.
-   *
-   * Null where it does not, which is every chain but the two unpaid ones — so the query is
-   * paid for by the approvals that need it rather than by all of them. It is here because
-   * the standing check is made again inside the lock and cannot go and look it up: a policy
-   * that touched a database would be a decision whose answer depended on when it was asked.
-   */
+  /** FR 04. */
   chiefExecutiveId: string | null;
-  /**
-   * FR 27. What the `DEDUCTION` says, where this approval is the last word.
-   *
-   * Composed by {@link reasonForApproval} against the desk the caller expects to be last,
-   * and unread where the request only moves on a stage — an intermediate approval writes no
-   * entry, because nothing about the balance has changed. Where the two disagree, because
-   * the chain lengthened while somebody was reading a screen, the request moves on and the
-   * sentence is simply not used.
-   */
+  /** FR 27. */
   reason: string;
-  /**
-   * FR 39. What the approver said about it, where they said anything. LMS 315.
-   *
-   * Optional in the sense that matters — an approval with nothing to add is the ordinary
-   * case, and null is what that looks like — and *not* optional in the type, for the reason
-   * {@link RequestAtADesk} requires its two nullable fields: a caller that never asked and a
-   * caller that asked and was told nothing are different situations, and only one of them is
-   * a bug.
-   *
-   * Unlike {@link RequestToSettle}'s, this is a comment and not a decision. The decision is
-   * composed inside the lock, from the desk this approval is actually standing at — see
-   * {@link BalanceService.approveForRequest}, which re-decides that before it writes.
-   */
+  /** FR 39. */
   comment: string | null;
 }
 
-/**
- * The request, the movement it caused, and the balance it left.
- *
- * All three, for the reason {@link EventGranted} carries all three: a caller that has
- * just submitted a request needs the row it wrote — the id, and what the days were
- * priced at — and reading the balance again afterwards would read it outside the
- * transaction that moved it.
- */
+/** The request, the movement it caused, and the balance it left. */
 export interface LeaveRequested extends BalanceMoved {
   request: LeaveRequest;
 }
 
 /**
- * The same three from the other end of a request's life, and what was said about it. LMS
- * 306, LMS 315.
- *
- * Named apart from {@link LeaveRequested} for the reason {@link EventLapsed} is named
- * apart from {@link EventGranted}: a signature should say which act produced it, and
- * "the request, the entry and the balance" is true of both while only one of them gives
- * days back.
- *
- * **It was an alias of {@link LeaveRequested} until LMS 315 and is now an interface**,
- * because the two stopped being the same shape the moment one of the three endings started
- * carrying a decision. That is the alias earning its note rather than losing it: a
- * refusal is a decision at a desk, a withdrawal and a cancellation are not, and a caller
- * that has just ended a request needs the row it wrote — the reason the manager gave — from
- * the transaction that wrote it rather than from a read afterwards.
+ * The same three from the other end of a request's life, and what was said about it. LMS 306, LMS 315.
  */
 export interface LeaveReleased extends LeaveRequested {
-  /** FR 39. The refusal's, in the manager's own words. Null for the other two endings. */
+  /** FR 39. */
   decision: LeaveDecision | null;
 }
 
 /**
- * The same three from the middle of a request's life, with the entry allowed to be absent.
- * FR 38a. LMS 314.
- *
- * **`entry` is null for every approval but the last**, and that is the shape of the story
- * rather than an inconvenience in the type. A manager approving stage one of a two-stage
- * chain has changed who the request is waiting on and nothing else: the days were held when
- * it was submitted and they are held still, so there is no movement to post and posting one
- * would be inventing a fact about a balance.
- *
- * A caller that wants to know which happened reads the request — `awaitingApprovalFrom` is
- * null exactly when this was the last word — rather than testing the entry for null, which
- * is why the request is first in this type and why there is no `isFinal` flag beside it.
+ * The same three from the middle of a request's life, with the entry allowed to be absent. FR 38a, LMS 314.
  */
 export interface LeaveApproved extends Omit<LeaveRequested, 'entry'> {
-  /** The `DEDUCTION`, where this approval decided it. Null where it only moved on. */
+  /** The `DEDUCTION`, where this approval decided it. */
   entry: LedgerEntry | null;
-  /**
-   * FR 39, FR 52. What this desk said, and who said it. Never null. LMS 315.
-   *
-   * The asymmetry with `entry` above is the whole of what a decision is for, and it is
-   * worth reading the two together: an intermediate approval writes **no movement** and
-   * **always** writes a decision. Nothing about the balance changed — the days were held
-   * when the request was submitted and they are held still — so there is no entry to post;
-   * what did happen is that a person at a desk said yes, and that is exactly the fact
-   * neither the balance nor the status can carry.
-   */
+  /** FR 39, FR 52. */
   decision: LeaveDecision;
 }
 
-/**
- * A movement, the balance it left, and the event it belongs to.
- *
- * {@link BalanceMoved} with the event beside it, because a caller that has just
- * granted or lapsed one needs the row it wrote — the deadline it was given, or the
- * lapse that closed it — and reading it again afterwards would read it outside the
- * transaction that produced it.
- */
+/** A movement, the balance it left, and the event it belongs to. */
 export interface EventGranted extends BalanceMoved {
   event: LeaveEvent;
 }
 
-/** The same, from a lapse. Named apart so a signature says which act produced it. */
+/** The same, from a lapse. */
 export type EventLapsed = EventGranted;
 
 export class BalanceService {
   constructor(
-    /**
-     * For reads, which take no lock and need no transaction.
-     *
-     * The same repository the transactional half uses, bound to the pool rather than
-     * to one connection. A read of somebody's balance for a screen is one statement
-     * and wants nothing more.
-     */
+    /** For reads, which take no lock and need no transaction. */
     private readonly balances: BalanceRepository,
-    /* NFR SEC 02. Required rather than defaulted; see ../auth/policy.ts. */
+    /** NFR SEC 02. */
     private readonly guard: Guard,
-    /**
-     * The employee records, for one question only: who is this person's line
-     * manager. Every decision in ../auth/ledger-policy.ts is a function of that and
-     * of who is asking, and it is a fact on the row rather than something an id can
-     * answer.
-     *
-     * The repository rather than the service, for the reason
-     * ../services/holiday-service.ts gives about the leave years it holds: this is
-     * one part of the system asking another what it holds, and giving it a second
-     * actor would mean minting one.
-     */
+    /** The employee records, for one question only: who is this person's line manager. */
     private readonly employees: EmployeeRepository,
-    /**
-     * Where a movement is written. LMS 212.
-     *
-     * Not a `LedgerRepository`, which is what a service that only wrote would take.
-     * A movement is hold, read, decide and write with nobody in between, and a lock
-     * lasts exactly as long as the transaction that took it — so what this class
-     * needs is not a repository but the seam that owns transactions.
-     */
+    /** Where a movement is written. LMS 212. */
     private readonly transactions: Transactions,
   ) {}
 
   /**
-   * Every balance this person has, oldest leave year first and in the order leave
-   * types are shown in. FR 53 for themselves, FR 55 for their manager, FR 56 for
-   * HR.
-   *
-   * One row read per balance and no arithmetic over a history, which is LMS 211's
-   * whole point: a person opening the system sees what they have left in the time it
-   * takes to draw the screen, and the account behind any figure is still one call
-   * away at `LedgerService.history`.
+   * Every balance this person has, oldest leave year first and in the order leave types are shown in. FR 53, FR 55, FR 56, LMS 211.
    */
   async forEmployee(
     actor: Actor,
@@ -537,61 +188,14 @@ export class BalanceService {
     return (await this.balances.forEmployee(employeeId, leaveYearId)).map(withAvailable);
   }
 
-  /**
-   * One balance: this person, this leave type, this leave year.
-   *
-   * A balance nothing has moved yet comes back as nought rather than as an absence,
-   * so a screen asking about a type this person has never used gets a figure to
-   * show. `updatedAt` is null in that case, which is how a caller tells "nothing has
-   * happened" from "it has been moved back to nought".
-   *
-   * No lock. This is the read a screen does, and a lock taken for a figure nobody is
-   * about to act on is a lock somebody else waits behind for nothing.
-   */
+  /** One balance: this person, this leave type, this leave year. */
   async forOne(actor: Actor, key: BalanceKey): Promise<BalanceWithAvailable> {
     this.guard.enforce(ledgerPolicy.read(actor, await this.ownerOf(key.employeeId)));
 
     return withAvailable(await this.balances.forOne(key));
   }
 
-  /**
-   * Records a leave request and holds the days it costs. FR 10, FR 26, §8.2. LMS 301.
-   *
-   * The first movement of a request's life and the one the locking is for. The balance
-   * is held still, read, checked against what is being asked for, the request written
-   * and the `RESERVATION` written — all inside one transaction, so that a second
-   * request for the same days waits rather than reading a figure the first is about to
-   * spend.
-   *
-   * **The request and the movement are one act**, exactly as an entitlement event and
-   * its grant are, and for the sharper of the two reasons: a request that reserved
-   * nothing could be submitted three times against a balance holding five days, and a
-   * reservation with no request behind it is days missing from somebody's balance that
-   * nobody can explain.
-   *
-   * The order is the opposite of {@link BalanceService.grantForAnEvent}'s and is
-   * decided by which way the foreign key points. An event names the grant it caused, so
-   * the entry goes first; a request is named by the movements it causes, so the request
-   * goes first. What makes the gap between the two statements legitimate is
-   * `leave_request_holds_its_days`, a deferred constraint trigger — see the
-   * create-and-submit-a-leave-request migration for why it can only be judged at
-   * COMMIT.
-   *
-   * It is here rather than in `LeaveRequestService` for the reason nothing else posts a
-   * movement: the ledger has one door. What that service does is work out *whether* the
-   * leave may be asked for and what it costs; this writes it.
-   *
-   * Refused with {@link BalanceOverdrawn} where the days are not there, **unless the
-   * leave type may be exceeded**. FR 32a makes sick leave a documentation threshold
-   * rather than a cap, so going past it asks for a medical certificate instead — a
-   * decision about the request, and what this does is decline to stand in its way by
-   * reading `exceedableWithDocument` off the type rather than deciding anything about
-   * which type it is.
-   *
-   * Held days are not taken days. They are subtracted from what may be booked, because
-   * days spoken for are not days to spend twice, and they go back if the request is
-   * refused — see {@link BalanceService.release}.
-   */
+  /** Records a leave request and holds the days it costs. FR 10, FR 26, §8.2., LMS 301, FR 32a. */
   async reserveForRequest(actor: Actor, submission: RequestToSubmit): Promise<LeaveRequested> {
     const { request, reason } = submission;
     const owner = await this.ownerOf(request.employeeId);
@@ -601,9 +205,9 @@ export class BalanceService {
     const key = keyOf(request);
 
     return this.transactions.allOrNothing(async (repositories) => {
-      /* The lock first, and before either row is written: the figure this is checked
-         against has to be held still from the moment it is read until the movement is
-         written, which is the whole of §8.2. */
+      /**
+       * The lock first, and before either row is written: the figure this is checked against has to be held still from the moment it is read until the move… §8.2..
+       */
       const held = await repositories.balances.holdStill(key);
 
       const type = await repositories.types.findById(request.leaveTypeId);
@@ -636,65 +240,13 @@ export class BalanceService {
   }
 
   /**
-   * Ends a leave request and gives back the days it was holding. FR 26, §8.2. LMS 306.
-   *
-   * The last movement of a request's life as this system knows it, and the exact mirror
-   * of {@link BalanceService.reserveForRequest}. The balance is held still, the request
-   * re-read, the ending checked, the status moved and the `RELEASE` written — all inside
-   * one transaction, so a caller reading the balance afterwards reads the figure this
-   * produced.
-   *
-   * **The status and the movement are one act**, and the failure modes on either side of
-   * that are why. A status moved without a release is days held forever by a request that
-   * has ended — a balance permanently short with nothing to explain it. A release without
-   * the status is days given back by a request that still says it is waiting, which the
-   * *next* withdrawal would release again. `leave_request_gives_its_days_back` holds the
-   * first half at COMMIT and `leave_request_releases_once` holds the second.
-   *
-   * ## The request is read again inside the lock, and that is the whole concurrency story
-   *
-   * `LeaveRequestService` has already read it and already refused an ending that had
-   * ended — that refusal is the sentence a person sees. This read is the one that binds,
-   * and it works because of a property the balance lock happens to have: **two endings of
-   * one request are two movements on one balance**, so `holdStill` serialises them. The
-   * second waits, re-reads a request the first has already settled, and meets
-   * {@link LeaveAlreadySettled} rather than releasing the days a second time.
-   *
-   * That is a stronger position than {@link BalanceService.reserveForRequest} is in,
-   * where two submissions are two *different* requests and no lock can make one see the
-   * other. Here the lock closes the window, and `leave_request_releases_once` is the
-   * backstop for a writer that never took it.
-   *
-   * **How many days is not this method's to choose.** It is what the request was priced
-   * at — the figure `refuse_rewriting_what_a_request_cost()` has frozen since it was
-   * submitted — so what comes back is exactly what was held. `daysToRelease` refuses to
-   * give back more than the balance is holding, which is the second line of that defence
-   * and the one that catches a release aimed at the wrong balance.
-   *
-   * ## One of the three endings writes a decision, and it is the one somebody is owed
-   *
-   * FR 39, FR 52. LMS 315. A refusal is a manager turning leave down at the desk it was
-   * sitting on, so it carries the reason and the desk, and both land in this transaction —
-   * `leave_request_records_its_decision` refuses at COMMIT a request that reached `REFUSED`
-   * with nothing to say who refused it or why.
-   *
-   * A withdrawal and a cancellation write none, and that is a decision rather than a gap.
-   * Neither is a judgement about the request: one is the person taking their own back, the
-   * other is HR unwinding a row that should not be on the books. A comment recorded against
-   * either would show the requester a reason for something nobody decided — and asking
-   * somebody to justify changing their mind is not what FR 39 is for. The union on
-   * {@link SettlingAct} is what keeps a caller from supplying one anyway.
+   * Ends a leave request and gives back the days it was holding. FR 26, §8.2., LMS 306, FR 39, FR 52, LMS 315.
    */
   async releaseForRequest(actor: Actor, settlement: RequestToSettle): Promise<LeaveReleased> {
     const { request, action, comment, reason } = settlement;
     const owner = await this.ownerOf(request.employeeId);
 
-    /* FR 48, §8.6a. LMS 319. Nobody decides their own request, asked at this door as well as
-       at the service's, and asked of the *verb* rather than of the actor's standing — which
-       is what makes one line here cover the only ending that is a decision without touching
-       the two that are not. `ledgerPolicy.release` below admits the requester and has to: a
-       withdrawal is somebody giving their own held days back, and it comes through here.
-       So the ledger's question cannot be the one that refuses a self-refusal, and this is. */
+    /** FR 48, §8.6a. */
     if (isADecision(action)) {
       this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, action));
     }
@@ -704,42 +256,25 @@ export class BalanceService {
     const key = keyOf(request);
 
     return this.transactions.allOrNothing(async (repositories) => {
-      /* The lock first, before the request is re-read: the point of reading it again is
-         to see what a concurrent ending did, and a read taken before the lock would see
-         exactly the stale row this is guarding against. */
       const held = await repositories.balances.holdStill(key);
 
       const current = await repositories.requests.findById(request.id);
 
-      /* Unreachable: the caller read this row a moment ago and `leave_request_is_never_
-         deleted` refuses to remove one on any connection. Answered rather than asserted,
-         because the alternative is releasing days against a request that is not there. */
       if (current === undefined) {
         throw new LeaveRequestNotFound(request.id);
       }
 
-      /* Where the table says this act leaves the request as it stands *now*, rather than
-         the destination the caller worked out before the lock. Both are the same lookup
-         over the same table, so they agree in every case but one: a request another
-         connection settled while this one waited, where the caller's answer is stale and
-         this throws {@link LeaveAlreadySettled}. §6, LMS 313. */
+      /**
+       * Where the table says this act leaves the request as it stands *now*, rather than the destination the caller worked out before the lock. §6, LMS 313.
+       */
       const to = settlementTo(current, action);
 
       const days = daysToRelease(held, current.days);
 
-      /* FR 39, FR 52. The desk this ending was decided at, taken from the row as it stands
-         now rather than from the copy the caller read — the same discipline `to` above is
-         held to, and it matters for the same reason: a request that moved on a stage while
-         somebody was reading the screen would otherwise have its refusal filed against the
-         desk it *used* to be at. Read before the status moves, because the move clears it. */
+      /** FR 39, FR 52. */
       const desk = current.awaitingApprovalFrom;
 
       if (comment !== null && desk === null) {
-        /* Unreachable: `settlementTo` has just refused every status but `SUBMITTED`, and
-           `leave_request_waits_at_a_desk` makes the desk present for exactly that one.
-           Answered rather than asserted, because the alternative is a refusal filed against
-           no stage at all — and `leave_request_records_its_decision` would then refuse the
-           whole transaction at COMMIT with a message about a constraint. */
         throw new Error(
           `Leave request ${current.id} is being refused and is standing at no desk, so ` +
             `there is no stage for the decision to be recorded at. A request being decided ` +
