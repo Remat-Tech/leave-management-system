@@ -97,27 +97,35 @@ export async function seed(db, { scenario = 'base' } = {}) {
 }
 
 /**
- * Puts back the reference data the truncate above took with it. LMS 203.
+ * Puts back the reference data the truncate above took with it. LMS 203, LMS 401.
  *
- * One call, and deliberately not a list of figures. The seven leave types and the
- * figures they carry belong to the migrations — LMS 202 and LMS 203 — and a copy
- * of "annual leave is twenty days" in this file would be a second source for a
- * number that has to have exactly one. `ensure_statutory_entitlement_rules()`
- * inserts what is missing and leaves alone anything HR has since set, so calling
- * it on a database where nothing was lost does nothing at all.
+ * Two calls, and deliberately not a list of figures. The seven leave types and the
+ * figures they carry belong to the migrations — LMS 202, LMS 203 and LMS 401 — and
+ * a copy of "annual leave is twenty days" in this file would be a second source for
+ * a number that has to have exactly one. Both functions insert what is missing and
+ * leave alone anything HR has since set, so calling them on a database where
+ * nothing was lost does nothing at all.
+ *
+ * `ensure_unpaid_entitlement_rules()` is the second because the first is merged and
+ * is never edited. It carries the two figures that migration deliberately left out —
+ * unpaid leave and the unpaid maternity extension — and it has to be called here for
+ * the same reason its sibling does: this file truncates `leave_entitlement_rule`, so
+ * a figure only a migration ever wrote would vanish on the next reload and never
+ * come back.
  *
  * The leave types themselves survive the truncate — nothing this file clears is
  * referenced by them — so they need no equivalent call. If that ever changes,
- * `ensure_statutory_leave_types()` is the one to add beside this.
+ * `ensure_statutory_leave_types()` is the one to add beside these.
  *
- * This is an owner connection, which the function requires: EXECUTE on both is
- * revoked from PUBLIC, because restoring reference data is an operator's job and
+ * This is an owner connection, which the functions require: EXECUTE on all of them
+ * is revoked from PUBLIC, because restoring reference data is an operator's job and
  * not something the application should be able to do by being connected.
  *
  * @param {import('pg').Client} db
  */
 async function restoreReferenceData(db) {
   await db.query('SELECT ensure_statutory_entitlement_rules()');
+  await db.query('SELECT ensure_unpaid_entitlement_rules()');
 }
 
 async function insertDepartments(db) {

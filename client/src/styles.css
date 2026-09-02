@@ -1,40 +1,76 @@
 /**
  * The stylesheet, and what it deliberately does not decide.
  *
- * **No company colours.** LMS 409 is the story that brings the brand, and the README's
- * stack table says the component library is "to be confirmed with the designer" and must
- * "accept company fonts and colours as tokens". Inventing a palette now would mean a
- * screen that looks decided, and the way that goes wrong is not that it is ugly — it is
- * that somebody signs the design off against it and the tokens arrive too late to matter.
+ * **No company colours.** LMS 409 brings the brand, and the README's stack table says the
+ * component library is "to be confirmed with the designer" and must "accept company fonts
+ * and colours as tokens". So everything below is either a neutral grey, a shade derived
+ * from the reader's own text colour, or the operating system's accent — and every one of
+ * them is a custom property on `:root`. When the brand arrives it is a change to the two
+ * token blocks and to nothing else.
  *
- * So everything here is a system default: the browser's own font stack, `Canvas` and
- * `CanvasText` for the page, and `AccentColor` where a colour is doing real work. Those
- * are CSS system colours, which means this screen follows the reader's own light or dark
- * setting for nothing, and honours a high contrast mode it was never designed for.
+ * That restraint is not timidity. A palette invented now would not merely look wrong; it
+ * would get signed off, and the real tokens would arrive too late to matter.
  *
- * The few values that are not defaults are all about **reading a table of numbers**, which
- * is what this story is: figures right aligned and tabular, so that a column of them lines
- * up on the decimal point rather than wandering.
+ * **Two themes, for free.** The tokens are redefined under `prefers-color-scheme: dark`,
+ * so the page follows whatever the reader has already chosen rather than asserting a white
+ * background at somebody working in the evening.
  *
- * Every custom property below is a token in the sense LMS 409 will want. When the brand
- * arrives it is a change to `:root` and to nothing else.
+ * **Colour never carries meaning on its own.** An overdrawn balance is red *and* says
+ * "overdrawn"; the usage bar is a colour *and* has a legend with the figures written out.
+ * NFR USA 03, and the reason is that roughly one man in twelve cannot tell the first two
+ * of those apart.
  */
 
 :root {
-  --page: Canvas;
-  --ink: CanvasText;
-  --accent: AccentColor;
+  /* Neutrals. A plain grey ramp, placeholder until LMS 409. */
+  --page: #f6f7f9;
+  --card: #ffffff;
+  --ink: #14181f;
+  --ink-soft: #4a5262;
+  --ink-faint: #6b7383;
+  --line: #e3e6eb;
+  --line-strong: #ccd1d9;
 
-  /* Borders and quiet text, derived from the ink rather than picked, so they follow the
-     reader's theme instead of assuming a light one. */
-  --rule: color-mix(in srgb, CanvasText 18%, transparent);
-  --quiet: color-mix(in srgb, CanvasText 62%, transparent);
-  --raised: color-mix(in srgb, CanvasText 4%, Canvas);
+  /* The one colour with a job. `AccentColor` is the reader's own OS accent where the
+     browser supports it, and a neutral slate where it does not. */
+  --accent: #3d5afe;
+  --accent: AccentColor;
+  --accent-ink: #ffffff;
+  --accent-ink: AccentColorText;
+
+  /* The three states a balance bar shows. Distinguishable in greyscale as well as in
+     colour, because the legend beside them is what actually carries the meaning. */
+  --taken: color-mix(in srgb, var(--accent) 85%, black);
+  --pending: color-mix(in srgb, var(--accent) 45%, white);
+  --left: #dfe3ea;
+  --warn: #b3261e;
+
+  --radius: 14px;
+  --radius-small: 8px;
+  --shadow: 0 1px 2px rgb(20 24 31 / 6%), 0 4px 16px rgb(20 24 31 / 4%);
 
   --gap: 1rem;
-  --radius: 6px;
+  --gap-lg: 1.5rem;
 
   color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0e1116;
+    --card: #171b22;
+    --ink: #e8eaee;
+    --ink-soft: #a8b0bd;
+    --ink-faint: #838c9a;
+    --line: #262c36;
+    --line-strong: #333a46;
+
+    --left: #262c36;
+    --pending: color-mix(in srgb, var(--accent) 45%, black);
+    --warn: #f2b8b5;
+
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 4px 16px rgb(0 0 0 / 24%);
+  }
 }
 
 * {
@@ -47,167 +83,440 @@ body {
   color: var(--ink);
   font-family: system-ui, sans-serif;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-main {
-  max-width: 64rem;
-  margin: 0 auto;
-  padding: var(--gap);
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.25;
 }
 
 h1 {
-  font-size: 1.5rem;
-  margin: 0;
+  font-size: 1.375rem;
+  letter-spacing: -0.01em;
 }
 
-h2 {
-  font-size: 1.1rem;
-  margin: 0;
+/* Never remove an outline without replacing it. Keyboard users are the whole reason it is
+   there, and `outline: none` is the commonest accessibility regression there is. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
-a {
-  color: var(--accent);
+/* -------------------------------------------------------------------- page furniture */
+
+.page {
+  max-width: 78rem;
+  margin: 0 auto;
+  padding: 0 var(--gap) 4rem;
 }
 
-/* ------------------------------------------------------------------ page furniture */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--page) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
 
-.bar {
+.topbar-inner {
+  max-width: 78rem;
+  margin: 0 auto;
+  padding: 0.875rem var(--gap);
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap);
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--rule);
-  padding: var(--gap);
-}
-
-.stack {
-  display: flex;
-  flex-direction: column;
   gap: var(--gap);
 }
 
-.row {
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.brand small {
+  color: var(--ink-faint);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pagehead {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: var(--gap);
-  align-items: end;
+  padding: var(--gap-lg) 0 var(--gap);
 }
 
-.quiet {
-  color: var(--quiet);
+.pagehead p {
+  margin: 0.25rem 0 0;
+  color: var(--ink-faint);
   font-size: 0.875rem;
 }
 
-/* ------------------------------------------------------------------------ controls */
+.muted {
+  color: var(--ink-faint);
+  font-size: 0.875rem;
+}
+
+/* ------------------------------------------------------------------------- controls */
 
 label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.875rem;
+  gap: 0.3rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
 }
 
 input,
 select,
 button {
   font: inherit;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  background: var(--page);
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-small);
+  background: var(--card);
   color: var(--ink);
+}
+
+input:disabled,
+select:disabled,
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 button {
   cursor: pointer;
-  background: var(--raised);
+  font-weight: 500;
 }
 
-button[type='submit'] {
+button:hover:not(:disabled) {
+  border-color: var(--ink-faint);
+}
+
+.primary {
+  background: var(--accent);
   border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 
-button:disabled {
-  cursor: progress;
-  color: var(--quiet);
+.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
-/* Never remove an outline without replacing it. Keyboard users are the whole reason it
-   is there, and `outline: none` is the single most common accessibility regression. */
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.linkish {
+  background: none;
+  border: none;
+  padding: 0.35rem 0.5rem;
+  color: var(--ink-soft);
 }
 
-/* ------------------------------------------------------------------------- the table */
-
-.balances {
-  width: 100%;
-  border-collapse: collapse;
+.linkish:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--line);
 }
 
-.balances caption {
-  text-align: left;
-  padding-bottom: 0.5rem;
+/* ---------------------------------------------------------------------- the cards */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: var(--gap);
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.balances th,
-.balances td {
-  border-bottom: 1px solid var(--rule);
-  padding: 0.5rem;
-  text-align: left;
-  vertical-align: baseline;
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--gap-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
 }
 
-.balances thead th {
+/* A type nothing has been granted in yet, and a retired one. Quieter rather than hidden:
+   the figures are still there, they just are not the news. */
+.card.dormant {
+  background: color-mix(in srgb, var(--card) 60%, var(--page));
+  box-shadow: none;
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.card-head h3 {
+  font-size: 1rem;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: flex-end;
+}
+
+.tag {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  white-space: nowrap;
+}
+
+/* The headline figure. Big, because it is the one the story is about; everything else on
+   the card is its workings. */
+.headline {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.headline .figure {
+  font-size: 2.75rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.headline .of {
+  color: var(--ink-faint);
+  font-size: 0.875rem;
+}
+
+.headline.overdrawn .figure {
+  color: var(--warn);
+}
+
+.headline-note {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.headline-note.overdrawn {
+  color: var(--warn);
+  font-weight: 500;
+}
+
+/* --------------------------------------------------------------------- the meter */
+
+/**
+ * How much of the allowance is spoken for.
+ *
+ * Geometry, not arithmetic: the widths come from figures the server already sent, and no
+ * number is derived from them for display. The legend underneath prints the server's own
+ * figures, which is what actually communicates — the bar is there to make the shape of a
+ * year readable at a glance.
+ */
+.meter {
+  display: flex;
+  height: 0.5rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--left);
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+}
+
+.meter .is-taken {
+  background: var(--taken);
+}
+
+.meter .is-pending {
+  background: var(--pending);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
   font-size: 0.8125rem;
-  color: var(--quiet);
+  color: var(--ink-soft);
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.swatch {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 3px;
+  flex: none;
+}
+
+.swatch.is-taken {
+  background: var(--taken);
+}
+
+.swatch.is-pending {
+  background: var(--pending);
+}
+
+.swatch.is-left {
+  background: var(--left);
+  border: 1px solid var(--line-strong);
+}
+
+/* ------------------------------------------------------------------- the breakdown */
+
+/**
+ * The five figures, so that the headline can be checked against them.
+ *
+ * A `<dl>` because that is what it is: terms and their values. It is collapsed behind a
+ * `<details>` on purpose — the six figures have to be *available*, because a balance that
+ * cannot be added up is the thing design principle 1 is against, and they do not have to
+ * be shouted at somebody who only wants to know whether they can book a fortnight.
+ */
+.breakdown {
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.breakdown summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  list-style: none;
+}
+
+.breakdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.breakdown summary::before {
+  content: '▸ ';
+  display: inline-block;
+  transition: transform 120ms ease;
+}
+
+.breakdown[open] summary::before {
+  content: '▾ ';
+}
+
+.breakdown dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.3rem 1rem;
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+}
+
+.breakdown dt {
+  color: var(--ink-soft);
+}
+
+.breakdown dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.breakdown .sum {
+  border-top: 1px solid var(--line);
+  padding-top: 0.4rem;
   font-weight: 600;
 }
 
 /**
- * Figures right aligned and tabular.
+ * The counting basis, at the foot of the card.
  *
- * `font-variant-numeric: tabular-nums` gives every digit the same width, so 10.08 sits
- * under 20.00 rather than half a character to the left of it. A column of leave figures
- * that does not line up is one somebody has to read twice.
+ * `margin-top: auto` pushes it to the bottom of the flex column, so the label sits on the
+ * same line across a row of cards whatever height their contents come to. Two words rather
+ * than the sentence: see BalancesPage.tsx.
  */
-.balances .figure {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.balances .available {
+.rules {
+  font-size: 0.75rem;
   font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: auto 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
 }
 
-/* §8.6b. A sick balance below nought is correct and has to look deliberate rather than
-   like a rendering fault. Marked with a class the server's sign decides, never a colour
-   alone — colour is not information. */
-.balances .overdrawn::after {
-  content: ' (overdrawn)';
-  font-weight: 400;
-  font-size: 0.8125rem;
-  color: var(--quiet);
-}
-
-.balances .retired {
-  color: var(--quiet);
-}
-
-/* -------------------------------------------------------------------------- notices */
+/* --------------------------------------------------------------------- notices */
 
 .notice {
-  border: 1px solid var(--rule);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-small);
   padding: 0.75rem var(--gap);
-  background: var(--raised);
+  margin: var(--gap) 0;
 }
 
 .centred {
-  max-width: 24rem;
-  margin: 4rem auto;
+  max-width: 23rem;
+  margin: 12vh auto;
+  padding: 0 var(--gap);
+}
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--gap-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.panel form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* Skeletons, so a slow connection shows the shape of the answer rather than a spinner
+   that says nothing about what is coming. */
+.skeleton {
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--line) 25%, var(--card) 50%, var(--line) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  height: 13rem;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
 }

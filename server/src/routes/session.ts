@@ -37,7 +37,7 @@
 import { type Request, type Response, Router } from 'express';
 import { SignInRefused } from '../auth/sign-in.js';
 import type { SignInService } from '../services/sign-in-service.js';
-import { actorOf } from './identify.js';
+import { actorOf, employeeOf } from './identify.js';
 import { mintSession, SESSION_COOKIE, sessionCookieOptions } from './session-cookie.js';
 
 export interface SessionRoutes {
@@ -120,17 +120,27 @@ export function signedInSessionRoutes(): Router {
   const routes = Router();
 
   /**
-   * Who this is. Name and id, and nothing that is not already on every screen.
+   * Who this is. An id and a name, and nothing that is not already on every screen.
    *
-   * **No roles**, deliberately. A client that knew what it held would start deciding what
-   * to draw from it, and the day the two disagree the server is right and the screen has
-   * been lying. What a person may do is answered by asking, which is the arrangement
-   * §10's matrix is enforced by.
+   * The name is here so a page can say "Your leave, Adwoa" after a reload rather than only
+   * straight after a sign in. It costs no query — `identify` has already read the record to
+   * ask `whyNotSignIn` — and it discloses nothing: it is the reader's own name.
+   *
+   * **No roles**, deliberately, and that is the field somebody will eventually want. A
+   * client that knew what it held would start deciding what to draw from it, and the day
+   * the two disagree the server is right and the screen has been lying. What a person may
+   * do is answered by asking for the thing and being refused, which is the arrangement
+   * §10's matrix is actually enforced by.
    */
   routes.get('/me', (_request: Request, response: Response) => {
     const actor = actorOf(response);
+    const employee = employeeOf(response);
 
-    response.json({ employeeId: actor.employeeId });
+    response.json({
+      employeeId: actor.employeeId,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+    });
   });
 
   /**

@@ -122,12 +122,15 @@ describe('every leave type is on the statement', () => {
   it('lists every type this person is eligible for, in display order', async () => {
     const statement = await statements.forEmployee(asThemselves(), people.officer);
 
+    /* §7.4's `display_order`, as the migrations leave it — including LMS 401's, which put
+       unpaid leave third. The order is a decision somebody made rather than an
+       alphabetical accident, so it is asserted as one. */
     expect(statement.lines.map((line) => line.code)).toEqual([
       'ANNUAL',
       'SICK',
+      'UNPAID',
       'COMPASSIONATE',
       'MATERNITY',
-      'UNPAID',
       'MAT_EXT_UNPAID',
     ]);
   });
@@ -239,10 +242,10 @@ describe('the counting basis is shown per type', () => {
     const statement = await statements.forEmployee(asThemselves(), people.officer);
 
     expect(lineOf(statement, 'ANNUAL').countingBasis).toBe('WORKING_DAYS');
-    expect(lineOf(statement, 'ANNUAL').countingBasisInWords).toMatch(/working days/);
+    expect(lineOf(statement, 'ANNUAL').countingBasisLabel).toBe('Working days');
 
     expect(lineOf(statement, 'MATERNITY').countingBasis).toBe('CALENDAR_DAYS');
-    expect(lineOf(statement, 'MATERNITY').countingBasisInWords).toMatch(/every day/);
+    expect(lineOf(statement, 'MATERNITY').countingBasisLabel).toBe('Calendar days');
   });
 
   it('and follows the column when an administrator changes it', async () => {
@@ -253,7 +256,7 @@ describe('the counting basis is shown per type', () => {
 
     const statement = await statements.forEmployee(asThemselves(), people.officer);
 
-    expect(lineOf(statement, 'ANNUAL').countingBasisInWords).toMatch(/every day/);
+    expect(lineOf(statement, 'ANNUAL').countingBasisLabel).toBe('Calendar days');
   });
 
   /* FR 32g. Compassionate leave at nought in January is not somebody who has used it all,

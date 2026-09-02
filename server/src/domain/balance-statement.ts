@@ -53,17 +53,22 @@
  * twenty-three of anything, and a figure at the foot of the column would be a number the
  * screen invented. The lines are the answer.
  *
- * ## The counting basis, in words, per type
+ * ## The counting basis, per type, in two words
  *
- * The story's third criterion, and {@link countingBasisInWords} is where it already lived
- * — LMS 302 put it on the request quote for the same reason it is wanted here. It moved
- * to ./leave-type.ts when this story became its second caller: it is a function of the
- * type's basis and of nothing about a request.
+ * The story's third criterion. It matters more on a statement than anywhere else, because
+ * a statement puts annual leave and maternity leave in adjacent rows where the same "14
+ * days" means a fortnight of work in one and a fortnight of the calendar in the other. FR
+ * 22, and the difference is invisible unless it is written.
  *
- * It matters more on a statement than on a quote. A quote is about one period and shows
- * its own arithmetic; a statement puts annual leave and maternity leave in adjacent rows,
- * where the same "14 days" means a fortnight of work in one and a fortnight of the
- * calendar in the other. FR 22, and the difference is invisible unless it is written.
+ * `countingBasisLabel` rather than `countingBasisInWords`, and the two live side by side
+ * in ./leave-type.ts without either being a duplicate. The long sentence is the request
+ * quote's, where somebody is committing to a fortnight and the explanation earns its
+ * space; the short label is this screen's, where six types each already carry six figures
+ * and the same explanation six times crowds out the numbers it explains.
+ *
+ * Both are functions of the column and neither is a client's business. `WORKING_DAYS` is
+ * not shown to anybody, and a browser mapping it to "Working days" for itself would be the
+ * second place this system decided what a basis is called.
  *
  * ## And a nought that means "not yet" is not a nought that means "none left"
  *
@@ -121,7 +126,7 @@ import {
   type AllowanceUnit,
   byDisplayOrder,
   type CountingBasis,
-  countingBasisInWords,
+  countingBasisLabel,
   type EntitlementBasis,
   grantExpires,
   hasRunningBalance,
@@ -146,8 +151,15 @@ export interface BalanceStatementLine {
   name: string;
   /** FR 21, FR 22. Whether days the person does not work fall inside a period. */
   countingBasis: CountingBasis;
-  /** The story's third criterion. `WORKING_DAYS` is not shown to anybody. */
-  countingBasisInWords: string;
+  /**
+   * The story's third criterion, in two words. `WORKING_DAYS` is not shown to anybody.
+   *
+   * The short rendering rather than `countingBasisInWords`, which is the request quote's:
+   * six types on one screen, each already carrying six figures, and the full explanation
+   * repeated six times is noise that crowds out the numbers it is explaining. See
+   * ./leave-type.ts, where both live and neither is a duplicate of the other.
+   */
+  countingBasisLabel: string;
   /** FR 32g. Whether the year opens with an allowance, or days arrive with an event. */
   entitlementBasis: EntitlementBasis;
   /** What the figures on this line are, so that a nought says which kind of nought. */
@@ -380,7 +392,7 @@ export function lineFor(type: LeaveType, balance: LeaveBalance): BalanceStatemen
     code: type.code,
     name: type.name,
     countingBasis: type.countingBasis,
-    countingBasisInWords: countingBasisInWords(type.countingBasis),
+    countingBasisLabel: countingBasisLabel(type.countingBasis),
     entitlementBasis: type.entitlementBasis,
     allowanceInWords: allowanceInWords(type, balance),
     unit: type.unit,

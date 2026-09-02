@@ -659,6 +659,24 @@ export function countingBasisInWords(basis: CountingBasis): string {
 }
 
 /**
+ * FR 21, FR 22. The same fact as two words, for somewhere there is no room to explain.
+ *
+ * {@link countingBasisInWords} is written for a request quote, where somebody is about to
+ * commit to a fortnight and the sentence is doing real work — "a person looking at 7 days
+ * against a nine day period wants to know the weekend is why". A balance screen is the
+ * other case: six leave types side by side, each already carrying six figures, where the
+ * same explanation repeated six times is noise that pushes the figures off the card.
+ *
+ * So there are two renderings of one column and neither is a duplicate of the other. What
+ * would be a duplicate is a client mapping `WORKING_DAYS` to "Working days" for itself,
+ * which is why this is here rather than there: `WORKING_DAYS` is not shown to anybody, and
+ * the file that decides what a basis is called is the file that defines the basis.
+ */
+export function countingBasisLabel(basis: CountingBasis): string {
+  return basis === 'WORKING_DAYS' ? 'Working days' : 'Calendar days';
+}
+
+/**
  * Whether this type has an annual balance that resets. FR 32g.
  *
  * What decides that a `leave_balance` row is opened by the year rollover, and

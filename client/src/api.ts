@@ -55,8 +55,8 @@ export interface BalanceLine {
   code: string;
   name: string;
   countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
-  /** FR 22, in words. The server writes the sentence; this shows it. */
-  countingBasisInWords: string;
+  /** FR 22. "Working days" or "Calendar days". The server writes it; this shows it. */
+  countingBasisLabel: string;
   entitlementBasis: 'QUOTA' | 'EVENT';
   /** What the figures on this line are, so a nought says which kind of nought. */
   allowanceInWords: string;
@@ -86,8 +86,17 @@ export interface Statement {
   lines: BalanceLine[];
 }
 
+/**
+ * Who the session belongs to.
+ *
+ * A name and an id, and deliberately **no roles**. A client that knew what it held would
+ * start deciding what to draw from it, and the day the two disagree the server is right
+ * and the screen has been lying. What somebody may do is answered by asking for the thing.
+ */
 export interface Me {
   employeeId: string;
+  firstName: string;
+  lastName: string;
 }
 
 export interface SignedIn {

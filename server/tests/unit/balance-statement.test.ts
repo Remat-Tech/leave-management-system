@@ -269,11 +269,8 @@ describe('what one line says', () => {
   /* The story's third criterion. Two types with the same figure mean different things,
      and the difference is invisible unless it is written. FR 22. */
   it('says the counting basis in words rather than as a constant', () => {
-    expect(lineFor(ANNUAL, empty(ANNUAL)).countingBasisInWords).toMatch(/working days/);
-    expect(lineFor(ANNUAL, empty(ANNUAL)).countingBasisInWords).toMatch(/cost nothing/);
-
-    expect(lineFor(MATERNITY, empty(MATERNITY)).countingBasisInWords).toMatch(/calendar days/);
-    expect(lineFor(MATERNITY, empty(MATERNITY)).countingBasisInWords).toMatch(/every day/);
+    expect(lineFor(ANNUAL, empty(ANNUAL)).countingBasisLabel).toBe('Working days');
+    expect(lineFor(MATERNITY, empty(MATERNITY)).countingBasisLabel).toBe('Calendar days');
   });
 
   it('and no line shows an underscored constant to anybody', () => {
@@ -287,7 +284,7 @@ describe('what one line says', () => {
     });
 
     for (const line of lines) {
-      expect(line.countingBasisInWords).not.toMatch(/_/);
+      expect(line.countingBasisLabel).not.toMatch(/_/);
       expect(line.allowanceInWords).not.toMatch(/_/);
     }
   });

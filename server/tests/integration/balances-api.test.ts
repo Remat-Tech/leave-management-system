@@ -240,7 +240,11 @@ describe('who the server thinks you are', () => {
   it('is the employee in the cookie and nothing in the request', async () => {
     const response = await get('/api/me', { cookie: mintSession(people.officer, SECRET) });
 
-    expect(await response.json()).toEqual({ employeeId: people.officer });
+    expect(await response.json()).toEqual({
+      employeeId: people.officer,
+      firstName: 'Adwoa',
+      lastName: 'Frimpong',
+    });
   });
 
   /**
@@ -258,15 +262,23 @@ describe('who the server thinks you are', () => {
     expect(((await response.json()) as { employeeId: string }).employeeId).toBe(people.officer);
   });
 
-  /* The client is told who it is and deliberately not what it holds. A screen that knew
-     its own roles would start deciding what to draw from them, and the day the two
-     disagree the server is right and the page has been lying. */
+  /**
+   * The client is told who it is and deliberately not what it holds.
+   *
+   * A screen that knew its own roles would start deciding what to draw from them, and the
+   * day the two disagree the server is right and the page has been lying. Asked of Ama,
+   * who holds `HR_ADMIN` — so a leak would actually have something to leak.
+   *
+   * The exact key list rather than a check for `roles` alone, because the field somebody
+   * adds will not necessarily be called that: `isManager`, `permissions` and `canApprove`
+   * are all the same mistake wearing a different name.
+   */
   it('and is never told which roles it holds', async () => {
     const body = await (
       await get('/api/me', { cookie: mintSession(people.headOfHr, SECRET) })
     ).json();
 
-    expect(Object.keys(body as object)).toEqual(['employeeId']);
+    expect(Object.keys(body as object).sort()).toEqual(['employeeId', 'firstName', 'lastName']);
   });
 });
 
@@ -290,7 +302,7 @@ describe('my balances', () => {
     expect(annual.pending).toBe(0);
     expect(annual.owed).toBe(20);
     expect(annual.available).toBe(20);
-    expect(annual.countingBasisInWords).toMatch(/working days/);
+    expect(annual.countingBasisLabel).toBe('Working days');
   });
 
   /**
@@ -311,7 +323,7 @@ describe('my balances', () => {
           'carriedOver',
           'code',
           'countingBasis',
-          'countingBasisInWords',
+          'countingBasisLabel',
           'entitled',
           'entitlementBasis',
           'hasMoved',
@@ -562,7 +574,7 @@ interface JsonLine {
   code: string;
   name: string;
   countingBasis: string;
-  countingBasisInWords: string;
+  countingBasisLabel: string;
   entitlementBasis: string;
   allowanceInWords: string;
   unit: string;

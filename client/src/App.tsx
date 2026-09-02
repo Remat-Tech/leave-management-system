@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { currentSession, signOut } from './api';
+import { currentSession, type Me, signOut } from './api';
 import { BalancesPage } from './features/balances/BalancesPage';
 import { SignIn } from './features/session/SignIn';
 
@@ -30,20 +30,18 @@ import { SignIn } from './features/session/SignIn';
  * ordinary end of a working day, and the answer to it is the sign in form.
  */
 export function App() {
-  const [employeeId, setEmployeeId] = useState<string | undefined>(undefined);
+  const [me, setMe] = useState<Me | undefined>(undefined);
   const [asked, setAsked] = useState(false);
 
   const ask = useCallback(() => {
     currentSession()
-      .then((me) => {
-        setEmployeeId(me.employeeId);
-      })
+      .then(setMe)
       /* Not signed in, which is the ordinary state of a browser rather than a failure.
          Anything else — the server down, a proxy misbehaving — lands in the same place,
          and the sign in form is the right screen for both: one of them is fixed by
          signing in, and the other says so as soon as they try. */
       .catch(() => {
-        setEmployeeId(undefined);
+        setMe(undefined);
       })
       .finally(() => {
         setAsked(true);
@@ -53,7 +51,7 @@ export function App() {
   useEffect(ask, [ask]);
 
   const forget = useCallback(() => {
-    setEmployeeId(undefined);
+    setMe(undefined);
   }, []);
 
   /* Nothing at all until the first answer, rather than the sign in form. Showing it and
@@ -63,26 +61,34 @@ export function App() {
     return null;
   }
 
-  if (employeeId === undefined) {
+  if (me === undefined) {
     return <SignIn onSignedIn={ask} />;
   }
 
   return (
     <>
-      <header className="bar">
-        <h1>My leave</h1>
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <h1>My leave</h1>
+            <small>
+              {me.firstName} {me.lastName}
+            </small>
+          </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            /* Cleared here whatever the server said. A sign out that failed and left
-               somebody looking at their own balances is worse than one that cleared the
-               screen and left a cookie to expire on its own. */
-            void signOut().finally(forget);
-          }}
-        >
-          Sign out
-        </button>
+          <button
+            type="button"
+            className="linkish"
+            onClick={() => {
+              /* Cleared here whatever the server said. A sign out that failed and left
+                 somebody looking at their own balances is worse than one that cleared the
+                 screen and left a cookie to expire on its own. */
+              void signOut().finally(forget);
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       <BalancesPage onSignedOut={forget} />

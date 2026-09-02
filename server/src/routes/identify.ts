@@ -60,6 +60,7 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { type Actor, signedInAs } from '../auth/actor.js';
 import { whyNotSignIn } from '../auth/sign-in.js';
 import type { RoleCode } from '../auth/roles.js';
+import type { Employee } from '../domain/employee.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
 import type { RoleRepository } from '../repositories/role-repository.js';
 import type { SignInAccountRepository } from '../repositories/sign-in-account-repository.js';
@@ -83,16 +84,23 @@ export interface Identity {
 }
 
 /**
- * The actor for a request, where one has been established.
+ * The actor for a request, and the record it was derived from.
  *
  * Attached to `res.locals` rather than to the request, because `res.locals` is the object
  * Express documents for exactly this and because a property added to `req` is one a body
- * parser could in principle be talked into setting. Read through {@link actorOf}, which is
- * the only thing that takes it off again.
+ * parser could in principle be talked into setting. Read through {@link actorOf} and
+ * {@link employeeOf}, which are the only things that take either off again.
+ *
+ * The employee is kept because {@link establish} has already read it — it has to, to ask
+ * `whyNotSignIn` — and a route that wanted the person's name would otherwise read the same
+ * row a second time on the same request. It is emphatically **not** an invitation to make
+ * decisions from: what somebody may do is `Actor` plus a policy, and a handler reaching
+ * into this record for a `managerId` would be a route deciding something.
  */
 declare module 'express' {
   interface Locals {
     actor?: Actor;
+    employee?: Employee;
   }
 }
 
@@ -116,6 +124,26 @@ export function actorOf(response: Response): Actor {
   }
 
   return actor;
+}
+
+/**
+ * The employee record this request's actor was derived from.
+ *
+ * For the one thing a screen needs that an id cannot give it — a name to greet somebody
+ * by. Unreachable without an actor for the same reason {@link actorOf} is, and answered
+ * rather than asserted for the same reason.
+ */
+export function employeeOf(response: Response): Employee {
+  const employee = response.locals.employee;
+
+  if (employee === undefined) {
+    throw new Error(
+      'This route was reached without an employee record, which means it was mounted in ' +
+        'front of identify() rather than behind it. See routes/app.ts.',
+    );
+  }
+
+  return employee;
 }
 
 /**
@@ -186,6 +214,10 @@ async function establish(
     identity.roles.codesFor(account.id),
     identity.employees.countReports(employee.id),
   ]);
+
+  /* Kept for {@link employeeOf}, so that a route wanting the person's name does not read
+     the same row again on the same request. It is already in hand. */
+  response.locals.employee = employee;
 
   return signedInAs(employee.id, { roles: roles as RoleCode[], isManager: reports > 0 });
 }

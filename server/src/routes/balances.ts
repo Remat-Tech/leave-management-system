@@ -143,7 +143,7 @@ function lineAsJson(line: BalanceStatementLine): unknown {
     code: line.code,
     name: line.name,
     countingBasis: line.countingBasis,
-    countingBasisInWords: line.countingBasisInWords,
+    countingBasisLabel: line.countingBasisLabel,
     entitlementBasis: line.entitlementBasis,
     allowanceInWords: line.allowanceInWords,
     unit: line.unit,
