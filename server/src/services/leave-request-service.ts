@@ -396,12 +396,46 @@ export class LeaveRequestService {
   }
 
   /**
-   * Takes back leave that was asked for, and gives the days back. FR 26. LMS 306.
+   * Takes back leave that was asked for, and gives the days back. FR 26, FR 46. LMS 306,
+   * LMS 323.
    *
    * The requester's own act, or HR's on their behalf. What it writes is a `RELEASE` and
    * a status, in one transaction — see {@link BalanceService.releaseForRequest} — and
    * what a caller gets back is the settled request, the movement and the balance it left,
    * because a screen that has just withdrawn something has to say what came back.
+   *
+   * ## It is FR 46's cancellation, and it works at every stage of a chain
+   *
+   * LMS 323, and the story's word for this is *cancel*: an employee taking back a request
+   * they have not had approved, so that plans that change cost them no days and cost an
+   * approver no time. This method is that act. `LeaveRequestService.cancel` deliberately is
+   * not — that is HR unwinding a row which should not be on the books, and the two are
+   * different acts by different people that the ledger records differently.
+   *
+   * **Nothing about it asks where the request has got to**, and that is the property the
+   * story turns on rather than an omission. `TRANSITIONS` keys a `WITHDRAW` by the
+   * from-status alone, and `SUBMITTED` is the whole of "not yet approved" — however long the
+   * type's chain is and however many of its desks have already agreed. So a request two
+   * approvers have signed is taken back by the person who asked, in full, without anybody
+   * being asked to release it: an intermediate approval writes no movement, so the whole hold
+   * is still there.
+   *
+   * That was untestable when LMS 306 wrote it, because a request could only ever be standing
+   * at its first desk. `../../tests/unit/state-machine.test.ts` now pins it against the table
+   * and `../../tests/integration/leave-request.test.ts` walks it at every desk there is.
+   *
+   * **What an approver already said is not unsaid.** `leave_request_decision` is append only,
+   * so a request taken back after the manager agreed reads afterwards as exactly that. And
+   * the desk goes to null with the status, which `leave_request_waits_at_a_desk` makes an
+   * equivalence — so leave that has been taken back cannot be left sitting in a queue.
+   *
+   * **Where it stops.** Leave that has been *approved* is not this: the days are `taken` by
+   * then rather than `pending`, so giving them back is a movement against the `DEDUCTION` and
+   * needs HR. {@link LeaveCannotBeMoved} is what somebody reaching for this is told, and
+   * asking for agreed leave to be taken off the books is FR 47's story. Being *told* that a
+   * request went away — the approver who had it in their queue — is FR 59's, which owns
+   * notification for every event in a request's life; what this guarantees is that there is
+   * something true to tell them.
    */
   async withdraw(actor: Actor, id: string): Promise<LeaveReleased> {
     return this.settle(actor, id, 'WITHDRAW', null, (owner) =>

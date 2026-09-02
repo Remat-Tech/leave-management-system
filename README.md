@@ -3502,6 +3502,68 @@ wrong on: the failure this story exists to stop is a person believing their leav
 
 ---
 
+### Cancelling a request nobody has approved
+
+**A request that is still being decided is taken back by the person who asked for it, at any
+stage, and the whole hold comes straight back.** FR 46, LMS 323. Plans change; a request in
+somebody's queue that the employee no longer wants should cost them no days and cost the
+approver no time.
+
+**The story's verb is `withdraw()`, and that is not the same word as `cancel()`.** Worth being
+plain about, because the story says *cancel* and this system reserves that word:
+
+| The story's word | The method | Whose act |
+|---|---|---|
+| cancel a request I have not yet had approved | `withdraw()` | the person who asked, or HR on their behalf |
+| — | `cancel()` | HR unwinding a row that should not be on the books — the wrong person, entered twice, days in the wrong year |
+
+They are [three endings and three decisions](#the-days-come-back) for a reason, and the ledger
+records which of the three happened: five days coming back look identical in a balance whether
+somebody changed their mind or HR corrected a mistake, and those are different conversations.
+Renaming either to match the backlog would lose that distinction to a synonym.
+
+**The act itself has existed since [LMS 306](#the-days-come-back).** What this story
+establishes is the half that could not be proved then, because a request could only ever be
+standing at its first desk: **the stage plays no part in it.** `TRANSITIONS` keys a `WITHDRAW`
+by the from-status alone, and `SUBMITTED` is the whole of "not yet approved" — a chain of
+three with two desks already signed is still a request the employee takes back on their own.
+
+The way that stops being true is one word: `THE_DESK_IT_IS_WITH` added to the `WITHDRAW` row.
+It would read like a tightening and would mean an employee holding days they cannot release
+until an approver gets round to it, which is the exact waste FR 46 is about. `unit/state-machine.test.ts`
+asserts that standing is not on the row, and `integration/leave-request.test.ts` walks a real
+withdrawal at every desk in `APPROVER_ROLES` and from the middle and the end of a chain of
+three.
+
+**In full, wherever it is taken back from.** An intermediate approval writes no movement at
+all — only the last desk commits — so the six days a request has held since submission are the
+six that come back, and the approvals it collected on the way cost the employee nothing.
+
+**And out of the queue in the same statement.** The desk goes to null with the status, which
+`leave_request_waits_at_a_desk` makes an equivalence rather than a convention — so the
+approver queue of Phase 4 cannot be built in a way that shows a withdrawn request, whatever it
+queries, because the row it would have to find is one the database will not hold. What an
+approver already *said* is untouched:
+`leave_request_decision` is append only, so a request taken back after the manager agreed reads
+afterwards as exactly that rather than as one nobody looked at.
+
+**What is deliberately not here, and it is two other stories.** Leave that has been
+**approved** is not this — the days are `taken` by then, so giving them back is a movement
+against the `DEDUCTION` and needs HR — and `LeaveCannotBeMoved` is what somebody reaching for
+withdraw on it is told, in words that do not claim the days came back. That is FR 47. Being
+*told* the request went away is FR 59, which owns notification for every event in a request's
+life and is a story of its own; what this one guarantees is that there is something true to
+tell.
+
+**And there is no draft.** The backlog's "while draft or pending" describes a state this system
+does not have: a request exists because somebody submitted it, and `REQUEST_STATUSES` holds no
+`DRAFT` because [LMS 209's rule](#the-state-machine) is that a status arrives in the
+same story as the transition that reaches it — a state nothing can create is a promise the
+schema cannot keep. Adding one would be a lifecycle rather than a cancellation, and nothing in
+the backlog asks for it.
+
+---
+
 ## Database migrations
 
 **No schema change happens outside a migration. Ever.** No `CREATE TABLE` in a database client, no `ALTER` run against a server by hand, no quick fix in psql that you intend to write up properly later.

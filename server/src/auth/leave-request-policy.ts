@@ -474,13 +474,21 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Taking back leave you asked for. FR 26. LMS 306.
+   * Taking back leave you asked for. FR 26, FR 46. LMS 306, LMS 323.
    *
    * The requester's, and HR's on their behalf — deliberately the same rule as
    * {@link leaveRequestPolicy.submit} rather than a narrower one, because withdrawing is
    * the undoing of submitting and the same FR 18 argument applies to both. Somebody who
    * was off sick when they should have cancelled their annual leave is exactly the case
    * an Officer exists to enter on their behalf.
+   *
+   * **The desk plays no part in it**, which is FR 46 in the shape a policy can hold. The
+   * `WITHDRAW` row admits `THE_REQUESTER` and `LEAVE_ADMINISTRATION` and nothing about where
+   * the request has got to, so a person whose request has moved past two approvers takes it
+   * back exactly as they would have on the morning they made it. `THE_DESK_IT_IS_WITH` here
+   * would be the change that quietly breaks the story: leave still holding somebody's days,
+   * which they cannot release until an approver acts. The unit suite asserts that standing is
+   * not on the row.
    *
    * **A line manager is deliberately not on it**, for the reason they are not on
    * `submit`: a manager who could withdraw somebody's leave could empty their calendar
