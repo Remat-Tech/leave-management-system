@@ -812,6 +812,54 @@ export interface LeaveRequestDecisionTable {
   decided_at: Timestamp;
 }
 
+/**
+ * One thing somebody was told about their leave. FR 59, §7.1. LMS 329.
+ *
+ * A record of a message rather than a view over the records it was composed from, and
+ * the migration argues that at length: the request goes on moving, and a notice is
+ * what a person was actually told on the day. `subject` and `body` are the email's
+ * words verbatim, so the bell and the mailbox cannot be two accounts of one event.
+ *
+ * Written **after** the transaction that moved the request commits, never inside it —
+ * an email sent inside a transaction that rolls back tells somebody their leave was
+ * approved when it was not, and an SMTP handshake inside `holdStill` is every other
+ * movement on that balance waiting on a mail server.
+ *
+ * Three columns move afterwards and no others. `read_at` is the person marking their
+ * own post; `emailed_at` and `email_failure` are stamped once by the sender.
+ * `refuse_rewriting_a_notice()` holds the rest still on every connection, and `lms_app`
+ * is granted UPDATE on those three columns alone.
+ */
+export interface NotificationTable {
+  id: Generated<string>;
+  /* Who was told. FR 59's recipient is the employee whose leave it is; an approver's
+     queue is FR 60 and would put a different id here. */
+  employee_id: ColumnType<string, string, never>;
+  /* What it is about. NOT NULL today because everything FR 59 names happens to a
+     request; a notice about anything else is a migration rather than a null. */
+  leave_request_id: ColumnType<string, string, never>;
+  /* SUBMITTED, STAGE_APPROVED, APPROVED, REFUSED, WITHDRAWN or CANCELLED, held closed
+     by notification_event_known. The domain's NOTICE_EVENTS is the same list and the
+     integration suite asserts the two agree.
+
+     STAGE_APPROVED and APPROVED are two values because they are two pieces of news —
+     "your manager agreed, HR still has to" and "this is yours to take" — and telling
+     them apart is the whole of the story's "so that". */
+  event: ColumnType<string, string, never>;
+  /* What it said, frozen. Never recomposed on the way out: the person has read this. */
+  subject: ColumnType<string, string, never>;
+  body: ColumnType<string, string, never>;
+  /* Null until they have seen it, which is what the bell counts. Moves in both
+     directions — marking something unread to come back to it is ordinary. */
+  read_at: ColumnType<Date | null, never, Date | null>;
+  /* When the email left, or null where it has not. Stamped once, after the send. */
+  emailed_at: ColumnType<Date | null, never, Date | null>;
+  /* Why it did not, in the transport's own words. Kept rather than flattened to a
+     flag: 'Mailbox unavailable' and 'connect ECONNREFUSED' are two different mornings. */
+  email_failure: ColumnType<string | null, never, string | null>;
+  created_at: Generated<Date>;
+}
+
 export interface Database {
   app_user: AppUserTable;
   audit_log: AuditLogTable;
@@ -828,6 +876,7 @@ export interface Database {
   leave_type: LeaveTypeTable;
   leave_type_approval_step: LeaveTypeApprovalStepTable;
   leave_year: LeaveYearTable;
+  notification: NotificationTable;
   role: RoleTable;
   user_role: UserRoleTable;
   what_the_ledger_says: WhatTheLedgerSaysView;

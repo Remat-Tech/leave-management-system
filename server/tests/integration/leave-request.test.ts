@@ -34,6 +34,7 @@ import { HolidayRepository } from '../../src/repositories/holiday-repository.js'
 import { LeaveDecisionRepository } from '../../src/repositories/leave-decision-repository.js';
 import { LeaveRequestRepository } from '../../src/repositories/leave-request-repository.js';
 import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
+import { NotificationRepository } from '../../src/repositories/notification-repository.js';
 import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
 import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
 import { Transactions } from '../../src/repositories/transaction.js';
@@ -44,7 +45,9 @@ import {
   LeaveYearIsClosed,
 } from '../../src/services/leave-request-service.js';
 import { LeaveYearService } from '../../src/services/leave-year-service.js';
+import { NotificationService } from '../../src/services/notification-service.js';
 import { recordingDenials } from '../support/recording-denials.js';
+import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
@@ -145,6 +148,13 @@ beforeAll(async () => {
     repository,
     decisions,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
+    /* FR 59, LMS 329. Every verb in the service now tells the requester afterwards, and this
+       file is about the verbs rather than about the telling — ./notification.test.ts is
+       where what gets said is asserted. A real service over a recording mailer rather than a
+       stub, so that a notice which cannot be written or composed fails these tests too: the
+       one thing that must stay true here is that nothing about notifying can break a
+       submission, an approval or an ending. */
+    new NotificationService(new NotificationRepository(db), recordingMailer(), guard),
   );
 
   seededYears = (await admin.query('SELECT * FROM leave_year ORDER BY start_date')).rows;
@@ -153,7 +163,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
   );
   await restoreYears();
 
@@ -216,7 +226,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
   );
   await admin.query(
     "UPDATE leave_type SET is_active = true, counting_basis = 'WORKING_DAYS' WHERE code = 'ANNUAL'",
