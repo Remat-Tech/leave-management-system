@@ -88,6 +88,100 @@ UPDATE leave_type
  WHERE upper(leave_type.code) = wanted.code
    AND leave_type.display_order <> wanted.position;
 
+-- --------------------------------------------- and the repair function agrees with both
+--
+-- `ensure_statutory_leave_types()` puts back a type that has gone missing — a bad DELETE
+-- by the owner, a restore from an old backup — "in the shape §4.3.1 gives it". It carries
+-- that shape as a hardcoded list, and after the two statements above this database has two
+-- notions of what unpaid leave is: the table says a QUOTA type sitting third, and the
+-- repair function still says an EVENT type sitting sixth.
+--
+-- That is not a stale comment, it is a live bug. Lose unpaid leave and restore it and the
+-- annual grant silently stops granting it, because `AnnualGrant` filters on
+-- `hasRunningBalance()`. Lose compassionate leave and restore it and two types come back
+-- holding `display_order` 3, so §7.4's ordering is decided by the name tie-break instead
+-- of by anybody.
+--
+-- So the function is replaced rather than left to disagree. `CREATE OR REPLACE` on a
+-- database object is not editing a merged migration — the file that created it is
+-- untouched and stays the record of what shipped — it is the ordinary way a migration
+-- moves a function on, and the Down section puts the original body back.
+
+CREATE OR REPLACE FUNCTION ensure_statutory_leave_types() RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    named_by TEXT := current_setting('lms.audit.actor', true);
+    inserted INTEGER;
+BEGIN
+    PERFORM set_config(
+        'lms.audit.actor',
+        coalesce(nullif(btrim(named_by), ''), 'ensure_statutory_leave_types()'),
+        true);
+
+    INSERT INTO leave_type (
+        code, name, description, counting_basis, entitlement_basis, is_paid, unit,
+        documentation, exceedable_with_document, entitlement_expiry_months,
+        may_be_split, min_notice_calendar_days, max_backdate_calendar_days,
+        gender_restriction, display_order
+    )
+    SELECT * FROM (VALUES
+        ('ANNUAL', 'Annual Leave',
+         'Your yearly allowance. Two weeks'' notice is expected; less is allowed but the approvers will see that it was short.',
+         'WORKING_DAYS', 'QUOTA', TRUE, 'DAYS',
+         'NOT_REQUIRED', FALSE, NULL::SMALLINT, TRUE, 14, 7, NULL::VARCHAR, 1),
+
+        ('SICK', 'Sick Leave',
+         'Self certified up to your yearly allowance. Beyond that a medical certificate is needed, and the leave is still granted.',
+         'WORKING_DAYS', 'QUOTA', TRUE, 'DAYS',
+         'NOT_REQUIRED', TRUE, NULL, TRUE, 0, 7, NULL, 2),
+
+        /* Both of this type's changes, in the one place a restore reads. Ten working days
+           a year is an annual allowance that resets, so QUOTA; third on the screen. */
+        ('UNPAID', 'Unpaid Leave',
+         'Agreed rather than accrued, and unpaid. Decided by HR and the Chief Executive.',
+         'WORKING_DAYS', 'QUOTA', FALSE, 'WEEKS',
+         'NOT_REQUIRED', FALSE, NULL, TRUE, 0, 7, NULL, 3),
+
+        ('COMPASSIONATE', 'Compassionate Leave',
+         'Granted per occasion. Say what it is for; whether it qualifies is for your manager and HR to decide.',
+         'WORKING_DAYS', 'EVENT', TRUE, 'DAYS',
+         'NOT_REQUIRED', FALSE, NULL, TRUE, 0, 7, NULL, 4),
+
+        ('MATERNITY', 'Maternity Leave',
+         'Granted per confinement, counted in calendar days. Weekends and public holidays fall inside the period.',
+         'CALENDAR_DAYS', 'EVENT', TRUE, 'MONTHS',
+         'ALWAYS', FALSE, NULL, TRUE, 0, 7, 'FEMALE', 5),
+
+        ('PATERNITY', 'Paternity Leave',
+         'Granted per birth and usable within six months of it. It need not be taken all at once.',
+         'CALENDAR_DAYS', 'EVENT', TRUE, 'WEEKS',
+         'NOT_REQUIRED', FALSE, 6, TRUE, 0, 7, 'MALE', 6),
+
+        ('MAT_EXT_UNPAID', 'Unpaid Maternity Extension',
+         'A further unpaid month after maternity leave. Decided by HR and the Chief Executive.',
+         'CALENDAR_DAYS', 'EVENT', FALSE, 'MONTHS',
+         'ALWAYS', FALSE, NULL, TRUE, 0, 7, 'FEMALE', 7)
+    ) AS statutory (
+        code, name, description, counting_basis, entitlement_basis, is_paid, unit,
+        documentation, exceedable_with_document, entitlement_expiry_months,
+        may_be_split, min_notice_calendar_days, max_backdate_calendar_days,
+        gender_restriction, display_order
+    )
+    WHERE NOT EXISTS (
+        SELECT 1 FROM leave_type existing
+         WHERE lower(existing.name) = lower(statutory.name)
+            OR upper(existing.code) = upper(statutory.code)
+    );
+
+    GET DIAGNOSTICS inserted = ROW_COUNT;
+
+    PERFORM set_config('lms.audit.actor', coalesce(named_by, ''), true);
+
+    RETURN inserted;
+END
+$$;
+
 -- ------------------------------------------------------------------- the figures
 
 /* The same shape `ensure_statutory_entitlement_rules()` has, and a separate function
@@ -209,3 +303,81 @@ UPDATE leave_type
    SET entitlement_basis = 'EVENT'
  WHERE upper(code) = 'UNPAID'
    AND entitlement_basis <> 'EVENT';
+
+/* And the repair function back to the shape the seven-leave-types migration shipped,
+   verbatim. It has to go back with the table: a rollback that left the function saying
+   QUOTA would put the disagreement back the other way round, which is the bug this
+   migration removed rather than a different one. */
+
+CREATE OR REPLACE FUNCTION ensure_statutory_leave_types() RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    named_by TEXT := current_setting('lms.audit.actor', true);
+    inserted INTEGER;
+BEGIN
+    PERFORM set_config(
+        'lms.audit.actor',
+        coalesce(nullif(btrim(named_by), ''), 'ensure_statutory_leave_types()'),
+        true);
+
+    INSERT INTO leave_type (
+        code, name, description, counting_basis, entitlement_basis, is_paid, unit,
+        documentation, exceedable_with_document, entitlement_expiry_months,
+        may_be_split, min_notice_calendar_days, max_backdate_calendar_days,
+        gender_restriction, display_order
+    )
+    SELECT * FROM (VALUES
+        ('ANNUAL', 'Annual Leave',
+         'Your yearly allowance. Two weeks'' notice is expected; less is allowed but the approvers will see that it was short.',
+         'WORKING_DAYS', 'QUOTA', TRUE, 'DAYS',
+         'NOT_REQUIRED', FALSE, NULL::SMALLINT, TRUE, 14, 7, NULL::VARCHAR, 1),
+
+        ('SICK', 'Sick Leave',
+         'Self certified up to your yearly allowance. Beyond that a medical certificate is needed, and the leave is still granted.',
+         'WORKING_DAYS', 'QUOTA', TRUE, 'DAYS',
+         'NOT_REQUIRED', TRUE, NULL, TRUE, 0, 7, NULL, 2),
+
+        ('COMPASSIONATE', 'Compassionate Leave',
+         'Granted per occasion. Say what it is for; whether it qualifies is for your manager and HR to decide.',
+         'WORKING_DAYS', 'EVENT', TRUE, 'DAYS',
+         'NOT_REQUIRED', FALSE, NULL, TRUE, 0, 7, NULL, 3),
+
+        ('MATERNITY', 'Maternity Leave',
+         'Granted per confinement, counted in calendar days. Weekends and public holidays fall inside the period.',
+         'CALENDAR_DAYS', 'EVENT', TRUE, 'MONTHS',
+         'ALWAYS', FALSE, NULL, TRUE, 0, 7, 'FEMALE', 4),
+
+        ('PATERNITY', 'Paternity Leave',
+         'Granted per birth and usable within six months of it. It need not be taken all at once.',
+         'CALENDAR_DAYS', 'EVENT', TRUE, 'WEEKS',
+         'NOT_REQUIRED', FALSE, 6, TRUE, 0, 7, 'MALE', 5),
+
+        ('UNPAID', 'Unpaid Leave',
+         'Agreed rather than accrued, and unpaid. Decided by HR and the Chief Executive.',
+         'WORKING_DAYS', 'EVENT', FALSE, 'WEEKS',
+         'NOT_REQUIRED', FALSE, NULL, TRUE, 0, 7, NULL, 6),
+
+        ('MAT_EXT_UNPAID', 'Unpaid Maternity Extension',
+         'A further unpaid month after maternity leave. Decided by HR and the Chief Executive.',
+         'CALENDAR_DAYS', 'EVENT', FALSE, 'MONTHS',
+         'ALWAYS', FALSE, NULL, TRUE, 0, 7, 'FEMALE', 7)
+    ) AS statutory (
+        code, name, description, counting_basis, entitlement_basis, is_paid, unit,
+        documentation, exceedable_with_document, entitlement_expiry_months,
+        may_be_split, min_notice_calendar_days, max_backdate_calendar_days,
+        gender_restriction, display_order
+    )
+    WHERE NOT EXISTS (
+        SELECT 1 FROM leave_type existing
+         WHERE lower(existing.name) = lower(statutory.name)
+            OR upper(existing.code) = upper(statutory.code)
+    );
+
+    GET DIAGNOSTICS inserted = ROW_COUNT;
+
+    PERFORM set_config('lms.audit.actor', coalesce(named_by, ''), true);
+
+    RETURN inserted;
+END
+$$;

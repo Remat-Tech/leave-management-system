@@ -147,20 +147,35 @@ describe('the figures of the FR 32 table', () => {
     expect(rows).toEqual([
       { code: 'ANNUAL', days: 20, from: GO_LIVE },
       { code: 'SICK', days: 3, from: GO_LIVE },
+      { code: 'UNPAID', days: 10, from: GO_LIVE },
       { code: 'COMPASSIONATE', days: 5, from: GO_LIVE },
       { code: 'MATERNITY', days: 120, from: GO_LIVE },
       { code: 'PATERNITY', days: 14, from: GO_LIVE },
+      { code: 'MAT_EXT_UNPAID', days: 30, from: GO_LIVE },
     ]);
   });
 
-  /* FR 32h is agreed occasion by occasion, and the extension is "a further month"
-     — a figure the entitlement table does not give in days. No rule at all is the
-     honest answer for both, and it is a different answer from zero. */
-  it('leave the two types without a stated figure with no rule rather than a zero', async () => {
+  /**
+   * The two figures LMS 203 left for HR, and LMS 401 settled.
+   *
+   * This test used to assert their **absence** — "no rule at all is the honest answer for
+   * both, and it is a different answer from zero" — because FR 32h was read as agreed
+   * occasion by occasion and the extension's "further month" was a figure the table did
+   * not give in days. Neither is unsettled any more: unpaid leave is ten working days a
+   * year, and a month is thirty calendar days, which is paid maternity's own convention of
+   * a hundred and twenty days as four months.
+   *
+   * So this asserts the figures rather than the gap. The distinction the old test was
+   * really about — **no rule is not a rule of zero**, which is why `resolve()` "returns
+   * `undefined` rather than throwing so that every caller has to notice the difference" —
+   * is unchanged and is still asserted, by "has no answer for a day before the system held
+   * any figure" below. What the two unpaid types no longer are is its standing example.
+   */
+  it('give unpaid leave a yearly figure and the maternity extension a monthly one', async () => {
     const adwoa = await person(people.officer);
 
-    expect(await daysFor('UNPAID', adwoa)).toBeUndefined();
-    expect(await daysFor('MAT_EXT_UNPAID', adwoa)).toBeUndefined();
+    expect(await daysFor('UNPAID', adwoa)).toBe(10);
+    expect(await daysFor('MAT_EXT_UNPAID', adwoa)).toBe(30);
   });
 
   it('are company wide, so they are policy rather than one person arrangements', async () => {
@@ -797,7 +812,9 @@ describe('who may see and set a figure, LMS 112', () => {
       rules.list(
         signedInAs(people.hrOfficer, { roles: ['EMPLOYEE', 'HR_OFFICER'], isManager: false }),
       ),
-    ).resolves.toHaveLength(5);
+      /* One company-wide figure per leave type, which since LMS 401 is all seven of them
+         rather than the five LMS 203 shipped. */
+    ).resolves.toHaveLength(7);
   });
 });
 

@@ -455,11 +455,9 @@ button:hover:not(:disabled) {
  * than the sentence: see BalancesPage.tsx.
  */
 .rules {
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  font-size: 0.8125rem;
   color: var(--ink-faint);
+  text-align: left;
   margin: auto 0 0;
   padding-top: 0.75rem;
   border-top: 1px solid var(--line);
