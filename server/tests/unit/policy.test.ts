@@ -1272,10 +1272,11 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        which is what stops it being "a way to reach the transition without passing the check
        that knows which desk FR 38a's chain has the request sitting on" — the sentence this
        file refused it with for two stories. */
-    it('and the decisions it holds are these seven', () => {
+    it('and the decisions it holds are these eight', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
         'approve',
         'cancel',
+        'notTheirOwn',
         'read',
         'refuse',
         'resource',
@@ -1449,6 +1450,114 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         expect(refusal.told).toContain('approval chain');
         expect(refusal.told).toContain('unpaid leave goes to HR');
         expect(refusal.because).not.toBeNull();
+      });
+    });
+
+    /**
+     * And nobody decides their own request, whatever they hold. FR 48, §8.6a. LMS 319.
+     *
+     * The rule with no answer that admits anybody, and this is where that claim is pinned
+     * exhaustively rather than sampled — which is exactly what a pure policy is for. Ama asks
+     * for the leave; Ama holding every role in the system in turn is still refused both of
+     * the verbs that are a decision.
+     *
+     * The cases that make it necessary are ordinary rather than adversarial, and both are
+     * about HR asking for their own leave: the desk unpaid leave starts at is staffed by a
+     * code an HR Officer holds, and `LEAVE_ADMINISTRATION` is on the `REFUSE` row whichever
+     * desk the request is sitting at. Before LMS 319 the first was closed and the second was
+     * not.
+     */
+    describe('and deciding one', () => {
+      /** Ama's request, at the desk her own roles would staff. */
+      const atHr = { ...hers, awaiting: 'HR' as const, chiefExecutiveId: 'kwame' };
+
+      it('is never the requester’s, whatever roles they hold', () => {
+        for (const [, roles] of EACH_ROLE) {
+          const ama = employee('ama', roles);
+
+          expect(leaveRequestPolicy.approve(ama, atHr).allowed).toBe(false);
+          expect(leaveRequestPolicy.refuse(ama, hers).allowed).toBe(false);
+        }
+      });
+
+      /* And it is refused by the same rule in both cases rather than by two that agree, which
+         is the property the `REFUSE` row could not have while the exclusion lived on
+         `THE_DESK_IT_IS_WITH` — a standing that row does not name. */
+      it('and is refused by the one rule, in the same words', () => {
+        const ama = employee('ama', ['EMPLOYEE', 'HR_ADMIN']);
+
+        for (const decision of [
+          leaveRequestPolicy.approve(ama, atHr),
+          leaveRequestPolicy.refuse(ama, hers),
+          leaveRequestPolicy.notTheirOwn(ama, hers, 'APPROVE'),
+          leaveRequestPolicy.notTheirOwn(ama, hers, 'REFUSE'),
+        ]) {
+          expect(decision.allowed).toBe(false);
+          expect(decision.told).toBe(leaveRequestPolicy.notTheirOwn(ama, hers, 'APPROVE').told);
+          expect(decision.told).toContain('whatever roles they hold');
+          expect(decision.because).toContain('nobody decides their own request');
+        }
+      });
+
+      /* And the log says which verb was attempted, because "Ama was refused a decision on her
+         own request" is two different attempts and only one of them is somebody clicking the
+         button their own queue showed them. */
+      it('and the attempt is logged as the verb it was', () => {
+        const ama = employee('ama', ['EMPLOYEE', 'HR_OFFICER']);
+
+        expect(leaveRequestPolicy.approve(ama, atHr).action).toBe('approve');
+        expect(leaveRequestPolicy.refuse(ama, hers).action).toBe('refuse');
+        expect(leaveRequestPolicy.notTheirOwn(ama, hers, 'REFUSE').subject).toBe('ama');
+      });
+
+      /**
+       * And the two verbs that are not a decision are untouched, which is half the rule.
+       *
+       * Withdrawing your own request is the point of withdrawing — a rule that caught it
+       * would refuse a person the right to change their mind — and cancelling is HR unwinding
+       * a row that should not be on the books. `isADecision` is the line, and it is the same
+       * line ../../src/domain/leave-decision.ts draws for what gets recorded.
+       */
+      it('and leaves withdrawing and cancelling exactly where they were', () => {
+        expect(leaveRequestPolicy.withdraw(employee('ama'), hers).allowed).toBe(true);
+
+        for (const [code, roles] of EACH_ROLE) {
+          const ama = employee('ama', roles);
+
+          expect(leaveRequestPolicy.withdraw(ama, hers).allowed).toBe(true);
+          expect(leaveRequestPolicy.cancel(ama, hers).allowed).toBe(
+            MAINTAINS_EMPLOYEE_RECORDS.includes(code),
+          );
+        }
+      });
+
+      /* And deciding somebody else's request is not touched either. The rule is about who the
+         leave is for and nothing else, so the manager, HR and the desk keep every standing
+         they had — which is what makes this a check rather than a narrowing. */
+      it('and refuses nobody who is deciding somebody else’s', () => {
+        expect(leaveRequestPolicy.refuse(manager('akosua'), hers).allowed).toBe(true);
+        expect(
+          leaveRequestPolicy.approve(employee('efua', ['EMPLOYEE', 'HR_OFFICER']), atHr).allowed,
+        ).toBe(true);
+        expect(leaveRequestPolicy.notTheirOwn(manager('akosua'), hers, 'REFUSE').allowed).toBe(
+          true,
+        );
+      });
+
+      /* And the system passes it by being nobody rather than by being excused, which is the
+         property `theSystem`'s null employeeId exists for. A rollover deciding five hundred
+         requests is not any of them. */
+      it('and lets the system through, which is nobody', () => {
+        const job = theSystem('the year rollover');
+
+        expect(leaveRequestPolicy.notTheirOwn(job, hers, 'APPROVE').allowed).toBe(true);
+        expect(
+          leaveRequestPolicy.notTheirOwn(
+            job,
+            { employeeId: null as never, managerId: null },
+            'REFUSE',
+          ).allowed,
+        ).toBe(true);
       });
     });
 
