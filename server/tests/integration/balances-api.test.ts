@@ -12,16 +12,22 @@ import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
 import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { NotificationRepository } from '../../src/features/notification/notification.db.js';
 import { RoleRepository } from '../../src/features/role/role.db.js';
 import { SignInAccountRepository } from '../../src/features/sign-in/sign-in-account.db.js';
 import { Transactions } from '../../src/db/transaction.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
 import { buildApp } from '../../src/http/app.js';
 import { mintSession, SESSION_COOKIE } from '../../src/features/sign-in/session-cookie.routes.js';
 import { BalanceService } from '../../src/features/balance/balance.service.js';
+import { LeaveCalculatorService } from '../../src/features/leave-calculator/leave-calculator.service.js';
+import { LeaveRequestService } from '../../src/features/leave-request/leave-request.service.js';
+import { NotificationService } from '../../src/features/notification/notification.service.js';
 import { SignInService } from '../../src/features/sign-in/sign-in.service.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
@@ -90,6 +96,11 @@ beforeAll(async () => {
 
   balances = new BalanceService(cached, guard, employees, new Transactions(db));
 
+  const types = new LeaveTypeRepository(db);
+  const years = new LeaveYearRepository(db);
+  const requests = new LeaveRequestRepository(db);
+  const decisions = new LeaveDecisionRepository(db);
+
   const app = buildApp({
     guard,
     signIn: new SignInService(accounts, employees, roles, recordingMailer(), guard, {
@@ -97,10 +108,25 @@ beforeAll(async () => {
     }),
     balances: cached,
     employees,
-    types: new LeaveTypeRepository(db),
-    years: new LeaveYearRepository(db),
-    requests: new LeaveRequestRepository(db),
-    decisions: new LeaveDecisionRepository(db),
+    types,
+    years,
+    requests,
+    /* Nothing in this suite asks for leave, and the write door is built anyway, because
+       `buildApp` is the whole application and a suite that assembled a smaller one would
+       stop proving that the balance routes are reachable in the application that ships.
+       LMS 403. */
+    leaveRequests: new LeaveRequestService(
+      balances,
+      guard,
+      employees,
+      types,
+      years,
+      requests,
+      decisions,
+      new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
+      new NotificationService(new NotificationRepository(db), recordingMailer(), guard),
+    ),
+    decisions,
     accounts,
     roles,
     secret: SECRET,

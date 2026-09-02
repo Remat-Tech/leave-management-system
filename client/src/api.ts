@@ -118,6 +118,124 @@ export interface History {
   entries: RequestEntry[];
 }
 
+/** ---------------------------------------------------- the request form. LMS 403. */
+
+/**
+ * What kind of thing one rule is.
+ *
+ * A token rather than a sentence, so the screen can group and order them without reading
+ * the words. What each one *says* is composed on the server — see
+ * `server/src/features/leave-request/request-form.ts`, which argues why the wording of a
+ * leave rule is not a browser's to invent.
+ */
+export type FormRuleKind =
+  | 'DESCRIPTION'
+  | 'DOCUMENTATION'
+  | 'EVIDENCE_IF_EXCEEDED'
+  | 'NOTICE'
+  | 'BACKDATING'
+  | 'ENTITLEMENT'
+  | 'COUNTING'
+  | 'APPROVAL';
+
+/** One thing a kind of leave says about itself. */
+export interface FormRule {
+  kind: FormRuleKind;
+  inWords: string;
+  /** Whether it asks something of the person, rather than only explaining how the leave works. */
+  asks: boolean;
+}
+
+/** A kind of leave this person may ask for, with what it asks of them. FR 05, FR 13, FR 17. */
+export interface RequestableLeaveType {
+  leaveTypeId: string;
+  code: string;
+  name: string;
+  countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
+  countingBasisLabel: string;
+  isPaid: boolean;
+  /** FR 17, FR 18. Numbers, because a date input needs a number and not a sentence. */
+  minNoticeCalendarDays: number;
+  maxBackdateCalendarDays: number;
+  /** FR 13, FR 32a. */
+  documentation: 'NOT_REQUIRED' | 'ALWAYS' | 'AFTER_DAYS';
+  documentationAfterDays: number | null;
+  exceedableWithDocument: boolean;
+  /** FR 38a. "your line manager, then HR". */
+  approvedBy: string;
+  rules: FormRule[];
+}
+
+export interface RequestForm {
+  employeeId: string;
+  /** In the order §7.4 puts them, which is the order the balance screen uses too. */
+  types: RequestableLeaveType[];
+}
+
+/** Why a day inside a period cost nothing. */
+export type FreeReason = 'NOT_A_WORKING_DAY' | 'PUBLIC_HOLIDAY';
+
+/** One day inside the period that cost nothing. */
+export interface FreeDay {
+  /** Ten characters. */
+  date: string;
+  because: FreeReason;
+  /** The holiday's name, where that is the reason. */
+  name: string | null;
+  /** The whole thing in a sentence, written by the server. */
+  inWords: string;
+}
+
+/** FR 13, FR 17, FR 14. Worth saying before somebody submits, and not a refusal. */
+export type QuoteWarningCode = 'SHORT_NOTICE' | 'DOCUMENTATION_REQUIRED' | 'NOT_ENOUGH_DAYS';
+
+export interface QuoteWarning {
+  code: QuoteWarningCode;
+  message: string;
+}
+
+/** What a period would cost, before anything is written. FR 10, FR 11. */
+export interface Quote {
+  leaveTypeId: string;
+  leaveTypeName: string;
+  /** Ten characters. */
+  from: string;
+  to: string;
+  /** FR 11. The basis this was counted under, and what submitting would copy onto it. */
+  countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
+  countingBasisInWords: string;
+  /** FR 24. The story's first criterion. */
+  days: number;
+  calendarDays: number;
+  /** What turns the number into an explanation. */
+  free: FreeDay[];
+  availableNow: number;
+  /** May be negative, legitimately. §8.6b. */
+  availableAfter: number;
+  /** FR 38a. */
+  approvedBy: string;
+  warnings: QuoteWarning[];
+}
+
+/** What came back from asking. LMS 301. */
+export interface Submitted {
+  requestId: string;
+  leaveTypeId: string;
+  leaveYearId: string;
+  from: string;
+  to: string;
+  reason: string;
+  countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
+  days: number;
+  calendarDays: number;
+  status: RequestStatus;
+  /** FR 38a. The desk it is now sitting on. */
+  awaitingApprovalFrom: Desk | null;
+  submittedAt: string;
+  /** What the reservation left. */
+  availableAfter: number;
+}
+
 /** Who the session belongs to. */
 export interface Me {
   employeeId: string;
@@ -198,6 +316,58 @@ export async function myRequests(leaveYearId?: string): Promise<History> {
   const query = leaveYearId === undefined ? '' : `?leaveYearId=${encodeURIComponent(leaveYearId)}`;
 
   return request<History>('GET', `/api/me/requests${query}`);
+}
+
+/**
+ * The kinds of leave I may ask for, and what each of them asks of me. LMS 403.
+ *
+ * Asked once, when the form opens. Nothing in it depends on what somebody types, which is
+ * the whole point: the rule that maternity leave needs a certificate is true before a date
+ * has been chosen, and a screen that waited for the dates would tell people too late.
+ */
+export async function requestForm(): Promise<RequestForm> {
+  return request<RequestForm>('GET', '/api/me/request-form');
+}
+
+/**
+ * What this period would cost, before anything is written. LMS 403's first criterion.
+ *
+ * A GET, because it is one: it writes nothing and reserves nothing, and is meant to be
+ * called again every time a date changes.
+ *
+ * **The reason is not sent.** It is not an input to what a period costs — the server's
+ * signature says so — and a form that put a half-written sentence in a query string on
+ * every keystroke would be writing somebody's private explanation into an access log.
+ */
+export async function quoteLeave(input: {
+  leaveTypeId: string;
+  from: string;
+  to: string;
+}): Promise<Quote> {
+  const query = new URLSearchParams({
+    leaveTypeId: input.leaveTypeId,
+    from: input.from,
+    to: input.to,
+  });
+
+  return request<Quote>('GET', `/api/me/requests/quote?${query.toString()}`);
+}
+
+/**
+ * Asks for the leave. FR 10.
+ *
+ * The day count is deliberately not among the arguments. The server counts the period
+ * again inside the transaction that holds the days, and what it counts is what is charged
+ * — a quote is not a promise, and a caller that could hand over a figure could hand over a
+ * smaller one.
+ */
+export async function askForLeave(input: {
+  leaveTypeId: string;
+  from: string;
+  to: string;
+  reason: string;
+}): Promise<Submitted> {
+  return request<Submitted>('POST', '/api/me/requests', input);
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {

@@ -6,14 +6,22 @@ import { createDatabase } from './db/index.js';
 import { createMailer } from './mail/mailer.js';
 import { BalanceRepository } from './features/balance/balance.db.js';
 import { EmployeeRepository } from './features/employee/employee.db.js';
+import { HolidayRepository } from './features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from './features/leave-request/leave-decision.db.js';
 import { LeaveRequestRepository } from './features/leave-request/leave-request.db.js';
 import { LeaveTypeRepository } from './features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from './features/leave-year/leave-year.db.js';
+import { NotificationRepository } from './features/notification/notification.db.js';
 import { RoleRepository } from './features/role/role.db.js';
 import { SignInAccountRepository } from './features/sign-in/sign-in-account.db.js';
+import { Transactions } from './db/transaction.js';
+import { WorkPatternRepository } from './features/work-pattern/work-pattern.db.js';
 import { buildApp } from './http/app.js';
 import { sessionSecretFrom } from './features/sign-in/session-cookie.routes.js';
+import { BalanceService } from './features/balance/balance.service.js';
+import { LeaveCalculatorService } from './features/leave-calculator/leave-calculator.service.js';
+import { LeaveRequestService } from './features/leave-request/leave-request.service.js';
+import { NotificationService } from './features/notification/notification.service.js';
 import { SignInService } from './features/sign-in/sign-in.service.js';
 
 loadEnv();
@@ -38,16 +46,45 @@ const guard = new Guard();
 const employees = new EmployeeRepository(db);
 const accounts = new SignInAccountRepository(db);
 const roles = new RoleRepository(db);
+const types = new LeaveTypeRepository(db);
+const years = new LeaveYearRepository(db);
+const requests = new LeaveRequestRepository(db);
+const decisions = new LeaveDecisionRepository(db);
+const balances = new BalanceRepository(db);
+
+const mailer = createMailer();
+
+/**
+ * The write door, built once here. LMS 301, LMS 403.
+ *
+ * Everything below it is what asking for leave actually needs: a balance service to hold the
+ * days, a calculator to count them against the working pattern and the holiday calendar, and
+ * a notifier to say what happened once the transaction has committed. The read services in
+ * `buildApp` construct themselves out of repositories precisely so that none of this has to
+ * exist for a balance screen to render — see `RequestFormService`, which argues it.
+ */
+const leaveRequests = new LeaveRequestService(
+  new BalanceService(balances, guard, employees, new Transactions(db)),
+  guard,
+  employees,
+  types,
+  years,
+  requests,
+  decisions,
+  new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
+  new NotificationService(new NotificationRepository(db), mailer, guard),
+);
 
 const app = buildApp({
   guard,
-  signIn: new SignInService(accounts, employees, roles, createMailer(), guard),
-  balances: new BalanceRepository(db),
+  signIn: new SignInService(accounts, employees, roles, mailer, guard),
+  balances,
   employees,
-  types: new LeaveTypeRepository(db),
-  years: new LeaveYearRepository(db),
-  requests: new LeaveRequestRepository(db),
-  decisions: new LeaveDecisionRepository(db),
+  types,
+  years,
+  requests,
+  leaveRequests,
+  decisions,
   accounts,
   roles,
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process

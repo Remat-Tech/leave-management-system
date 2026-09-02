@@ -8,6 +8,7 @@ import {
   type CalendarDate,
   calendarDaysBetween,
   eachDay,
+  formatDay,
   isCalendarDate,
   isoWeekdayOf,
 } from '../../shared/time.js';
@@ -30,6 +31,34 @@ export interface FreeDay {
   because: FreeReason;
   /** The holiday's name, where that is the reason. */
   name: string | null;
+}
+
+/**
+ * One free day, said to a person rather than to a database. NFR USA 03. LMS 403.
+ *
+ * The line that turns a day count into an explanation. "Nine days off cost you seven" is an
+ * assertion; "6 March is Independence Day" is the reason, and `LeaveRequestQuote` is explicit
+ * that the second is what the quote's `free` list exists for.
+ *
+ * It is here rather than in a route or a client for the reason `countingBasisInWords` gives
+ * about itself in ../leave-type/leave-type.ts: the file that defines a `FreeDay` is the file
+ * that decides what one is called. `NOT_A_WORKING_DAY` is not shown to anybody, and a
+ * browser mapping that token to a
+ * phrase of its own would be a second vocabulary that drifts the first time somebody decides
+ * a rest day should not be called a weekend.
+ *
+ * The holiday is named where the record names one, and falls back to the plain statement
+ * where it does not — a public holiday with no name is a row somebody half filled in, and
+ * "6 March is a public holiday" is still true and still useful.
+ */
+export function freeDayInWords(day: FreeDay): string {
+  if (day.because === 'PUBLIC_HOLIDAY') {
+    return day.name === null
+      ? `${formatDay(day.date)} is a public holiday`
+      : `${formatDay(day.date)} is ${day.name}`;
+  }
+
+  return `${formatDay(day.date)} is not a day you work`;
 }
 
 /** What a period of leave costs, and the days inside it that were free. */

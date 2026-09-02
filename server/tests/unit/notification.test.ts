@@ -454,6 +454,22 @@ const MAY_NOTIFY = [
   'features/notification/notification.db.ts',
   'features/notification/notification.service.ts',
   'features/leave-request/leave-request.service.ts',
+  /**
+   * The composition root, which constructs one and never calls it. LMS 403.
+   *
+   * A different permission from the four above and it is worth keeping the distinction: those
+   * four compose or send a notice, and this one only decides which object the door is handed.
+   * Somewhere has to say `new NotificationService(...)` — the alternative is a default
+   * argument, and ./leave-request.service.ts argues at length why that would be worse: "a
+   * service that can be built without one is a service somebody builds without one, and the
+   * failure is silent."
+   *
+   * It is `main.ts` rather than `http/app.ts` deliberately. The read services assemble
+   * themselves out of repositories inside `buildApp`, and the write door is passed in whole,
+   * so a balance screen still cannot reach a mailer by being wired up — which is the property
+   * `RequestFormService` was separated out to keep.
+   */
+  'main.ts',
 ];
 
 describe('a notice is composed and sent outside every transaction', () => {
