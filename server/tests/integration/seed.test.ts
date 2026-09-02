@@ -1,5 +1,6 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
@@ -9,7 +10,7 @@ import { seed } from '../../seeds/seed.mjs';
  *
  * Technical Design Document section 12.
  */
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 let db: Client;
 
@@ -150,8 +151,18 @@ describe('the HR function', () => {
     expect(colleagues).toEqual([]);
   });
 
+  /**
+   * And the guard is for callers TypeScript never sees.
+   *
+   * `npm run seed -- --scenario x` reads the value out of `process.argv`, so the check in
+   * `seed` stands between an arbitrary string and a TRUNCATE. Testing it means stepping
+   * outside the parameter type on purpose, which is what the cast is: without it this
+   * reads as a type error to be silenced rather than the point of the test.
+   */
   it('refuses a scenario it does not have', async () => {
-    await expect(seed(db, { scenario: 'no-such-scenario' })).rejects.toThrow(/Unknown scenario/);
+    const unknown = { scenario: 'no-such-scenario' } as unknown as { scenario: 'base' };
+
+    await expect(seed(db, unknown)).rejects.toThrow(/Unknown scenario/);
   });
 
   it('leaves the base organisation in place when run again', async () => {

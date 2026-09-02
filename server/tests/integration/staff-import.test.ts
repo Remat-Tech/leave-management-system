@@ -1,5 +1,6 @@
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import {
@@ -37,7 +38,7 @@ import { Guard } from '../../src/auth/policy.js';
  * including the one person who reports to nobody.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 // The suite supplies its own rather than reading ALLOWED_EMAIL_DOMAINS, which is
 // set in .env but not in CI.

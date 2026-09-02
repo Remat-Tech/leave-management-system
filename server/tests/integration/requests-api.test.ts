@@ -1,7 +1,8 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { Client } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
 import { type Actor, signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
@@ -55,7 +56,7 @@ import { seed } from '../../seeds/seed.mjs';
  * database. There is no second assembly.
  */
 
-const testDatabaseUrl = inject('testDatabaseUrl');
+const testDatabaseUrl = await databaseForThisFile();
 
 /** Long enough for `sessionSecretFrom`, and nowhere near any real one. */
 const SECRET = 'a-test-signing-secret-of-at-least-32-chars';

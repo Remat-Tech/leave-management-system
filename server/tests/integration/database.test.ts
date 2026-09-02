@@ -1,10 +1,11 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { databaseForThisFile } from '../setup/test-database.js';
 
-const testDatabaseUrl = inject('testDatabaseUrl');
-const testDatabaseName = inject('testDatabaseName');
+const testDatabaseUrl = await databaseForThisFile();
+const testDatabaseName = new URL(testDatabaseUrl).pathname.slice(1);
 
 let db: Client;
 
