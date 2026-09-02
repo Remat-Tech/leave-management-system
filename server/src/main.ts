@@ -4,17 +4,17 @@ import { config as loadEnv } from 'dotenv';
 import { Guard } from './auth/policy.js';
 import { createDatabase } from './db/index.js';
 import { createMailer } from './mail/mailer.js';
-import { BalanceRepository } from './repositories/balance-repository.js';
-import { EmployeeRepository } from './repositories/employee-repository.js';
-import { LeaveDecisionRepository } from './repositories/leave-decision-repository.js';
-import { LeaveRequestRepository } from './repositories/leave-request-repository.js';
-import { LeaveTypeRepository } from './repositories/leave-type-repository.js';
-import { LeaveYearRepository } from './repositories/leave-year-repository.js';
-import { RoleRepository } from './repositories/role-repository.js';
-import { SignInAccountRepository } from './repositories/sign-in-account-repository.js';
-import { buildApp } from './routes/app.js';
-import { sessionSecretFrom } from './routes/session-cookie.js';
-import { SignInService } from './services/sign-in-service.js';
+import { BalanceRepository } from './features/balance/balance.db.js';
+import { EmployeeRepository } from './features/employee/employee.db.js';
+import { LeaveDecisionRepository } from './features/leave-request/leave-decision.db.js';
+import { LeaveRequestRepository } from './features/leave-request/leave-request.db.js';
+import { LeaveTypeRepository } from './features/leave-type/leave-type.db.js';
+import { LeaveYearRepository } from './features/leave-year/leave-year.db.js';
+import { RoleRepository } from './features/role/role.db.js';
+import { SignInAccountRepository } from './features/sign-in/sign-in-account.db.js';
+import { buildApp } from './http/app.js';
+import { sessionSecretFrom } from './features/sign-in/session-cookie.routes.js';
+import { SignInService } from './features/sign-in/sign-in.service.js';
 
 loadEnv();
 

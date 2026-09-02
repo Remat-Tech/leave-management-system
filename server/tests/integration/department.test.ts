@@ -8,12 +8,12 @@ import {
   DepartmentStillStaffed,
   DuplicateDepartmentName,
   InvalidDepartment,
-} from '../../src/domain/department.js';
-import { DepartmentRepository } from '../../src/repositories/department-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { DepartmentService } from '../../src/services/department-service.js';
-import { EmployeeService } from '../../src/services/employee-service.js';
+} from '../../src/features/department/department.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { DepartmentService } from '../../src/features/department/department.service.js';
+import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import { theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DayCount } from '../../src/domain/leave-calculator.js';
+import type { DayCount } from '../../src/features/leave-calculator/leave-calculator.js';
 import {
   approvalTo,
   assertItCostsSomething,
@@ -27,15 +27,15 @@ import {
   REQUEST_STATUSES,
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
-} from '../../src/domain/leave-request.js';
+} from '../../src/features/leave-request/leave-request.js';
 import {
   COUNTING_BASES,
   countingBasisInWords,
   type LeaveType,
   validateNewLeaveType,
-} from '../../src/domain/leave-type.js';
-import type { LeaveYear } from '../../src/domain/leave-year.js';
-import { eachDay } from '../../src/domain/time.js';
+} from '../../src/features/leave-type/leave-type.js';
+import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
+import { eachDay } from '../../src/shared/time.js';
 
 /**
  * Asking for leave, and being told what it costs first. FR 10, FR 11. LMS 301.
@@ -1003,7 +1003,7 @@ describe('the refusal, which names the leave already in the way', () => {
  * request, not open another screen — and that is a property of what the message says
  * rather than of the comparison that produced it.
  *
- * `daysToReserve` in ../../src/domain/balance.ts refuses the same thing inside the lock
+ * `daysToReserve` in ../../src/features/balance/balance.ts refuses the same thing inside the lock
  * and is the guarantee; ../integration/leave-request.test.ts is where the two are held
  * to the same answer, because only a real balance can show that.
  */

@@ -1,15 +1,22 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Holiday } from '../../src/domain/holiday.js';
+import type { Holiday } from '../../src/features/holiday/holiday.js';
 import {
   costsADay,
   countLeaveDays,
   type FreeDay,
   type LeavePeriod,
-} from '../../src/domain/leave-calculator.js';
-import { assertItCostsSomething, LeaveCountsNoDays } from '../../src/domain/leave-request.js';
-import { type LeaveType, validateNewLeaveType } from '../../src/domain/leave-type.js';
-import { type CalendarDate, calendarDaysBetween, eachDay } from '../../src/domain/time.js';
-import { MONDAY_TO_FRIDAY, type Weekday, type WorkPattern } from '../../src/domain/work-pattern.js';
+} from '../../src/features/leave-calculator/leave-calculator.js';
+import {
+  assertItCostsSomething,
+  LeaveCountsNoDays,
+} from '../../src/features/leave-request/leave-request.js';
+import { type LeaveType, validateNewLeaveType } from '../../src/features/leave-type/leave-type.js';
+import { type CalendarDate, calendarDaysBetween, eachDay } from '../../src/shared/time.js';
+import {
+  MONDAY_TO_FRIDAY,
+  type Weekday,
+  type WorkPattern,
+} from '../../src/features/work-pattern/work-pattern.js';
 
 /**
  * The case list of §7.3, worked. LMS 208.
@@ -65,7 +72,7 @@ import { MONDAY_TO_FRIDAY, type Weekday, type WorkPattern } from '../../src/doma
  *
  *   **The process timezone.** The entire table is run again in four zones, two of
  *   them west of Greenwich. Accra is UTC+0 all year, so a suite written only here
- *   would pass with every conversion in ../../src/domain/time.ts deleted — and the
+ *   would pass with every conversion in ../../src/shared/time.ts deleted — and the
  *   symptom would be exactly the story's: everybody's weekend a day out, quietly.
  *   The two western zones are the ones that catch it, for a reason set out where
  *   the sweep is.
@@ -262,7 +269,7 @@ const CASES: Case[] = [
   {
     /* The same year end with 2027's gazette not yet transcribed, which is the state
        a database is in on the day it goes live. New Year's Day is an ordinary
-       Friday and costs a day; see ../../src/domain/holiday.ts for why an empty year
+       Friday and costs a day; see ../../src/features/holiday/holiday.ts for why an empty year
        is the honest one. */
     name: 'the same year end, with no calendar entered for the new year',
     sum: 'five weekdays, and nothing in the calendar to give any of them back',
@@ -475,7 +482,7 @@ describe('the answer does not move with the process timezone', () => {
    * recounts.
    *
    * **The two western zones are the ones that bite, and it is worth knowing which.**
-   * Every date in ../../src/domain/time.ts is built at UTC midnight, which is still
+   * Every date in ../../src/shared/time.ts is built at UTC midnight, which is still
    * the same day everywhere east of Greenwich and the day *before* everywhere west
    * of it. So a `getDay()` written where a `getUTCDay()` belongs passes in Tokyo and
    * Kiritimati and fails in New York and Niue — and a sweep that only ran eastward

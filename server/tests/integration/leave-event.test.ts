@@ -5,26 +5,32 @@ import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { EmployeeNotFound } from '../../src/domain/employee.js';
-import { AlreadyLapsed, EventAlreadyRecorded } from '../../src/domain/leave-event.js';
-import type { LeaveYear } from '../../src/domain/leave-year.js';
-import { EntitlementExpiry, daysLapsed } from '../../src/jobs/entitlement-expiry.js';
-import { BalanceRepository } from '../../src/repositories/balance-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { EntitlementRuleRepository } from '../../src/repositories/entitlement-rule-repository.js';
-import { LeaveEventRepository } from '../../src/repositories/leave-event-repository.js';
-import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { Transactions } from '../../src/repositories/transaction.js';
-import { BalanceService } from '../../src/services/balance-service.js';
-import { EntitlementRuleService } from '../../src/services/entitlement-rule-service.js';
+import { EmployeeNotFound } from '../../src/features/employee/employee.js';
+import { AlreadyLapsed, EventAlreadyRecorded } from '../../src/features/leave-event/leave-event.js';
+import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
+import {
+  EntitlementExpiry,
+  daysLapsed,
+} from '../../src/features/entitlement/entitlement-expiry.job.js';
+import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { EntitlementRuleRepository } from '../../src/features/entitlement/entitlement-rule.db.js';
+import { LeaveEventRepository } from '../../src/features/leave-event/leave-event.db.js';
+import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { Transactions } from '../../src/db/transaction.js';
+import { BalanceService } from '../../src/features/balance/balance.service.js';
+import { EntitlementRuleService } from '../../src/features/entitlement/entitlement-rule.service.js';
 import {
   LeaveEventService,
   NoEntitlementForTheEvent,
   NotAnEventBasedType,
   NotEligibleForTheType,
-} from '../../src/services/leave-event-service.js';
-import { earliestOpenDayFrom, LeaveYearService } from '../../src/services/leave-year-service.js';
+} from '../../src/features/leave-event/leave-event.service.js';
+import {
+  earliestOpenDayFrom,
+  LeaveYearService,
+} from '../../src/features/leave-year/leave-year.service.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**

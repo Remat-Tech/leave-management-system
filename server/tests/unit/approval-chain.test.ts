@@ -14,15 +14,15 @@ import {
   stagesNotApproved,
   stepsOf,
   validateApprovalChain,
-} from '../../src/domain/approval-chain.js';
-import { ROLE_CODES, readRoleCode, UnknownRole } from '../../src/auth/roles.js';
+} from '../../src/features/leave-type/approval-chain.js';
+import { ROLE_CODES, readRoleCode, UnknownRole } from '../../src/features/role/roles.js';
 import {
   assertSomebodyApprovesIt,
   approvalChainInWords,
   type LeaveType,
   NobodyApprovesLeaveType,
   validateNewLeaveType,
-} from '../../src/domain/leave-type.js';
+} from '../../src/features/leave-type/leave-type.js';
 
 /**
  * Who approves a kind of leave, and in what order. FR 38a, §5.5. LMS 204.
@@ -53,7 +53,7 @@ describe('the three desks a chain names, FR 38a', () => {
     expect([...APPROVER_ROLES]).toEqual(['MANAGER', 'HR', 'CEO']);
   });
 
-  /* The load bearing separation, asserted from both sides. ../../src/auth/roles.ts
+  /* The load bearing separation, asserted from both sides. ../../src/features/role/roles.ts
      refuses MANAGER as a grant in as many words — "Being a manager is a
      relationship... Holding it as a role too would create two sources of truth" —
      and CEO is FR 04's single root rather than anything anybody grants. A chain

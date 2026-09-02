@@ -7,18 +7,18 @@ import type { Kysely } from 'kysely';
 
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import type { Employee } from '../../src/domain/employee.js';
+import type { Employee } from '../../src/features/employee/employee.js';
 import {
   buildOrgChart,
   concerns,
   renderOrgChart,
   renderOrgChartAsMermaid,
   type OrgChartNode,
-} from '../../src/domain/org-chart.js';
-import { DepartmentRepository } from '../../src/repositories/department-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { EmployeeService } from '../../src/services/employee-service.js';
+} from '../../src/features/employee/org-chart.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';

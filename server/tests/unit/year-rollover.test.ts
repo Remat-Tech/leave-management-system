@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { AnnualGrantRun } from '../../src/domain/annual-grant.js';
-import { AlreadyCarried, daysToCarry } from '../../src/domain/balance.js';
+import type { AnnualGrantRun } from '../../src/features/entitlement/annual-grant.js';
+import { AlreadyCarried, daysToCarry } from '../../src/features/balance/balance.js';
 import {
   type Carried,
   type CarryCandidate,
@@ -16,7 +16,7 @@ import {
   summaryOf,
   wasCarried,
   type YearRolloverRun,
-} from '../../src/domain/year-rollover.js';
+} from '../../src/features/leave-year/year-rollover.js';
 
 /**
  * The year rollover. FR 36, FR 36a, §11. LMS 217.

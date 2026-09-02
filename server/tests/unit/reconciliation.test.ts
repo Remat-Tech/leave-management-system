@@ -9,8 +9,8 @@ import {
   isClean,
   type Reconciliation,
   reportOf,
-} from '../../src/domain/reconciliation.js';
-import { discrepancyEmail } from '../../src/jobs/balance-reconciliation.js';
+} from '../../src/features/balance/reconciliation.js';
+import { discrepancyEmail } from '../../src/features/balance/balance-reconciliation.job.js';
 
 /**
  * What a discrepancy means, once the database has found one. §7.4. LMS 213.
@@ -207,7 +207,10 @@ describe('the report', () => {
  * also destroy the only evidence that something in this system does not work.
  */
 describe('nothing in the reconciliation corrects anything', () => {
-  const files = ['../../src/jobs/balance-reconciliation.ts', '../../src/domain/reconciliation.ts'];
+  const files = [
+    '../../src/features/balance/balance-reconciliation.job.ts',
+    '../../src/features/balance/reconciliation.ts',
+  ];
 
   it.each(files)('%s never calls the rebuild', (file) => {
     const code = readFileSync(join(import.meta.dirname, file), 'utf8')
@@ -222,7 +225,7 @@ describe('nothing in the reconciliation corrects anything', () => {
      short enough that a third would be a decision somebody made on purpose. */
   it('and the repository it holds offers only reads', () => {
     const code = readFileSync(
-      join(import.meta.dirname, '../../src/repositories/reconciliation-repository.ts'),
+      join(import.meta.dirname, '../../src/features/balance/reconciliation.db.ts'),
       'utf8',
     )
       .replace(/\/\*[\s\S]*?\*\//g, ' ')

@@ -16,24 +16,24 @@ import {
   ManagerNotFound,
   type NewEmployee,
   SecondRootEmployee,
-} from '../../src/domain/employee.js';
+} from '../../src/features/employee/employee.js';
 import {
   type Department,
   DepartmentDeactivated,
   DepartmentNotFound,
-} from '../../src/domain/department.js';
+} from '../../src/features/department/department.js';
 import {
   concerns,
   everybodyOn,
   renderOrgChart,
   renderOrgChartAsMermaid,
-} from '../../src/domain/org-chart.js';
-import { WorkPatternNotFound } from '../../src/domain/work-pattern.js';
-import { DepartmentRepository } from '../../src/repositories/department-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { DepartmentService } from '../../src/services/department-service.js';
-import { EmployeeService } from '../../src/services/employee-service.js';
+} from '../../src/features/employee/org-chart.js';
+import { WorkPatternNotFound } from '../../src/features/work-pattern/work-pattern.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { DepartmentService } from '../../src/features/department/department.service.js';
+import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import type { Kysely } from 'kysely';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
@@ -300,7 +300,7 @@ describe('the values a record may hold', () => {
     ['employee_gender_known', GENDERS],
   ])('%s permits exactly the values the code knows about', async (constraint, known) => {
     // The same list is written twice, in the migration and in
-    // src/domain/employee.ts. This is what stops the two drifting: add a value
+    // src/features/employee/employee.ts. This is what stops the two drifting: add a value
     // to one and forget the other and the suite fails rather than production.
     expect(await permittedBy(constraint as string)).toEqual(
       [...(known as readonly string[])].sort(),

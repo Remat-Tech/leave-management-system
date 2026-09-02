@@ -10,7 +10,7 @@ import {
   ROLE_CODES,
   RoleNotHeld,
   UnknownRole,
-} from '../../src/auth/roles.js';
+} from '../../src/features/role/roles.js';
 
 /**
  * Roles, §5.3, LMS 111.

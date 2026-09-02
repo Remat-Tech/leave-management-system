@@ -20,7 +20,7 @@ import {
   TooLateToRecord,
   validateLeaveTypeChanges,
   validateNewLeaveType,
-} from '../../src/domain/leave-type.js';
+} from '../../src/features/leave-type/leave-type.js';
 
 /**
  * A leave type and the rules it carries. FR 21, FR 31, FR 32, §5.5. LMS 201.

@@ -18,8 +18,8 @@ import {
   noMovementsYet,
   NotEnoughHeld,
   owed,
-} from '../../src/domain/balance.js';
-import { BUCKETS, LEDGER_ENTRY_TYPES } from '../../src/domain/ledger.js';
+} from '../../src/features/balance/balance.js';
+import { BUCKETS, LEDGER_ENTRY_TYPES } from '../../src/features/balance/ledger.js';
 
 /**
  * The cached balance. §5.7, design principle 1. LMS 211.
@@ -334,7 +334,7 @@ describe('which balance this is', () => {
 /**
  * The two files that have to agree about what the five columns are called.
  *
- * `BUCKETS` in domain/ledger.ts says which of them each kind of movement moves, and
+ * `BUCKETS` in features/balance/ledger.ts says which of them each kind of movement moves, and
  * was written by LMS 210 before this table existed. `BALANCE_BUCKETS` here says what
  * the columns are. They are edited in different files for different reasons, so a
  * name in one that the other has never heard of is a projection into a column that
@@ -376,7 +376,7 @@ describe('the five columns, as the ledger names them', () => {
    * whoever changed it has to argue here.
    */
   it('and nothing in the domain turns movements into a balance', async () => {
-    const balance: Record<string, unknown> = await import('../../src/domain/balance.js');
+    const balance: Record<string, unknown> = await import('../../src/features/balance/balance.js');
 
     expect(Object.keys(balance).sort()).toEqual([
       'AlreadyCarried',

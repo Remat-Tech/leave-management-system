@@ -18,7 +18,7 @@ import {
   REQUEST_MOVEMENTS,
   runningTotal,
   validateNewLedgerEntry,
-} from '../../src/domain/ledger.js';
+} from '../../src/features/balance/ledger.js';
 
 /**
  * The balance ledger. FR 27, §5.7, design principle 1. LMS 210.
@@ -206,7 +206,7 @@ describe('the nine kinds of movement, §5.7', () => {
    * `EXPIRY` is FR 36a — carried days lapsing in the month HR named — and takes days
    * back out of `carriedOver` where the carry put them. `LAPSE` is FR 32e — an event
    * grant unused before its deadline — and takes days out of `entitled` where the
-   * grant put them. ../../src/domain/leave-type.ts named the collision before either
+   * grant put them. ../../src/features/leave-type/leave-type.ts named the collision before either
    * existed: "two clocks with similar names".
    *
    * Using one for the other would leave a paternity balance reading
@@ -531,7 +531,10 @@ describe('a correction is a new entry, never an edit', () => {
    * sentence, and it is the closest thing here to an edit.
    */
   it('and nothing in this file offers a way to change one', () => {
-    const source = readFileSync(join(process.cwd(), 'server', 'src', 'domain', 'ledger.ts'), 'utf8')
+    const source = readFileSync(
+      join(process.cwd(), 'server', 'src', 'features', 'balance', 'ledger.ts'),
+      'utf8',
+    )
       .replace(/\/\*[\s\S]*?\*\//g, ' ')
       .replace(/\/\/[^\n]*/g, ' ');
 

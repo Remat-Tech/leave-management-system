@@ -12,7 +12,7 @@ import {
   type WorkPattern,
   WorkPatternInUse,
   worksOn,
-} from '../../src/domain/work-pattern.js';
+} from '../../src/features/work-pattern/work-pattern.js';
 
 /**
  * The rules for a working pattern, checked without a database. FR 23, LMS 106.

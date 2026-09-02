@@ -5,22 +5,22 @@ import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { DEFAULT_APPROVAL_CHAIN } from '../../src/domain/approval-chain.js';
+import { DEFAULT_APPROVAL_CHAIN } from '../../src/features/leave-type/approval-chain.js';
 import {
   type BalanceStatement,
   type BalanceStatementLine,
   NotOneOfTheirLeaveYears,
-} from '../../src/domain/balance-statement.js';
-import { EmployeeNotFound } from '../../src/domain/employee.js';
-import type { LeaveRequest } from '../../src/domain/leave-request.js';
-import { LeaveYearNotFound } from '../../src/domain/leave-year.js';
-import { BalanceRepository } from '../../src/repositories/balance-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { Transactions } from '../../src/repositories/transaction.js';
-import { BalanceService } from '../../src/services/balance-service.js';
-import { BalanceStatementService } from '../../src/services/balance-statement-service.js';
+} from '../../src/features/balance/balance-statement.js';
+import { EmployeeNotFound } from '../../src/features/employee/employee.js';
+import type { LeaveRequest } from '../../src/features/leave-request/leave-request.js';
+import { LeaveYearNotFound } from '../../src/features/leave-year/leave-year.js';
+import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { Transactions } from '../../src/db/transaction.js';
+import { BalanceService } from '../../src/features/balance/balance.service.js';
+import { BalanceStatementService } from '../../src/features/balance/balance-statement.service.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
@@ -387,7 +387,7 @@ describe('whose statement it is', () => {
   });
 
   /* Two levels down is not a direct report. The subtree is deliberately not FR 55's, and
-     the argument for stopping at one level is ../../src/auth/employee-policy.ts's. */
+     the argument for stopping at one level is ../../src/features/employee/policy.ts's. */
   it('and not a skip level manager’s', async () => {
     await expect(statements.forEmployee(asTheirManager(), people.engineer)).rejects.toThrow(
       NotAuthorised,

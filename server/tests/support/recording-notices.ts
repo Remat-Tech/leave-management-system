@@ -12,7 +12,10 @@
  * nothing here pretends.
  */
 
-import type { NoticeLog, UndeliveredNotice } from '../../src/services/notification-service.js';
+import type {
+  NoticeLog,
+  UndeliveredNotice,
+} from '../../src/features/notification/notification.service.js';
 
 export interface RecordingNoticeLog extends NoticeLog {
   /** Everything that failed to reach somebody, in the order it happened. */

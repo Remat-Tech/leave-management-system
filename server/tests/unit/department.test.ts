@@ -8,7 +8,7 @@ import {
   InvalidDepartment,
   validateDepartmentChanges,
   validateNewDepartment,
-} from '../../src/domain/department.js';
+} from '../../src/features/department/department.js';
 
 /**
  * The rules for a department, checked without a database. LMS 105.

@@ -6,7 +6,7 @@ import {
   isRedacted,
   REDACTED,
   UNATTRIBUTED,
-} from '../../src/domain/audit.js';
+} from '../../src/features/audit/audit.js';
 
 /**
  * The audit log, with no database. NFR AUD 01. LMS 113.

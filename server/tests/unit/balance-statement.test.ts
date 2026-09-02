@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type LeaveBalance, noMovementsYet } from '../../src/domain/balance.js';
+import { type LeaveBalance, noMovementsYet } from '../../src/features/balance/balance.js';
 import {
   allowanceInWords,
   type BalanceStatementLine,
@@ -10,9 +10,9 @@ import {
   statementFor,
   theYearToOpenOn,
   yearsToChooseFrom,
-} from '../../src/domain/balance-statement.js';
-import { type LeaveType, validateNewLeaveType } from '../../src/domain/leave-type.js';
-import type { LeaveYear } from '../../src/domain/leave-year.js';
+} from '../../src/features/balance/balance-statement.js';
+import { type LeaveType, validateNewLeaveType } from '../../src/features/leave-type/leave-type.js';
+import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
 
 /**
  * The balance screen, as rules rather than as a screen. FR 53, §7.4. LMS 401.

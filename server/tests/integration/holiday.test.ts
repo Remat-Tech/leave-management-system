@@ -9,12 +9,15 @@ import {
   HolidayInASettledYear,
   HolidayNotFound,
   InvalidHoliday,
-} from '../../src/domain/holiday.js';
-import type { LeaveYear } from '../../src/domain/leave-year.js';
-import { HolidayRepository } from '../../src/repositories/holiday-repository.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { HolidayService } from '../../src/services/holiday-service.js';
-import { earliestOpenDayFrom, LeaveYearService } from '../../src/services/leave-year-service.js';
+} from '../../src/features/holiday/holiday.js';
+import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
+import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { HolidayService } from '../../src/features/holiday/holiday.service.js';
+import {
+  earliestOpenDayFrom,
+  LeaveYearService,
+} from '../../src/features/leave-year/leave-year.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';

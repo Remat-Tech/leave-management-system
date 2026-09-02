@@ -11,9 +11,12 @@ import {
   LeaveYearNotFinished,
   LeaveYearNotFound,
   OverlappingLeaveYears,
-} from '../../src/domain/leave-year.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { earliestOpenDayFrom, LeaveYearService } from '../../src/services/leave-year-service.js';
+} from '../../src/features/leave-year/leave-year.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import {
+  earliestOpenDayFrom,
+  LeaveYearService,
+} from '../../src/features/leave-year/leave-year.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';

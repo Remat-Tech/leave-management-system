@@ -2,9 +2,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { signedInAs } from '../../src/auth/actor.js';
-import { leaveRequestPolicy } from '../../src/auth/leave-request-policy.js';
-import type { BalanceOwner } from '../../src/auth/ledger-policy.js';
-import { APPROVER_ROLES, type ApproverRole } from '../../src/domain/approval-chain.js';
+import { leaveRequestPolicy } from '../../src/features/leave-request/policy.js';
+import type { BalanceOwner } from '../../src/features/balance/policy.js';
+import { APPROVER_ROLES, type ApproverRole } from '../../src/features/leave-type/approval-chain.js';
 import {
   approvalTo,
   isSettled,
@@ -23,7 +23,7 @@ import {
   TRANSITIONS,
   transitionFor,
   transitionsFrom,
-} from '../../src/domain/leave-request.js';
+} from '../../src/features/leave-request/leave-request.js';
 
 /**
  * A request moves through defined states and no others. §6. LMS 313.
@@ -50,7 +50,7 @@ import {
  *
  * ## What is asserted here, and what is deliberately asserted elsewhere
  *
- * Now that ../../src/auth/leave-request-policy.ts reads `TRANSITIONS`, **a test checking
+ * Now that ../../src/features/leave-request/policy.ts reads `TRANSITIONS`, **a test checking
  * the policy against the table is a test checking a function against itself** — widen a
  * row and both move together. That is the trap the seven-leave-types suite names as
  * "checking the migration against a copy of itself", and it is easy to walk into here
@@ -790,7 +790,7 @@ describe('one writer of the status column', () => {
     const updates = /updateTable\(\s*['"]leave_request['"]\s*\)/;
 
     const repository = sources.find(
-      ({ file }) => file === 'repositories/leave-request-repository.ts',
+      ({ file }) => file === 'features/leave-request/leave-request.db.ts',
     );
 
     expect(repository?.code).toMatch(updates);
@@ -799,7 +799,7 @@ describe('one writer of the status column', () => {
       sources
         .filter(
           ({ file, code }) =>
-            file !== 'repositories/leave-request-repository.ts' && updates.test(code),
+            file !== 'features/leave-request/leave-request.db.ts' && updates.test(code),
         )
         .map(({ file }) => file),
     ).toEqual([]);
@@ -822,7 +822,7 @@ describe('one writer of the status column', () => {
    */
   it('and exactly one statement in it sets a status', () => {
     const repository = sources.find(
-      ({ file }) => file === 'repositories/leave-request-repository.ts',
+      ({ file }) => file === 'features/leave-request/leave-request.db.ts',
     );
 
     expect(repository).toBeDefined();
@@ -841,7 +841,7 @@ describe('one writer of the status column', () => {
   it('and one file calls the repository method that does it', () => {
     const calling = sources.filter(({ code }) => /requests\.moveTo\s*\(/.test(code));
 
-    expect(calling.map(({ file }) => file)).toEqual(['services/balance-service.ts']);
+    expect(calling.map(({ file }) => file)).toEqual(['features/balance/balance.service.ts']);
   });
 
   /**
@@ -857,7 +857,7 @@ describe('one writer of the status column', () => {
    * request one desk early.
    */
   it('and the door asks the table where the request lands', () => {
-    const door = sources.find(({ file }) => file === 'services/balance-service.ts');
+    const door = sources.find(({ file }) => file === 'features/balance/balance.service.ts');
 
     expect(door?.code).toMatch(/settlementTo\(/);
     expect(door?.code).toMatch(/approvalTo\(/);
@@ -873,9 +873,9 @@ describe('one writer of the status column', () => {
     const consulting = sources.filter(({ code }) => pattern.test(code));
 
     expect(consulting.map(({ file }) => file).sort()).toEqual([
-      'domain/leave-request.ts',
-      'services/balance-service.ts',
-      'services/leave-request-service.ts',
+      'features/balance/balance.service.ts',
+      'features/leave-request/leave-request.service.ts',
+      'features/leave-request/leave-request.ts',
     ]);
   });
 });

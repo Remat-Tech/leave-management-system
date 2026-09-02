@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { UNATTRIBUTED } from '../../src/domain/audit.js';
-import type { Employee } from '../../src/domain/employee.js';
-import { desksThatApproved, type LeaveDecision } from '../../src/domain/leave-decision.js';
-import { type LeaveRequest, progressOf, REQUEST_STATUSES } from '../../src/domain/leave-request.js';
+import { UNATTRIBUTED } from '../../src/features/audit/audit.js';
+import type { Employee } from '../../src/features/employee/employee.js';
+import {
+  desksThatApproved,
+  type LeaveDecision,
+} from '../../src/features/leave-request/leave-decision.js';
+import {
+  type LeaveRequest,
+  progressOf,
+  REQUEST_STATUSES,
+} from '../../src/features/leave-request/leave-request.js';
 import {
   type LeaveType,
   type NewLeaveType,
   validateNewLeaveType,
-} from '../../src/domain/leave-type.js';
-import type { LeaveYear } from '../../src/domain/leave-year.js';
+} from '../../src/features/leave-type/leave-type.js';
+import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
 import {
   byMostRecentlyAsked,
   type Deciders,
@@ -21,7 +28,7 @@ import {
   type TrailStep,
   trailFor,
   yearsWithRequests,
-} from '../../src/domain/request-history.js';
+} from '../../src/features/leave-request/request-history.js';
 
 /**
  * My request history, as rules rather than as a screen. FR 54, §7.4. LMS 402.
@@ -274,7 +281,7 @@ describe('the trail', () => {
   /**
    * The two endings nobody decided at a desk, and the one place this file reports a gap.
    *
-   * There is no decision row for either — ../../src/domain/leave-decision.ts refuses to
+   * There is no decision row for either — ../../src/features/leave-request/leave-decision.ts refuses to
    * record a judgement nobody made — so there is nobody to name. `updatedAt` is deliberately
    * not used as the time: a reworded reason moves it, so a withdrawn request tidied up in
    * March would report March as the day it was withdrawn.

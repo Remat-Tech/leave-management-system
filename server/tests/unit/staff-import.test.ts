@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Employee } from '../../src/domain/employee.js';
-import { readSheet, type SheetRow } from '../../src/domain/spreadsheet.js';
+import type { Employee } from '../../src/features/employee/employee.js';
+import { readSheet, type SheetRow } from '../../src/features/staff-import/spreadsheet.js';
 import {
   type ColumnMapping,
   compare,
@@ -18,7 +18,7 @@ import {
   readDraft,
   resolveColumnMapping,
   summarise,
-} from '../../src/domain/staff-import.js';
+} from '../../src/features/staff-import/staff-import.js';
 
 /**
  * The rules a staff import obeys, checked without a database. FR 08, LMS 107.

@@ -1,8 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { APPROVER_ROLES } from '../../src/domain/approval-chain.js';
-import { type LeaveRequest, RELEASING_STATUSES } from '../../src/domain/leave-request.js';
+import { APPROVER_ROLES } from '../../src/features/leave-type/approval-chain.js';
+import {
+  type LeaveRequest,
+  RELEASING_STATUSES,
+} from '../../src/features/leave-request/leave-request.js';
 import {
   approvalNews,
   endingNews,
@@ -14,7 +17,7 @@ import {
   periodInWords,
   validateNotice,
   type WhatHappened,
-} from '../../src/domain/notification.js';
+} from '../../src/features/notification/notification.js';
 
 /**
  * What somebody is told, and the sentence they act on. FR 59, §7.1. LMS 329.
@@ -72,7 +75,7 @@ function happened(overrides: Partial<WhatHappened> = {}): WhatHappened {
 
 describe('the events somebody is told about', () => {
   /* FR 59's list, minus the override nothing can perform. See the module note in
-     /domain/notification.ts and the CHECK in the migration, which say the same thing. */
+     /features/notification/notification.ts and the CHECK in the migration, which say the same thing. */
   it('are the six FR 59 names that this system can actually produce', () => {
     expect(NOTICE_EVENTS).toEqual([
       'SUBMITTED',
@@ -441,16 +444,16 @@ const sources = readdirSync(SOURCE, { recursive: true, encoding: 'utf8' })
 /**
  * The files that may compose or send a notice, and what each is for.
  *
- * `domain/notification.ts` composes the words. `repositories/notification-repository.ts`
- * writes the row. `services/notification-service.ts` is the one that sends. And
- * `services/leave-request-service.ts` calls it, after the door has returned — which is the
+ * `features/notification/notification.ts` composes the words. `features/notification/notification.db.ts`
+ * writes the row. `features/notification/notification.service.ts` is the one that sends. And
+ * `features/leave-request/leave-request.service.ts` calls it, after the door has returned — which is the
  * only place in the application where a notice is occasioned by something that happened.
  */
 const MAY_NOTIFY = [
-  'domain/notification.ts',
-  'repositories/notification-repository.ts',
-  'services/notification-service.ts',
-  'services/leave-request-service.ts',
+  'features/notification/notification.ts',
+  'features/notification/notification.db.ts',
+  'features/notification/notification.service.ts',
+  'features/leave-request/leave-request.service.ts',
 ];
 
 describe('a notice is composed and sent outside every transaction', () => {
@@ -460,7 +463,7 @@ describe('a notice is composed and sent outside every transaction', () => {
 
   /* The door owns the transactions. It must not know how to tell anybody anything. */
   it('and the one writer of balance movements cannot notify at all', () => {
-    const door = sources.find(({ file }) => file === 'services/balance-service.ts');
+    const door = sources.find(({ file }) => file === 'features/balance/balance.service.ts');
 
     expect(door).toBeDefined();
     expect(door?.code).not.toMatch(/NotificationService|noticeOf|Mailer|\.tell\s*\(/);
@@ -478,14 +481,16 @@ describe('a notice is composed and sent outside every transaction', () => {
   /* The seam that owns transactions does not hand one out, so a notice cannot be written on
      a connection inside somebody else's transaction by accident. */
   it('and the transaction seam offers no notification repository', () => {
-    const seam = sources.find(({ file }) => file === 'repositories/transaction.ts');
+    const seam = sources.find(({ file }) => file === 'db/transaction.ts');
 
     expect(seam?.code).not.toMatch(/NotificationRepository/);
   });
 
   /* And the sender opens none of its own. */
   it('and the service that sends opens no transaction', () => {
-    const service = sources.find(({ file }) => file === 'services/notification-service.ts');
+    const service = sources.find(
+      ({ file }) => file === 'features/notification/notification.service.ts',
+    );
 
     expect(service?.code).not.toMatch(/allOrNothing|Transactions|recording\s*\(/);
   });
@@ -494,7 +499,7 @@ describe('a notice is composed and sent outside every transaction', () => {
      which would open one. The migration and the repository both argue why. */
   it('and the repository that writes one opens no transaction either', () => {
     const repository = sources.find(
-      ({ file }) => file === 'repositories/notification-repository.ts',
+      ({ file }) => file === 'features/notification/notification.db.ts',
     );
 
     expect(repository?.code).not.toMatch(/recording\s*\(|transaction\s*\(/);

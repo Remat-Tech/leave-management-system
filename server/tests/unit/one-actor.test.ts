@@ -53,13 +53,13 @@ const sources = readdirSync(SOURCE, { recursive: true, encoding: 'utf8' })
 /**
  * The two files that may mint an actor for a person, and what each is for.
  *
- * `auth/actor.ts` declares `signedInAs`. `services/sign-in-service.ts` calls it at the
+ * `auth/actor.ts` declares `signedInAs`. `features/sign-in/sign-in.service.ts` calls it at the
  * moment somebody finishes proving who they are, which is the only moment that fact is
- * established. `routes/identify.ts` calls it once per request from a verified cookie plus
+ * established. `http/identify.ts` calls it once per request from a verified cookie plus
  * a fresh read of the roles, which is the route layer deriving its own exactly as it was
  * told to.
  */
-const MAY_MINT = ['auth/actor.ts', 'services/sign-in-service.ts', 'routes/identify.ts'];
+const MAY_MINT = ['auth/actor.ts', 'features/sign-in/sign-in.service.ts', 'http/identify.ts'];
 
 describe('an actor is derived, never accepted', () => {
   it('there is source to read', () => {
@@ -95,7 +95,7 @@ describe('an actor is derived, never accepted', () => {
    * And the route layer takes nothing about identity off the request.
    *
    * Deliberately a search for the *fields*, rather than for a body being read at all —
-   * `routes/session.ts` reads an email and a password out of one, which is the whole job
+   * `features/sign-in/session.routes.ts` reads an email and a password out of one, which is the whole job
    * of a sign in route. What must never be read is anything the server is supposed to
    * decide: who this is, what they hold, and whether they are a manager.
    */
@@ -115,14 +115,14 @@ describe('an actor is derived, never accepted', () => {
    *
    * A weaker check than the ones above and worth having anyway: it fails on the change
    * that would quietly undo the mounting order, which is somebody adding a router to
-   * `routes/app.ts` in front of `identify` while chasing a 401 in development.
+   * `http/app.ts` in front of `identify` while chasing a 401 in development.
    *
    * Every reading router is named rather than only the first, because the failure this
    * guards against is a *new* one going in the wrong place — and a test that watched one
    * router would go on passing while the next was mounted in front of the line.
    */
   it('and the application mounts the derivation before anything that reads a record', () => {
-    const app = sources.find(({ file }) => file === 'routes/app.ts');
+    const app = sources.find(({ file }) => file === 'http/app.ts');
 
     expect(app).toBeDefined();
 

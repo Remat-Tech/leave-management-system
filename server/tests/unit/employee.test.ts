@@ -14,7 +14,7 @@ import {
   validateEmployeeChanges,
   validateNewEmployee,
   warnAboutReportingLines,
-} from '../../src/domain/employee.js';
+} from '../../src/features/employee/employee.js';
 
 /**
  * The rules for an employee record, FR 01 to FR 06, checked without a

@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'v
 import type { Kysely } from 'kysely';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import type { Employee } from '../../src/domain/employee.js';
+import type { Employee } from '../../src/features/employee/employee.js';
 import {
   balanceMayBeExceededWithDocument,
   countsWorkingDays,
@@ -17,13 +17,13 @@ import {
   LeaveTypeRetired,
   NotEligibleForLeaveType,
   noticeShortfall,
-} from '../../src/domain/leave-type.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { DepartmentRepository } from '../../src/repositories/department-repository.js';
-import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { EmployeeService } from '../../src/services/employee-service.js';
-import { LeaveTypeService } from '../../src/services/leave-type-service.js';
+} from '../../src/features/leave-type/leave-type.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
+import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { EmployeeService } from '../../src/features/employee/employee.service.js';
+import { LeaveTypeService } from '../../src/features/leave-type/leave-type.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';

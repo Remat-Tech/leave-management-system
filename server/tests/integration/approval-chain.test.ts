@@ -3,21 +3,24 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'v
 import type { Kysely } from 'kysely';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import type { Employee } from '../../src/domain/employee.js';
+import type { Employee } from '../../src/features/employee/employee.js';
 import {
   type ApproverRole,
   nextUnapproved,
   DEFAULT_APPROVAL_CHAIN,
   firstApprover,
   InvalidApprovalChain,
-} from '../../src/domain/approval-chain.js';
-import { type LeaveType, NobodyApprovesLeaveType } from '../../src/domain/leave-type.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { DepartmentRepository } from '../../src/repositories/department-repository.js';
-import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { EmployeeService } from '../../src/services/employee-service.js';
-import { LeaveTypeService } from '../../src/services/leave-type-service.js';
+} from '../../src/features/leave-type/approval-chain.js';
+import {
+  type LeaveType,
+  NobodyApprovesLeaveType,
+} from '../../src/features/leave-type/leave-type.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
+import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { EmployeeService } from '../../src/features/employee/employee.service.js';
+import { LeaveTypeService } from '../../src/features/leave-type/leave-type.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
@@ -232,7 +235,7 @@ describe('the chains of FR 38a, which is the story', () => {
   });
 
   /* Two statements of one fact, which drift unless something asserts they agree:
-     ../../src/domain/approval-chain.ts defaults a type nobody configured, and the
+     ../../src/features/leave-type/approval-chain.ts defaults a type nobody configured, and the
      migration writes the chain for a type an operator restores. Same two desks.
      The same arrangement READS_EVERY_RECORD has with MANDATORY_ROLES. */
   it('default to the same two desks the domain does', async () => {

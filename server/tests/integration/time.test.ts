@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, i
 import { type Kysely, sql } from 'kysely';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { isCalendarDate } from '../../src/domain/time.js';
+import { isCalendarDate } from '../../src/shared/time.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**

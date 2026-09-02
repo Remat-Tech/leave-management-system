@@ -5,12 +5,12 @@ import { type Actor, signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NOT_AUTHORISED_MESSAGE, NotAuthorised } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
-import { APPROVER_ROLES } from '../../src/domain/approval-chain.js';
-import { AUDITED_ENTITIES, UNATTRIBUTED } from '../../src/domain/audit.js';
-import { BalanceOverdrawn } from '../../src/domain/balance.js';
-import { DECIDING_ACTIONS } from '../../src/domain/leave-decision.js';
-import { EmployeeNotFound } from '../../src/domain/employee.js';
-import { InvalidLeavePeriod } from '../../src/domain/leave-calculator.js';
+import { APPROVER_ROLES } from '../../src/features/leave-type/approval-chain.js';
+import { AUDITED_ENTITIES, UNATTRIBUTED } from '../../src/features/audit/audit.js';
+import { BalanceOverdrawn } from '../../src/features/balance/balance.js';
+import { DECIDING_ACTIONS } from '../../src/features/leave-request/leave-decision.js';
+import { EmployeeNotFound } from '../../src/features/employee/employee.js';
+import { InvalidLeavePeriod } from '../../src/features/leave-calculator/leave-calculator.js';
 import {
   InvalidLeaveRequest,
   LeaveAlreadySettled,
@@ -25,27 +25,27 @@ import {
   TRANSITIONS,
   REQUEST_STATUSES,
   validateNewLeaveRequest,
-} from '../../src/domain/leave-request.js';
-import { LeaveTypeRetired } from '../../src/domain/leave-type.js';
-import type { LeaveYear } from '../../src/domain/leave-year.js';
-import { BalanceRepository } from '../../src/repositories/balance-repository.js';
-import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
-import { HolidayRepository } from '../../src/repositories/holiday-repository.js';
-import { LeaveDecisionRepository } from '../../src/repositories/leave-decision-repository.js';
-import { LeaveRequestRepository } from '../../src/repositories/leave-request-repository.js';
-import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
-import { NotificationRepository } from '../../src/repositories/notification-repository.js';
-import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
-import { WorkPatternRepository } from '../../src/repositories/work-pattern-repository.js';
-import { Transactions } from '../../src/repositories/transaction.js';
-import { BalanceService } from '../../src/services/balance-service.js';
-import { LeaveCalculatorService } from '../../src/services/leave-calculator-service.js';
+} from '../../src/features/leave-request/leave-request.js';
+import { LeaveTypeRetired } from '../../src/features/leave-type/leave-type.js';
+import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
+import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
+import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
+import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
+import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
+import { NotificationRepository } from '../../src/features/notification/notification.db.js';
+import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { Transactions } from '../../src/db/transaction.js';
+import { BalanceService } from '../../src/features/balance/balance.service.js';
+import { LeaveCalculatorService } from '../../src/features/leave-calculator/leave-calculator.service.js';
 import {
   LeaveRequestService,
   LeaveYearIsClosed,
-} from '../../src/services/leave-request-service.js';
-import { LeaveYearService } from '../../src/services/leave-year-service.js';
-import { NotificationService } from '../../src/services/notification-service.js';
+} from '../../src/features/leave-request/leave-request.service.js';
+import { LeaveYearService } from '../../src/features/leave-year/leave-year.service.js';
+import { NotificationService } from '../../src/features/notification/notification.service.js';
 import { recordingDenials } from '../support/recording-denials.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';

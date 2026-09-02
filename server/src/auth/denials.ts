@@ -1,6 +1,6 @@
 /** Refused attempts, written down. NFR SEC 03, LMS 112, NFR AUD 02, LMS 113. */
 
-import type { RoleCode } from './roles.js';
+import type { RoleCode } from '../features/role/roles.js';
 
 /** One refused attempt, as it is written down. */
 export interface DeniedAttempt {

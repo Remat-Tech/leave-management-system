@@ -1,6 +1,6 @@
 /** Who is asking. NFR SEC 02, LMS 112, LMS 111. */
 
-import type { Authority, RoleCode } from './roles.js';
+import type { Authority, RoleCode } from '../features/role/roles.js';
 
 /** Somebody, or something, making a request of a service. */
 export interface Actor extends Authority {
