@@ -1,0 +1,213 @@
+/**
+ * The stylesheet, and what it deliberately does not decide.
+ *
+ * **No company colours.** LMS 409 is the story that brings the brand, and the README's
+ * stack table says the component library is "to be confirmed with the designer" and must
+ * "accept company fonts and colours as tokens". Inventing a palette now would mean a
+ * screen that looks decided, and the way that goes wrong is not that it is ugly — it is
+ * that somebody signs the design off against it and the tokens arrive too late to matter.
+ *
+ * So everything here is a system default: the browser's own font stack, `Canvas` and
+ * `CanvasText` for the page, and `AccentColor` where a colour is doing real work. Those
+ * are CSS system colours, which means this screen follows the reader's own light or dark
+ * setting for nothing, and honours a high contrast mode it was never designed for.
+ *
+ * The few values that are not defaults are all about **reading a table of numbers**, which
+ * is what this story is: figures right aligned and tabular, so that a column of them lines
+ * up on the decimal point rather than wandering.
+ *
+ * Every custom property below is a token in the sense LMS 409 will want. When the brand
+ * arrives it is a change to `:root` and to nothing else.
+ */
+
+:root {
+  --page: Canvas;
+  --ink: CanvasText;
+  --accent: AccentColor;
+
+  /* Borders and quiet text, derived from the ink rather than picked, so they follow the
+     reader's theme instead of assuming a light one. */
+  --rule: color-mix(in srgb, CanvasText 18%, transparent);
+  --quiet: color-mix(in srgb, CanvasText 62%, transparent);
+  --raised: color-mix(in srgb, CanvasText 4%, Canvas);
+
+  --gap: 1rem;
+  --radius: 6px;
+
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+main {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--gap);
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ page furniture */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--rule);
+  padding: var(--gap);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  align-items: end;
+}
+
+.quiet {
+  color: var(--quiet);
+  font-size: 0.875rem;
+}
+
+/* ------------------------------------------------------------------------ controls */
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--page);
+  color: var(--ink);
+}
+
+button {
+  cursor: pointer;
+  background: var(--raised);
+}
+
+button[type='submit'] {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  cursor: progress;
+  color: var(--quiet);
+}
+
+/* Never remove an outline without replacing it. Keyboard users are the whole reason it
+   is there, and `outline: none` is the single most common accessibility regression. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------------- the table */
+
+.balances {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.balances caption {
+  text-align: left;
+  padding-bottom: 0.5rem;
+}
+
+.balances th,
+.balances td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.5rem;
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.balances thead th {
+  font-size: 0.8125rem;
+  color: var(--quiet);
+  font-weight: 600;
+}
+
+/**
+ * Figures right aligned and tabular.
+ *
+ * `font-variant-numeric: tabular-nums` gives every digit the same width, so 10.08 sits
+ * under 20.00 rather than half a character to the left of it. A column of leave figures
+ * that does not line up is one somebody has to read twice.
+ */
+.balances .figure {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.balances .available {
+  font-weight: 600;
+}
+
+/* §8.6b. A sick balance below nought is correct and has to look deliberate rather than
+   like a rendering fault. Marked with a class the server's sign decides, never a colour
+   alone — colour is not information. */
+.balances .overdrawn::after {
+  content: ' (overdrawn)';
+  font-weight: 400;
+  font-size: 0.8125rem;
+  color: var(--quiet);
+}
+
+.balances .retired {
+  color: var(--quiet);
+}
+
+/* -------------------------------------------------------------------------- notices */
+
+.notice {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.75rem var(--gap);
+  background: var(--raised);
+}
+
+.centred {
+  max-width: 24rem;
+  margin: 4rem auto;
+}

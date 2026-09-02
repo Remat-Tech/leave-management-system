@@ -8,6 +8,11 @@
   },
   "scripts": {
     "migrate": "node-pg-migrate --envPath .env --database-url-var DATABASE_MIGRATION_URL --migrations-dir server/migrations --migration-file-language sql --migration-filename-format utc",
+    "api": "tsx server/src/main.ts",
+    "api:watch": "tsx watch server/src/main.ts",
+    "web": "npm --prefix client run dev",
+    "web:build": "npm --prefix client run build",
+    "web:install": "npm --prefix client install",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -24,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/express": "^5.0.6",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.23.1",
     "dotenv": "^17.4.2",
@@ -34,11 +40,13 @@
     "lint-staged": "^17.3.0",
     "node-pg-migrate": "^9.0.0",
     "prettier": "^3.9.6",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.68.0",
     "vitest": "^4.1.11"
   },
   "dependencies": {
+    "express": "^5.2.1",
     "kysely": "^0.29.5",
     "nodemailer": "^9.0.5",
     "pg": "^8.23.0"
@@ -51,5 +59,8 @@
     "*.{json,css,scss,html,yml,yaml}": [
       "prettier --write"
     ]
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
   }
 }

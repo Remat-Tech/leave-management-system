@@ -80,14 +80,31 @@ git clone git@github.com:Remat-Tech/leave-management-system.git
 cd leave-management-system
 
 npm install
+npm run web:install     # the client is its own npm project, see below
 
 cp .env.example .env
 # fill in DATABASE_URL and the other values, see below
+# SESSION_SECRET is not optional: openssl rand -base64 32
 
 npm run migrate up      # create the schema
 npm run seed            # load fixture data
-npm run dev             # api on :3000, web on :5173
+
+npm run api             # the API, on :3000
+npm run web             # the client, on :5173, in a second terminal
 ```
+
+Open <http://localhost:5173>. The client proxies `/api` to the API, so everything
+happens on one origin — which is what lets the session cookie be `SameSite=Strict`
+and the API carry no CORS at all. Sign in as any seeded employee once HR has set
+them a password; `npm run seed` creates the logins but no passwords, because
+`SignInService.setPassword` is the only thing that sets one and there is no self
+service reset.
+
+**`client/` is a separate npm project**, with its own `package.json` and its own
+`node_modules`. Deliberately: the server runs on Node with no DOM and no JSX, and
+one `tsconfig` covering both would have to be loose enough to let a server file
+reach for `window`. Two projects, two `tsconfig`s, one `eslint.config.mjs` with a
+`client/**` block that has the browser globals in it and nothing else does.
 
 **An empty database is all you need to start.** The schema is the migrations and
 the fixtures are the seed, so nothing is ever imported or copied between
@@ -112,8 +129,9 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 | `DATABASE_URL` | Connection for the running application, as the restricted `lms_app` role |
 | `DATABASE_MIGRATION_URL` | Connection for migrations only, as the owner role. Never used by the application |
 | `TEST_DATABASE_URL` | Where integration tests build their disposable database. Point it at local Postgres 17; falls back to `DATABASE_MIGRATION_URL` |
-| `PORT` | API port, defaults to 3000 |
-| `SESSION_SECRET` | Signing key for sessions. Still nothing reads it. LMS 112 put authorisation in the service layer, which is the half that has to be right whatever the interface does; a session is a route layer thing and there are no routes |
+| `NODE_ENV` | `development` or `production`. It decides one thing that matters: whether the session cookie is marked `Secure`. A browser will not store a `Secure` cookie from `http://localhost`, so signing in would silently do nothing in development |
+| `PORT` | API port, defaults to 3000. Read since LMS 401, which is when there was first a server to listen on it |
+| `SESSION_SECRET` | Signs the session cookie. Read since LMS 401. **No default, and the process will not start without one** — a default signing key is a system that runs perfectly well in production while anybody can mint a cookie for anybody. Under 32 characters is refused too |
 | `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01. Settled at `rematholdings.com` |
 | `MFA_CODE_*` | Length and lifetime of the sign in code. Both have safe defaults; a value that is present and nonsense is refused |
 | `DISPLAY_TIMEZONE` | The zone instants are *shown* in. NFR DAT 03. Display only: everything is stored in UTC and every leave date has no zone at all, so changing it moves nothing in the database. Defaults to `Africa/Accra`; a name this Node does not know is refused rather than quietly falling back |
@@ -559,20 +577,32 @@ nothing above it changes.
 
 ### What is not built
 
-**No session, no cookie, no token.** `signIn` hands back an actor, which is the
-*answer* to "who is this" and never the evidence for it. A route layer has to
-derive its own from whatever identifies a request; an actor must never arrive
-over the wire. `SESSION_SECRET` is still waiting.
+**The session is a signed cookie and nothing else.** Since LMS 401. It carries an
+employee id, when it was issued, and an HMAC over both — and **no roles**, because
+`signIn` hands back an actor that is the *answer* to "who is this" and never the
+evidence for it. `routes/identify.ts` derives its own on every request; an actor
+never arrives over the wire.
 
-**Roles are a snapshot taken at sign in.** Revoke `HR_ADMIN` while somebody is
-working and they keep it until they sign in again. Reading `user_role` on every
-policy check would be a round trip per decision and still a snapshot, just a
-fresher one. Where it genuinely matters the answer is `close()` the account, which
-the next sign in cannot survive.
+There is no session table, so there is nothing to revoke, and signing out clears
+the browser's copy rather than invalidating it. That is bounded two ways: the
+cookie lives eight hours, and every request re-reads the employee record and the
+login, so somebody terminated at nine o'clock is refused at one minute past. What
+survives is a stolen cookie for the rest of its life. The answer to that is a
+session table, and it is a story with a migration in it.
+
+**Roles are read fresh on every request, and are a snapshot only inside one.**
+This was the other way round until LMS 401, which said the price — "a round trip
+per decision" — was worth paying once at the route rather than at every policy
+check. Revoke `HR_ADMIN` while somebody is working and it is gone on their next
+request.
+
+**No CSRF token.** `SameSite=Strict` stands in for one, which is why it is Strict
+rather than the usual Lax. The day this API is called from another origin it needs
+a token in the same change.
 
 **No rate limit.** Four hundred refusals in a minute are four hundred lines and no
-delay. The counter belongs in front of the route with the one unlimited password
-guesses need. It needs doing, and it is not done.
+delay. The counter belongs in front of the sign in routes in `routes/app.ts`, with
+the one unlimited password guesses need. It needs doing, and it is not done.
 
 **`theSystem()` is a back door with a name on it.** A job, a migration, a seed and
 a test fixture all have to write records and none has a person behind them, so
@@ -773,6 +803,7 @@ one of them public.
   /migrations        numbered SQL migrations, never edited after merge
   /seeds             the fixture organisation
   /src
+    main.ts          the composition root. Builds everything once, then listens
     /routes          HTTP only. No business rules live here
     /services        business rules. LeaveRequestService, BalanceService, ...
     /repositories    database access
@@ -783,12 +814,19 @@ one of them public.
     /mail            outbound notification transport
     /storage         attachment bytes, behind one interface
   /tests
-/client
+/client              its own npm project: React 19, Vite, its own tsconfig
   /src
+    api.ts           the only place the client talks to the server
     /features        one folder per area: requests, balances, approvals, admin
     /components      shared UI
 /docs                the specification documents listed above
 ```
+
+`/routes` arrived with [LMS 401](#my-balances) and holds six files: the app
+assembly, the session cookie, the middleware that turns a request into an `Actor`,
+the error-to-status translation, and two routers. Nothing in it decides anything —
+see the layering rule below, and `routes/app.ts`, where the **order things are
+mounted in** is the one security property a route layer has to get right by itself.
 
 ### Layering rule
 
@@ -2212,9 +2250,11 @@ like it. The subject carries the count, because "one balance is out by half a da
 is deliberately not told — a wrong balance is somebody's leave, and a system that mails
 it to administrators as a matter of routine has stopped treating it as such.
 
-**Nightly is a cron line, and there is nowhere yet to put one.** This build has no
-server entry point, no route layer and no scheduler, so `BalanceReconciliation.run()`
-is written to be called by the first thing that runs on a timer and is not itself
+**Nightly is a cron line, and there is still nowhere to put one.** LMS 401 brought a
+server entry point and a route layer; it deliberately did not bring a scheduler, because
+hanging the nightly jobs off a web process is the arrangement where they stop running
+the day somebody starts a second one. So `BalanceReconciliation.run()` is still written
+to be called by the first thing that runs on a timer and is still not itself
 scheduled. When there is a process, the line is one call a night, out of hours, as
 `theSystem('the nightly balance reconciliation')` — and an HR Officer may run the same
 check this afternoon, which is why the policy allows a person as well as the job.
@@ -3489,8 +3529,10 @@ sentence about self-approval.
 
 **403 and the log are `Guard.enforce`'s**, as every refusal in this system is: a
 `NotAuthorised` carrying the vague message or the open one, with the attempt written to the
-denial log first — who, what they held, which verb, whose leave. There is no route layer yet
-to turn that into a status code, which is Phase 4 and one `catch`; what this story settles is
+denial log first — who, what they held, which verb, whose leave. Turning that into a status
+code arrived with [LMS 401](#my-balances) and is `routes/problems.ts`: an open refusal is
+403 with its own sentence, a silent one is **404 with the words a missing record produces**,
+because a 403 would state the very fact the message declines to. What this story settles is
 the half that has to be right on the server whatever the interface does.
 
 **What is still not built, and it is the reciprocal.** FR 48b routes such a request *upwards*
@@ -3561,6 +3603,114 @@ does not have: a request exists because somebody submitted it, and `REQUEST_STAT
 same story as the transition that reaches it — a state nothing can create is a promise the
 schema cannot keep. Adding one would be a lifecycle rather than a cancellation, and nothing in
 the backlog asks for it.
+
+---
+
+### My balances
+
+**Every leave type, with what was granted, carried over, taken and spoken for, and what is
+left — for a leave year the person picks.** FR 53, §7.4, LMS 401. The first story of Phase 4
+and the first one anybody outside this repository can see, because it is also the story that
+brought the route layer and the client.
+
+Everything the answer is made of has existed since Phase 2. The ledger records the movements,
+`leave_balance` keeps the sum, `BalanceService.forEmployee` reads it. What this story adds is
+the arrangement of those figures into something a person can read, and **three ways a screen
+of correct numbers could still mislead**.
+
+**A leave type with no row is not a leave type with no allowance.** `BalanceRepository.forEmployee`
+returns only balances something has moved, says so, and hands the rest of the question over by
+name. `linesFor` in `domain/balance-statement.ts` is the answer: a type is on the statement
+where **anything has moved it**, or where it is **still offered and open to this person**. The
+moved limb is asked first, so no rule about retirement or eligibility can hide a figure that
+exists — a type HR retired in March stays on the statement of everybody with days in it,
+because a figure that exists has to be explainable. The second limb is why sick leave shows
+three days to somebody who has not been ill, and why maternity leave is not on a man's
+statement at all: a line reading "0 days" against a type he can never request is worse than no
+line. FR 05, read off `gender_restriction`.
+
+**A nought that means "not yet" is not a nought that means "none left".** FR 32g divides the
+types in two, and compassionate leave reading nought in January is not somebody who has used it
+all — it is somebody nothing has happened to. Shown as a bare digit it says the opposite of
+what is true, to somebody who is by definition having a bad week. So every line carries
+`allowanceInWords`, which says whether the figures are a yearly allowance or something granted
+per occasion, and names the expiry where FR 32e gives one.
+
+**The row has to add up.** The backlog asks for five figures; the line carries six. `adjustment`
+is the extra one and it is not padding: available is
+`entitled + carriedOver + adjustment − taken − pending`, so a screen showing four of those five
+terms beside the answer is a subtraction the reader cannot perform — and the missing term is
+exactly the one they are querying, because FR 37's manual movements are the figures people ask
+about. **And nothing totals the column.** Twenty annual days and three sick days are not
+twenty-three of anything.
+
+**Prior years are the ones that were theirs.** `yearsToChooseFrom` has the same two-limbed shape
+and for the same reasons: the years they were **employed** for, via the `employedPortionOf` the
+pro rata grant already asks — so a joiner does not get the year before they arrived and a leaver
+does not get the year after they went — and the years they **hold a balance in**, which is the
+safety net for a figure filed somewhere employment does not reach. Asking for a real year that
+is neither is a 404 that names the years that are, rather than seven rows of nought that read as
+"you have no leave". Next year *is* on the list, because the rollover fills it in the moment
+this one closes.
+
+**And the counting basis is on every row, in words.** FR 22, the story's third criterion.
+`countingBasisInWords` moved from the request quote to `domain/leave-type.ts` when this became
+its second caller — it is a fact about a type and nothing about a request. It matters more here
+than on a quote, because a statement puts annual leave and maternity leave in adjacent rows
+where the same "14 days" means a fortnight of work in one and a fortnight of the calendar in the
+other.
+
+#### And the route layer, which had to exist first
+
+There were no endpoints before this story. Three phases of services were built and tested
+without one deliberately — "LMS 112 put authorisation in the service layer, which is the half
+that has to be right whatever the interface does" — so what arrived here is the interface, and
+it adds no rule.
+
+**`GET /api/me/balances`, and `me` is not a convenience.** The employee id handed to the service
+is `actor.employeeId`, off the verified session cookie, so there is **no way to point this route
+at anybody else** whatever is sent. `ledgerPolicy.read` would refuse somebody else's balances
+anyway and a `/employees/:id/balances` guarded by it would be correct — but it would be correct
+*because the guard is asked*, and a route that cannot name anybody else needs no such argument.
+FR 55 and FR 56 are LMS 402 and LMS 405, and they are a different route with a rule of their own
+about who the subject may be.
+
+**The session cookie carries an employee id and no roles.** `SignedIn.actor` is explicit that an
+actor is the answer to "who is this" and never the evidence for it, so the cookie is an id, an
+issued-at and an HMAC over both — and `routes/identify.ts` re-reads the employee record, the
+login and the roles on **every request**. That is stricter than the snapshot this README used to
+describe: an `HR_ADMIN` revoked while somebody is working is gone on their next request, and
+somebody terminated at nine o'clock is refused at one minute past.
+
+**The mounting order in `routes/app.ts` is the authorisation model.** Two sign in routes in
+front of `identify`, everything else behind it. A route added behind it cannot be reached
+without a session whatever its handler forgets; making one public is an edit to that file, which
+somebody reviews.
+
+**A silent refusal is 404, not 403.** `routes/problems.ts`, and it is the one translation that
+had to be got right: `NOT_AUTHORISED_MESSAGE` is written to be word for word identical to what a
+missing record produces, because "two messages that differ are a way of asking the server
+whether a record exists" — and 403 means "it is there and you may not", which states the very
+fact the sentence declines to. The status has to be as vague as the words are.
+
+**Nothing is recalculated in the browser.** Not `available`, not a day count, not which leave
+year today is in. Every figure the screen prints is a field on the wire, and
+`integration/balances-api.test.ts` asserts the exact field list so that one going missing is a
+failing test rather than a subtraction the client quietly starts doing. A figure computed in a
+browser is a second implementation of a rule, running where no test in this repository can
+reach, and the first sign the two disagree is somebody planning a fortnight around a number that
+was never true.
+
+**And a calendar date stays ten characters.** `2026-12-31` goes from the column to the JSON to
+the screen untouched, and `client/src/api.ts` never hands one to `new Date()`. NFR DAT 03: a
+leave year runs to a day rather than to an instant, and converting one in a browser is how the
+last day of the year becomes the second to last for anybody west of Greenwich.
+
+**The client uses no company colours**, on purpose. LMS 409 brings the brand and the component
+library is still "to be confirmed with the designer"; the stylesheet is CSS system colours and
+the browser's own font stack, which means it follows the reader's light or dark setting for
+nothing. Inventing a palette now would not merely look wrong — it would get signed off, and the
+tokens would arrive too late to matter.
 
 ---
 

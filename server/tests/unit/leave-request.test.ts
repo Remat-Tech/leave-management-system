@@ -7,7 +7,6 @@ import {
   transitionsFrom,
   assertTheDaysAreThere,
   blocksTheCalendar,
-  countingBasisInWords,
   InvalidLeaveRequest,
   isSettled,
   LeaveAlreadySettled,
@@ -31,6 +30,7 @@ import {
 } from '../../src/domain/leave-request.js';
 import {
   COUNTING_BASES,
+  countingBasisInWords,
   type LeaveType,
   validateNewLeaveType,
 } from '../../src/domain/leave-type.js';

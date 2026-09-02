@@ -634,6 +634,31 @@ export function countsWorkingDays(type: LeaveType): boolean {
 }
 
 /**
+ * FR 21, FR 22. The counting basis, said to a person rather than to a database.
+ *
+ * `WORKING_DAYS` is not shown to anybody. The sentence names what is skipped,
+ * because that is the part somebody is checking: a person looking at "7 days"
+ * against a nine day period wants to know the weekend is why.
+ *
+ * A function of the basis and never of the type's code, exactly as
+ * {@link countsWorkingDays} is. A type HR adds next year renders correctly the
+ * moment the row exists.
+ *
+ * **It lived on the request quote until LMS 401**, because the quote of LMS 302
+ * was the only thing that had to show it. The balance statement is the second
+ * caller and is not about a request at all, so the sentence moved to the file it
+ * is a fact about — the same move `deskInWords` made in ./approval-chain.ts when
+ * a second caller appeared. Two copies of it would be two sentences that
+ * eventually disagree about what a calendar day costs, in the two places a person
+ * reads it: before they ask, and afterwards.
+ */
+export function countingBasisInWords(basis: CountingBasis): string {
+  return basis === 'WORKING_DAYS'
+    ? 'working days — days you are not scheduled to work, and public holidays, cost nothing'
+    : 'calendar days — every day of the period counts, weekends and public holidays included';
+}
+
+/**
  * Whether this type has an annual balance that resets. FR 32g.
  *
  * What decides that a `leave_balance` row is opened by the year rollover, and
