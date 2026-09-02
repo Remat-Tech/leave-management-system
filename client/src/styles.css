@@ -45,6 +45,12 @@
   --left: #dfe3ea;
   --warn: #b3261e;
 
+  /* Leave that has been agreed. Derived from the accent rather than being a fourth hue,
+     for the reason the block above is grey: the brand arrives with LMS 409 and a green
+     invented here would get signed off. It never carries meaning on its own — the tag
+     beside it says the word. */
+  --agreed: color-mix(in srgb, var(--accent) 85%, black);
+
   --radius: 14px;
   --radius-small: 8px;
   --shadow: 0 1px 2px rgb(20 24 31 / 6%), 0 4px 16px rgb(20 24 31 / 4%);
@@ -68,6 +74,10 @@
     --left: #262c36;
     --pending: color-mix(in srgb, var(--accent) 45%, black);
     --warn: #f2b8b5;
+
+    /* Lightened rather than darkened, because it is read against `--card` at #171b22 and
+       the light theme's mix would fail contrast there. */
+    --agreed: color-mix(in srgb, var(--accent) 35%, white);
 
     --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 4px 16px rgb(0 0 0 / 24%);
   }
@@ -226,6 +236,45 @@ button:hover:not(:disabled) {
 .linkish:hover:not(:disabled) {
   color: var(--ink);
   background: var(--line);
+}
+
+/**
+ * The two screens, in the top bar. LMS 402.
+ *
+ * Buttons rather than links, because there are no addresses yet — `App.tsx` says why the
+ * router is still one story away and names what that costs. When it arrives these become
+ * anchors and nothing else here changes.
+ *
+ * Which one you are on is `aria-current="page"`, and the weight and background follow that
+ * attribute rather than a second class. A tab that looked selected without saying so is one
+ * a screen reader cannot report.
+ */
+.screens {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.screen-tab {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.screen-tab:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--line);
+  border-color: transparent;
+}
+
+.screen-tab[aria-current='page'] {
+  color: var(--ink);
+  background: var(--card);
+  border-color: var(--line-strong);
+  font-weight: 600;
 }
 
 /* ---------------------------------------------------------------------- the cards */
@@ -463,6 +512,175 @@ button:hover:not(:disabled) {
   border-top: 1px solid var(--line);
 }
 
+/* -------------------------------------------------------------- the request history */
+
+/**
+ * One column rather than the balance screen's grid. LMS 402.
+ *
+ * A history is read in order — newest first — and a grid that reflowed to two columns would
+ * put the second request beside the first rather than under it, which for a list whose whole
+ * meaning is its order reads as two columns of unrelated cards.
+ */
+.requests {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.card.request {
+  gap: 0.75rem;
+}
+
+/* The dates are the heading, because they are what somebody is looking for. Tabular figures
+   so that a column of them lines up. */
+.card.request .card-head h3 {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9375rem;
+}
+
+/* Leave that came back. Quieter rather than hidden, exactly as a dormant balance card is:
+   it happened, it is part of the record, and it is not the news. */
+.card.request.is-withdrawn,
+.card.request.is-cancelled {
+  background: color-mix(in srgb, var(--card) 60%, var(--page));
+  box-shadow: none;
+}
+
+/* The status, said in a word. The colour is never the only thing saying it — the tag
+   contains the word itself, which is the rule the file header sets out. */
+.tag.status.is-approved {
+  color: var(--agreed);
+  border-color: color-mix(in srgb, var(--agreed) 40%, transparent);
+}
+
+.tag.status.is-refused {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+}
+
+.tag.status.is-submitted {
+  color: var(--ink-soft);
+  border-color: var(--ink-faint);
+}
+
+.request-what {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+}
+
+/**
+ * Somebody's own words — the reason on a request, and an approver's comment.
+ *
+ * `pre-wrap`, because a manager who wrote two paragraphs wrote two paragraphs, and collapsing
+ * them into one is the system editing a record it promised not to edit. No line clamp and no
+ * "show more": FR 39's comment is the only account of a decision anybody will have next year.
+ */
+.said {
+  margin: 0;
+  padding: 0.15rem 0 0.15rem 0.875rem;
+  border-left: 2px solid var(--line-strong);
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* FR 41. The sentence a person acts on, so it is the weight of one. */
+.progress {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.progress.is-agreed {
+  color: var(--agreed);
+}
+
+/* --------------------------------------------------------------------- the trail */
+
+/**
+ * How a request got where it is, as a rail with a mark per step.
+ *
+ * The marks are decoration and the sentences are the content: every step already reads as a
+ * whole statement, so nothing here has to be inferred from a dot. What the shape adds is the
+ * one thing prose is bad at — that these are in order and that the list is not finished.
+ *
+ * A step that has not happened is hollow rather than absent, which is the whole argument
+ * `RequestsPage.tsx` makes: a trail that stopped at the newest approval reads as agreement.
+ */
+.trail {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.trail .step {
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.trail .step::before {
+  content: '';
+  position: absolute;
+  left: 0.25rem;
+  top: 0.45rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+
+/* The rail joining one mark to the next, stopping at the last. */
+.trail .step::after {
+  content: '';
+  position: absolute;
+  left: 0.48rem;
+  top: 1.15rem;
+  bottom: -0.875rem;
+  width: 1px;
+  background: var(--line-strong);
+}
+
+.trail .step:last-child::after {
+  display: none;
+}
+
+/* Not yet asked. Hollow, and the rail above it dashed rather than solid, because what is
+   above the mark is a thing that will happen and not a thing that did. */
+.trail .step.is-waiting::before {
+  background: var(--page);
+  border: 1px solid var(--line-strong);
+  left: 0.2rem;
+  top: 0.4rem;
+}
+
+.trail .step.is-waiting .step-what {
+  color: var(--ink-faint);
+}
+
+.step-what {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.step-who {
+  margin: 0.1rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+}
+
+.trail .said {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+}
+
 /* --------------------------------------------------------------------- notices */
 
 .notice {
@@ -472,6 +690,14 @@ button:hover:not(:disabled) {
   border-radius: var(--radius-small);
   padding: 0.75rem var(--gap);
   margin: var(--gap) 0;
+}
+
+/* Nothing to report rather than something wrong. The stripe is for a refusal the server
+   wrote; an empty history is an answer, and colouring it as a warning would tell somebody
+   their perfectly ordinary first month at work had gone wrong. */
+.notice.plain {
+  border-left-color: var(--line-strong);
+  color: var(--ink-soft);
 }
 
 .centred {
@@ -505,6 +731,13 @@ button:hover:not(:disabled) {
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
   height: 13rem;
+}
+
+/* A request card carries a trail as well as its figures, so its placeholder is taller. The
+   point of a skeleton is the shape of the answer, and one the wrong height is a page that
+   jumps when the answer lands. */
+.skeleton.is-tall {
+  height: 19rem;
 }
 
 @keyframes shimmer {

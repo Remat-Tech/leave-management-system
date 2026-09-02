@@ -116,6 +116,10 @@ describe('an actor is derived, never accepted', () => {
    * A weaker check than the ones above and worth having anyway: it fails on the change
    * that would quietly undo the mounting order, which is somebody adding a router to
    * `routes/app.ts` in front of `identify` while chasing a 401 in development.
+   *
+   * Every reading router is named rather than only the first, because the failure this
+   * guards against is a *new* one going in the wrong place — and a test that watched one
+   * router would go on passing while the next was mounted in front of the line.
    */
   it('and the application mounts the derivation before anything that reads a record', () => {
     const app = sources.find(({ file }) => file === 'routes/app.ts');
@@ -123,8 +127,13 @@ describe('an actor is derived, never accepted', () => {
     expect(app).toBeDefined();
 
     const code = app?.code ?? '';
+    const theLine = code.indexOf('identify(');
 
-    expect(code.indexOf('identify(')).toBeGreaterThan(-1);
-    expect(code.indexOf('identify(')).toBeLessThan(code.indexOf('balanceRoutes('));
+    expect(theLine).toBeGreaterThan(-1);
+
+    for (const router of ['balanceRoutes(', 'requestRoutes(']) {
+      expect(code.indexOf(router)).toBeGreaterThan(-1);
+      expect(theLine).toBeLessThan(code.indexOf(router));
+    }
   });
 });

@@ -3672,8 +3672,8 @@ is `actor.employeeId`, off the verified session cookie, so there is **no way to 
 at anybody else** whatever is sent. `ledgerPolicy.read` would refuse somebody else's balances
 anyway and a `/employees/:id/balances` guarded by it would be correct — but it would be correct
 *because the guard is asked*, and a route that cannot name anybody else needs no such argument.
-FR 55 and FR 56 are LMS 402 and LMS 405, and they are a different route with a rule of their own
-about who the subject may be.
+FR 55 and FR 56 are LMS 405, and they are a different route with a rule of their own about who
+the subject may be.
 
 **The session cookie carries an employee id and no roles.** `SignedIn.actor` is explicit that an
 actor is the answer to "who is this" and never the evidence for it, so the cookie is an id, an
@@ -3711,6 +3711,101 @@ library is still "to be confirmed with the designer"; the stylesheet is CSS syst
 the browser's own font stack, which means it follows the reader's light or dark setting for
 nothing. Inventing a palette now would not merely look wrong — it would get signed off, and the
 tokens would arrive too late to matter.
+
+### My request history
+
+**Every request somebody has made, with where it has got to and the account of how it got
+there.** FR 54, §7.4, LMS 402. The story's "so that" is the whole design brief: *I can check
+what happened without relying on memory or email*. Memory is wrong about whether the second
+approver ever answered, and an email is a record of what was sent rather than of what is true
+now — the message saying a manager approved a request is still in the inbox after HR turned it
+down.
+
+**The answer lives in four tables, and any one of them read alone is a true fact and a
+misleading screen.** `leave_request.status` says whether a request is being decided,
+`awaiting_approval_from` says who is deciding it, `leave_request_decision` says what each desk
+said and why, and `leave_type_approval_step` says how many desks there were meant to be. The
+pairing that actually misleads people is the one LMS 316 was written about: **the newest
+approval, shown on its own, reads as agreement.**
+
+`progressOf` in `domain/leave-request.ts` already put those four together for FR 41 and this
+story restates none of it — every entry carries that function's answer whole. What
+`domain/request-history.ts` adds is the *order*: a progress is a verdict about now, and a
+history is the sequence that produced it.
+
+**So the trail contains what has not happened yet**, which is the decision in the story most
+worth arguing for, because a trail reads as a list of events and a pending stage is not one. A
+list that stops at "approved by your line manager" is read as the last word by somebody with an
+aeroplane ticket in the other tab. A list that ends "then HR, who has not been asked yet" cannot
+be. Those steps carry a null `at`, which is what tells a screen they have not happened without
+it having to know what the four kinds mean.
+
+**Two endings carry no name and no time, and that is reported rather than guessed.** A
+withdrawal and a cancellation are not decisions — `domain/leave-decision.ts` is emphatic that
+"a decision recorded for either would put a judgement in front of the requester that nobody
+made" — so no row names who did it or when. The tempting substitute is `leave_request.updated_at`,
+and it is wrong in a way that would be hard to see: a reworded reason moves that column, so a
+request withdrawn in January and tidied up in March would report March. The audit log has both
+facts and is deliberately not read — NFR AUD 02 makes it an investigator's record, and this
+screen is for the person whose leave it is. **The gap is one story wide**, and what closes it is
+recording those two endings as events of their own.
+
+**The decider is named, and `decided_by` is not what names them.** That column holds
+`Actor.description`, which `signedInAs` composes as `employee 10` — a handle written so a log
+entry can be attributed without a join. "Turned down by employee 10" is not a sentence to show
+somebody whose leave was refused, so the service resolves `decided_by_employee_id` against
+`EmployeeRepository.findAllById` and the recorded description is the fallback rather than the
+answer. Leavers included: a manager who has since resigned still approved what they approved.
+
+**Nothing is re-priced.** `days` and `counting_basis` come off the request as it was submitted,
+never off the type as it stands now — FR 11, and a history is where an HR Administrator moving
+annual leave to calendar days would otherwise restate last March's fortnight as fourteen days
+beside a ledger still saying ten.
+
+**Newest first, which is the reverse of the calendar.** `LeaveRequestRepository.list` orders by
+the day the leave starts "because a leave page is read as a calendar"; a history is read the
+other way round. The sort is stable and compares one field, so two requests written in one
+transaction keep the order the repository gave them rather than needing a tie break on a
+`BIGINT` that reaches the domain as a string.
+
+**And an empty year is an answer rather than a refusal**, which is the one place this route
+behaves differently from `/api/me/balances`. That one raises `NotOneOfTheirLeaveYears`, because
+seven rows of nought read as "you have no leave" to somebody who was not employed yet. An empty
+history reads as "you asked for no leave that year", which is exactly what it means. A leave
+year id that names nothing is still a 404.
+
+#### A read service beside the write door, not a method on it
+
+`GET /api/me/requests`, and `me` means the same thing it means for balances: the id handed to
+the service is `actor.employeeId` off the verified cookie, so the route cannot be pointed at
+anybody. FR 55 and FR 56 remain LMS 405's.
+
+`LeaveRequestService` already reads requests, decisions and progress, and the shortest version
+of this story is a fourth method calling all three in a loop. `RequestHistoryService` exists
+instead for the reason `BalanceStatementService` is not a method on `BalanceService`:
+
+- **That class is the write door.** It holds the balance service, the calculator and the
+  notifier because submitting and approving need all three, and every one would have to be
+  constructed to serve a screen that only reads. A route layer that had to build an SMTP
+  transport to render a list of past leave is one where the read path fails for reasons the read
+  path has nothing to do with.
+- **A loop over those three methods is a query per row.** `progressFor` re-reads the request,
+  the employee, the type and the decisions for each entry, because it answers about *one*
+  request from an id. Forty requests is a hundred and sixty round trips for a page.
+
+So the reads are done once, in bulk — six of them for the whole screen — and the domain does the
+assembling. `LeaveDecisionRepository.forRequests` is the one new query, and it is
+`forRequest` widened by an `in` with the same `ORDER BY id`, because `now()` is identical for
+everything written in one transaction and an account sorted by time could reorder itself between
+two reads.
+
+**And the client got a second screen**, which is where `App.tsx` had to decide about a router
+and deliberately still has not. LMS 401 said the decision was "worth making when there is more
+than one place to go"; two places is not where the argument turns, because what a router buys is
+*addresses* — a link, a bookmark, the back button — and a URL scheme chosen before the request
+form and the team calendar have said what they need to link to is a scheme chosen too early. The
+cost is named rather than hidden: **neither screen can be linked to, and the back button leaves
+the application.** The story that adds a third screen brings the router.
 
 ---
 

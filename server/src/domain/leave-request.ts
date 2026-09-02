@@ -1826,16 +1826,25 @@ export function reasonForApproval(
  * A function of the status rather than of anything else, for the reason
  * {@link countingBasisInWords} is: a screen never shows an underscored constant, and one
  * mapping in one place is what stops the ledger's word and the refusal's word drifting
- * apart. Three callers — {@link reasonForRelease}, {@link LeaveAlreadySettled} and
+ * apart. Three callers here — {@link reasonForRelease}, {@link LeaveAlreadySettled} and
  * {@link LeaveCannotBeMoved} — and the first two are precisely the pair a person meets in
  * sequence when they press the button twice.
  *
- * `APPROVED` is in it since LMS 314 and `SUBMITTED` deliberately is not: every caller is
+ * **Exported since LMS 402**, which is the fourth caller and the first outside this file.
+ * `statusInWords` in ./request-history.ts puts the same word on the history screen, and the
+ * alternative was a second mapping written for a `<span>` — at which point a request could
+ * read "refused" in a balance's history and "declined" in its own, and neither screen would
+ * be wrong about anything except the other one.
+ *
+ * `APPROVED` is in it since LMS 314 and `SUBMITTED` deliberately is not: every caller here is
  * describing something that has already happened to the request, and "this leave has been
  * submitted" is not a refusal anybody needs. It falls to the default, which says less
- * rather than something wrong.
+ * rather than something wrong. The history screen is the one caller that has to say
+ * something about a request still being decided, and it answers that status itself rather
+ * than widening this — a status column describing a state that is still running is that
+ * screen's problem, and "decided" would be a worse answer there than a missing one.
  */
-function inWordsSettled(status: RequestStatus): string {
+export function inWordsSettled(status: RequestStatus): string {
   switch (status) {
     case 'WITHDRAWN':
       return 'withdrawn';

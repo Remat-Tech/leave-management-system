@@ -99,6 +99,39 @@ export class LeaveDecisionRepository {
   }
 
   /**
+   * The decisions on a whole page of requests, oldest first within each. FR 54. LMS 402.
+   *
+   * {@link LeaveDecisionRepository.forRequest} asks about one, which is right for a screen
+   * showing one request and is a query per row for a history showing forty. This is the same
+   * read widened by an `in`, and it is ordered by `id` for the same reason that one is:
+   * `now()` is identical for everything written in one transaction, so an account sorted by
+   * time could reorder itself between two reads.
+   *
+   * **An empty list of ids is answered without asking the database.** `WHERE id IN ()` is not
+   * valid SQL, and a person with no requests at all is somebody's first week rather than an
+   * edge case — it should cost nothing.
+   *
+   * The grouping is deliberately not done here. Which decisions belong to which request is a
+   * fact about the rows, and ../domain/request-history.ts does it while it is already walking
+   * them; a repository handing back a `Map` would be a repository that had decided what its
+   * caller wanted to iterate.
+   */
+  async forRequests(leaveRequestIds: readonly string[]): Promise<LeaveDecision[]> {
+    if (leaveRequestIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom('leave_request_decision')
+      .selectAll()
+      .where('leave_request_id', 'in', [...leaveRequestIds])
+      .orderBy('id')
+      .execute();
+
+    return rows.map(toDecision);
+  }
+
+  /**
    * Turns what the database refused into something a caller can act on.
    *
    * One constraint is worth translating and the rest are not. `leave_request_refusal_says_

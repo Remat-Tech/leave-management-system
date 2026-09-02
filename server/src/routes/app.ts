@@ -64,9 +64,12 @@
 import express, { type Express, type Request, type Response } from 'express';
 import type { Guard } from '../auth/policy.js';
 import { BalanceStatementService } from '../services/balance-statement-service.js';
+import { RequestHistoryService } from '../services/request-history-service.js';
 import type { SignInService } from '../services/sign-in-service.js';
 import type { BalanceRepository } from '../repositories/balance-repository.js';
 import type { EmployeeRepository } from '../repositories/employee-repository.js';
+import type { LeaveDecisionRepository } from '../repositories/leave-decision-repository.js';
+import type { LeaveRequestRepository } from '../repositories/leave-request-repository.js';
 import type { LeaveTypeRepository } from '../repositories/leave-type-repository.js';
 import type { LeaveYearRepository } from '../repositories/leave-year-repository.js';
 import type { RoleRepository } from '../repositories/role-repository.js';
@@ -74,16 +77,22 @@ import type { SignInAccountRepository } from '../repositories/sign-in-account-re
 import { balanceRoutes } from './balances.js';
 import { identify } from './identify.js';
 import { answerProblems, type FailureLog } from './problems.js';
+import { requestRoutes } from './requests.js';
 import { publicSessionRoutes, signedInSessionRoutes } from './session.js';
 import { sessionSecretFrom } from './session-cookie.js';
 
 /**
  * What the application is built out of.
  *
- * Repositories and the two services that have routes, passed in rather than constructed
- * here, so that the integration suite can build the same application against a disposable
- * database without a second assembly that could differ from the real one. ../main.ts is
- * the composition root; this is the shape.
+ * Repositories and the sign in service, passed in rather than constructed here, so that the
+ * integration suite can build the same application against a disposable database without a
+ * second assembly that could differ from the real one. ../main.ts is the composition root;
+ * this is the shape.
+ *
+ * The two screen services — `BalanceStatementService` and `RequestHistoryService` — are
+ * built below from these parts rather than passed in, because both are assemblies of
+ * repositories with no state and nothing to configure. `SignInService` is passed in because
+ * it has both.
  */
 export interface Application {
   guard: Guard;
@@ -92,6 +101,16 @@ export interface Application {
   employees: EmployeeRepository;
   types: LeaveTypeRepository;
   years: LeaveYearRepository;
+  /** FR 54. The requests a history is made of. LMS 402. */
+  requests: LeaveRequestRepository;
+  /**
+   * FR 39, FR 52. What each desk said about them. LMS 402.
+   *
+   * Read-only from here. The writing of a decision belongs to the transaction that moves
+   * the status it explains — see `LeaveRequestService` — and nothing in the route layer
+   * opens one.
+   */
+  decisions: LeaveDecisionRepository;
   accounts: SignInAccountRepository;
   roles: RoleRepository;
   /** Where a 500 is written down. Defaulted to stderr; a test passes its own. */
@@ -140,6 +159,23 @@ export function buildApp(parts: Application): Express {
     balanceRoutes({
       statements: new BalanceStatementService(
         parts.balances,
+        parts.guard,
+        parts.employees,
+        parts.types,
+        parts.years,
+      ),
+    }),
+  );
+
+  /* FR 54. LMS 402. Behind `identify` like everything else, and the service it is given
+     reads and never writes — see ../services/request-history-service.ts for why the screen
+     is assembled beside `LeaveRequestService` rather than inside it. */
+  app.use(
+    '/api',
+    requestRoutes({
+      history: new RequestHistoryService(
+        parts.requests,
+        parts.decisions,
         parts.guard,
         parts.employees,
         parts.types,

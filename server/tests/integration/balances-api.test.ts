@@ -11,6 +11,8 @@ import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { BalanceRepository } from '../../src/repositories/balance-repository.js';
 import { EmployeeRepository } from '../../src/repositories/employee-repository.js';
+import { LeaveDecisionRepository } from '../../src/repositories/leave-decision-repository.js';
+import { LeaveRequestRepository } from '../../src/repositories/leave-request-repository.js';
 import { LeaveTypeRepository } from '../../src/repositories/leave-type-repository.js';
 import { LeaveYearRepository } from '../../src/repositories/leave-year-repository.js';
 import { RoleRepository } from '../../src/repositories/role-repository.js';
@@ -96,6 +98,8 @@ beforeAll(async () => {
     employees,
     types: new LeaveTypeRepository(db),
     years: new LeaveYearRepository(db),
+    requests: new LeaveRequestRepository(db),
+    decisions: new LeaveDecisionRepository(db),
     accounts,
     roles,
     secret: SECRET,
