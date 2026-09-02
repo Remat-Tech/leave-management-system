@@ -872,8 +872,11 @@ next year counts correctly the moment the row exists, which is the test of wheth
 FR 31 was achieved rather than merely described. See [The day
 calculator](#the-day-calculator).
 
-What is still not built is the routing itself — which person a chain's desk
-resolves to, and what happens when the request reaches them — which is FR 48.
+FR 48 — which person a chain's desk resolves to, and what happens when the request
+reaches them — is [LMS 314](#routing-a-request-to-its-approvers) and
+[LMS 319](#nobody-approves-their-own-request). What is still not built is FR 48b,
+the reciprocal: a request whose only approver is the person who asked for it routes
+*upwards*, and until it does, such a request waits rather than moving.
 
 **Everything is a whole number of days.** FR 24. Half days are settled between an
 employee and their manager, come off no balance, and are not in this system at all.
@@ -2938,7 +2941,7 @@ different acts:
 | | May | Because |
 |---|---|---|
 | `withdraw()` | the requester, or HR | it is the undoing of submitting, so it is the rule `submit()` already has |
-| `refuse()` | the line manager, or HR | a decision about somebody else's request, which is what a manager is for |
+| `refuse()` | the line manager, or HR, and [never the requester](#nobody-approves-their-own-request) | a decision about somebody else's request, which is what a manager is for |
 | `cancel()` | HR | an administrative unwinding — leave against the wrong person, a request entered twice |
 
 A single `settle` decision would have to be the union of those, which is
@@ -3149,6 +3152,11 @@ That last one is asked again inside the balance lock, and it is not decoration: 
 a manager clicking twice on a two-stage chain would find the request at the HR desk on the
 second pass and approve the leave outright.
 
+[LMS 319](#nobody-approves-their-own-request) put a fourth in front of all three, and it is
+outside the ordering argument rather than part of it: *is this your own request*, asked as
+soon as whose leave it is has been established, because nothing read afterwards could change
+the answer.
+
 **What is deliberately not here.** FR 48b — the manager who raised their own request, the
 Chief Executive who has nobody above them — routes *upwards*, and that is a rule about a
 reporting line rather than about a leave type. Such a request waits at a desk nobody can
@@ -3159,7 +3167,9 @@ what somebody reaching for withdraw is told in the meantime. And `leaveRequestPo
 was **not** narrowed to the chain, so a line manager may still refuse unpaid leave they
 could not approve — a one-line change to the `REFUSE` row that takes a power away from
 managers, which is somebody's decision to make rather than a side effect of building the
-routing.
+routing. What that row did gain, in
+[LMS 319](#nobody-approves-their-own-request), is the requester's exclusion this story wrote
+onto `THE_DESK_IT_IS_WITH` and therefore onto `APPROVE` alone.
 
 ---
 
@@ -3196,7 +3206,9 @@ manager and HR to the `REFUSE` row whichever desk the request is sitting at, whi
 narrowing [LMS 314 deliberately did not make](#routing-a-request-to-its-approvers). So an HR
 Officer turning down leave still with a manager is recorded as their act, at the manager's
 stage, and the manager reading it can see it was not their decision. One field could not say
-that, in exactly the case somebody asks.
+that, in exactly the case somebody asks. The one pairing neither column may ever hold is the
+requester's own id, whichever desk it names —
+[LMS 319](#nobody-approves-their-own-request) refuses that row on every connection.
 
 **Who and when are the database's.** `decided_by`, `decided_by_employee_id` and `decided_at`
 are stamped by `stamp_the_decider_on_a_decision()` from the transaction-local setting the
@@ -3406,6 +3418,87 @@ can approve it or leave it. "Rejection at any stage" is true of the *release* at
 and true of the *rejecting* at two desks of the three. Closing that is one standing added to
 the `REFUSE` row of `TRANSITIONS`, and it hands a power to a desk that does not have it today
 — which is somebody's decision to make rather than a side effect of giving days back faster.
+
+---
+
+### Nobody approves their own request
+
+**The person who asked for the leave never decides it, whatever they hold.** FR 48, §8.6a,
+LMS 319. Not an ordinary employee, not the HR Officer whose own request lands in the queue she
+staffs, not the Head of HR, not the Chief Executive. An approval somebody can give themselves
+is a field on a form rather than a decision, and the story is about what the other approvals
+in this system are worth.
+
+**Half of it was already true, and the half that was not is the interesting half.**
+[LMS 314](#routing-a-request-to-its-approvers) excluded the requester from
+`THE_DESK_IT_IS_WITH`, so nobody has been able to *approve* their own leave since — written
+for an ordinary case rather than an adversarial one, because unpaid leave goes to the HR desk
+first and an HR Officer asking for unpaid leave holds a code that staffs the desk her own
+request starts at.
+
+Refusing was open. `TRANSITIONS` admits `LEAVE_ADMINISTRATION` to the `REFUSE` row, which is
+right — HR turning down somebody else's leave is what that standing is for — and the same
+officer asking for her own leave held it. She could turn her own request down: a `REFUSED`
+status, a `RELEASE`, and a decision row at the HR desk with her name against it, recording a
+judgement nobody else made.
+
+**So the check moved from the standing to the verb.** `leaveRequestPolicy.notTheirOwn()` is
+the first question `mayMove()` asks of `APPROVE` and `REFUSE` — `isADecision()` is the line,
+and it is the same one `/domain/leave-decision.ts` draws for what gets recorded. Written
+against the verb it answers both, and answers whatever deciding verb arrives next by default
+rather than by somebody remembering. Left on the standing it answered one row of the table.
+
+**Withdrawing and cancelling are deliberately outside it.** Taking back your own request is
+the point of withdrawing, and cancelling is HR unwinding a row that should not be on the
+books. Neither is a judgement at a desk, which is why neither writes a decision either — and a
+rule that caught them would be the system refusing a person the right to change their mind.
+The refusal says so, because the likeliest reader wanted their own leave gone and needs to be
+pointed at the act that does it rather than sent looking for a colleague.
+
+**It is the one rule here that nothing can be granted to pass.** Every other decision in
+`leaveRequestPolicy` has some answer that admits somebody — a role, a reporting line, the desk
+a chain has a request sitting on, all of them configuration that HR fills in on a form. This
+one compares two ids. `unit/policy.test.ts` puts every role in `ROLE_CODES` on the requester in
+turn and asserts both verbs are refused for all of them.
+
+**Asked four times, at four altitudes**, which is the arrangement every rule in this system
+that matters has:
+
+| | Where | Catches |
+|---|---|---|
+| `leaveRequestPolicy.notTheirOwn` | at the top of `approve()` and `refuse()`, before the chain, the type or the state is read | the person at the screen, with the sentence they need |
+| the same, inside the balance lock | both doors of `BalanceService` | the answer taken against the row nobody else can move |
+| `ledgerPolicy.commit` | the ledger door | anybody moving this balance who has no standing over it at all |
+| `leave_request_never_decided_by_the_requester` | `AFTER INSERT` on `leave_request_decision`, every connection | the admin view, the bulk action, the repair script, the psql prompt |
+
+The last of those is the story's "regardless of role, screen or endpoint" in the only form it
+can take before there is a screen or an endpoint, and it is complete rather than a second
+opinion: `leave_request_records_its_decision` refuses a request that moved at a desk with no
+decision behind it, so a self-approval that cannot write a decision row cannot move a request
+either. The two triggers are one rule read from both ends.
+
+It is `AFTER INSERT` rather than `BEFORE` for a reason worth knowing before writing the next
+one. The column it reads is stamped by a `BEFORE INSERT` trigger, and `BEFORE` triggers fire
+in **name order** — so a `BEFORE` trigger named for this rule would run first, read a null
+decider every time, and pass everything silently.
+
+**A null decider passes, and that is the system.** `theSystem` is nobody by construction —
+`/auth/actor.ts` gives it a null `employeeId` so it matches no record's owner — and it reaches
+every table in this schema that way. A rule refusing a null would refuse the annual run with a
+sentence about self-approval.
+
+**403 and the log are `Guard.enforce`'s**, as every refusal in this system is: a
+`NotAuthorised` carrying the vague message or the open one, with the attempt written to the
+denial log first — who, what they held, which verb, whose leave. There is no route layer yet
+to turn that into a status code, which is Phase 4 and one `catch`; what this story settles is
+the half that has to be right on the server whatever the interface does.
+
+**What is still not built, and it is the reciprocal.** FR 48b routes such a request *upwards*
+— the manager who raised their own leave to their manager, the lone HR officer to the Chief
+Executive, which is the `lone-hr` seed scenario and §8.6a. That is a rule about a reporting
+line rather than about a leave type, and until it exists a request that reaches a desk only
+its own requester staffs waits there rather than moving. Stuck and visible is the side to be
+wrong on: the failure this story exists to stop is a person believing their leave was agreed.
 
 ---
 
@@ -3895,6 +3988,13 @@ neither `TRUNCATE` nor `DELETE` on `employee`.
 HR function, so her own leave has nobody in HR left to approve it and must fall
 to the CEO. That is the reciprocal routing of FR 48b. Get it wrong and an HR
 officer approves their own leave, which is the defect the rule exists to stop.
+
+Since [LMS 319](#nobody-approves-their-own-request) the defect is refused rather
+than merely designed against: Ama's own request sitting at the HR desk she is
+admits nobody, at four altitudes down to the table the decision is written to. The
+half FR 48b still owes is the *routing* — where that request goes instead — so
+today it waits at a desk nobody can fill, which is stuck and visible rather than
+signed by the person who asked.
 
 `server/tests/integration/seed.test.ts` asserts each of these edges, so removing
 one has to be a decision rather than an accident.

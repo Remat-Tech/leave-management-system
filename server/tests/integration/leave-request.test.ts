@@ -2,7 +2,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 import type { Kysely } from 'kysely';
 import { type Actor, signedInAs, theSystem } from '../../src/auth/actor.js';
-import { Guard, NotAuthorised } from '../../src/auth/policy.js';
+import { Guard, NOT_AUTHORISED_MESSAGE, NotAuthorised } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { APPROVER_ROLES } from '../../src/domain/approval-chain.js';
@@ -44,6 +44,7 @@ import {
   LeaveYearIsClosed,
 } from '../../src/services/leave-request-service.js';
 import { LeaveYearService } from '../../src/services/leave-year-service.js';
+import { recordingDenials } from '../support/recording-denials.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
@@ -73,7 +74,16 @@ import { seed } from '../../seeds/seed.mjs';
 const testDatabaseUrl = inject('testDatabaseUrl');
 
 const system = theSystem('leave request integration fixtures');
-const guard = new Guard();
+
+/**
+ * The refusals this suite provokes, kept rather than printed. NFR SEC 03. LMS 319.
+ *
+ * A `new Guard()` writes to stderr, which is a global other files share and which nothing can
+ * read back. The story's third criterion is that a self-decision is *logged* as well as
+ * refused, and "logged" is only an assertion if something can be asked what it was told.
+ */
+const denials = recordingDenials();
+const guard = new Guard(denials);
 
 let db: Kysely<Database>;
 let admin: Client;
@@ -146,6 +156,8 @@ beforeEach(async () => {
     'TRUNCATE leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
   );
   await restoreYears();
+
+  denials.clear();
 
   people = (await seed(admin)) as Record<string, string>;
 
@@ -3431,6 +3443,347 @@ describe('the days a rejected request was holding', () => {
   }
 
   /** As an HR Administrator would, and restored by the outer `beforeEach`. FR 31. */
+  async function rewriteTheAnnualChain(...desks: readonly string[]): Promise<void> {
+    await admin.query('BEGIN');
+    await admin.query('DELETE FROM leave_type_approval_step WHERE leave_type_id = $1', [annualId]);
+
+    for (const [index, desk] of desks.entries()) {
+      await admin.query(
+        `INSERT INTO leave_type_approval_step (leave_type_id, step_order, approver_role)
+         VALUES ($1, $2, $3)`,
+        [annualId, index + 1, desk],
+      );
+    }
+
+    await admin.query('COMMIT');
+  }
+});
+
+/* ------------------------------------- nobody decides their own request, FR 48 */
+
+/**
+ * Nobody approves their own leave, whatever their role. FR 48, §8.6a. LMS 319.
+ *
+ * ../unit/policy.test.ts enumerates every role against both deciding verbs, which is the real
+ * coverage of the rule and is possible because a policy is a pure function. What needs a
+ * database is the three things that suite cannot see:
+ *
+ *   **That the services actually ask**, at both doors and for both verbs. A perfect policy
+ *   nothing consults protects nothing, and the failure is silent — which is the failure this
+ *   story exists to prevent, one layer up.
+ *
+ *   **That the refusal reaches the log**, with the reason and the verb attempted. NFR SEC 03.
+ *
+ *   **That the database refuses it too**, on the owner connection, with no service anywhere
+ *   near. That is the criterion about admin views and bulk actions in the only form it can
+ *   take before either exists: a writer that has gone round every check there is still cannot
+ *   write the row.
+ *
+ * The person at the centre of all of it is Efua, the HR Officer. She is not an adversary —
+ * she is somebody whose own request lands in the queue she staffs, and whose screen shows her
+ * the buttons because the screen does not know whose leave it is looking at.
+ */
+describe('a request decided by the person who asked for it', () => {
+  /**
+   * Efua Owusu, the HR Officer, asking for her own leave. FR 48's whole case.
+   *
+   * The chain is rewritten to HR alone so that her request starts at the desk her own role
+   * staffs, which is what unpaid leave already does to her under §4.3.1 — annual leave is
+   * used here only because it is the type this file has a balance for.
+   */
+  async function herOwnRequestAtTheHrDesk() {
+    await rewriteTheAnnualChain('HR');
+
+    await balances.grantTheYear(system, {
+      employeeId: people.hrOfficer,
+      leaveTypeId: annualId,
+      leaveYearId: y2026.id,
+      days: 20,
+      reason: 'Annual entitlement for 2026',
+    });
+
+    const { request } = await requests.submit(
+      asOfficer(),
+      aRequest({ employeeId: people.hrOfficer }),
+    );
+
+    expect(request.awaitingApprovalFrom).toBe('HR');
+
+    return request;
+  }
+
+  /* The case LMS 314 closed, asserted here because it is the same rule now and would
+     otherwise be resting on a check that moved. */
+  it('is not approved, even at a desk the requester staffs', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    await expect(requests.approve(asOfficer(), request.id)).rejects.toThrow(NotAuthorised);
+
+    expect(await requests.byId(asOfficer(), request.id)).toMatchObject({
+      status: 'SUBMITTED',
+      awaitingApprovalFrom: 'HR',
+    });
+  });
+
+  /**
+   * And not refused either, which is the half this story added.
+   *
+   * `TRANSITIONS` admits `LEAVE_ADMINISTRATION` to the REFUSE row whichever desk the request
+   * is at, and Efua holds a code in it. Before LMS 319 this call succeeded: her own request,
+   * turned down by her, with a `RELEASE`, a `REFUSED` status and a decision row naming her at
+   * the HR desk — a record of a decision nobody else made.
+   */
+  it('and is not refused by them either, whatever role admits them to the verb', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    await expect(requests.refuse(asOfficer(), request.id, WHY_NOT)).rejects.toThrow(NotAuthorised);
+
+    expect(await requests.byId(asOfficer(), request.id)).toMatchObject({ status: 'SUBMITTED' });
+    expect(await decisions.forRequest(request.id)).toEqual([]);
+  });
+
+  /* And nothing moved on the way out. The refusal is before the transaction rather than a
+     rollback of one, so the days are still held and the balance is where it was. */
+  it('and leaves the days exactly where they were', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    await expect(requests.refuse(asOfficer(), request.id, WHY_NOT)).rejects.toThrow(NotAuthorised);
+
+    const balance = await balances.forOne(system, {
+      employeeId: people.hrOfficer,
+      leaveTypeId: annualId,
+      leaveYearId: y2026.id,
+    });
+
+    expect(balance.pending).toBe(6);
+    expect(balance.taken).toBe(0);
+    expect(balance.available).toBe(14);
+  });
+
+  /**
+   * And holding every role in the company changes nothing. FR 48's "whatever their role".
+   *
+   * Ama is the Head of HR and holds HR_ADMIN, which carries the three endings, an adjustment
+   * and a year's entitlement for five hundred people. It does not carry her own leave. This
+   * is the `lone-hr` shape the seed fixtures are built to expose by name — one person who is
+   * the whole of the HR function, whose own request reaches the desk she is — and the answer
+   * is that the request waits rather than that she signs it. FR 48b's routing upwards is the
+   * story that gives it somewhere to go.
+   */
+  it('and not by somebody who holds every role HR has', async () => {
+    await rewriteTheAnnualChain('HR');
+
+    await balances.grantTheYear(system, {
+      employeeId: people.headOfHr,
+      leaveTypeId: annualId,
+      leaveYearId: y2026.id,
+      days: 20,
+      reason: 'Annual entitlement for 2026',
+    });
+
+    const wholeOfHr = signedInAs(people.headOfHr, {
+      roles: ['EMPLOYEE', 'HR_OFFICER', 'HR_ADMIN', 'SYS_ADMIN'],
+      isManager: true,
+    });
+
+    const { request } = await requests.submit(wholeOfHr, aRequest({ employeeId: people.headOfHr }));
+
+    await expect(requests.approve(wholeOfHr, request.id)).rejects.toThrow(NotAuthorised);
+    await expect(requests.refuse(wholeOfHr, request.id, WHY_NOT)).rejects.toThrow(NotAuthorised);
+  });
+
+  /* And not the Chief Executive, who has nobody above them and is the top of the company the
+     story's "even at the top" names. A chain ending at the CEO desk resolves to Kwame, and
+     Kwame's own request sitting at it is refused exactly as everybody else's is. */
+  it('and not the Chief Executive at their own CEO desk', async () => {
+    await rewriteTheAnnualChain('CEO');
+
+    await balances.grantTheYear(system, {
+      employeeId: people.ceo,
+      leaveTypeId: annualId,
+      leaveYearId: y2026.id,
+      days: 20,
+      reason: 'Annual entitlement for 2026',
+    });
+
+    const chief = signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
+
+    const { request } = await requests.submit(chief, aRequest({ employeeId: people.ceo }));
+
+    expect(request.awaitingApprovalFrom).toBe('CEO');
+
+    await expect(requests.approve(chief, request.id)).rejects.toThrow(NotAuthorised);
+    await expect(requests.refuse(chief, request.id, WHY_NOT)).rejects.toThrow(NotAuthorised);
+  });
+
+  /**
+   * And the attempt is on the record. NFR SEC 03, and the story's third criterion.
+   *
+   * A refusal nobody can find afterwards is a refusal that only stops the honest. What the log
+   * gets is who tried it, what they held at the time, which verb, and against whose leave —
+   * and no field of the request itself, which is ./authorisation.test.ts's rule for every
+   * denial in the system.
+   */
+  it('and the attempt is written to the denial log, with the verb and the reason', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    denials.clear();
+
+    await expect(requests.refuse(asOfficer(), request.id, WHY_NOT)).rejects.toThrow(NotAuthorised);
+
+    expect(denials.last()).toMatchObject({
+      employeeId: people.hrOfficer,
+      resource: 'leave request',
+      action: 'refuse',
+      subject: people.hrOfficer,
+    });
+
+    expect(denials.last()?.because).toContain('nobody decides their own request');
+    expect(denials.last()?.roles).toContain('HR_OFFICER');
+  });
+
+  /* And they are told what they can do instead, rather than only that they may not. The person
+     most likely to meet this wanted their own leave gone, and withdrawing is the act that does
+     it — a refusal that did not say so would send them looking for a colleague. */
+  it('and says so openly, naming the two things they can do instead', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    const refusal = await rejection(() => requests.refuse(asOfficer(), request.id, WHY_NOT));
+
+    expect(refusal.message).toContain('withdraw it');
+    expect(refusal.message).toContain('HR cancels it');
+    expect(refusal.message).not.toBe(NOT_AUTHORISED_MESSAGE);
+  });
+
+  /* And withdrawing is exactly what they can do, which is the other half of the rule: the two
+     verbs that are not a decision at a desk are untouched, and the days come back. */
+  it('and withdrawing their own request still works, and gives the days back', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    const withdrawn = await requests.withdraw(asOfficer(), request.id);
+
+    expect(withdrawn.request.status).toBe('WITHDRAWN');
+    expect(withdrawn.entry.days).toBe(6);
+    expect(withdrawn.balance.pending).toBe(0);
+    expect(withdrawn.balance.available).toBe(20);
+  });
+
+  /* And somebody else deciding it is untouched too. The rule is about whose leave it is and
+     nothing else, so a colleague at the same desk signs it the moment they are asked — which
+     is what makes this a check rather than a narrowing of who approves. */
+  it('and a colleague at the same desk decides it as they always could', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    const approved = await requests.approve(asTheHeadOfHr(), request.id);
+
+    expect(approved.request.status).toBe('APPROVED');
+    expect(approved.entry?.entryType).toBe('DEDUCTION');
+  });
+
+  /* ------------------------------------ and what the database holds anyway */
+
+  /**
+   * And the row cannot be written at all, by anybody. FR 48's "regardless of role, screen or
+   * endpoint", in the only form it can take before there is a screen or an endpoint.
+   *
+   * The owner connection, with every check in the application behind it, writing the decision
+   * by hand exactly as an admin view or a bulk action would have to. `leave_request_never_
+   * decided_by_the_requester` refuses it — and because `leave_request_records_its_decision`
+   * refuses a request that moved at a desk with no decision behind it, a self-approval that
+   * writes no row here cannot move a request either. The two are one rule read from both ends.
+   */
+  it('cannot be written to the table at all, on any connection', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    await expect(decideByHand(request.id, people.hrOfficer, 'APPROVE')).rejects.toMatchObject({
+      constraint: 'leave_request_never_decided_by_the_requester',
+    });
+
+    await expect(decideByHand(request.id, people.hrOfficer, 'REFUSE')).rejects.toMatchObject({
+      constraint: 'leave_request_never_decided_by_the_requester',
+    });
+  });
+
+  /* And the message says which request, who, and what they were trying to do — because the
+     person reading it is an operator at a prompt, not somebody at a form. */
+  it('and says whose request it was and what they tried to do to it', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    const refusal = await rejection(() => decideByHand(request.id, people.hrOfficer, 'APPROVE'));
+
+    expect(refusal.message).toContain(`asked for leave request ${request.id}`);
+    expect(refusal.message).toContain('cannot approve it');
+  });
+
+  /* And it lets a colleague's write through, which is what makes it a check on the requester
+     rather than on the table. One decision per desk — `leave_request_decision_once_per_desk`,
+     LMS 316 — is why this and the next are two requests rather than two rows on one. */
+  it('and lets a colleague’s decision through', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    await expect(decideByHand(request.id, people.headOfHr, 'APPROVE')).resolves.toBeDefined();
+  });
+
+  /* And a write with nobody named, which is the system: `theSystem` is nobody by construction,
+     so it matches no record's owner and is never refused for being one. The annual run and the
+     rollover reach every table in this schema that way, and a rule here that refused a null
+     would refuse them with a sentence about self-approval. */
+  it('and lets an unattributed write through, because nobody is not somebody', async () => {
+    const request = await herOwnRequestAtTheHrDesk();
+
+    await expect(decideByHand(request.id, null, 'APPROVE')).resolves.toBeDefined();
+  });
+
+  /**
+   * Writes a decision the way a writer that has gone round the services would have to.
+   *
+   * The decider is set through `lms.audit.actor_employee_id`, which is the transaction-local
+   * setting `stamp_the_decider_on_a_decision()` reads — there is no column to supply, which is
+   * the property the whole check rests on. A writer that could name the decider could approve
+   * their own leave under somebody else's name.
+   */
+  async function decideByHand(requestId: string, decidedBy: string | null, action: string) {
+    try {
+      await admin.query('BEGIN');
+      await admin.query('SELECT set_config($1, $2, true)', [
+        'lms.audit.actor_employee_id',
+        decidedBy ?? '',
+      ]);
+
+      const written = await admin.query(
+        `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of, comment)
+         VALUES ($1, $2, 'HR', $3) RETURNING id`,
+        [requestId, action, action === 'REFUSE' ? WHY_NOT : null],
+      );
+
+      await admin.query('COMMIT');
+
+      return written.rows[0];
+    } catch (error) {
+      await admin.query('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /** Whatever a call threw, having asserted that it threw. */
+  async function rejection(call: () => Promise<unknown>): Promise<Error> {
+    try {
+      await call();
+    } catch (error) {
+      return error as Error;
+    }
+
+    throw new Error('Expected the call to be refused, and it was not.');
+  }
+
+  /** Ama Mensah, Head of HR. Efua's colleague, and her line manager. */
+  function asTheHeadOfHr() {
+    return signedInAs(people.headOfHr, {
+      roles: ['EMPLOYEE', 'HR_ADMIN', 'HR_OFFICER'],
+      isManager: true,
+    });
+  }
+
   async function rewriteTheAnnualChain(...desks: readonly string[]): Promise<void> {
     await admin.query('BEGIN');
     await admin.query('DELETE FROM leave_type_approval_step WHERE leave_type_id = $1', [annualId]);

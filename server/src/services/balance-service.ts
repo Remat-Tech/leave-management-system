@@ -136,6 +136,7 @@ import type { Employee } from '../domain/employee.js';
 import { EmployeeNotFound } from '../domain/employee.js';
 import {
   desksThatApproved,
+  isADecision,
   type LeaveDecision,
   validateDecision,
 } from '../domain/leave-decision.js';
@@ -688,6 +689,16 @@ export class BalanceService {
     const { request, action, comment, reason } = settlement;
     const owner = await this.ownerOf(request.employeeId);
 
+    /* FR 48, §8.6a. LMS 319. Nobody decides their own request, asked at this door as well as
+       at the service's, and asked of the *verb* rather than of the actor's standing — which
+       is what makes one line here cover the only ending that is a decision without touching
+       the two that are not. `ledgerPolicy.release` below admits the requester and has to: a
+       withdrawal is somebody giving their own held days back, and it comes through here.
+       So the ledger's question cannot be the one that refuses a self-refusal, and this is. */
+    if (isADecision(action)) {
+      this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, action));
+    }
+
     this.guard.enforce(ledgerPolicy.release(actor, owner));
 
     const key = keyOf(request);
@@ -856,6 +867,15 @@ export class BalanceService {
   async approveForRequest(actor: Actor, approval: RequestToApprove): Promise<LeaveApproved> {
     const { request, chain, chiefExecutiveId, comment, reason } = approval;
     const owner = await this.ownerOf(request.employeeId);
+
+    /* FR 48, §8.6a. LMS 319. The same first question the release door asks, in the same
+       words, at the top of the other decision door. It is redundant twice over here —
+       `ledgerPolicy.commit` refuses the requester on the next line and
+       `leaveRequestPolicy.approve` refuses them inside the lock — and it is written anyway,
+       because "the identity check is the first thing every decision method does" is a
+       property somebody should be able to confirm by looking rather than by working out
+       that two other rules happen to cover it between them. */
+    this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, 'APPROVE'));
 
     /* The ledger's standing question, and the one that refuses somebody approving their
        own leave. `leaveRequestPolicy.approve` has already asked whether this actor is the

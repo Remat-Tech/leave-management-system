@@ -133,6 +133,28 @@
  * that makes the writing worth anything: a refusal recorded and never shown is the corridor
  * conversation with a database behind it.
  *
+ * ## And neither of the two is ever made by the person who asked. FR 48, §8.6a. LMS 319
+ *
+ * {@link LeaveRequestService.approve} and {@link LeaveRequestService.refuse} are the two
+ * methods here that are a decision at a desk — {@link isADecision} is that line, and it is
+ * the same one the record draws — and both now ask {@link leaveRequestPolicy.notTheirOwn}
+ * first, before the chain, the type or the state is looked at.
+ *
+ * First is the whole point rather than an ordering preference. Every other question either
+ * method asks can be answered differently by configuration somebody controls: which desks a
+ * type routes to is a form an HR Administrator fills in, which roles staff a desk is a grant,
+ * and where a request has got to moves as it moves. This one cannot. It compares the actor
+ * with the person the leave is for, and no role, no chain and no screen changes the answer.
+ *
+ * The other two verbs are deliberately outside it. Withdrawing your own request is the point
+ * of withdrawing, and cancelling is HR unwinding a row that should not be on the books —
+ * neither is a judgement about the request, which is why neither writes a decision either.
+ *
+ * It is asked three times over: here, again inside `BalanceService`'s balance lock at both
+ * doors, and once more by `leave_request_never_decided_by_the_requester` as the decision row
+ * is written — which is the layer an admin screen, a bulk action or a psql prompt meets, and
+ * the one no service can be routed around.
+ *
  * **No notice or documentation enforcement.** FR 17 is a warning by design — leave is
  * sometimes needed at short notice — and the quote carries it so the person sees it
  * before they commit and the approver sees it afterwards. FR 13's documentation is an
@@ -415,6 +437,21 @@ export class LeaveRequestService {
    * asks it again inside the transaction that writes, and
    * `leave_request_refusal_says_why` asks it a third time where no service can reach.
    *
+   * ## And never by the person who asked for it. FR 48, §8.6a. LMS 319
+   *
+   * The other decision method, and the one that needed this story. Approving your own leave
+   * has been refused since LMS 314 — the desk excluded the requester — but refusing it was
+   * not: the `REFUSE` row admits `LEAVE_ADMINISTRATION`, so an HR Officer or Administrator
+   * asking for their own leave could turn it down, recorded as a decision at a desk under
+   * their own name. {@link leaveRequestPolicy.refuse} now asks {@link
+   * leaveRequestPolicy.notTheirOwn} before it consults a standing at all, and
+   * `BalanceService.releaseForRequest` asks it again inside the lock.
+   *
+   * **Withdrawing is what that person wanted**, and it is untouched. The refusal names it —
+   * see `DECIDING_IS_SOMEBODY_ELSE` — because somebody who no longer wants their own leave
+   * has an act of their own to reach for, and being told only "no" would leave them looking
+   * for a colleague to do something they never needed done.
+   *
    * Throws {@link RefusalNeedsAComment} for a refusal with nothing said, before
    * {@link LeaveRequestNotFound} and before {@link NotAuthorised}.
    */
@@ -449,14 +486,22 @@ export class LeaveRequestService {
    * the `DEDUCTION`. A caller telling the two apart reads `awaitingApprovalFrom`, which is
    * null exactly when there is nobody left to ask.
    *
-   * ## Three questions, and the order is a disclosure rule
+   * ## Four questions, and the order is a disclosure rule
    *
    * The settlement path asks *may you* and then *is this move available*, and
    * `standingsFor` argues at length that reversing them would read a stranger's request
-   * state aloud. Approval asks three, and the order is different for a reason worth being
-   * exact about: **the standing question here is itself a question about the state.** Who
-   * may approve depends on which desk the request is sitting on, so a decision made before
-   * the state is known is no decision at all.
+   * state aloud. Approval asks four, and the order of the last three is different for a
+   * reason worth being exact about: **the standing question here is itself a question about
+   * the state.** Who may approve depends on which desk the request is sitting on, so a
+   * decision made before the state is known is no decision at all.
+   *
+   *   **Is this your own request?** FR 48, §8.6a, LMS 319.
+   *   {@link leaveRequestPolicy.notTheirOwn}, asked before anything but the employee record
+   *   that says whose leave this is — because nothing read after it could change the answer.
+   *   It is not part of the ordering argument below at all: the other three are questions
+   *   about a chain and a state, and this one is a comparison of two ids that is the same
+   *   whatever either of them says. Asked again by {@link leaveRequestPolicy.approve} below,
+   *   and a third time at the door inside the lock.
    *
    *   **May you see this at all?** {@link leaveRequestPolicy.read}, which is the disclosure
    *   gate the settlement path gets for free from its own narrowness. A colleague probing
@@ -505,6 +550,14 @@ export class LeaveRequestService {
 
     const employee = await this.employeeFor(request.employeeId);
     const owner = ownerOf(employee);
+
+    /* FR 48, §8.6a. LMS 319. First, and before the chain, the type or the Chief Executive is
+       read, because none of them can change the answer: whatever this request's approvers
+       are and wherever it has got to, the person who asked for it is not one of them. It is
+       the first question of the two paths below rather than a fourth, and it is asked as
+       soon as whose leave this is has been established — which is the earliest anything can
+       be asked at all, since an id says nothing about whose it is. */
+    this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, 'APPROVE'));
 
     const type = await this.typeFor(request.leaveTypeId);
     const chiefExecutiveId = await this.chiefExecutiveFor(type.approvalChain);
