@@ -186,7 +186,7 @@ export function validateApprovalChain(value: unknown): ApproverRole[] {
   for (const role of chain) {
     if (seen.has(role)) {
       throw new InvalidApprovalChain(
-        `${inWords(role)} is in this chain twice. An approver is asked once; a ` +
+        `${deskInWords(role)} is in this chain twice. An approver is asked once; a ` +
           'second stage naming the same desk waits for somebody to approve what ' +
           'they have already approved.',
       );
@@ -364,15 +364,23 @@ export function chainInWords(chain: readonly ApproverRole[]): string {
     return 'nobody';
   }
 
-  const named = chain.map(inWords);
+  const named = chain.map(deskInWords);
 
   return named.length === 1
     ? named[0]
     : `${named.slice(0, -1).join(', ')} then ${named[named.length - 1]}`;
 }
 
-/** One desk, as a person says it rather than as the column holds it. */
-function inWords(role: ApproverRole): string {
+/**
+ * One desk, as a person says it rather than as the column holds it.
+ *
+ * Exported since LMS 329, and for the reason {@link chainInWords} gives about itself: the
+ * same words are wanted in an email, in an error and on a screen. A notification saying
+ * "your leave is now with HR" is naming one desk rather than a chain, and
+ * `chainInWords([desk])` said it correctly while reading as a list of one — which is the
+ * shape somebody eventually writes `'the ' + desk.toLowerCase()` instead of.
+ */
+export function deskInWords(role: ApproverRole): string {
   switch (role) {
     case 'MANAGER':
       return 'your line manager';

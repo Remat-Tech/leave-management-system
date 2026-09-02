@@ -155,6 +155,25 @@
  * is written — which is the layer an admin screen, a bulk action or a psql prompt meets, and
  * the one no service can be routed around.
  *
+ * ## And every one of them tells the person afterwards. FR 59, §7.1. LMS 329
+ *
+ * Three call sites — {@link LeaveRequestService.submit}, {@link LeaveRequestService.approve}
+ * and {@link LeaveRequestService.settle} — and every verb in this file goes through one of
+ * them, so there is no ending, decision or submission that happens quietly.
+ *
+ * **Every one of them is after the door has returned**, which is the story's own rule and
+ * the reason the notification service is held here rather than by `BalanceService`. The door
+ * owns the transaction; a notice composed inside it would be an email sent about an approval
+ * that a deferred constraint could still refuse at COMMIT, and an SMTP handshake inside
+ * `holdStill` would be every other movement on that balance waiting on a mail server. Here
+ * there is no transaction to be inside — see ./notification-service.ts for the whole
+ * argument, including what is given up by writing it this way round.
+ *
+ * **And none of them can fail because of it.** `tell` has no throwing path: by the time it
+ * runs the leave has been approved, and an exception travelling out of `approve` would reach
+ * the approver as the failure of an act that succeeded. The three call sites ignore what it
+ * returns for that reason, and the service logs what it could not deliver.
+ *
  * **No notice or documentation enforcement.** FR 17 is a warning by design — leave is
  * sometimes needed at short notice — and the quote carries it so the person sees it
  * before they commit and the approver sees it afterwards. FR 13's documentation is an
@@ -182,6 +201,7 @@ import {
   assertItCostsSomething,
   assertTheDaysAreThere,
   InvalidLeaveRequest,
+  isSettled,
   LeaveCrossesAYearEnd,
   type LeaveRequest,
   type LeaveRequestQuote,
@@ -200,6 +220,7 @@ import {
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
 } from '../domain/leave-request.js';
+import { approvalNews, endingNews } from '../domain/notification.js';
 import {
   assertEligible,
   assertSomebodyApprovesIt,
@@ -224,6 +245,7 @@ import type {
   LeaveRequested,
 } from './balance-service.js';
 import type { LeaveCalculatorService } from './leave-calculator-service.js';
+import type { NotificationService } from './notification-service.js';
 
 /**
  * Leave asked for in a year that has been settled. §8.9.
@@ -283,6 +305,22 @@ export class LeaveRequestService {
      * fetched for the period rather than for whatever somebody had in hand.
      */
     private readonly calculator: LeaveCalculatorService,
+    /**
+     * Who tells the employee what just happened. FR 59, §7.1. LMS 329.
+     *
+     * Required rather than defaulted, for the reason the guard is: a service that can be
+     * built without one is a service somebody builds without one, and the failure is
+     * silent. Everything works, every request is decided correctly, and nobody is told —
+     * which is precisely the state this story exists to end.
+     *
+     * It is held by *this* service rather than by `BalanceService` because of where it must
+     * be called from. The door owns the transaction; FR 59 says the notice goes out after
+     * that transaction commits, never inside it. A `NotificationService` on the door would
+     * be one `await` away from being called inside `allOrNothing`, at which point an SMTP
+     * handshake sits inside `holdStill` and a rolled-back approval has already emailed
+     * somebody to say their leave is agreed. Here there is no transaction to be inside.
+     */
+    private readonly notifications: NotificationService,
   ) {}
 
   /**
@@ -389,10 +427,27 @@ export class LeaveRequestService {
       approvalChain: type.approvalChain,
     });
 
-    return this.balances.reserveForRequest(actor, {
+    const submitted = await this.balances.reserveForRequest(actor, {
       request,
       reason: reasonForReservation(type.name, period, count.days),
     });
+
+    /* FR 59, LMS 329. The first of the three call sites, and all three have the same shape:
+       the door has returned, so the transaction has committed, and every fact the message is
+       composed from is read off what came back rather than off what was sent in. See
+       ./notification-service.ts for why it can neither throw nor be moved inside. */
+    await this.notifications.tell({
+      event: 'SUBMITTED',
+      employee,
+      request: submitted.request,
+      typeName: type.name,
+      /* Nobody has decided anything yet. The desk it is *waiting* on is on the request. */
+      decidedBy: null,
+      comment: null,
+      availableAfter: submitted.balance.available,
+    });
+
+    return submitted;
   }
 
   /**
@@ -634,7 +689,7 @@ export class LeaveRequestService {
 
     this.guard.enforce(standing);
 
-    return this.balances.approveForRequest(actor, {
+    const approved = await this.balances.approveForRequest(actor, {
       request,
       chain: type.approvalChain,
       chiefExecutiveId,
@@ -644,6 +699,24 @@ export class LeaveRequestService {
       comment: readComment(comment),
       reason: reasonForApproval(type.name, request, request.days, outcome.by),
     });
+
+    /* FR 59, LMS 329. Which of the two pieces of news this was is {@link approvalNews},
+       read off the committed row rather than off `outcome` above — the walk was made twice
+       and only the one inside the lock decided anything, so a chain that gained a stage
+       while somebody was reading a screen produces "your manager approved it, HR still has
+       to" rather than "your leave is agreed". The desk and the comment are the decision's
+       own, for the same reason. */
+    await this.notifications.tell({
+      event: approvalNews(approved.request),
+      employee,
+      request: approved.request,
+      typeName: type.name,
+      decidedBy: approved.decision.onBehalfOf,
+      comment: approved.decision.comment,
+      availableAfter: approved.balance.available,
+    });
+
+    return approved;
   }
 
   /**
@@ -815,17 +888,14 @@ export class LeaveRequestService {
 
     const type = await this.types.findById(request.leaveTypeId);
 
-    const reason = reasonForRelease(
-      /* Unreachable: `leave_request.leave_type_id` is NOT NULL with a foreign key
-         behind it, and nothing deletes a leave type — retiring one clears `is_active`.
-         Answered rather than asserted, for the reason the overlap refusal answers it:
-         a ledger entry reading "6 days of undefined given back" is worse than one that
-         says less. */
-      type?.name ?? 'leave',
-      request,
-      request.days,
-      to,
-    );
+    /* Unreachable: `leave_request.leave_type_id` is NOT NULL with a foreign key behind it,
+       and nothing deletes a leave type — retiring one clears `is_active`. Answered rather
+       than asserted, for the reason the overlap refusal answers it: a ledger entry reading
+       "6 days of undefined given back" is worse than one that says less, and since LMS 329
+       the same string is the one an email says it to somebody about. */
+    const typeName = type?.name ?? 'leave';
+
+    const reason = reasonForRelease(typeName, request, request.days, to);
 
     /* The one branch on the way to the one path, and it is a narrowing rather than a
        decision: `SettlingAct` pairs the verb with what has to be said about it, so a
@@ -833,12 +903,36 @@ export class LeaveRequestService {
        Writing it as a spread of `{ action, comment }` would compile and would let a
        withdrawal carry a comment, which is the mistake the union exists to make
        unwritable. */
-    return this.balances.releaseForRequest(
+    const settled = await this.balances.releaseForRequest(
       actor,
       action === 'REFUSE'
         ? { request, action, to, reason, comment: requireAComment(comment) }
         : { request, action, to, reason, comment: null },
     );
+
+    /* FR 59, LMS 329. All three endings tell the person, and they tell them three different
+       things — five days coming back look identical in a balance whether somebody changed
+       their mind, a manager turned it down or HR unwound a row, which is the argument
+       `reasonForRelease` already makes about the ledger's sentence.
+
+       The status is taken off the committed row rather than from `to` above, the same
+       discipline the door itself keeps: `to` was worked out before the lock, and while the
+       door would have refused an ending that disagreed with it, the row is what happened.
+       The narrowing cannot fail — a request that came back from the release door has
+       settled — and `to` is the answer if it somehow did. */
+    await this.notifications.tell({
+      event: endingNews(isSettled(settled.request.status) ? settled.request.status : to),
+      employee,
+      request: settled.request,
+      typeName,
+      /* FR 52. Only a refusal was decided at a desk; the other two carry null, which is the
+         same asymmetry `LeaveReleased.decision` has and for the same reason. */
+      decidedBy: settled.decision?.onBehalfOf ?? null,
+      comment: settled.decision?.comment ?? null,
+      availableAfter: settled.balance.available,
+    });
+
+    return settled;
   }
 
   /** One request, if the actor may see whose it is. */
