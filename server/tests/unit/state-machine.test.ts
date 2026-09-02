@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { signedInAs } from '../../src/auth/actor.js';
 import { leaveRequestPolicy } from '../../src/auth/leave-request-policy.js';
 import type { BalanceOwner } from '../../src/auth/ledger-policy.js';
-import type { ApproverRole } from '../../src/domain/approval-chain.js';
+import { APPROVER_ROLES, type ApproverRole } from '../../src/domain/approval-chain.js';
 import {
   approvalTo,
   isSettled,
@@ -308,6 +308,33 @@ describe('where a settlement lands', () => {
       }
     },
   );
+
+  /**
+   * And taking a request back is not a question about the desk. FR 46. LMS 323.
+   *
+   * The property that makes "cancel a request I have not yet had approved" true of a chain
+   * of any length, and it is a property of the *table* rather than of a method — which is
+   * why it is asserted here rather than only against a real server.
+   *
+   * A `WITHDRAW` is keyed by the from-status and nothing else, and `SUBMITTED` is the whole
+   * of "not yet approved" however many desks a type has and however many of them have signed
+   * — the status is what says a request is still being decided, and the desk is a separate
+   * column that says who is deciding it. So the same row answers a request nobody has looked
+   * at and one that two approvers have already agreed to.
+   *
+   * The way this could stop being true is a standing: `THE_DESK_IT_IS_WITH` on the `WITHDRAW`
+   * row would make taking your own leave back depend on where it had got to, and a person
+   * whose request had moved past their manager would be holding days they could not release
+   * until somebody else acted. That is exactly the "waste an approver's time" this story is
+   * about, arriving as a policy change nobody would read as one.
+   */
+  it('and withdrawing is answered by the status alone, whatever desk the request is at', () => {
+    for (const desk of APPROVER_ROLES) {
+      expect(settlementTo(aRequestIn('SUBMITTED', desk), 'WITHDRAW')).toBe('WITHDRAWN');
+    }
+
+    expect(standingsFor('WITHDRAW')).not.toContain('THE_DESK_IT_IS_WITH');
+  });
 });
 
 /* ------------------------------------------------ where an approval lands, §6 */

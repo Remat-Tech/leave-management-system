@@ -3799,3 +3799,324 @@ describe('a request decided by the person who asked for it', () => {
     await admin.query('COMMIT');
   }
 });
+
+/* ------------------------------------ cancelling a request not yet approved, FR 46 */
+
+/**
+ * Taking back a request nobody has approved yet, at any stage of any chain. FR 46. LMS 323.
+ *
+ * The story is the employee's and it is two sentences: plans change, and a request that is
+ * still being decided should cost them nothing and cost an approver nothing. **The act
+ * already existed** — `withdraw()` is LMS 306's, and this file has proved since then that it
+ * gives the days back — so what this suite is for is the half LMS 306 could not have proved:
+ * it was written when a request could only ever be standing at its first desk.
+ *
+ * A chain has stages now, and every one of them is a way for this to stop being true without
+ * anybody meaning it. So the assertions are about the *stage*:
+ *
+ *   **At every desk in a chain of three**, including one two approvers have already agreed
+ *   to. `SUBMITTED` is the whole of "not yet approved", and the desk is a separate column.
+ *
+ *   **In full, wherever it is taken back from.** An intermediate approval writes no movement
+ *   — only the last desk commits — so the six days a request has been holding since it was
+ *   submitted are the six days that come back, and two signatures on it change nothing.
+ *
+ *   **Out of the queue, in the same statement.** `leave_request_waits_at_a_desk` makes the
+ *   desk and the status an equivalence, so a withdrawn request *cannot* be left sitting in
+ *   somebody's queue. There is no queue to read yet — that is LMS 404 — and this is the
+ *   property it will be built on.
+ *
+ *   **And what was said stays said.** The manager's approval is a thing that happened, and
+ *   `leave_request_decision` is append only, so taking the request back does not unsay it.
+ *
+ * ## The two words, which are not the same word
+ *
+ * The story says *cancel* and the system says **withdraw**, and they are deliberately
+ * different verbs here: `cancel()` is HR unwinding a row that should not be on the books, and
+ * `withdraw()` is the person who asked taking their own request back. What FR 46 asks for is
+ * the second — see the README, which is where that is argued rather than restated.
+ *
+ * ## The two boundaries
+ *
+ * Approved leave is **not** this. `LeaveCannotBeMoved` is what somebody reaching for withdraw
+ * on it is told, and asking for agreed leave to be taken off the books is LMS 324. Being
+ * *told* the request went away is LMS 329, which owns notification for every event in a
+ * request's life; what this story guarantees is that there is something true to tell.
+ */
+describe('taking back a request nobody has approved yet', () => {
+  /** Manager, then HR, then the Chief Executive. A chain long enough to have a middle. */
+  const THREE_DESKS = ['MANAGER', 'HR', 'CEO'] as const;
+
+  /* The first desk, which is where LMS 306 left it and where most requests are taken back
+     from: nobody has looked at it, and the person has simply changed their mind. */
+  it('is taken back before anybody has looked at it, and the days come straight back', async () => {
+    const { request, balance: held } = await requests.submit(asThemselves(), aRequest());
+    expect(held.pending).toBe(6);
+
+    const taken = await requests.withdraw(asThemselves(), request.id);
+
+    expect(taken.request.status).toBe('WITHDRAWN');
+    expect(taken.entry.days).toBe(6);
+    expect(taken.balance.pending).toBe(0);
+    expect(taken.balance.available).toBe(20);
+  });
+
+  /**
+   * And from a stage in the middle of a chain, which is what LMS 306 could not say.
+   *
+   * The manager has agreed and the request is sitting with HR. Nothing has been taken — a
+   * `DEDUCTION` is written by the last approval and by nothing else — so the whole hold comes
+   * back and the manager's yes costs the employee nothing.
+   */
+  it('and from the middle of a chain, in full, with an approval already on it', async () => {
+    await rewriteTheAnnualChain(...THREE_DESKS);
+
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id);
+
+    expect(await requests.byId(asThemselves(), request.id)).toMatchObject({
+      status: 'SUBMITTED',
+      awaitingApprovalFrom: 'HR',
+    });
+
+    const taken = await requests.withdraw(asThemselves(), request.id);
+
+    expect(taken.request.status).toBe('WITHDRAWN');
+    expect(taken.entry.days).toBe(6);
+    expect(taken.balance.pending).toBe(0);
+    expect(taken.balance.taken).toBe(0);
+    expect(taken.balance.available).toBe(20);
+  });
+
+  /* And from the last desk of the three, with two stages signed and only the Chief Executive
+     left to ask. Still not approved, so still the employee's to take back. */
+  it('and from the last desk, with every stage but one already agreed', async () => {
+    await rewriteTheAnnualChain(...THREE_DESKS);
+
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id);
+    await requests.approve(asOfficer(), request.id);
+
+    expect(await requests.byId(asThemselves(), request.id)).toMatchObject({
+      status: 'SUBMITTED',
+      awaitingApprovalFrom: 'CEO',
+    });
+
+    const taken = await requests.withdraw(asThemselves(), request.id);
+
+    expect(taken.request.status).toBe('WITHDRAWN');
+    expect(taken.entry.days).toBe(6);
+    expect(taken.balance.available).toBe(20);
+  });
+
+  /**
+   * And it is the same answer at every desk there is, walked one at a time.
+   *
+   * Written as a loop over `APPROVER_ROLES` rather than as three cases somebody thought of,
+   * so that a fourth desk added to FR 38a's three reaches this without the test being edited
+   * — which is the same discipline every role check in ../unit/policy.test.ts keeps.
+   */
+  it.each([...APPROVER_ROLES])('and is taken back while sitting at the %s desk', async (desk) => {
+    await rewriteTheAnnualChain(desk);
+
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    expect(request.awaitingApprovalFrom).toBe(desk);
+
+    const taken = await requests.withdraw(asThemselves(), request.id);
+
+    expect(taken.request.status).toBe('WITHDRAWN');
+    expect(taken.balance.available).toBe(20);
+  });
+
+  /* ------------------------------------ and the approver's time */
+
+  /**
+   * And it leaves the queue in the same statement that ends it. The story's second "so that".
+   *
+   * The desk goes to null with the status, because `leave_request_waits_at_a_desk` is an
+   * equivalence between the two: a request that has ended is waiting on nobody. So an
+   * approver's queue — LMS 404, which does not exist yet — cannot be built in a way that
+   * shows a withdrawn request, whatever it queries, because the row it would have to find is
+   * one the database will not hold.
+   */
+  it('and stops waiting on anybody, which is a rule the schema keeps rather than a query', async () => {
+    await rewriteTheAnnualChain(...THREE_DESKS);
+
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id);
+
+    const taken = await requests.withdraw(asThemselves(), request.id);
+
+    expect(taken.request.awaitingApprovalFrom).toBeNull();
+
+    await expect(
+      admin.query(`UPDATE leave_request SET awaiting_approval_from = 'HR' WHERE id = $1`, [
+        request.id,
+      ]),
+    ).rejects.toMatchObject({ constraint: 'leave_request_waits_at_a_desk' });
+  });
+
+  /* And what an approver already said stays said. A decision is a thing that happened, and
+     the table is append only — so a request taken back after one desk agreed reads as exactly
+     that afterwards, rather than as a request nobody ever looked at. */
+  it('and does not unsay the approval a desk had already given', async () => {
+    await rewriteTheAnnualChain(...THREE_DESKS);
+
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id);
+    await requests.withdraw(asThemselves(), request.id);
+
+    expect(await requests.decisionsFor(asThemselves(), request.id)).toMatchObject([
+      { action: 'APPROVE', onBehalfOf: 'MANAGER' },
+    ]);
+  });
+
+  /* And the person is told plainly where it left things, which is what FR 41's reading is
+     for: taken back, by them, with the days returned — and not "still waiting on HR". */
+  it('and says so in one sentence, with nothing still to approve', async () => {
+    await rewriteTheAnnualChain(...THREE_DESKS);
+
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id);
+    await requests.withdraw(asThemselves(), request.id);
+
+    const progress = await requests.progressFor(asThemselves(), request.id);
+
+    expect(progress.agreed).toBe(false);
+    expect(progress.awaiting).toBeNull();
+    expect(progress.stillToApprove).toEqual([]);
+    expect(progress.approvedBy).toEqual(['MANAGER']);
+    expect(progress.inWords).toContain('was withdrawn and is not yours to take');
+    expect(progress.inWords).toContain('The days are back in your balance');
+  });
+
+  /* ------------------------------------ and it costs them nothing */
+
+  /**
+   * And the same dates are free again at once, which is the story's first "so that".
+   *
+   * Two things have to have happened at the moment it was taken back rather than later: the
+   * days back in the balance, or the next request is refused with `NotEnoughDays`; and the
+   * old request no longer blocking the calendar, or it is refused with `LeaveOverlapsAnother`.
+   * `WITHDRAWN` is not in `LIVE_STATUSES` and so not in the exclusion constraint's predicate,
+   * which is what makes the second true without anybody tidying anything up.
+   */
+  it('and the same dates can be asked for again at once, with nobody releasing anything', async () => {
+    await rewriteTheAnnualChain(...THREE_DESKS);
+
+    const first = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), first.request.id);
+    await requests.withdraw(asThemselves(), first.request.id);
+
+    const again = await requests.submit(asThemselves(), aRequest());
+
+    expect(again.request.status).toBe('SUBMITTED');
+    /* And at the front of the chain rather than where the first one had got to. The desks that
+       agreed to a request that no longer stands agreed to nothing. */
+    expect(again.request.awaitingApprovalFrom).toBe('MANAGER');
+    expect(again.balance.pending).toBe(6);
+    expect(again.balance.available).toBe(14);
+  });
+
+  /* And the days went back exactly once on the way. Pressing the button twice is the ordinary
+     way this is met, and the second press is told what happened rather than refused. */
+  it('and cannot be taken back twice, however fast the button is pressed', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.withdraw(asThemselves(), request.id);
+
+    await expect(requests.withdraw(asThemselves(), request.id)).rejects.toThrow(
+      LeaveAlreadySettled,
+    );
+
+    const { rows } = await admin.query(
+      `SELECT count(*)::int AS releases FROM leave_ledger_entry
+        WHERE leave_request_id = $1 AND entry_type = 'RELEASE'`,
+      [request.id],
+    );
+
+    expect(rows[0].releases).toBe(1);
+  });
+
+  /* ------------------------------------ and who may do it */
+
+  /* It is the employee's own act. A manager who does not want the leave to happen refuses it,
+     which is a decision with a reason on the record — emptying somebody's calendar without
+     one is the thing `withdraw` deliberately does not let them do. */
+  it('is the employee’s own, and not their line manager’s', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await expect(requests.withdraw(asTheirManager(), request.id)).rejects.toThrow(NotAuthorised);
+    expect(await requests.byId(asThemselves(), request.id)).toMatchObject({ status: 'SUBMITTED' });
+  });
+
+  /* And HR's on their behalf, which is FR 18's argument applied to the undoing of submitting:
+     somebody who was away and could not take their own request back. */
+  it('and HR’s on their behalf, which is the rule submitting already has', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    const taken = await requests.withdraw(asOfficer(), request.id);
+
+    expect(taken.request.status).toBe('WITHDRAWN');
+    expect(taken.balance.available).toBe(20);
+  });
+
+  /* ------------------------------------ and where this story stops */
+
+  /**
+   * Leave that has been agreed is not this, and is told so in its own words. LMS 324.
+   *
+   * The boundary the story draws by saying "not yet had approved". By then the days are
+   * `taken` rather than `pending`, so giving them back is a movement against the `DEDUCTION`
+   * rather than against the `RESERVATION` — a different act, needing HR, and a story of its
+   * own. What matters here is that the person is told *that* rather than told their request
+   * has already been withdrawn, which would be false in both halves.
+   */
+  it('and leave that has been approved is refused, in words that do not claim it came back', async () => {
+    await rewriteTheAnnualChain('MANAGER');
+
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id);
+
+    const refusal = await rejection(() => requests.withdraw(asThemselves(), request.id));
+
+    expect(refusal.name).toBe('LeaveCannotBeMoved');
+    expect(refusal.message).toContain('has been approved');
+    expect(refusal.message).not.toContain('given back');
+
+    const balance = await balances.forOne(asThemselves(), {
+      employeeId: people.officer,
+      leaveTypeId: annualId,
+      leaveYearId: y2026.id,
+    });
+
+    expect(balance.taken).toBe(6);
+    expect(balance.available).toBe(14);
+  });
+
+  /** Whatever a call threw, having asserted that it threw. */
+  async function rejection(call: () => Promise<unknown>): Promise<Error> {
+    try {
+      await call();
+    } catch (error) {
+      return error as Error;
+    }
+
+    throw new Error('Expected the call to be refused, and it was not.');
+  }
+
+  async function rewriteTheAnnualChain(...desks: readonly string[]): Promise<void> {
+    await admin.query('BEGIN');
+    await admin.query('DELETE FROM leave_type_approval_step WHERE leave_type_id = $1', [annualId]);
+
+    for (const [index, desk] of desks.entries()) {
+      await admin.query(
+        `INSERT INTO leave_type_approval_step (leave_type_id, step_order, approver_role)
+         VALUES ($1, $2, $3)`,
+        [annualId, index + 1, desk],
+      );
+    }
+
+    await admin.query('COMMIT');
+  }
+});
