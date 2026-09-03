@@ -234,6 +234,8 @@ async function holdDays(movement: {
       /* FR 38a. Where a request starts, which `LeaveRequestService` reads off the leave
          type's chain. This fixture goes straight to the door, so it says it. LMS 314. */
       awaitingApprovalFrom: 'MANAGER' as const,
+      /** FR 48b. Nothing to skip: every desk can be asked. LMS 320. */
+      skips: [],
       status: 'SUBMITTED' as const,
     },
     reason: movement.reason,

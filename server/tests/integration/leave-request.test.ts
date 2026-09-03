@@ -34,6 +34,8 @@ import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
 import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
+import { LeaveRoutingRepository } from '../../src/features/leave-request/routing.db.js';
+import { RoleRepository } from '../../src/features/role/role.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { NotificationRepository } from '../../src/features/notification/notification.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
@@ -151,6 +153,9 @@ beforeAll(async () => {
     yearRepository,
     repository,
     decisions,
+    /** FR 48b, LMS 320. */
+    new LeaveRoutingRepository(db),
+    new RoleRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     /* FR 59, LMS 329. Every verb in the service now tells the requester afterwards, and this
        file is about the verbs rather than about the telling — ./notification.test.ts is
@@ -167,7 +172,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
   );
   await restoreYears();
 
@@ -230,7 +235,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
   );
   await admin.query(
     "UPDATE leave_type SET is_active = true, counting_basis = 'WORKING_DAYS' WHERE code = 'ANNUAL'",
@@ -663,6 +668,8 @@ describe('a request the balance does not hold', () => {
           /* FR 38a. Annual leave's chain, which is what the service would have handed over.
              This test goes round the service on purpose and so has to say it. LMS 314. */
           approvalChain: ['MANAGER', 'HR'],
+          /** FR 48b. And who staffs its desks, for the same reason. LMS 320. */
+          available: { MANAGER: 'CAN_DECIDE', HR: 'CAN_DECIDE', CEO: 'CAN_DECIDE' },
         }),
         reason: 'past the service check',
       })
@@ -1639,7 +1646,14 @@ describe('withdrawing, refusing and cancelling', () => {
 
     const named = [...new Set([...rows[0].definition.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]))];
 
-    expect(named.sort()).toEqual([...new Set(TRANSITIONS.map(({ to }) => to))].sort());
+    /* Every destination the table holds, and `UNROUTABLE` besides. FR 48b, LMS 320.
+       That one is the single destination `TRANSITIONS` cannot state: the table is keyed by
+       from-status and verb, and where a decision lands is the chain's answer rather than
+       the verb's — an approval whose next stage has nobody to answer it lands here instead
+       of on `APPROVED`. `decisionTo` is where the two are told apart. */
+    expect(named.sort()).toEqual(
+      [...new Set([...TRANSITIONS.map(({ to }) => to), 'UNROUTABLE'])].sort(),
+    );
   });
 
   /**
@@ -3861,9 +3875,13 @@ describe('a request decided by the person who asked for it', () => {
     await expect(requests.refuse(wholeOfHr, request.id, WHY_NOT)).rejects.toThrow(NotAuthorised);
   });
 
-  /* And not the Chief Executive, who has nobody above them and is the top of the company the
-     story's "even at the top" names. A chain ending at the CEO desk resolves to Kwame, and
-     Kwame's own request sitting at it is refused exactly as everybody else's is. */
+  /**
+   * And not the Chief Executive at their own CEO desk. FR 48, FR 48b. LMS 319, LMS 320.
+   *
+   * The top of the company, which is the story's "even at the top". Since LMS 320 the
+   * request does not sit at that desk at all: the stage is the requester's own, so it falls
+   * to HR — and the refusal is what stops the Chief Executive following it there.
+   */
   it('and not the Chief Executive at their own CEO desk', async () => {
     await rewriteTheAnnualChain('CEO');
 
@@ -3879,7 +3897,10 @@ describe('a request decided by the person who asked for it', () => {
 
     const { request } = await requests.submit(chief, aRequest({ employeeId: people.ceo }));
 
-    expect(request.awaitingApprovalFrom).toBe('CEO');
+    /* FR 48b's third criterion: the CEO stage falls back to HR, because there is nothing
+       above FR 04's root and the seat is the requester's. */
+    expect(request.status).toBe('SUBMITTED');
+    expect(request.awaitingApprovalFrom).toBe('HR');
 
     await expect(requests.approve(chief, request.id)).rejects.toThrow(NotAuthorised);
     await expect(requests.refuse(chief, request.id, WHY_NOT)).rejects.toThrow(NotAuthorised);

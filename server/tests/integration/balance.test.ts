@@ -106,7 +106,7 @@ beforeEach(async () => {
      which is the door both migrations leave open for exactly this. */
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
   );
   await restoreYears();
 
@@ -129,7 +129,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
   );
   await restoreYears();
 
@@ -373,6 +373,8 @@ async function askFor(
       /* FR 38a. Where a request starts, which `LeaveRequestService` reads off the leave
          type's chain. These fixtures go straight to the door, so they say it. LMS 314. */
       awaitingApprovalFrom: 'MANAGER' as const,
+      /** FR 48b. Nothing to skip: every desk can be asked. LMS 320. */
+      skips: [],
     },
     reason: 'Five days in December',
   });

@@ -5,12 +5,19 @@
 import {
   type ApproverRole,
   chainInWords,
-  firstApprover,
   isApprovedBy,
-  nextToDecide,
   stagesNotApproved,
   stagesYetToDecide,
 } from '../leave-type/approval-chain.js';
+import {
+  desksAsked,
+  type DesksAvailable,
+  type Routed,
+  routeFrom,
+  type SkippedStage,
+  stagesSkipped,
+  whatWouldRouteIt,
+} from './routing.js';
 import type { DecidingAction } from './leave-decision.js';
 import type { DayCount, FreeDay, LeavePeriod } from '../leave-calculator/leave-calculator.js';
 import {
@@ -31,10 +38,17 @@ import {
   isCalendarDate,
 } from '../../shared/time.js';
 
-/** Where a request has got to. LMS 301, LMS 306, LMS 314, LMS 209, FR 38a. */
+/** Where a request has got to. LMS 301, LMS 306, LMS 314, LMS 209, LMS 320, FR 38a, FR 48b. */
 export const REQUEST_STATUSES = [
   'SUBMITTED',
   'APPROVED',
+  /**
+   * Nobody can decide it. FR 48b, §8.6a, LMS 320.
+   *
+   * Neither an ending nor an approval: the days are still held and the leave is still
+   * wanted, and what is missing is somebody to ask. `route` puts it back once there is one.
+   */
+  'UNROUTABLE',
   'WITHDRAWN',
   'CANCELLED',
   'REFUSED',
@@ -47,8 +61,13 @@ export const RELEASING_STATUSES = ['WITHDRAWN', 'CANCELLED', 'REFUSED'] as const
 
 export type ReleasingStatus = (typeof RELEASING_STATUSES)[number];
 
-/** The statuses that hold a person's days. FR 15, §5.6., LMS 304, LMS 314, LMS 306. */
-export const LIVE_STATUSES: readonly RequestStatus[] = ['SUBMITTED', 'APPROVED'];
+/**
+ * The statuses that hold a person's days. FR 15, §5.6., LMS 304, LMS 314, LMS 306, LMS 320.
+ *
+ * `UNROUTABLE` is one of them: its RESERVATION still stands, so the days are out of the
+ * balance and the dates are still spoken for.
+ */
+export const LIVE_STATUSES: readonly RequestStatus[] = ['SUBMITTED', 'APPROVED', 'UNROUTABLE'];
 
 /** Whether a request in this state still holds the days it covers. FR 15. */
 export function blocksTheCalendar(status: RequestStatus): boolean {
@@ -186,6 +205,33 @@ export class ApprovalChainChanged extends Error {
 }
 
 /**
+ * A request sent back into its chain that still has nowhere to go. FR 48b, §8.6a. LMS 320.
+ *
+ * What `route` answers when the organisation has not changed since the alert went out. It
+ * names the desk that is still empty and what would fill it, because the person reading it
+ * is being asked to change the organisation rather than to decide the leave.
+ */
+export class StillNobodyToDecideIt extends Error {
+  /** FR 48b. */
+  readonly code = 'STILL_UNROUTABLE';
+  readonly leaveRequestId: string;
+  /** The stage that has neither its own desk nor a stand-in. */
+  readonly stranded: ApproverRole;
+
+  constructor(request: LeaveRequest, stranded: ApproverRole, remedy: string) {
+    super(
+      `This request still has nobody who could decide it: ${chainInWords([stranded])} is ` +
+        `the stage it stops at, and neither that desk nor the one that stands in for it ` +
+        `has anybody at it who is not the person who asked. ${remedy} Nothing about the ` +
+        `request is wrong, and it keeps its days until it is decided or taken back. FR 48b.`,
+    );
+    this.name = 'StillNobodyToDecideIt';
+    this.leaveRequestId = request.id;
+    this.stranded = stranded;
+  }
+}
+
+/**
  * An override with no line manager's decision under it to reverse. FR 44, §7.2. LMS 318.
  *
  * Told apart from {@link LeaveCannotBeMoved} because the request may be sitting in exactly
@@ -273,6 +319,13 @@ export const REQUEST_ACTIONS = [
   'OVERTURN_REJECTION',
   /** HR reversing a line manager's approval. FR 44, §7.2, LMS 318. */
   'OVERTURN_APPROVAL',
+  /**
+   * Sending a request nobody could decide back into its chain. FR 48b, §8.6a, LMS 320.
+   *
+   * Not a decision — it says nothing about the leave and writes no ledger entry. It is the
+   * act the alert asks HR for once the desk that came up empty has somebody at it.
+   */
+  'ROUTE',
 ] as const;
 
 export type RequestAction = (typeof REQUEST_ACTIONS)[number];
@@ -284,6 +337,9 @@ export function actionInWords(action: RequestAction): string {
       return 'overturn the rejection';
     case 'OVERTURN_APPROVAL':
       return 'overturn the approval';
+    /** FR 48b. */
+    case 'ROUTE':
+      return 'send it to an approver';
     default:
       return action.toLowerCase();
   }
@@ -384,6 +440,8 @@ export interface ApprovalOutcome {
   to: RequestStatus;
   /** The desk it now waits on, or null once there is nobody left to ask. */
   awaiting: ApproverRole | null;
+  /** Stages the routing had to skip on the way, to be recorded. FR 48b, LMS 320. */
+  skips: readonly SkippedStage[];
 }
 
 /**
@@ -474,6 +532,19 @@ export const TRANSITIONS: readonly Transition[] = [
      two rows above. */
   { from: 'SUBMITTED', action: 'OVERTURN_REJECTION', to: 'APPROVED', by: ['THE_DESK_IT_IS_WITH'] },
   { from: 'SUBMITTED', action: 'OVERTURN_APPROVAL', to: 'REFUSED', by: ['THE_DESK_IT_IS_WITH'] },
+
+  /* A request nobody could be found to decide. FR 48b, §8.6a. LMS 320.
+
+     No decision among them, which is the whole of it: a request is unroutable because
+     nobody can decide it. `ROUTE` is what the alert asks HR for once somebody can. */
+  {
+    from: 'UNROUTABLE',
+    action: 'WITHDRAW',
+    to: 'WITHDRAWN',
+    by: ['THE_REQUESTER', 'LEAVE_ADMINISTRATION'],
+  },
+  { from: 'UNROUTABLE', action: 'CANCEL', to: 'CANCELLED', by: ['LEAVE_ADMINISTRATION'] },
+  { from: 'UNROUTABLE', action: 'ROUTE', to: 'SUBMITTED', by: ['LEAVE_ADMINISTRATION'] },
 ];
 
 /**
@@ -591,22 +662,35 @@ export function settlementTo(request: LeaveRequest, action: ReleasingAction): Re
   return transition.to;
 }
 
+/** Everything a decision's destination is worked out from. FR 38a, FR 44, FR 48b. */
+export interface DecisionAtADesk {
+  request: LeaveRequest;
+  action: DecidingAction;
+  /** FR 38a. The type's chain as it stands now. */
+  chain: readonly ApproverRole[];
+  /** FR 44. The desks that have decided, whichever way they went. */
+  decidedAlready: readonly ApproverRole[];
+  /** FR 48b. The stages already skipped, as recorded against this request. LMS 320. */
+  skipped: readonly SkippedStage[];
+  /** FR 48b. Who can be asked at each desk, for this request. LMS 320. */
+  available: DesksAvailable;
+}
+
 /**
- * Where a decision leaves the request: on to the next desk, or decided. FR 38, FR 38a, FR 40, FR 41, FR 42, FR 44, §6., §7.2, LMS 314, LMS 316, LMS 318, FR 31, FR 11.
+ * Where a decision leaves the request: on to the next desk, decided, or nowhere. FR 38, FR 38a, FR 40, FR 41, FR 42, FR 44, FR 48b, §6., §7.2, §8.6a, LMS 314, LMS 316, LMS 318, LMS 320.
  *
  * One walk for all four deciding verbs. What ends a request is the chain running out of
- * desks, not which way this desk went — so a line manager's rejection carries the request
- * on to HR exactly as their approval would, and the last stage to decide is the one whose
- * verb the request lands on. That is FR 44's "both stages decide, and HR's is final" said
- * as an ordering rather than as a special case.
+ * desks, not which way this desk went — so a line manager's rejection carries the request on
+ * to HR exactly as their approval would, and the last stage to decide is the one whose verb
+ * the request lands on.
+ *
+ * Since LMS 320 there is a third destination. Where the next stage has neither its own desk
+ * nor a stand-in the request lands on `UNROUTABLE` rather than on the verb — running out of
+ * people to ask never approves and never refuses anything.
  */
-export function decisionTo(
-  request: LeaveRequest,
-  action: DecidingAction,
-  chain: readonly ApproverRole[],
-  /** FR 44. The desks that have decided, whichever way they went. */
-  decidedAlready: readonly ApproverRole[],
-): ApprovalOutcome {
+export function decisionTo(input: DecisionAtADesk): ApprovalOutcome {
+  const { request, action, chain, decidedAlready, skipped, available } = input;
+
   const transition = transitionFor(request.status, action);
 
   if (transition === undefined) {
@@ -619,28 +703,101 @@ export function decisionTo(
     throw new LeaveCannotBeMoved(request, action);
   }
 
-  if (!isApprovedBy(chain, desk)) {
-    throw new ApprovalChainChanged(request, desk, chain);
+  /* FR 48b. The desks this request is actually asked at, which is its type's chain with
+     every recorded skip substituted in — a request that fell to a stand-in is standing at a
+     desk the chain itself does not name. */
+  const asked = desksAsked(chain, skipped);
+
+  if (!isApprovedBy(asked, desk)) {
+    throw new ApprovalChainChanged(request, desk, asked);
   }
 
-  const next = nextToDecide(chain, [...decidedAlready, desk]);
+  const routed = routeFrom({
+    chain,
+    decided: [...decidedAlready, desk],
+    skipped,
+    available,
+  });
 
-  return next === undefined
-    ? { by: desk, to: transition.to, awaiting: null }
-    : { by: desk, to: request.status, awaiting: next };
+  switch (routed.kind) {
+    case 'DESK':
+      return { by: desk, to: request.status, awaiting: routed.desk, skips: routed.skips };
+    case 'UNROUTABLE':
+      return { by: desk, to: 'UNROUTABLE', awaiting: null, skips: routed.skips };
+    default:
+      return { by: desk, to: transition.to, awaiting: null, skips: routed.skips };
+  }
 }
 
-/** Whether that decision was the last word, rather than a step towards one. */
+/**
+ * Whether that decision was the last word, rather than a step towards one. FR 48b.
+ *
+ * Both halves are needed since LMS 320: a request that stopped because nobody could be asked
+ * is also waiting on nobody, and it is emphatically not decided — no days move on it.
+ */
 export function isTheLastWord(outcome: ApprovalOutcome): boolean {
-  return outcome.awaiting === null;
+  return outcome.awaiting === null && outcome.to !== 'UNROUTABLE';
 }
 
-/** How far through its chain a request has got. FR 41, FR 42, FR 44, LMS 316, LMS 318. */
+/** Where a request goes when it is sent back into its chain. FR 48b, §8.6a. LMS 320. */
+export interface RoutedAgain {
+  to: RequestStatus;
+  awaiting: ApproverRole;
+  skips: readonly SkippedStage[];
+}
+
+/**
+ * Where sending an unroutable request back into its chain leaves it. FR 48b, §8.6a. LMS 320.
+ *
+ * The same walk a decision makes, with nothing decided by it: no desk answers, no ledger
+ * entry is written, and the request goes back to being decided at whichever desk can now be
+ * asked. Refused with {@link StillNobodyToDecideIt} where nothing has changed.
+ */
+export function routingTo(input: {
+  request: LeaveRequest;
+  chain: readonly ApproverRole[];
+  decidedAlready: readonly ApproverRole[];
+  skipped: readonly SkippedStage[];
+  available: DesksAvailable;
+}): RoutedAgain {
+  const { request, chain, decidedAlready, skipped, available } = input;
+
+  const transition = transitionFor(request.status, 'ROUTE');
+
+  if (transition === undefined) {
+    throw refuseTheMove(request, 'ROUTE');
+  }
+
+  const routed = routeFrom({ chain, decided: decidedAlready, skipped, available });
+
+  if (routed.kind === 'UNROUTABLE') {
+    throw new StillNobodyToDecideIt(
+      request,
+      routed.stranded,
+      whatWouldRouteIt(routed.stranded, available),
+    );
+  }
+
+  if (routed.kind === 'DECIDED') {
+    /* Unreachable: a request is unroutable because a stage it reached had nobody to answer
+       it, and a stage nobody answered has not decided. Answered rather than asserted,
+       because the alternative is leave agreed by a stage that was never asked. */
+    throw new LeaveCannotBeMoved(request, 'ROUTE');
+  }
+
+  return { to: transition.to, awaiting: routed.desk, skips: routed.skips };
+}
+
+/** How far through its chain a request has got. FR 41, FR 42, FR 44, FR 48b, LMS 316, LMS 318, LMS 320. */
 export interface ApprovalProgress {
   /** FR 41. */
   agreed: boolean;
-  /** The chain as the type has it now, in order. */
+  /** FR 48b. Nobody can decide it, and HR has been told. LMS 320. */
+  unroutable: boolean;
+  /** The desks this request is asked at: the type's chain with its skips substituted in. */
   chain: readonly ApproverRole[];
+  /** FR 48b. The stages that went somewhere else, and why. LMS 320. */
+  skipped: readonly SkippedStage[];
   /** The stages that have said yes, in chain order. */
   approvedBy: readonly ApproverRole[];
   /** The stages that have said no, in chain order. FR 44, LMS 318. */
@@ -655,17 +812,24 @@ export interface ApprovalProgress {
   inWords: string;
 }
 
-/** Where a request stands, from the facts that say so. FR 41, FR 44. */
+/** Where a request stands, from the facts that say so. FR 41, FR 44, FR 48b. */
 export function progressOf(input: {
   request: LeaveRequest;
+  /** FR 38a. The type's chain, which the skips below are substituted into. */
   chain: readonly ApproverRole[];
   /** FR 41. */
   approvedBy: readonly ApproverRole[];
   /** FR 44, LMS 318. */
   refusedBy?: readonly ApproverRole[];
+  /** FR 48b, LMS 320. */
+  skipped?: readonly SkippedStage[];
 }): ApprovalProgress {
-  const { request, chain, approvedBy } = input;
+  const { request, approvedBy } = input;
   const refusedBy = input.refusedBy ?? [];
+  const skipped = input.skipped ?? [];
+
+  /* FR 48b. The desks actually asked, so a skipped stage is not still owed an answer. */
+  const chain = desksAsked(input.chain, skipped);
 
   const missing = stagesNotApproved(chain, approvedBy);
   const signed = chain.filter((desk) => approvedBy.includes(desk));
@@ -675,16 +839,19 @@ export function progressOf(input: {
   const unasked = stagesYetToDecide(chain, [...approvedBy, ...refusedBy]);
   const beingDecided = request.status === 'SUBMITTED';
   const agreed = request.status === 'APPROVED';
+  const unroutable = request.status === 'UNROUTABLE';
 
   return {
     agreed,
-    chain: [...chain],
+    unroutable,
+    chain,
+    skipped: stagesSkipped(input.chain, skipped),
     approvedBy: signed,
     refusedBy: turnedDown,
     stillToApprove: beingDecided ? unasked : [],
     awaiting: request.awaitingApprovalFrom,
     stagesMissing: missing,
-    inWords: progressInWords(request, signed, turnedDown, unasked, agreed),
+    inWords: progressInWords(request, signed, turnedDown, unasked, agreed, unroutable),
   };
 }
 
@@ -695,6 +862,7 @@ function progressInWords(
   refused: readonly ApproverRole[],
   unasked: readonly ApproverRole[],
   agreed: boolean,
+  unroutable: boolean,
 ): string {
   const said = [
     approved.length === 0 ? null : `Approved by ${chainInWords(approved)}.`,
@@ -710,6 +878,15 @@ function progressInWords(
 
   if (agreed) {
     return `This leave is agreed and is yours to take. ${soFar}`;
+  }
+
+  /** FR 48b, LMS 320. */
+  if (unroutable) {
+    return (
+      `This leave is not agreed, and it is waiting on nobody: there is no approver left ` +
+      `who could decide it, so it has stopped rather than been turned down. ${soFar} HR ` +
+      `has been told, and the days are still held. Do not book anything on it.`
+    );
   }
 
   if (isSettled(request.status)) {
@@ -777,16 +954,18 @@ export interface ValidatedLeaveRequest {
   countingBasis: CountingBasis;
   days: number;
   calendarDays: number;
+  /** `SUBMITTED`, or `UNROUTABLE` where nobody can be asked at all. FR 48b, LMS 320. */
   status: RequestStatus;
   /**
-   * FR 38a. The first desk in the type's chain, which is where this starts. LMS 314.
+   * FR 38a, FR 48b. The desk this starts at, or null where there is none. LMS 314, LMS 320.
    *
-   * The story's first criterion, and — like `status` — not a field the caller supplies.
-   * {@link validateNewLeaveRequest} takes the chain and reads the front of it, because a
-   * caller who could name the desk could name the last one and have a fortnight approved by
-   * whoever answered first.
+   * Not a field the caller supplies: {@link validateNewLeaveRequest} reads it off the
+   * routing, because a caller who could name the desk could name the last one and have a
+   * fortnight approved by whoever answered first.
    */
-  awaitingApprovalFrom: ApproverRole;
+  awaitingApprovalFrom: ApproverRole | null;
+  /** FR 48b. The stages skipped on the way to that desk, to be recorded. LMS 320. */
+  skips: readonly SkippedStage[];
 }
 
 /**
@@ -1579,6 +1758,9 @@ export function inWordsSettled(status: RequestStatus): string {
       return 'refused';
     case 'APPROVED':
       return 'approved';
+    /** FR 48b, LMS 320. */
+    case 'UNROUTABLE':
+      return 'left with no approver who could decide it';
     default:
       /* Unreachable in the two release callers, which take a `ReleasingStatus`, and
          reachable in principle from {@link LeaveCannotBeMoved} — which is thrown only for a
@@ -1637,7 +1819,11 @@ export function validateNewLeaveRequest(input: {
    * the reading of it happens once, here.
    */
   approvalChain: readonly ApproverRole[];
+  /** FR 48b. Who can be asked at each desk, for this requester. LMS 320. */
+  available: DesksAvailable;
 }): ValidatedLeaveRequest {
+  const routed = theFirstDesk(input.approvalChain, input.available);
+
   return {
     employeeId: requireId('employeeId', input.employeeId),
     leaveTypeId: requireId('leaveTypeId', input.leaveTypeId),
@@ -1651,33 +1837,30 @@ export function validateNewLeaveRequest(input: {
     /* Not a parameter. A caller that could choose the status could submit something
        already approved, and the README's rule is that only the state machine moves
        one — which starts with only one thing being able to create one. */
-    status: 'SUBMITTED',
-    /* FR 38a, and the same argument one line up. A caller that could name the desk could
-       name the last one, and a fortnight would be one signature from approved. */
-    awaitingApprovalFrom: theFirstDesk(input.approvalChain),
+    status: routed.kind === 'DESK' ? 'SUBMITTED' : 'UNROUTABLE',
+    /* FR 38a, FR 48b, and the same argument one line up. A caller that could name the desk
+       could name the last one, and a fortnight would be one signature from approved. */
+    awaitingApprovalFrom: routed.kind === 'DESK' ? routed.desk : null,
+    /** FR 48b. */
+    skips: routed.skips,
   };
 }
 
 /**
- * The desk a new request starts at. FR 38, FR 38a. LMS 314's first criterion.
+ * The desk a new request starts at. FR 38, FR 38a, FR 48b. LMS 314, LMS 320.
  *
  * Read off the chain and nowhere else, which is the whole criterion: annual leave starts
  * with the line manager because its chain starts with `MANAGER`, and unpaid leave starts
  * with HR because its chain starts with `HR` — not because anything here knows which type
- * is which. Design principle 5, and the README's version of it: "If either appears as an
- * `if` on a type code, that is a bug."
+ * is which. Design principle 5.
  *
  * A chain with nobody in it is refused rather than defaulted, and `assertSomebodyApprovesIt`
- * has already said so in a sentence naming the type — this is the same refusal one layer in,
- * where there is no leave type in hand to name. Defaulting to {@link DEFAULT_APPROVAL_CHAIN}
- * here is the tempting alternative and it is the one ./approval-chain.ts argues against at
- * length: a fallback read would route a request somewhere the configuration screen shows
- * nothing for.
+ * has already said so in a sentence naming the type. A chain nobody can *staff* is a
+ * different thing and is not refused: the leave is real, the days are held, and FR 48b
+ * answers it with `UNROUTABLE` and an alert rather than by sending the person away.
  */
-function theFirstDesk(chain: readonly ApproverRole[]): ApproverRole {
-  const first = firstApprover(chain);
-
-  if (first === undefined) {
+function theFirstDesk(chain: readonly ApproverRole[], available: DesksAvailable): Routed {
+  if (chain.length === 0) {
     throw new InvalidLeaveRequest(
       'approvalChain',
       'This kind of leave has nobody set up to approve it, so a request for it would sit ' +
@@ -1685,7 +1868,20 @@ function theFirstDesk(chain: readonly ApproverRole[]): ApproverRole {
     );
   }
 
-  return first;
+  const routed = routeFrom({ chain, decided: [], skipped: [], available });
+
+  if (routed.kind === 'DECIDED') {
+    /* Unreachable: a non-empty chain whose first stage can be answered returns `DESK`, and
+       one that cannot returns `UNROUTABLE`. Answered rather than asserted, because the
+       alternative is a request created already approved. */
+    throw new InvalidLeaveRequest(
+      'approvalChain',
+      'This request would be agreed by nobody having to decide it, which is not something ' +
+        'a submission can produce. FR 48b.',
+    );
+  }
+
+  return routed;
 }
 
 /**

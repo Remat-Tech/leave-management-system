@@ -323,6 +323,21 @@ export interface LeaveRequestDecisionTable {
   decided_at: Timestamp;
 }
 
+/** One stage of a request's chain that another desk answered. FR 48b, §8.6a, LMS 320. */
+export interface LeaveRequestRoutingTable {
+  id: Generated<string>;
+  leave_request_id: ColumnType<string, string, never>;
+  /** The desk the type's chain names at this stage. */
+  stage: ColumnType<string, string, never>;
+  /** The desk that answered it instead. */
+  routed_to: ColumnType<string, string, never>;
+  /** NFR USA 03. */
+  because: ColumnType<string, string, never>;
+  recorded_by: ColumnType<string, never, never>;
+  recorded_by_employee_id: ColumnType<string | null, never, never>;
+  recorded_at: Timestamp;
+}
+
 /** One thing somebody was told about their leave. FR 59, §7.1., LMS 329. */
 export interface NotificationTable {
   id: Generated<string>;
@@ -352,6 +367,7 @@ export interface Database {
   leave_ledger_entry: LeaveLedgerEntryTable;
   leave_request: LeaveRequestTable;
   leave_request_decision: LeaveRequestDecisionTable;
+  leave_request_routing: LeaveRequestRoutingTable;
   leave_type: LeaveTypeTable;
   leave_type_approval_step: LeaveTypeApprovalStepTable;
   leave_year: LeaveYearTable;

@@ -34,6 +34,7 @@ import {
   type LeaveType,
   validateNewLeaveType,
 } from '../../src/features/leave-type/leave-type.js';
+import type { DesksAvailable } from '../../src/features/leave-request/routing.js';
 import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
 import { eachDay } from '../../src/shared/time.js';
 
@@ -343,6 +344,13 @@ describe('what a request has to say', () => {
     /* FR 38a. The type's chain, handed over so the first stage can be read off it. LMS
        314 — see the case below about where a request starts. */
     approvalChain: ['MANAGER', 'HR'] as const,
+    /* FR 48b. Every desk staffed by somebody who is not the requester, which is the
+       ordinary case; routing around an empty one is ./routing.test.ts's. LMS 320. */
+    available: {
+      MANAGER: 'CAN_DECIDE',
+      HR: 'CAN_DECIDE',
+      CEO: 'CAN_DECIDE',
+    } as DesksAvailable,
   };
 
   function refusedField(build: () => unknown): string {
@@ -357,15 +365,18 @@ describe('what a request has to say', () => {
   }
 
   it('carries the four fields FR 10 asks for, and what they were priced at', () => {
-    /* The chain goes in and does not come out: what is stored is the desk read off the
-       front of it, which is the whole of the story's first criterion. */
-    const stored = { ...SOUND, approvalChain: undefined };
+    /* The chain and who staffs its desks go in and do not come out: what is stored is the
+       desk the routing chose, which is the whole of the story's first criterion. */
+    const stored: Record<string, unknown> = { ...SOUND };
     delete stored.approvalChain;
+    delete stored.available;
 
     expect(validateNewLeaveRequest(SOUND)).toEqual({
       ...stored,
       status: 'SUBMITTED',
       awaitingApprovalFrom: 'MANAGER',
+      /** FR 48b. Nothing was skipped: every desk can be asked. LMS 320. */
+      skips: [],
     });
   });
 
@@ -763,7 +774,10 @@ describe('which requests hold the days', () => {
    * or a fortnight booked over leave a manager and HR have both signed off.
    */
   it('is a list of its own, not a reading of every status', () => {
-    expect([...LIVE_STATUSES]).toEqual(['SUBMITTED', 'APPROVED']);
+    /* `UNROUTABLE` joined with LMS 320 and had to be asked about separately: its RESERVATION
+       still stands, so the days are gone from the balance and the dates are spoken for even
+       though nobody can decide it. FR 48b. */
+    expect([...LIVE_STATUSES]).toEqual(['SUBMITTED', 'APPROVED', 'UNROUTABLE']);
 
     for (const status of LIVE_STATUSES) {
       expect(REQUEST_STATUSES).toContain(status);
@@ -1179,10 +1193,12 @@ describe('where this story stops', () => {
    * test is what fails if somebody adds a status here without the migration that lets the
    * database hold it.
    */
-  it('has the five statuses something can actually reach', () => {
+  it('has the six statuses something can actually reach', () => {
     expect([...REQUEST_STATUSES]).toEqual([
       'SUBMITTED',
       'APPROVED',
+      /** FR 48b, LMS 320. Reached by a routing that ran out of desks it could fill. */
+      'UNROUTABLE',
       'WITHDRAWN',
       'CANCELLED',
       'REFUSED',
@@ -1208,28 +1224,25 @@ describe('where this story stops', () => {
   });
 
   /**
-   * And nothing here routes a request past a desk nobody can fill. FR 48b.
+   * And a desk nobody can fill is skipped rather than waited at. FR 48b. LMS 320.
    *
-   * The gap this story leaves on purpose, asserted so it is a decision rather than a
-   * discovery. A manager who raises their own leave is waiting on themselves, and the Chief
-   * Executive has no line manager to send an ordinary request to; FR 48b routes both
-   * upwards, and it is a rule about a reporting line rather than about a leave type — which
-   * is why the leave-type-approval-chain migration kept it out of the chain table.
-   *
-   * What this story does instead is refuse visibly: `leaveRequestPolicy.approve` admits
-   * nobody but the desk, so such a request waits rather than being approved by somebody the
-   * chain never asked. The walk has no notion of skipping a stage, and that is what this
-   * says.
+   * The gap LMS 314 left on purpose and this story closes. The whole of the routing is
+   * ./routing.test.ts's; what is pinned here is that the walk a decision makes reads it —
+   * a stage with nobody at it hands the request on and is recorded, and nothing is agreed
+   * by running out of people to ask.
    */
-  it('and no desk is skipped when there is nobody at it', () => {
+  it('and a desk nobody can fill is skipped, with the skip recorded', () => {
     const chain = ['MANAGER', 'HR'] as const;
 
-    expect(
-      decisionTo(aStoredRequest({ awaitingApprovalFrom: 'MANAGER' }), 'APPROVE', chain, []),
-    ).toEqual({
-      by: 'MANAGER',
-      to: 'SUBMITTED',
-      awaiting: 'HR',
+    const outcome = decisionTo({
+      request: aStoredRequest({ awaitingApprovalFrom: 'HR' }),
+      action: 'APPROVE',
+      chain,
+      decidedAlready: [],
+      skipped: [{ stage: 'MANAGER', routedTo: 'HR', because: 'no line manager' }],
+      available: { MANAGER: 'NOBODY_STAFFS_IT', HR: 'CAN_DECIDE', CEO: 'CAN_DECIDE' },
     });
+
+    expect(outcome).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null, skips: [] });
   });
 });

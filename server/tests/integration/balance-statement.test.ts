@@ -14,6 +14,7 @@ import {
 } from '../../src/features/balance/balance-statement.js';
 import { EmployeeNotFound } from '../../src/features/employee/employee.js';
 import type { LeaveRequest } from '../../src/features/leave-request/leave-request.js';
+import type { DesksAvailable } from '../../src/features/leave-request/routing.js';
 import { LeaveYearNotFound } from '../../src/features/leave-year/leave-year.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
@@ -84,7 +85,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
   );
   await restoreYears();
   await restoreTypes();
@@ -101,7 +102,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
   );
   await restoreYears();
   await restoreTypes();
@@ -485,6 +486,8 @@ async function askFor(employeeId: string, leaveTypeId: string, days: number) {
       calendarDays: days,
       status: 'SUBMITTED' as const,
       awaitingApprovalFrom: 'MANAGER' as const,
+      /** FR 48b. Nothing to skip: every desk can be asked. LMS 320. */
+      skips: [],
     },
     reason: `${String(days)} days held while it is decided`,
   });
@@ -523,6 +526,12 @@ function yes(request: LeaveRequest) {
     action: 'APPROVE' as const,
     chain: [...DEFAULT_APPROVAL_CHAIN],
     chiefExecutiveId: null,
+    /** FR 48b. Every desk staffed by somebody who is not the requester. LMS 320. */
+    available: {
+      MANAGER: 'CAN_DECIDE',
+      HR: 'CAN_DECIDE',
+      CEO: 'CAN_DECIDE',
+    } as DesksAvailable,
     reasonForTaking: `${String(request.days)} days taken`,
     reasonForGivingBack: `${String(request.days)} days given back`,
     comment: null,

@@ -5,9 +5,12 @@ import { signedInAs } from '../../src/auth/actor.js';
 import { leaveRequestPolicy } from '../../src/features/leave-request/policy.js';
 import type { BalanceOwner } from '../../src/features/balance/policy.js';
 import { APPROVER_ROLES, type ApproverRole } from '../../src/features/leave-type/approval-chain.js';
+import type { DecidingAction } from '../../src/features/leave-request/leave-decision.js';
+import type { DesksAvailable } from '../../src/features/leave-request/routing.js';
 import {
+  type ApprovalOutcome,
   blocksTheCalendar,
-  decisionTo,
+  decisionTo as decide,
   isSettled,
   isTheLastWord,
   LeaveAlreadySettled,
@@ -89,6 +92,24 @@ function aRequestIn(status: RequestStatus, awaiting: ApproverRole = 'MANAGER'): 
     createdAt: new Date('2026-02-01T09:00:00Z'),
     updatedAt: new Date('2026-02-01T09:00:00Z'),
   };
+}
+
+/** Every desk staffed by somebody who is not the requester, which is the ordinary case. */
+const ANYBODY: DesksAvailable = { MANAGER: 'CAN_DECIDE', HR: 'CAN_DECIDE', CEO: 'CAN_DECIDE' };
+
+/**
+ * The four arguments LMS 320 replaced with one, for every assertion written before it.
+ *
+ * Routing around an empty desk is ./routing.test.ts's; what is asserted below is where a
+ * decision lands when every desk can be asked, which is what these all meant.
+ */
+function decisionTo(
+  request: LeaveRequest,
+  action: DecidingAction,
+  chain: readonly ApproverRole[],
+  decidedAlready: readonly ApproverRole[],
+): ApprovalOutcome {
+  return decide({ request, action, chain, decidedAlready, skipped: [], available: ANYBODY });
 }
 
 describe('the transitions a request may make', () => {
@@ -176,7 +197,34 @@ describe('the transitions a request may make', () => {
    */
   it('and everything can be done to a request that is waiting to be decided', () => {
     for (const action of REQUEST_ACTIONS) {
+      /* FR 48b, LMS 320. `ROUTE` is the one verb this state has no row for, and the
+         absence is the rule: a request that is being decided is already with somebody. */
+      if (action === 'ROUTE') {
+        expect(transitionFor('SUBMITTED', action)).toBeUndefined();
+        continue;
+      }
+
       expect(transitionFor('SUBMITTED', action)).toBeDefined();
+    }
+  });
+
+  /**
+   * And a request nobody could decide can be moved, but never decided. FR 48b. LMS 320.
+   *
+   * The point of the status: it is stuck rather than settled, so the person may take it
+   * back and HR may unwind it or put it back into the chain — and no verb there reaches
+   * `APPROVED` or `REFUSED`, because nobody was ever asked.
+   */
+  it('and a request nobody could decide may be taken back, unwound or routed again', () => {
+    expect(transitionsFrom('UNROUTABLE').map((transition) => transition.action)).toEqual([
+      'WITHDRAW',
+      'CANCEL',
+      'ROUTE',
+    ]);
+
+    for (const transition of transitionsFrom('UNROUTABLE')) {
+      expect(transition.to).not.toBe('APPROVED');
+      expect(transition.to).not.toBe('REFUSED');
     }
   });
 
@@ -264,8 +312,16 @@ describe('the transitions a request may make', () => {
   it('and the verbs that say yes are the only rows whose destination keeps the request alive', () => {
     const live = TRANSITIONS.filter((transition) => !isSettled(transition.to));
 
-    expect(live.map((transition) => transition.action)).toEqual(['APPROVE', 'OVERTURN_REJECTION']);
-    expect([...new Set(live.map((transition) => transition.to))]).toEqual(['APPROVED']);
+    /** `ROUTE` joined them with LMS 320, and it is the one that decides nothing. FR 48b. */
+    expect(live.map((transition) => transition.action)).toEqual([
+      'APPROVE',
+      'OVERTURN_REJECTION',
+      'ROUTE',
+    ]);
+    expect([...new Set(live.map((transition) => transition.to))]).toEqual([
+      'APPROVED',
+      'SUBMITTED',
+    ]);
   });
 });
 
@@ -377,14 +433,14 @@ describe('where an approval lands', () => {
   it('sends a request on to the next desk, leaving it where it was', () => {
     const outcome = decisionTo(waitingOn('MANAGER'), 'APPROVE', ORDINARY, []);
 
-    expect(outcome).toEqual({ by: 'MANAGER', to: 'SUBMITTED', awaiting: 'HR' });
+    expect(outcome).toEqual({ by: 'MANAGER', to: 'SUBMITTED', awaiting: 'HR', skips: [] });
     expect(isTheLastWord(outcome)).toBe(false);
   });
 
   it('and approves it when every stage has approved', () => {
     const outcome = decisionTo(waitingOn('HR'), 'APPROVE', ORDINARY, ['MANAGER']);
 
-    expect(outcome).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null });
+    expect(outcome).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null, skips: [] });
     expect(isTheLastWord(outcome)).toBe(true);
   });
 
@@ -402,12 +458,14 @@ describe('where an approval lands', () => {
       by: 'HR',
       to: 'SUBMITTED',
       awaiting: 'CEO',
+      skips: [],
     });
 
     expect(decisionTo(waitingOn('CEO'), 'APPROVE', UNPAID, ['HR'])).toEqual({
       by: 'CEO',
       to: 'APPROVED',
       awaiting: null,
+      skips: [],
     });
   });
 
@@ -418,6 +476,7 @@ describe('where an approval lands', () => {
     expect(decisionTo(waitingOn('HR'), 'APPROVE', ['HR'], [])).toMatchObject({
       to: 'APPROVED',
       awaiting: null,
+      skips: [],
     });
   });
 
@@ -483,7 +542,7 @@ describe('where an approval lands', () => {
 
     const outcome = decisionTo(waitingOn('HR'), 'APPROVE', widened, ['MANAGER']);
 
-    expect(outcome).toEqual({ by: 'HR', to: 'SUBMITTED', awaiting: 'CEO' });
+    expect(outcome).toEqual({ by: 'HR', to: 'SUBMITTED', awaiting: 'CEO', skips: [] });
     expect(isTheLastWord(outcome)).toBe(false);
   });
 
@@ -496,6 +555,7 @@ describe('where an approval lands', () => {
       by: 'CEO',
       to: 'APPROVED',
       awaiting: null,
+      skips: [],
     });
   });
 
@@ -507,6 +567,7 @@ describe('where an approval lands', () => {
       by: 'HR',
       to: 'SUBMITTED',
       awaiting: 'CEO',
+      skips: [],
     });
   });
 });
@@ -536,7 +597,7 @@ describe('a line manager’s rejection', () => {
   it('sends the request on to HR rather than ending it', () => {
     const outcome = decisionTo(waitingOn('MANAGER'), 'REFUSE', ORDINARY, []);
 
-    expect(outcome).toEqual({ by: 'MANAGER', to: 'SUBMITTED', awaiting: 'HR' });
+    expect(outcome).toEqual({ by: 'MANAGER', to: 'SUBMITTED', awaiting: 'HR', skips: [] });
     expect(isTheLastWord(outcome)).toBe(false);
   });
 
@@ -552,7 +613,7 @@ describe('a line manager’s rejection', () => {
   it('and a rejection at the last desk ends the request', () => {
     const outcome = decisionTo(waitingOn('HR'), 'REFUSE', ORDINARY, ['MANAGER']);
 
-    expect(outcome).toEqual({ by: 'HR', to: 'REFUSED', awaiting: null });
+    expect(outcome).toEqual({ by: 'HR', to: 'REFUSED', awaiting: null, skips: [] });
     expect(isTheLastWord(outcome)).toBe(true);
   });
 
@@ -566,7 +627,7 @@ describe('a line manager’s rejection', () => {
   it('and HR overturning it approves the leave, as their plain yes would', () => {
     const overturned = decisionTo(waitingOn('HR'), 'OVERTURN_REJECTION', ORDINARY, ['MANAGER']);
 
-    expect(overturned).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null });
+    expect(overturned).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null, skips: [] });
     expect(overturned).toEqual(decisionTo(waitingOn('HR'), 'APPROVE', ORDINARY, ['MANAGER']));
   });
 
@@ -574,7 +635,7 @@ describe('a line manager’s rejection', () => {
   it('and HR overturning an approval turns the leave down, as their plain no would', () => {
     const overturned = decisionTo(waitingOn('HR'), 'OVERTURN_APPROVAL', ORDINARY, ['MANAGER']);
 
-    expect(overturned).toEqual({ by: 'HR', to: 'REFUSED', awaiting: null });
+    expect(overturned).toEqual({ by: 'HR', to: 'REFUSED', awaiting: null, skips: [] });
     expect(overturned).toEqual(decisionTo(waitingOn('HR'), 'REFUSE', ORDINARY, ['MANAGER']));
   });
 
@@ -595,6 +656,7 @@ describe('a line manager’s rejection', () => {
       by: 'HR',
       to: 'SUBMITTED',
       awaiting: 'CEO',
+      skips: [],
     });
   });
 
@@ -803,13 +865,34 @@ describe('the table, written out', () => {
         to: 'REFUSED',
         by: ['THE_DESK_IT_IS_WITH'],
       },
+      /* FR 48b, §8.6a, LMS 320. A request nobody could be found to decide: the person may
+         take it back, HR may unwind it, and HR may put it back into its chain. No decision
+         among them, because no desk was ever filled. */
+      {
+        from: 'UNROUTABLE',
+        action: 'WITHDRAW',
+        to: 'WITHDRAWN',
+        by: ['THE_REQUESTER', 'LEAVE_ADMINISTRATION'],
+      },
+      {
+        from: 'UNROUTABLE',
+        action: 'CANCEL',
+        to: 'CANCELLED',
+        by: ['LEAVE_ADMINISTRATION'],
+      },
+      {
+        from: 'UNROUTABLE',
+        action: 'ROUTE',
+        to: 'SUBMITTED',
+        by: ['LEAVE_ADMINISTRATION'],
+      },
     ]);
   });
 
   /* And the vocabulary it is keyed by, for the same reason. A standing added here
      without a branch in `hasStanding` does not compile; one added and left out of every
      row is a concept nothing uses. */
-  it('and is keyed by the six actions and the four standings there are', () => {
+  it('and is keyed by the seven actions and the four standings there are', () => {
     expect([...REQUEST_ACTIONS]).toEqual([
       'WITHDRAW',
       'REFUSE',
@@ -817,6 +900,8 @@ describe('the table, written out', () => {
       'APPROVE',
       'OVERTURN_REJECTION',
       'OVERTURN_APPROVAL',
+      /** FR 48b, LMS 320. */
+      'ROUTE',
     ]);
     expect([...STANDINGS]).toEqual([
       'THE_REQUESTER',
@@ -904,8 +989,18 @@ describe('the two questions, and the order they are asked in', () => {
    * different states makes this too permissive, and the test that catches it is the one
    * asserting the table is exactly three rows.
    */
-  it.each(REQUEST_ACTIONS)('and the standings %s is decided on are that row’s', (action) => {
-    expect(standingsFor(action)).toEqual(transitionFor('SUBMITTED', action)?.by);
+  /* LMS 320 gave `WITHDRAW` and `CANCEL` a second row each, out of `UNROUTABLE`, and both
+     carry exactly the standings their `SUBMITTED` row carries — so the union is still every
+     row's own list. A story giving one action different desks in different states makes it
+     too permissive, and this is what fails. FR 48b. */
+  it.each(REQUEST_ACTIONS)('and the standings %s is decided on are every row’s', (action) => {
+    const rows = TRANSITIONS.filter((transition) => transition.action === action);
+
+    expect(rows.length).toBeGreaterThan(0);
+
+    for (const row of rows) {
+      expect(standingsFor(action)).toEqual([...row.by]);
+    }
   });
 });
 

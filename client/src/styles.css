@@ -575,6 +575,13 @@ button:hover:not(:disabled) {
   border-color: var(--ink-faint);
 }
 
+/* Nobody can decide it. FR 48b. Warned rather than refused, because the leave is not turned
+   down and the days are still held — the word in the tag is what says which. */
+.tag.status.is-unroutable {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+}
+
 .request-what {
   margin: 0;
   font-size: 0.9375rem;
