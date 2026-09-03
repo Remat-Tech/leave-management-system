@@ -446,6 +446,25 @@ Which migrations have been applied is recorded in the `pgmigrations` table. That
 
 Once a migration is merged it is never edited. Fix a mistake with a new migration.
 
+### What has to be set before go live
+
+Migrations bring a database up with everything the system cannot run without — the roles, the
+working week, the seven leave types, their chains and figures, the first two leave years, and
+Ghana's 2026 gazette. One thing they cannot: **who the Chief Executive is**. FR 48c, and
+[LMS 321](domain-rules.md#identifying-the-chief-executive).
+
+```sql
+SELECT ceo_employee_id FROM organisation_setting;
+```
+
+A null there is an installation nobody has finished configuring. Unpaid leave and the unpaid
+maternity extension go HR then the Chief Executive, §4.3.1, so until an HR Administrator names
+somebody that stage falls to HR and the skip is recorded on every such request. Nothing breaks
+and nothing is auto approved — but it is not the routing the policy asks for.
+
+The migration seeds it from whoever had no line manager at the time, so an existing database
+carries its own answer forward and only a fresh installation starts empty.
+
 ---
 
 ## Database roles
@@ -916,7 +935,7 @@ neither `TRUNCATE` nor `DELETE` on `employee`.
 
 | Who | Why they are in there |
 |---|---|
-| Kwame Asante, CEO | The only employee with no manager. Every upward walk has to stop somewhere |
+| Kwame Asante, CEO | The only employee with no manager, so every upward walk stops somewhere. Also what the seed names in `organisation_setting` — since [LMS 321](domain-rules.md#identifying-the-chief-executive) those are two separate facts that happen to agree |
 | Akosua Darko, Kofi Boateng | Managers who are also somebody's report. Breaks anything assuming approvers and requesters are different people |
 | Abena Sarpong | Part time, Wednesdays off. A pattern of merely "weekends off" would let a hard coded weekend pass every test |
 | Kojo Antwi | Left in July, still on the books. FR 06 keeps the record; FR 37a needs exactly this shape to calculate a leaver figure |

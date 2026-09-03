@@ -16,6 +16,7 @@ import type { LeaveRequestRepository } from '../features/leave-request/leave-req
 import type { LeaveRequestService } from '../features/leave-request/leave-request.service.js';
 import type { LeaveTypeRepository } from '../features/leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../features/leave-year/leave-year.db.js';
+import type { OrganisationRepository } from '../features/organisation/organisation.db.js';
 import type { RoleRepository } from '../features/role/role.db.js';
 import type { SignInAccountRepository } from '../features/sign-in/sign-in-account.db.js';
 import { balanceRoutes } from '../features/balance/routes.js';
@@ -51,6 +52,8 @@ export interface Application {
   routing: LeaveRoutingRepository;
   accounts: SignInAccountRepository;
   roles: RoleRepository;
+  /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
+  organisation: OrganisationRepository;
   /** Where a 500 is written down. */
   failures?: FailureLog;
   /** Read from `SESSION_SECRET` when not given. */
@@ -129,6 +132,7 @@ export function buildApp(parts: Application): Express {
         parts.decisions,
         parts.guard,
         parts.employees,
+        parts.organisation,
         parts.balances,
         parts.types,
         parts.years,

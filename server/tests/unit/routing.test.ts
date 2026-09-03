@@ -354,7 +354,8 @@ describe('what would route it', () => {
     const said = whatWouldRouteIt('HR', nobody);
 
     expect(said).toContain('granting somebody an HR role');
-    expect(said).toContain('no line manager');
+    /** FR 48c. A setting somebody writes, not a shape of the reporting lines. LMS 321. */
+    expect(said).toContain('naming a current employee as the Chief Executive');
   });
 
   /* And where the desk is the requester's own, it says so rather than claiming it is empty. */

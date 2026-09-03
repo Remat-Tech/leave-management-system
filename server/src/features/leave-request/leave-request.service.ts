@@ -77,6 +77,7 @@ import type { LeaveDecisionRepository } from './leave-decision.db.js';
 import type { LeaveRequestListOptions, LeaveRequestRepository } from './leave-request.db.js';
 import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
+import type { OrganisationRepository } from '../organisation/organisation.db.js';
 import type {
   BalanceService,
   LeaveApproved,
@@ -143,6 +144,13 @@ export class LeaveRequestService {
      * The one question asked of it: is there anybody in HR who is not the person asking.
      */
     private readonly roles: RoleRepository,
+    /**
+     * Who the `CEO` desk resolves to. FR 48c, LMS 321.
+     *
+     * Beside `roles` because it is the same question about the other desk that is not a
+     * reporting line. It was `EmployeeRepository.findRoot` until LMS 321.
+     */
+    private readonly organisation: OrganisationRepository,
     /**
      * What the period costs. The one place this question is asked.
      *
@@ -429,11 +437,9 @@ export class LeaveRequestService {
    *   request, because the request does not carry it — see {@link ApprovalChainChanged} for
    *   the seam that leaves and why it is refused by name rather than guessed at.
    *
-   *   **The Chief Executive, and only where the chain names them.** FR 04 makes it the one
-   *   employee with no line manager, and there is no role that says so — so the desk
-   *   resolves to an id and the id comes from `EmployeeRepository.findRoot`. Asked only for
-   *   a chain with a `CEO` stage in it, because it is a query every other approval in the
-   *   company would otherwise pay for to answer a question about the two unpaid types.
+   *   **The Chief Executive.** FR 48c makes it a setting rather than a role or a reporting
+   *   line, so the desk resolves to an id and the id comes from
+   *   `OrganisationRepository.chiefExecutiveId`. LMS 321.
    *
    * Throws {@link LeaveRequestNotFound} for an id that is nobody's, {@link NotAuthorised}
    * for somebody who may not see the request or is not the desk it is waiting on,
@@ -650,10 +656,11 @@ export class LeaveRequestService {
   private async whoShouldHearAboutIt(employee: Employee): Promise<Employee[]> {
     const ids = new Set<string>(await this.employeesInHr());
 
-    const root = await this.employees.findRoot();
+    /** FR 48c. The configured Chief Executive, not FR 04's root. LMS 321. */
+    const chiefExecutiveId = await this.organisation.chiefExecutiveId();
 
-    if (root !== undefined) {
-      ids.add(root.id);
+    if (chiefExecutiveId !== null) {
+      ids.add(chiefExecutiveId);
     }
 
     ids.delete(employee.id);
@@ -771,45 +778,34 @@ export class LeaveRequestService {
   }
 
   /**
-   * FR 04. The one employee with no line manager, where this chain asks for one.
-   *
-   * Only for a chain with a `CEO` stage, and the narrowness is the point rather than an
-   * optimisation for its own sake: two of the seven leave types route to the Chief
-   * Executive — unpaid leave and the unpaid maternity extension, §4.3.1 — so every other
-   * approval in the company would be paying for a query about a stage it does not have.
-   *
-   * Keyed on the *chain* rather than on the desk the request is standing at, because the
-   * answer is carried into the lock and the desk may have moved by the time it is used
-   * there. A chain that ends at the Chief Executive needs the id whichever stage the
-   * request is on today.
-   *
-   * Undefined comes back as null rather than as an error, and both policies treat a null as
-   * nobody: an organisation with no root is one `employee_one_root` says cannot exist, and
-   * the honest behaviour if it somehow does is to refuse the approval rather than to admit
-   * whoever asked.
-   */
-  /**
-   * Who can be asked at each of the three desks, and who FR 04's seat resolves to. FR 04, FR 38a, FR 48, FR 48b, §8.6a. LMS 314, LMS 320.
+   * Who can be asked at each of the three desks, and who the `CEO` desk resolves to. FR 04, FR 38a, FR 48, FR 48b, FR 48c, §8.6a. LMS 314, LMS 320, LMS 321.
    *
    * Three lookups, one per desk, and the requester's own id is what turns "staffed" into
    * "can decide this" — LMS 319's rule read as a fact about the desk rather than as a
    * refusal at the door.
    *
-   * **The root is read for every chain**, where LMS 314 read it only for a chain naming
-   * `CEO`. Since LMS 320 the Chief Executive stands in for HR, so they can be the desk a
-   * request is sitting on without the type's chain mentioning them at all — and a null here
+   * **The Chief Executive is read for every chain**, where LMS 314 read them only for a chain
+   * naming `CEO`. Since LMS 320 they stand in for HR, so they can be the desk a request is
+   * sitting on without the type's chain mentioning them at all — and a null here
    * would mean the one person who *can* decide it being refused at their own desk.
+   *
+   * **Since LMS 321 they are a setting**, not FR 04's root. FR 48c.
    *
    * A terminated record staffs nothing: somebody who has left cannot sign in, and a desk
    * held only by a leaver is a desk a request would wait at for ever. Being *away* is FR 49
    * and is not this.
    */
   private async whoCanDecide(employee: Employee): Promise<WhoIsThere> {
-    const [manager, root, inHr] = await Promise.all([
+    /** FR 48c. Sequential, because the id is what the lookup below needs. */
+    const chiefExecutiveId = await this.organisation.chiefExecutiveId();
+
+    const [manager, chiefExecutive, inHr] = await Promise.all([
       employee.managerId === null
         ? Promise.resolve(undefined)
         : this.employees.findById(employee.managerId),
-      this.employees.findRoot(),
+      chiefExecutiveId === null
+        ? Promise.resolve(undefined)
+        : this.employees.findById(chiefExecutiveId),
       this.employeesInHr(),
     ]);
 
@@ -818,14 +814,15 @@ export class LeaveRequestService {
       MANAGER: stillHere(manager),
       /** Two role codes staff one desk. FR 38a. */
       HR: inHr,
-      /** FR 04's single root. */
-      CEO: stillHere(root),
+      /** FR 48c. A setting, never a job title. */
+      CEO: stillHere(chiefExecutive),
     };
 
     return {
       available: desksAvailable((desk) => standingOf(atTheDesk[desk], employee.id)),
-      /* FR 04. Null where there is no root at all, which both policies read as nobody. */
-      chiefExecutiveId: root?.id ?? null,
+      /* FR 48c. The configured id, not `stillHere`'s answer: being the desk and the desk
+         being able to decide are different questions, and the second is `available`. */
+      chiefExecutiveId,
     };
   }
 
@@ -1298,10 +1295,10 @@ export class LeaveRequestService {
  * standings, and two structurally identical types would be an invitation for them to
  * stop being identical.
  */
-/** Who staffs each desk for one request, and who FR 04's seat resolves to. FR 48b, LMS 320. */
+/** Who staffs each desk for one request, and who the `CEO` desk resolves to. FR 48b, FR 48c, LMS 320, LMS 321. */
 interface WhoIsThere {
   available: DesksAvailable;
-  /** FR 04. */
+  /** FR 48c. */
   chiefExecutiveId: string | null;
 }
 

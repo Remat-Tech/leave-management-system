@@ -702,7 +702,7 @@ found is three different questions with three different answers.
 |---|---|---|
 | `MANAGER` | a relationship | `employee.manager_id`. Never a grant — "Holding it as a role too would create two sources of truth that drift the moment somebody changes team" |
 | `HR` | a granted role, and in fact two of them | `HR_OFFICER` or `HR_ADMIN`. The chain names the desk, because which of the two is on duty is not something HR should have to encode |
-| `CEO` | a position | FR 04's single root: exactly one employee has no line manager, and `employee_one_root` is what makes that exactly one |
+| `CEO` | a setting | `organisation_setting.ceo_employee_id`, named by an HR Administrator. FR 48c, and [LMS 321](#identifying-the-chief-executive) is why it is neither a job title nor FR 04's root |
 
 Turning them into a `role_id` would have made the chain joinable to `role` and
 then silently wrong, because two of the three have no row there to join to. The
@@ -756,6 +756,10 @@ person each desk is.
 which is FR 48b and is about a reporting line and a pair of granted roles rather
 than about a leave type — so the chain table knows nothing of it, and the skip is
 recorded against the *request* instead.
+
+**Who the `CEO` desk is, is [LMS 321](#identifying-the-chief-executive)**, which
+is FR 48c: a setting an HR Administrator writes, rather than a job title or a
+shape of the reporting lines.
 
 **What is still not built.** Cover while an approver is themselves away is FR 49,
 and is a different question from an empty desk. Parallel approval is nothing the
@@ -2310,7 +2314,7 @@ standings and `/features/leave-request/policy.ts` resolves them:
 |---|---|---|
 | `MANAGER` | a relationship | the reporting line on the record |
 | `HR` | a grant, and two codes staff it | `APPROVES_AS_HR` |
-| `CEO` | a position | FR 04's one employee with no line manager |
+| `CEO` | a setting | `organisation_setting.ceo_employee_id`. FR 48c |
 
 `APPROVES_AS_HR` is its own list rather than a reuse of `MAINTAINS_EMPLOYEE_RECORDS`, for
 the reason `MAINTAINS_THE_CALENDAR` is: they agree today for unrelated reasons, and a
@@ -2732,9 +2736,9 @@ pure — the chain, what each desk amounts to, and nothing else.
 
 | Desk | Cannot answer when | Who that is |
 |---|---|---|
-| `MANAGER` | the requester has no line manager | FR 04's single root, the Chief Executive |
+| `MANAGER` | the requester has no line manager | whoever is at the top of the reporting lines |
 | `HR` | every HR role is the requester's, or nobody's | the lone HR officer, `lone-hr` in the seed |
-| `CEO` | the root is the requester, or there is no root | the Chief Executive asking for unpaid leave |
+| `CEO` | the named Chief Executive is the requester or has left, or nobody is named | the Chief Executive asking for unpaid leave; a company still being set up |
 
 `DeskStanding` is those three answers rather than a boolean, because the boolean loses the
 half a person acts on: "nobody holds an HR role" and "the only person in HR is the one who
@@ -2751,7 +2755,7 @@ desk is staffed by a *role*, so a second officer already fills it and this branc
 only once there is nobody in HR but the requester.
 
 *And the Chief Executive's stage goes back to HR*, which is the one rung pointing downwards
-and the reason the table is a table. There is nothing above FR 04's root; the honest second
+and the reason the table is a table. There is nobody above the Chief Executive; the honest second
 best is the function that holds the policy the root would have applied.
 
 **A stand-in is one deep.** HR standing in for the manager, and then the Chief Executive
@@ -3393,5 +3397,73 @@ as before.
 **Nothing here reopens a settled request.** No ledger entry type was added, no reservation is
 posted twice, and `leave_request_reserves_once` and `leave_request_releases_once` are
 untouched. An override is a decision at a live desk.
+
+### Identifying the Chief Executive
+
+**Who the `CEO` desk resolves to is a setting somebody wrote down.** FR 48c, §4.3.1, LMS 321.
+`organisation_setting.ceo_employee_id`, a foreign key to an employee, named by an HR
+Administrator.
+
+**It is not a job title, and it is no longer FR 04's root either.** The story asks for the
+first and the second came with it. Until LMS 321 the desk resolved to the one employee with no
+line manager, which is a *shape of the reporting lines* standing in for a fact nobody had
+written down. That fails the way a job title fails — quietly, from a screen with nothing to do
+with leave:
+
+| What somebody does | Where unpaid leave went |
+|---|---|
+| gives the outgoing head a manager before clearing the incoming one's | whoever is rootless in between, or nobody |
+| hires a chairman above the Chief Executive | the chairman, for ever |
+| corrects a reporting line at the top of the tree | somewhere else, silently |
+
+None of those three is a leave decision, and all three were one. FR 04 keeps its single root
+and `employee_one_root` keeps holding it; what stops is the inference *from* it. The head of
+the reporting lines and the Chief Executive are the same person in almost every organisation
+and are now two separately answerable questions.
+
+**A column and a foreign key, not a key/value store.** `('ceo_employee_id', '17')` is a string
+that means something by convention, which is this story's failure wearing a different hat:
+nothing would refuse `('ceo_employee_id', 'Kwame')`, and nothing would notice the day row 17
+was never an employee. The next setting is a column and a migration.
+
+**One row, and it can be edited but never emptied.** `organisation_setting_is_one_row` is the
+constant-expression unique index `employee_one_root` uses, for the reason given there — "at
+most one row in the table" is a statement about the table, and a CHECK sees one row.
+`organisation_setting_keeps_a_chief_executive` refuses a write that clears a seat somebody was
+in, and `organisation_setting_is_never_deleted` refuses the other way to reach the same state.
+
+**Two rules, both refusals at the moment of writing rather than invariants.** Naming somebody
+who has already left is a mistake being made now and is refused;the Chief Executive named
+today resigning in March is not, and no trigger can honestly promise otherwise — the
+line-manager rules migration is where that distinction is argued. What happens instead is
+[FR 48b](#routing-round-an-approver-who-cannot-decide): a desk held only by a leaver is a desk
+nobody staffs, the stage falls to HR, and the skip is recorded.
+
+**Nobody named at all is the same answer**, which is what makes an unconfigured company still
+able to approve annual leave. `NoChiefExecutiveNamed` is deliberately not what routing raises —
+it is for a caller that genuinely needs the person, which is a readiness check and a setup
+screen. What the person whose leave stopped is told names the setting rather than the reporting
+lines, so whoever has to fix it knows which screen to open.
+
+**"Must be set before go live" is `isReadyForGoLive`**, a question rather than an exception, so
+a deployment check and a setup screen can both ask it without catching one. The column is
+nullable because a database is migrated before anybody is hired into it; empty is not a resting
+state.
+
+**The migration seeds the row from FR 04's root, once.** A database migrated this afternoon
+must route unpaid leave where it routed this morning, and leaving the setting empty would make
+every unpaid request unroutable at the moment of deploy. It is a carry-over and not a rule:
+nothing reads `manager_id` for this again.
+
+**Read by everybody, written by an HR Administrator.** `SETS_UP_THE_ORGANISATION`, narrower
+than `MAINTAINS_EMPLOYEE_RECORDS` on purpose — an officer edits people, and this edits where
+every unpaid request in the company is sent. The read is open because the request form already
+tells the person asking that unpaid leave goes to the Chief Executive.
+
+**Routing does not go through the service.** `LeaveRequestService` and `ApproverQueueService`
+both read `OrganisationRepository.chiefExecutiveId()` directly, which is the one read either
+makes, so the queue and the approve door cannot disagree about who holds the seat. A policy in
+the middle would refuse the one approver §4.3.1 names — the same seam the approver queue argues
+about balances.
 
 ---
