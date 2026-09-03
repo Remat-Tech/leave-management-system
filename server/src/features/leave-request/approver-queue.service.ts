@@ -1,4 +1,4 @@
-/** The approver queue, assembled. FR 20, FR 40, FR 38a, FR 48, §8.6a, LMS 404. */
+/** The approver queue, assembled. FR 20, FR 40, FR 38a, FR 48, FR 48c, §8.6a, LMS 404, LMS 321. */
 
 import type { Actor } from '../../auth/actor.js';
 import { desksStaffedBy, leaveRequestPolicy } from './policy.js';
@@ -19,6 +19,7 @@ import type { LeaveDecisionRepository } from './leave-decision.db.js';
 import type { LeaveRequestRepository } from './leave-request.db.js';
 import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
+import type { OrganisationRepository } from '../organisation/organisation.db.js';
 
 export class ApproverQueueService {
   constructor(
@@ -27,8 +28,10 @@ export class ApproverQueueService {
     private readonly decisions: LeaveDecisionRepository,
     /* NFR SEC 02. Required rather than defaulted; see ../../auth/policy.ts. */
     private readonly guard: Guard,
-    /** The askers, their teammates, and FR 04's root for the `CEO` desk. */
+    /** The askers and their teammates. */
     private readonly employees: EmployeeRepository,
+    /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
+    private readonly organisation: OrganisationRepository,
     /**
      * The balance context, read through the repository rather than `BalanceService`. §8.6.
      *
@@ -56,9 +59,9 @@ export class ApproverQueueService {
 
   /** Everything waiting on this person, soonest to start first. LMS 404. */
   async forApprover(actor: Actor): Promise<ApproverQueue> {
-    /* FR 04. One query, and the same one `LeaveRequestService.chiefExecutiveFor` makes, so the
-       queue and the approve door cannot disagree about who holds that seat. */
-    const chiefExecutiveId = (await this.employees.findRoot())?.id ?? null;
+    /* FR 48c. The same read `LeaveRequestService.whoCanDecide` makes, so the queue and the
+       approve door cannot disagree about who holds that seat. LMS 321. */
+    const chiefExecutiveId = await this.organisation.chiefExecutiveId();
 
     const staffed = desksStaffedBy(actor, chiefExecutiveId);
 

@@ -17,7 +17,7 @@ const about = policyFor('leave request');
 export interface RequestAtADesk extends BalanceOwner {
   /** FR 38a. */
   awaiting: ApproverRole | null;
-  /** FR 04. */
+  /** FR 48c. */
   chiefExecutiveId: string | null;
 }
 
@@ -55,7 +55,7 @@ function notTheirOwn(actor: Actor, owner: BalanceOwner, action: DecidingAction):
 }
 
 /**
- * Whether this actor is the person the chain's current desk resolves to. FR 38a, FR 48, LMS 314, FR 04.
+ * Whether this actor is the person the chain's current desk resolves to. FR 38a, FR 48, FR 48c, LMS 314, LMS 321.
  */
 function isAt(actor: Actor, subject: StandingFacts): boolean {
   switch (subject.awaiting) {
@@ -79,8 +79,8 @@ function isAt(actor: Actor, subject: StandingFacts): boolean {
  * suite walks every role and asserts the two agree.
  *
  * `MANAGER` is `actor.isManager` rather than a role, which is what {@link UnknownRole} says in
- * words. `CEO` takes the root's id because FR 04 makes it a reporting line rather than a role;
- * a null is nobody, as {@link isSelf} answers.
+ * words. `CEO` takes the configured id because FR 48c makes it a setting rather than a role or
+ * a reporting line; a null is nobody, as {@link isSelf} answers.
  */
 export function desksStaffedBy(actor: Actor, chiefExecutiveId: string | null): DesksStaffed {
   const desks = APPROVER_ROLES.filter((desk) => {

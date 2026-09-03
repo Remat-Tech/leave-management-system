@@ -13,6 +13,7 @@ import { LeaveRequestRepository } from './features/leave-request/leave-request.d
 import { LeaveTypeRepository } from './features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from './features/leave-year/leave-year.db.js';
 import { NotificationRepository } from './features/notification/notification.db.js';
+import { OrganisationRepository } from './features/organisation/organisation.db.js';
 import { RoleRepository } from './features/role/role.db.js';
 import { SignInAccountRepository } from './features/sign-in/sign-in-account.db.js';
 import { Transactions } from './db/transaction.js';
@@ -54,6 +55,8 @@ const decisions = new LeaveDecisionRepository(db);
 /** FR 48b, LMS 320. */
 const routing = new LeaveRoutingRepository(db);
 const balances = new BalanceRepository(db);
+/** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
+const organisation = new OrganisationRepository(db);
 
 const mailer = createMailer();
 
@@ -76,6 +79,7 @@ const leaveRequests = new LeaveRequestService(
   decisions,
   routing,
   roles,
+  organisation,
   new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
   new NotificationService(new NotificationRepository(db), mailer, guard),
 );
@@ -93,6 +97,7 @@ const app = buildApp({
   routing,
   accounts,
   roles,
+  organisation,
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process
      before a socket is opened rather than while the first request is being served. */
   secret: sessionSecretFrom(),

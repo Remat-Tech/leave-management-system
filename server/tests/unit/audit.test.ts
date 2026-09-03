@@ -87,6 +87,10 @@ describe('the entities an entry can be about', () => {
          manager and an employee remembering a fortnight differently are arguing
          about. */
       'leave_request',
+      /* LMS 321. Who the Chief Executive is decides where every unpaid request goes,
+         and before FR 48c the answer lived in `employee.manager_id` — filed under a
+         reporting-line edit that said nothing about leave. */
+      'organisation_setting',
     ]);
   });
 });

@@ -31,6 +31,8 @@ export const AUDITED_ENTITIES = [
   'leave_entitlement_event',
   /** LMS 301. */
   'leave_request',
+  /** LMS 321. */
+  'organisation_setting',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];

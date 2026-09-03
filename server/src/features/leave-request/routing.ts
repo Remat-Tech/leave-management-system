@@ -1,5 +1,5 @@
 /**
- * Where a request goes when the desk its chain names cannot decide it. FR 48, FR 48b, FR 04, §8.6a, LMS 320.
+ * Where a request goes when the desk its chain names cannot decide it. FR 48, FR 48b, FR 48c, FR 04, §8.6a, LMS 320, LMS 321.
  */
 
 import { type ApproverRole, APPROVER_ROLES, deskInWords } from '../leave-type/approval-chain.js';
@@ -16,7 +16,7 @@ export type DesksAvailable = Readonly<Record<ApproverRole, DeskStanding>>;
  * Who answers for a desk that cannot answer for itself. FR 48b, §8.6a, §4.3.1.
  *
  * Written out rather than derived from an ordering, because the third entry points
- * downwards: there is nothing above FR 04's root.
+ * downwards: there is nobody above the Chief Executive to fall to.
  */
 export const STAND_IN_FOR: Readonly<Record<ApproverRole, ApproverRole | null>> = {
   MANAGER: 'HR',
@@ -170,7 +170,7 @@ export function skipInWords(
   available: DesksAvailable,
 ): string {
   const desk = sentenceCase(deskInWords(stage));
-  const because = whyNot(stage, available[stage]);
+  const because = deskCannotDecideReason(stage, available[stage]);
 
   return routedTo === null
     ? `${desk} could not decide this request — ${because} — and neither could ` +
@@ -179,8 +179,8 @@ export function skipInWords(
         `${deskInWords(routedTo)} instead. Nobody approved it on the way. FR 48b.`;
 }
 
-/** What is empty about a desk. FR 04, FR 48, FR 48b. */
-function whyNot(stage: ApproverRole, standing: DeskStanding): string {
+/** What is empty about a desk. FR 04, FR 48, FR 48b, FR 48c. */
+function deskCannotDecideReason(stage: ApproverRole, standing: DeskStanding): string {
   /** FR 48, LMS 319. Staffed, and by the one person who may never answer at it. */
   if (standing === 'ONLY_THE_REQUESTER') {
     return (
@@ -192,11 +192,16 @@ function whyNot(stage: ApproverRole, standing: DeskStanding): string {
   switch (stage) {
     case 'MANAGER':
       /** FR 04. */
-      return 'they have no line manager, which is what the head of the organisation is';
+      return 'they have no line manager, which is what being at the top of the reporting lines is';
     case 'HR':
       return 'nobody holds an HR role';
     default:
-      return 'there is no employee without a line manager, so FR 04’s seat is empty';
+      /* FR 48c. Both halves, because a desk that nobody staffs cannot tell them apart and
+         the fix differs: name somebody, or name their successor. LMS 321. */
+      return (
+        'the organisation names no Chief Executive in its settings, or the person it ' +
+        'names has left'
+      );
   }
 }
 
@@ -204,18 +209,19 @@ function whyNot(stage: ApproverRole, standing: DeskStanding): string {
 export function whatWouldRouteIt(stranded: ApproverRole, available: DesksAvailable): string {
   const standIn = STAND_IN_FOR[stranded];
 
-  const fixes = [remedyFor(stranded, available[stranded])].concat(
-    standIn === null ? [] : [remedyFor(standIn, available[standIn])],
+  const fixes = [deskCannotDecideRemedy(stranded, available[stranded])].concat(
+    standIn === null ? [] : [deskCannotDecideRemedy(standIn, available[standIn])],
   );
 
   return `Either would move it: ${fixes.join(', or ')}.`;
 }
 
-/** The one change that would fill a desk. FR 04, FR 48b. */
-function remedyFor(desk: ApproverRole, standing: DeskStanding): string {
+/** The one change that would fill a desk. FR 04, FR 48b, FR 48c. */
+function deskCannotDecideRemedy(desk: ApproverRole, standing: DeskStanding): string {
   if (standing === 'ONLY_THE_REQUESTER') {
     return desk === 'CEO'
-      ? 'somebody other than the person who asked holding FR 04’s seat'
+      ? 'the organisation’s settings naming somebody other than the person who asked as ' +
+          'the Chief Executive'
       : `somebody other than the person who asked staffing ${deskInWords(desk)}`;
   }
 
@@ -225,7 +231,11 @@ function remedyFor(desk: ApproverRole, standing: DeskStanding): string {
     case 'HR':
       return 'granting somebody an HR role';
     default:
-      return 'an employee record with no line manager, which is FR 04’s head of the organisation';
+      /** FR 48c, LMS 321. A setting an HR Administrator writes, never a job title. */
+      return (
+        'an HR Administrator naming a current employee as the Chief Executive in the ' +
+        'organisation’s settings'
+      );
   }
 }
 

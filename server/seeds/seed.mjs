@@ -63,6 +63,8 @@ const SEEDED_TABLES = [
   'employee',
   'department',
   'leave_entitlement_rule',
+  // FR 48c. Points at an employee, so the CASCADE empties it either way. LMS 321.
+  'organisation_setting',
 ];
 
 /**
@@ -86,6 +88,7 @@ export async function seed(db, { scenario = 'base' } = {}) {
     const departments = await insertDepartments(db);
     const patterns = await insertWorkPatterns(db);
     const people = await insertEmployees(db, { departments, patterns, scenario });
+    await nameTheChiefExecutive(db, people.ceo);
     await grantLogins(db, people, scenario);
 
     await db.query('COMMIT');
@@ -126,6 +129,20 @@ export async function seed(db, { scenario = 'base' } = {}) {
 async function restoreReferenceData(db) {
   await db.query('SELECT ensure_statutory_entitlement_rules()');
   await db.query('SELECT ensure_unpaid_entitlement_rules()');
+}
+
+/**
+ * Names the Chief Executive. FR 48c, LMS 321.
+ *
+ * Kwame has no line manager and is also the Chief Executive, which is the ordinary case and
+ * exactly why it has to be written down: the two were one fact until LMS 321, and a fixture
+ * that left this empty would route unpaid leave nowhere.
+ *
+ * @param {import('pg').Client} db
+ * @param {string} employeeId
+ */
+async function nameTheChiefExecutive(db, employeeId) {
+  await db.query('INSERT INTO organisation_setting (ceo_employee_id) VALUES ($1)', [employeeId]);
 }
 
 async function insertDepartments(db) {

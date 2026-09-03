@@ -338,6 +338,15 @@ export interface LeaveRequestRoutingTable {
   recorded_at: Timestamp;
 }
 
+/** What the company itself is configured as. FR 48c, §4.3.1, LMS 321. */
+export interface OrganisationSettingTable {
+  id: Generated<string>;
+  /** FR 48c. Who the `CEO` desk resolves to, until HR names somebody it is nobody. */
+  ceo_employee_id: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
 /** One thing somebody was told about their leave. FR 59, §7.1., LMS 329. */
 export interface NotificationTable {
   id: Generated<string>;
@@ -372,6 +381,7 @@ export interface Database {
   leave_type_approval_step: LeaveTypeApprovalStepTable;
   leave_year: LeaveYearTable;
   notification: NotificationTable;
+  organisation_setting: OrganisationSettingTable;
   role: RoleTable;
   user_role: UserRoleTable;
   what_the_ledger_says: WhatTheLedgerSaysView;

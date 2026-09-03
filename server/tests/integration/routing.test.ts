@@ -21,6 +21,7 @@ import { LeaveRoutingRepository } from '../../src/features/leave-request/routing
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
 import { NotificationRepository } from '../../src/features/notification/notification.db.js';
+import { OrganisationRepository } from '../../src/features/organisation/organisation.db.js';
 import { RoleRepository } from '../../src/features/role/role.db.js';
 import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
 import { Transactions } from '../../src/db/transaction.js';
@@ -39,8 +40,8 @@ import { seed } from '../../seeds/seed.mjs';
  * the walk cannot claim on its own:
  *
  *   **Who each desk resolves to comes off real rows.** The line manager is a reporting line,
- *   HR is two granted roles, and the Chief Executive is FR 04's single root — so the whole
- *   point of the story is which *people* those three are today, and that is a database
+ *   HR is two granted roles, and the Chief Executive is a setting — FR 48c, LMS 321 — so the
+ *   whole point of the story is which *people* those three are today, and that is a database
  *   question.
  *
  *   **A skipped stage still lets the leave be approved.**
@@ -99,6 +100,7 @@ beforeAll(async () => {
     decisions,
     routing,
     new RoleRepository(db),
+    new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     new NotificationService(notices, recordingMailer(), guard),
   );
@@ -181,7 +183,7 @@ function aRequest(employeeId: string): NewLeaveRequest {
   };
 }
 
-/** FR 04's single root, who is the one employee with no line manager. */
+/** Whoever `organisation_setting` names, who in the fixtures also has no line manager. FR 48c. */
 function asTheChiefExecutive() {
   return signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
 }
@@ -195,6 +197,11 @@ function asTheHeadOfHr() {
 
 function asAnOfficer() {
   return signedInAs(people.hrOfficer, { roles: ['EMPLOYEE', 'HR_OFFICER'], isManager: false });
+}
+
+/** Somebody with no roles and no reports, asking for their own leave. */
+function asAnOfficerAsking() {
+  return signedInAs(people.officer, { roles: ['EMPLOYEE'], isManager: false });
 }
 
 /** Every notice about one request, oldest first. */
@@ -393,6 +400,67 @@ describe('a request whose CEO stage the requester holds', () => {
 
     expect(request.awaitingApprovalFrom).toBe('CEO');
     expect(await routing.forRequest(request.id)).toEqual([]);
+  });
+});
+
+/* ------------------------------------------- whose seat it is. FR 48c, LMS 321 */
+
+/**
+ * The `CEO` desk resolves to the setting, not to FR 04's root. FR 48c, LMS 321.
+ *
+ * ./organisation.test.ts proves the setting holds and is refused what it should be. This is
+ * the half that matters: the desk moves when somebody names a different person, and it does
+ * not move when the reporting lines or a job title do.
+ */
+describe('who the CEO desk resolves to', () => {
+  beforeEach(async () => {
+    await twentyDaysFor(people.officer);
+    await annualLeaveGoesTo('CEO');
+  });
+
+  it('is whoever the organisation names, not whoever has no line manager', async () => {
+    await admin.query('UPDATE organisation_setting SET ceo_employee_id = $1', [people.opsDirector]);
+
+    const { request } = await requests.submit(asAnOfficerAsking(), aRequest(people.officer));
+
+    expect(request.awaitingApprovalFrom).toBe('CEO');
+
+    /* Kwame still has no line manager and still says Chief Executive Officer on his record,
+       and the desk is no longer his. */
+    await expect(requests.approve(asTheChiefExecutive(), request.id)).rejects.toThrow(
+      NotAuthorised,
+    );
+
+    const director = signedInAs(people.opsDirector, { roles: ['EMPLOYEE'], isManager: true });
+
+    expect((await requests.approve(director, request.id)).request.status).toBe('APPROVED');
+  });
+
+  /* Nobody named is a desk nobody staffs, which FR 48b routes round rather than stopping on.
+     A company part way through its setup still gets its leave decided. */
+  it('and falls to HR where nobody is named at all', async () => {
+    await admin.query('TRUNCATE organisation_setting');
+
+    const { request } = await requests.submit(asAnOfficerAsking(), aRequest(people.officer));
+
+    expect(request.awaitingApprovalFrom).toBe('HR');
+    expect(await routing.forRequest(request.id)).toMatchObject([{ stage: 'CEO', routedTo: 'HR' }]);
+  });
+
+  /* And the sentence the person is given names the setting, so whoever has to fix it knows
+     which screen to open. NFR USA 03. */
+  it('and says so in words that name the setting', async () => {
+    await admin.query('TRUNCATE organisation_setting');
+    await nobodyIsInHr();
+
+    const { request } = await requests.submit(asAnOfficerAsking(), aRequest(people.officer));
+
+    expect(request.status).toBe('UNROUTABLE');
+
+    const [alert] = await notices.forEmployee(people.officer);
+
+    expect(alert.body).toContain('Chief Executive');
+    expect(alert.body).toContain('settings');
   });
 });
 

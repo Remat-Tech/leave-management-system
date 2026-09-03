@@ -38,6 +38,7 @@ import { LeaveRoutingRepository } from '../../src/features/leave-request/routing
 import { RoleRepository } from '../../src/features/role/role.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { NotificationRepository } from '../../src/features/notification/notification.db.js';
+import { OrganisationRepository } from '../../src/features/organisation/organisation.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
 import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
 import { Transactions } from '../../src/db/transaction.js';
@@ -156,6 +157,7 @@ beforeAll(async () => {
     /** FR 48b, LMS 320. */
     new LeaveRoutingRepository(db),
     new RoleRepository(db),
+    new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     /* FR 59, LMS 329. Every verb in the service now tells the requester afterwards, and this
        file is about the verbs rather than about the telling — ./notification.test.ts is
