@@ -973,3 +973,96 @@ textarea:disabled {
     animation: none;
   }
 }
+
+/* ------------------------------------------------------ the approver queue. LMS 404 */
+
+/* The person is the heading here rather than the dates, so it is set as a name and not as a
+   figure — the reverse of `.card.request .card-head h3`, which this overrides. */
+.card.request.queued .card-head h3 {
+  font-variant-numeric: normal;
+  font-size: 1rem;
+}
+
+/* FR 48, §8.6a. A request this approver may not decide. Quieter rather than hidden — it is
+   in the queue precisely so that it is not invisible — and the sentence beside it says why,
+   which is the rule this file sets out about colour never carrying meaning alone. */
+.card.request.is-held {
+  background: color-mix(in srgb, var(--card) 60%, var(--page));
+  box-shadow: none;
+}
+
+/* Which desk this arrived at. Neutral, because it is a fact rather than a state. */
+.tag.desk {
+  color: var(--ink-soft);
+  border-color: var(--line-strong);
+}
+
+/* FR 17, FR 18. Neither is a refusal, so both take the accent rather than the warning red,
+   which stays with the refusals the server actually sent. The word is in the tag. */
+.tag.flag {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.flagged {
+  margin: 0;
+  padding-left: 0.875rem;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+/**
+ * The context an approver decides on: balance, team, stage.
+ *
+ * A two-column grid like `.standing` and set the other way round, because these are sentences
+ * rather than figures — left aligned, ordinary weight, and the label is the narrow column.
+ * It collapses to one column where there is no room for two, so the label sits above its
+ * sentence rather than squeezing it to three words a line.
+ */
+.context {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 0.4rem 0.875rem;
+  margin: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.875rem;
+}
+
+.context dt {
+  color: var(--ink-faint);
+}
+
+.context dd {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+/* §8.6b. Legitimately below nought on a type FR 32a lets go past its allowance. */
+.context dd.overdrawn {
+  color: var(--warn);
+}
+
+@media (max-width: 34rem) {
+  .context {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .context dd {
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* Who else is away. The sentence above it already says the count; this is for scanning the
+   dates, so the figures are tabular. */
+.away {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-variant-numeric: tabular-nums;
+}

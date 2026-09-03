@@ -260,3 +260,37 @@ export function deskInWords(role: ApproverRole): string {
       return 'the Chief Executive';
   }
 }
+
+/**
+ * The same desk, said to somebody who is not the person taking the leave. LMS 404.
+ *
+ * {@link deskInWords} is second person — every caller it had was talking to the requester — and
+ * an approver queue is the first screen here that describes somebody else's request. Only
+ * `MANAGER` differs, because it is the one desk that resolves through a relationship; a copy of
+ * that switch beside a `<span>` is how a queue comes to say "their manager" where an email says
+ * "your line manager" about the same signature.
+ *
+ * `whose` is a possessive from {@link possessively}, and a name rather than a pronoun: the
+ * record carries a gender for FR 05 and nothing else.
+ */
+export function deskInWordsAbout(role: ApproverRole, whose: string): string {
+  return role === 'MANAGER' ? `${whose} line manager` : deskInWords(role);
+}
+
+/** A chain said about somebody else, as {@link chainInWords} says it to them. LMS 404. */
+export function chainInWordsAbout(chain: readonly ApproverRole[], whose: string): string {
+  if (chain.length === 0) {
+    return 'nobody';
+  }
+
+  const named = chain.map((role) => deskInWordsAbout(role, whose));
+
+  return named.length === 1
+    ? named[0]
+    : `${named.slice(0, -1).join(', ')} then ${named[named.length - 1]}`;
+}
+
+/** A name as a possessive. "Adwoa Frimpong" becomes "Adwoa Frimpong’s", "Ababios" "Ababios’". */
+export function possessively(name: string): string {
+  return name.endsWith('s') ? `${name}’` : `${name}’s`;
+}

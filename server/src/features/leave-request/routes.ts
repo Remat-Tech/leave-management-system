@@ -1,12 +1,21 @@
-/** The request screens, over HTTP. FR 54, LMS 402, LMS 403, FR 10, FR 11, FR 13, FR 55, FR 56, LMS 405. */
+/** The request screens, over HTTP. FR 54, LMS 402, LMS 403, LMS 404, FR 10, FR 11, FR 13, FR 20, FR 55, FR 56, LMS 405. */
 
 import { type Request, type Response, Router } from 'express';
 import type { LeaveYear } from '../leave-year/leave-year.js';
 import { type FreeDay, freeDayInWords } from '../leave-calculator/leave-calculator.js';
+import type {
+  ApproverQueue,
+  AskerBalance,
+  QueueItem,
+  QueueWarning,
+  TeamAway,
+  TeamContext,
+} from './approver-queue.js';
 import type { FormRule, RequestableLeaveType, RequestForm } from './request-form.js';
 import type { LeaveRequestQuote, RequestWarning } from './leave-request.js';
 import type { LeaveRequested } from '../balance/balance.service.js';
 import type { RequestHistory, RequestHistoryEntry, TrailStep } from './request-history.js';
+import type { ApproverQueueService } from './approver-queue.service.js';
 import type { LeaveRequestService } from './leave-request.service.js';
 import type { RequestFormService } from './request-form.service.js';
 import type { RequestHistoryService } from './request-history.service.js';
@@ -18,10 +27,29 @@ export interface RequestRoutes {
   form: RequestFormService;
   /** LMS 403, LMS 301. What a period would cost, and the one door that writes a request. */
   requests: LeaveRequestService;
+  /** LMS 404. Everything waiting on me. */
+  queue: ApproverQueueService;
 }
 
-export function requestRoutes({ history, form, requests }: RequestRoutes): Router {
+export function requestRoutes({ history, form, requests, queue }: RequestRoutes): Router {
   const routes = Router();
+
+  /**
+   * Everything waiting on me. FR 20, FR 40. LMS 404.
+   *
+   * `/me` here means the same as it does below — the id off the verified cookie — but it names
+   * the *approver* rather than the person taking the leave, which is why this is the one route
+   * in the file that hands back somebody else's requests. What bounds it is
+   * `leaveRequestPolicy.queue` and the desks it establishes; there is no id to supply.
+   */
+  routes.get('/me/approvals', (_request: Request, response: Response, next) => {
+    void queue
+      .forApprover(actorOf(response))
+      .then((waiting) => {
+        response.json(queueAsJson(waiting));
+      })
+      .catch(next);
+  });
 
   /** Every request I have made, newest first, with what became of each. */
   routes.get('/me/requests', (request: Request, response: Response, next) => {
@@ -168,6 +196,98 @@ function bodyOf(request: Request): Record<string, unknown> {
   const body: unknown = request.body;
 
   return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+}
+
+/* ---------------------------------------------------------------- the queue, as JSON */
+
+function queueAsJson(queue: ApproverQueue): unknown {
+  return {
+    approverId: queue.approverId,
+    /** FR 38a. Which desks these came from, so a screen can say which hat is being worn. */
+    desks: [...queue.desks],
+    inWords: queue.inWords,
+    items: queue.items.map(queueItemAsJson),
+  };
+}
+
+function queueItemAsJson(item: QueueItem): unknown {
+  return {
+    requestId: item.requestId,
+    asker: {
+      employeeId: item.asker.employeeId,
+      name: item.asker.name,
+      jobTitle: item.asker.jobTitle,
+    },
+    leaveTypeId: item.leaveTypeId,
+    typeName: item.typeName,
+    leaveYearId: item.leaveYearId,
+    /** Ten characters, each way. NFR DAT 03. */
+    from: item.from,
+    to: item.to,
+    reason: item.reason,
+    /** FR 11. Read off the request, never off the type. */
+    countingBasis: item.countingBasis,
+    countingBasisLabel: item.countingBasisLabel,
+    /** FR 24. */
+    days: item.days,
+    calendarDays: item.calendarDays,
+    submittedAt: item.submittedAt.toISOString(),
+
+    /** FR 38a, FR 41. */
+    desk: item.desk,
+    chain: [...item.chain],
+    approvedBy: [...item.approvedBy],
+    stillToApprove: [...item.stillToApprove],
+    stageInWords: item.stageInWords,
+
+    /** FR 17, FR 18. The figures as well as the sentences; a screen sorts on a number. */
+    noticeGivenDays: item.noticeGivenDays,
+    shortNoticeBy: item.shortNoticeBy,
+    backdatedBy: item.backdatedBy,
+    startsInDays: item.startsInDays,
+    warnings: item.warnings.map(queueWarningAsJson),
+
+    balance: balanceAsJson(item.balance),
+    team: teamAsJson(item.team),
+
+    /** FR 48, §8.6a. */
+    actionable: item.actionable,
+    notActionableBecause: item.notActionableBecause,
+  };
+}
+
+function queueWarningAsJson(warning: QueueWarning): unknown {
+  return { code: warning.code, inWords: warning.inWords };
+}
+
+function balanceAsJson(balance: AskerBalance): unknown {
+  return {
+    leaveTypeId: balance.leaveTypeId,
+    leaveYearId: balance.leaveYearId,
+    owed: balance.owed,
+    taken: balance.taken,
+    pending: balance.pending,
+    /** May be negative, legitimately. §8.6b. */
+    available: balance.available,
+    inWords: balance.inWords,
+  };
+}
+
+function teamAsJson(team: TeamContext): unknown {
+  return { size: team.size, away: team.away.map(teamAwayAsJson), inWords: team.inWords };
+}
+
+function teamAwayAsJson(away: TeamAway): unknown {
+  return {
+    employeeId: away.employeeId,
+    /** Null where this approver has no standing to be told it. */
+    name: away.name,
+    from: away.from,
+    to: away.to,
+    days: away.days,
+    status: away.status,
+    typeName: away.typeName,
+  };
 }
 
 /* -------------------------------------------------------------- the history, as JSON */

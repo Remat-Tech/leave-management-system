@@ -168,6 +168,28 @@ export class EmployeeRepository {
     return rows.map(toEmployee);
   }
 
+  /**
+   * Everybody reporting to any of these managers, in employee number order. FR 02, LMS 404.
+   *
+   * {@link EmployeeRepository.countReports} answered for one manager and answered a number; the
+   * approver queue needs the records, and needs them for several teams at once so a screenful
+   * of requests costs one statement.
+   */
+  async findReportsOf(managerIds: readonly string[]): Promise<Employee[]> {
+    if (managerIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom('employee')
+      .selectAll()
+      .where('manager_id', 'in', [...managerIds])
+      .orderBy('employee_number')
+      .execute();
+
+    return rows.map(toEmployee);
+  }
+
   /** How many employees report to somebody. FR 02, LMS 111. */
   async countReports(managerId: string): Promise<number> {
     const row = await this.db

@@ -36,6 +36,38 @@ export class BalanceRepository {
   }
 
   /**
+   * Several named balances in one statement. LMS 404.
+   *
+   * {@link BalanceRepository.forOne} for a list of keys, so a screen showing many people's
+   * figures at once — the approver queue — asks once rather than once per row. A key nothing
+   * has moved has no row and does not come back; the caller reads that as `noMovementsYet`, as
+   * `forOne` does for a single key.
+   */
+  async forKeys(keys: readonly BalanceKey[]): Promise<LeaveBalance[]> {
+    if (keys.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom('leave_balance')
+      .selectAll()
+      .where((eb) =>
+        eb.or(
+          keys.map((key) =>
+            eb.and([
+              eb('employee_id', '=', key.employeeId),
+              eb('leave_type_id', '=', key.leaveTypeId),
+              eb('leave_year_id', '=', key.leaveYearId),
+            ]),
+          ),
+        ),
+      )
+      .execute();
+
+    return rows.map(toBalance);
+  }
+
+  /**
    * Every balance this person has, oldest leave year first and in the order leave
    * types are shown in.
    *
