@@ -52,8 +52,15 @@ export interface Statement {
 /** A desk in an approval chain — not a role somebody holds. */
 export type Desk = 'MANAGER' | 'HR' | 'CEO';
 
-/** Where a request has got to. §6.. */
-export type RequestStatus = 'SUBMITTED' | 'APPROVED' | 'WITHDRAWN' | 'CANCELLED' | 'REFUSED';
+/** Where a request has got to. §6., FR 48b. */
+export type RequestStatus =
+  | 'SUBMITTED'
+  | 'APPROVED'
+  /** Nobody could be found to decide it. FR 48b, LMS 320. */
+  | 'UNROUTABLE'
+  | 'WITHDRAWN'
+  | 'CANCELLED'
+  | 'REFUSED';
 
 /** What kind of thing one step of a trail is. */
 export type TrailStepKind = 'ASKED' | 'DECIDED' | 'ENDED' | 'STILL_TO_ASK';

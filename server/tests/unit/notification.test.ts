@@ -76,7 +76,7 @@ function happened(overrides: Partial<WhatHappened> = {}): WhatHappened {
 describe('the events somebody is told about', () => {
   /* FR 59's list, and LMS 318 brought the two the notification migration said were coming.
      See the CHECK in that migration, which says the same thing. */
-  it('are the eight FR 59 names that this system can actually produce', () => {
+  it('are the nine FR 59 names that this system can actually produce', () => {
     expect(NOTICE_EVENTS).toEqual([
       'SUBMITTED',
       'STAGE_APPROVED',
@@ -86,6 +86,8 @@ describe('the events somebody is told about', () => {
       'WITHDRAWN',
       'CANCELLED',
       'DECISION_OVERTURNED',
+      /** FR 48b, LMS 320. The alert, told to the requester and to whoever can unstick it. */
+      'UNROUTABLE',
     ]);
   });
 

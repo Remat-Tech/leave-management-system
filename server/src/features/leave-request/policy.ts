@@ -279,6 +279,22 @@ export const leaveRequestPolicy = {
         );
   },
 
+  /**
+   * Sending a request nobody could decide back into its chain. FR 48b, §8.6a, LMS 320.
+   *
+   * HR's, and deliberately not the requester's: what the alert asks for is a change to the
+   * organisation, and somebody who could re-route their own stuck request would be deciding
+   * when their own leave became decidable.
+   */
+  route(actor: Actor, owner: BalanceOwner): Decision {
+    return mayMove(actor, owner, 'ROUTE', {
+      because: 'holds no role that maintains leave for the company',
+      told:
+        'A request nobody could decide is put back into its chain by HR, once somebody is ' +
+        'at the desk it stopped at. If you no longer want the leave, withdraw it. FR 48b.',
+    });
+  },
+
   /** Improving the reason on a request already submitted. FR 18. */
   reword(actor: Actor, owner: BalanceOwner): Decision {
     return isSelf(actor, owner.employeeId)

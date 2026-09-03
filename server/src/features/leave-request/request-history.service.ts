@@ -13,6 +13,7 @@ import { historyFor, type RequestHistory, yearsWithRequests } from './request-hi
 import type { EmployeeRepository } from '../employee/employee.db.js';
 import type { LeaveDecisionRepository } from './leave-decision.db.js';
 import type { LeaveRequestRepository } from './leave-request.db.js';
+import type { LeaveRoutingRepository } from './routing.db.js';
 import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
 
@@ -37,6 +38,8 @@ export class RequestHistoryService {
     private readonly types: LeaveTypeRepository,
     /** For the picker, and to tell a year that is nobody's from one that is empty. */
     private readonly years: LeaveYearRepository,
+    /** FR 48b. The stages each request's routing skipped. LMS 320. */
+    private readonly routing: LeaveRoutingRepository,
   ) {}
 
   /** One person's requests, newest first, each with the account of how it was decided. LMS 402. */
@@ -68,6 +71,8 @@ export class RequestHistoryService {
       types: await this.types.list(),
       decisions,
       deciders: await this.employees.findAllById(whoDecidedThem(decisions)),
+      /** FR 48b. A skipped stage is not still owed an answer. LMS 320. */
+      skipped: await this.routing.forRequests(shown.map((request) => request.id)),
     });
   }
 

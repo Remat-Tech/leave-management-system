@@ -35,9 +35,11 @@ import {
   LeaveRequestNotFound,
   type ReleasingAction,
   type ReleasingStatus,
+  routingTo,
   settlementTo,
   type ValidatedLeaveRequest,
 } from '../leave-request/leave-request.js';
+import type { DesksAvailable } from '../leave-request/routing.js';
 import { LeaveTypeNotFound } from '../leave-type/leave-type.js';
 import { LeaveYearNotFound } from '../leave-year/leave-year.js';
 import type { CalendarDate } from '../../shared/time.js';
@@ -124,6 +126,8 @@ export interface RequestToDecide {
   chain: readonly ApproverRole[];
   /** FR 04. */
   chiefExecutiveId: string | null;
+  /** FR 48b. Who can be asked at each desk, for this requester. LMS 320. */
+  available: DesksAvailable;
   /** FR 27. The sentence for a DEDUCTION, where this decision is a final yes. */
   reasonForTaking: string;
   /** FR 27. The sentence for a RELEASE, where this decision is a final no. */
@@ -134,9 +138,24 @@ export interface RequestToDecide {
   overturns: string | null;
 }
 
+/** What `LeaveRequestService` supplies to send an unroutable request back in. FR 48b, LMS 320. */
+export interface RequestToReroute {
+  request: LeaveRequest;
+  /** FR 38a. */
+  chain: readonly ApproverRole[];
+  /** FR 48b. Who can be asked at each desk, as things now stand. */
+  available: DesksAvailable;
+}
+
 /** The request, the movement it caused, and the balance it left. */
 export interface LeaveRequested extends BalanceMoved {
   request: LeaveRequest;
+}
+
+/** A request put back into its chain, and the balance it did not move. FR 48b, LMS 320. */
+export interface LeaveRerouted {
+  request: LeaveRequest;
+  balance: BalanceWithAvailable;
 }
 
 /**
@@ -221,6 +240,10 @@ export class BalanceService {
       const days = daysToReserve(held, request.days, type.exceedableWithDocument);
 
       const written = await repositories.requests.submit(actor, request);
+
+      /* FR 48b. The stages the routing skipped to reach the desk this was written at, in
+         the same transaction as the row they explain. LMS 320. */
+      await repositories.routing.record(actor, written.id, request.skips);
 
       const entry = await repositories.entries.post(
         actor,
@@ -379,7 +402,7 @@ export class BalanceService {
    * `leave_request_commits_once`.
    */
   async decideForRequest(actor: Actor, decision: RequestToDecide): Promise<LeaveApproved> {
-    const { request, action, chain, chiefExecutiveId, comment, overturns } = decision;
+    const { request, action, chain, chiefExecutiveId, available, comment, overturns } = decision;
     const { reasonForTaking, reasonForGivingBack } = decision;
     const owner = await this.ownerOf(request.employeeId);
 
@@ -442,12 +465,16 @@ export class BalanceService {
          second waits, reads the decision the first wrote, and finds one fewer stage
          outstanding. Read outside it, both would see an empty list, both would route to the
          same next desk, and the second could approve leave a stage had not seen. */
-      const outcome = decisionTo(
-        current,
+      const outcome = decisionTo({
+        request: current,
         action,
         chain,
-        desksThatDecided(await repositories.decisions.forRequest(current.id)),
-      );
+        decidedAlready: desksThatDecided(await repositories.decisions.forRequest(current.id)),
+        /* FR 48b, LMS 320. Read inside the lock for the reason the decisions are: two
+           approvals arriving together would otherwise both skip the same stage. */
+        skipped: await repositories.routing.forRequest(current.id),
+        available,
+      });
 
       const written = await repositories.requests.moveTo(
         actor,
@@ -460,6 +487,10 @@ export class BalanceService {
       if (written === undefined) {
         throw new LeaveRequestNotFound(request.id);
       }
+
+      /* FR 48b. The stages this move had to skip, written before the status is judged at
+         COMMIT — `leave_request_is_approved_by_every_stage` reads them. LMS 320. */
+      await repositories.routing.record(actor, current.id, outcome.skips);
 
       return {
         request: written,
@@ -519,6 +550,70 @@ export class BalanceService {
                   leaveRequestId: current.id,
                 }),
               ),
+        balance: withAvailable(await repositories.balances.forOne(key)),
+      };
+    });
+  }
+
+  /**
+   * Sends a request nobody could decide back into its chain. FR 48b, §8.6a. LMS 320.
+   *
+   * The fourth door, and the only one that moves no days at all: the routing is worked out
+   * again against the organisation as it now stands, and the request goes back to being
+   * decided at whichever desk can now be asked. No ledger entry, and no decision — nobody
+   * has said anything about the leave.
+   *
+   * It takes the lock anyway, for the reason an intermediate approval does: every move a
+   * request makes goes through this class, so a re-route and a withdrawal arriving together
+   * are ordered rather than interleaved.
+   */
+  async rerouteRequest(actor: Actor, reroute: RequestToReroute): Promise<LeaveRerouted> {
+    const { request, chain, available: desks } = reroute;
+    const owner = await this.ownerOf(request.employeeId);
+
+    this.guard.enforce(leaveRequestPolicy.route(actor, owner));
+
+    const key = keyOf(request);
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      await repositories.balances.holdStill(key);
+
+      const current = await repositories.requests.findById(request.id);
+
+      /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
+      if (current === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      const routed = routingTo({
+        request: current,
+        chain,
+        decidedAlready: desksThatDecided(await repositories.decisions.forRequest(current.id)),
+        skipped: await repositories.routing.forRequest(current.id),
+        available: desks,
+      });
+
+      /* The skips first, so that the row explaining where the request went exists before
+         anything reads the desk it went to. */
+      await repositories.routing.record(actor, current.id, routed.skips);
+
+      const written = await repositories.requests.moveTo(
+        actor,
+        current.id,
+        routed.to,
+        routed.awaiting,
+      );
+
+      /* Unreachable for the same reason, and one statement later. */
+      if (written === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      return {
+        request: written,
+        /* Nothing moved. The RESERVATION written at submission has held the days
+           throughout, including while the request was stuck. */
+        entry: null,
         balance: withAvailable(await repositories.balances.forOne(key)),
       };
     });

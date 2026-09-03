@@ -8,6 +8,7 @@ import { BalanceRepository } from './features/balance/balance.db.js';
 import { EmployeeRepository } from './features/employee/employee.db.js';
 import { HolidayRepository } from './features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from './features/leave-request/leave-decision.db.js';
+import { LeaveRoutingRepository } from './features/leave-request/routing.db.js';
 import { LeaveRequestRepository } from './features/leave-request/leave-request.db.js';
 import { LeaveTypeRepository } from './features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from './features/leave-year/leave-year.db.js';
@@ -50,6 +51,8 @@ const types = new LeaveTypeRepository(db);
 const years = new LeaveYearRepository(db);
 const requests = new LeaveRequestRepository(db);
 const decisions = new LeaveDecisionRepository(db);
+/** FR 48b, LMS 320. */
+const routing = new LeaveRoutingRepository(db);
 const balances = new BalanceRepository(db);
 
 const mailer = createMailer();
@@ -71,6 +74,8 @@ const leaveRequests = new LeaveRequestService(
   years,
   requests,
   decisions,
+  routing,
+  roles,
   new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
   new NotificationService(new NotificationRepository(db), mailer, guard),
 );
@@ -85,6 +90,7 @@ const app = buildApp({
   requests,
   leaveRequests,
   decisions,
+  routing,
   accounts,
   roles,
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process

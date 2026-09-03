@@ -4,7 +4,7 @@
 
 import type { Actor } from '../../auth/actor.js';
 import { leaveRequestPolicy } from './policy.js';
-import { type ApproverRole, isApprovedBy } from '../leave-type/approval-chain.js';
+import type { ApproverRole } from '../leave-type/approval-chain.js';
 import type { BalanceOwner } from '../balance/policy.js';
 import type { Decision, Guard } from '../../auth/policy.js';
 import type { Employee } from '../employee/employee.js';
@@ -26,6 +26,16 @@ import {
   saysYes,
   theManagersDecision,
 } from './leave-decision.js';
+import {
+  type DesksAvailable,
+  desksAvailable,
+  routeFrom,
+  standingOf,
+  whatWouldRouteIt,
+} from './routing.js';
+import { APPROVES_AS_HR } from '../role/roles.js';
+import type { RoleRepository } from '../role/role.db.js';
+import type { LeaveRoutingRepository } from './routing.db.js';
 import {
   type ApprovalProgress,
   assertItCostsSomething,
@@ -72,6 +82,7 @@ import type {
   LeaveApproved,
   LeaveReleased,
   LeaveRequested,
+  LeaveRerouted,
 } from '../balance/balance.service.js';
 import type { LeaveCalculatorService } from '../leave-calculator/leave-calculator.service.js';
 import type { NotificationService } from '../notification/notification.service.js';
@@ -119,6 +130,19 @@ export class LeaveRequestService {
      * that could commit while the move it describes rolled back.
      */
     private readonly decisions: LeaveDecisionRepository,
+    /**
+     * The stages a request's routing skipped, for the reads. FR 48b, LMS 320.
+     *
+     * The same division `decisions` is held to, and for the same reason: a skip has to land
+     * in the same transaction as the desk it explains, so the writing is `BalanceService`'s.
+     */
+    private readonly routing: LeaveRoutingRepository,
+    /**
+     * Who holds an HR role, so that the HR desk's occupants are never a copy. FR 48b, LMS 320.
+     *
+     * The one question asked of it: is there anybody in HR who is not the person asking.
+     */
+    private readonly roles: RoleRepository,
     /**
      * What the period costs. The one place this question is asked.
      *
@@ -238,6 +262,9 @@ export class LeaveRequestService {
       await this.availableFor(actor, employee, type, year),
     );
 
+    /** FR 48b, LMS 320. Who can be asked, before the first desk is chosen. */
+    const { available } = await this.whoCanDecide(employee);
+
     const request = validateNewLeaveRequest({
       employeeId: employee.id,
       leaveTypeId: type.id,
@@ -255,12 +282,23 @@ export class LeaveRequestService {
          unpaid leave starts with HR because that is what their chains say, and nothing on
          this path knows which type is which. */
       approvalChain: type.approvalChain,
+      /* FR 48b, LMS 320's first criterion. A stage nobody can answer is skipped to its
+         stand-in, and a stage with no stand-in either leaves the request `UNROUTABLE`. */
+      available,
     });
 
     const submitted = await this.balances.reserveForRequest(actor, {
       request,
       reason: reasonForReservation(type.name, period, count.days),
     });
+
+    /* FR 48b. Nobody can decide it, so HR is told rather than the request being refused —
+       the leave is real and its days are held. LMS 320. */
+    if (submitted.request.status === 'UNROUTABLE') {
+      await this.alertThatNobodyCanDecideIt(submitted, employee, type, available);
+
+      return submitted;
+    }
 
     /* FR 59, LMS 329. The first of the three call sites, and all three have the same shape:
        the door has returned, so the transaction has committed, and every fact the message is
@@ -467,7 +505,9 @@ export class LeaveRequestService {
     this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, action));
 
     const type = await this.typeFor(request.leaveTypeId);
-    const chiefExecutiveId = await this.chiefExecutiveFor(type.approvalChain);
+
+    /** FR 04, FR 48b. Who staffs each desk, and who FR 04's seat is. LMS 320. */
+    const { available, chiefExecutiveId } = await this.whoCanDecide(employee);
 
     const standing = leaveRequestPolicy.decide(actor, action, {
       ...owner,
@@ -483,7 +523,14 @@ export class LeaveRequestService {
 
     /* FR 44. Which stage has not *decided*, rather than which has not approved. Asked again
        inside the lock, where the answer binds. */
-    const outcome = decisionTo(request, action, type.approvalChain, desksThatDecided(decisions));
+    const outcome = decisionTo({
+      request,
+      action,
+      chain: type.approvalChain,
+      decidedAlready: desksThatDecided(decisions),
+      skipped: await this.routing.forRequest(request.id),
+      available,
+    });
 
     /** FR 44, §7.2. */
     const overturns = this.whatThisReverses(request, action, decisions);
@@ -495,6 +542,7 @@ export class LeaveRequestService {
       action,
       chain: type.approvalChain,
       chiefExecutiveId,
+      available,
       comment,
       overturns,
       reasonForTaking: reasonForApproval(type.name, request, request.days, outcome.by),
@@ -503,7 +551,114 @@ export class LeaveRequestService {
 
     await this.tellThemAbout(decided, employee, type.name);
 
+    /* FR 48b. The decision was recorded and there is nowhere left to send it. LMS 320. */
+    if (decided.request.status === 'UNROUTABLE') {
+      await this.alertThatNobodyCanDecideIt(decided, employee, type, available);
+    }
+
     return decided;
+  }
+
+  /**
+   * Sends a request nobody could decide back into its chain. FR 48b, §8.6a. LMS 320.
+   *
+   * What the alert asks HR for once the desk that came up empty has somebody at it. It
+   * decides nothing and moves no days — the request goes back to `SUBMITTED` at whichever
+   * desk can now be asked, and the person is told it is moving again.
+   *
+   * Throws {@link StillNobodyToDecideIt} where nothing has changed, {@link LeaveCannotBeMoved}
+   * for a request that is not stuck, and {@link NotAuthorised} for anybody but HR.
+   */
+  async route(actor: Actor, id: string): Promise<LeaveRerouted> {
+    const request = await this.requests.findById(id);
+
+    if (request === undefined) {
+      throw new LeaveRequestNotFound(id);
+    }
+
+    const employee = await this.employeeFor(request.employeeId);
+
+    this.guard.enforce(leaveRequestPolicy.route(actor, ownerOf(employee)));
+
+    const type = await this.typeFor(request.leaveTypeId);
+
+    const rerouted = await this.balances.rerouteRequest(actor, {
+      request,
+      chain: type.approvalChain,
+      available: (await this.whoCanDecide(employee)).available,
+    });
+
+    /** FR 59. It is moving again, and the person who asked hears the same as at submission. */
+    await this.notifications.tell({
+      event: 'SUBMITTED',
+      employee,
+      request: rerouted.request,
+      typeName: type.name,
+      decidedBy: null,
+      comment: null,
+      availableAfter: rerouted.balance.available,
+    });
+
+    return rerouted;
+  }
+
+  /**
+   * Tells the person and HR that nobody can decide a request. FR 48b, FR 59, §8.6a. LMS 320.
+   *
+   * The last criterion's alert, and it goes to two kinds of reader: the person whose leave
+   * has stopped, and whoever can change the organisation so that it has not. HR and the
+   * Chief Executive both get it, because the desk that is empty is very often HR's own.
+   *
+   * After the transaction, like every other notice, and it can no more throw than they can —
+   * a request that is stuck is not made better by the alert failing to send.
+   */
+  private async alertThatNobodyCanDecideIt(
+    stuck: { request: LeaveRequest; balance: { available: number } },
+    employee: Employee,
+    type: LeaveType,
+    available: DesksAvailable,
+  ): Promise<void> {
+    /* The stage it stopped at, worked out from the same walk that stopped there, so the
+       sentence in the alert is the walk's own account rather than a second opinion. */
+    const routed = routeFrom({
+      chain: type.approvalChain,
+      decided: desksThatDecided(await this.decisions.forRequest(stuck.request.id)),
+      skipped: await this.routing.forRequest(stuck.request.id),
+      available,
+    });
+
+    const said =
+      routed.kind === 'UNROUTABLE'
+        ? `${routed.because} ${whatWouldRouteIt(routed.stranded, available)}`
+        : null;
+
+    for (const recipient of await this.whoShouldHearAboutIt(employee)) {
+      await this.notifications.tell({
+        event: 'UNROUTABLE',
+        employee,
+        recipient: recipient.id === employee.id ? undefined : recipient,
+        request: stuck.request,
+        typeName: type.name,
+        decidedBy: null,
+        comment: said,
+        availableAfter: stuck.balance.available,
+      });
+    }
+  }
+
+  /** The person whose leave it is, then everybody who could unstick it. FR 48b, LMS 320. */
+  private async whoShouldHearAboutIt(employee: Employee): Promise<Employee[]> {
+    const ids = new Set<string>(await this.employeesInHr());
+
+    const root = await this.employees.findRoot();
+
+    if (root !== undefined) {
+      ids.add(root.id);
+    }
+
+    ids.delete(employee.id);
+
+    return [employee, ...(await this.employees.findAllById([...ids]))];
   }
 
   /**
@@ -596,6 +751,8 @@ export class LeaveRequestService {
       approvedBy: desksThatApproved(decisions),
       /** FR 44. A stage that said no has had its say and is not waiting on anybody. */
       refusedBy: desksThatRefused(decisions),
+      /** FR 48b. A stage that was skipped is not still owed an answer. LMS 320. */
+      skipped: await this.routing.forRequest(request.id),
     });
   }
 
@@ -631,12 +788,60 @@ export class LeaveRequestService {
    * the honest behaviour if it somehow does is to refuse the approval rather than to admit
    * whoever asked.
    */
-  private async chiefExecutiveFor(chain: readonly ApproverRole[]): Promise<string | null> {
-    if (!isApprovedBy(chain, 'CEO')) {
-      return null;
+  /**
+   * Who can be asked at each of the three desks, and who FR 04's seat resolves to. FR 04, FR 38a, FR 48, FR 48b, §8.6a. LMS 314, LMS 320.
+   *
+   * Three lookups, one per desk, and the requester's own id is what turns "staffed" into
+   * "can decide this" — LMS 319's rule read as a fact about the desk rather than as a
+   * refusal at the door.
+   *
+   * **The root is read for every chain**, where LMS 314 read it only for a chain naming
+   * `CEO`. Since LMS 320 the Chief Executive stands in for HR, so they can be the desk a
+   * request is sitting on without the type's chain mentioning them at all — and a null here
+   * would mean the one person who *can* decide it being refused at their own desk.
+   *
+   * A terminated record staffs nothing: somebody who has left cannot sign in, and a desk
+   * held only by a leaver is a desk a request would wait at for ever. Being *away* is FR 49
+   * and is not this.
+   */
+  private async whoCanDecide(employee: Employee): Promise<WhoIsThere> {
+    const [manager, root, inHr] = await Promise.all([
+      employee.managerId === null
+        ? Promise.resolve(undefined)
+        : this.employees.findById(employee.managerId),
+      this.employees.findRoot(),
+      this.employeesInHr(),
+    ]);
+
+    const atTheDesk: Record<ApproverRole, string[]> = {
+      /** FR 04. A reporting line, never a role. */
+      MANAGER: stillHere(manager),
+      /** Two role codes staff one desk. FR 38a. */
+      HR: inHr,
+      /** FR 04's single root. */
+      CEO: stillHere(root),
+    };
+
+    return {
+      available: desksAvailable((desk) => standingOf(atTheDesk[desk], employee.id)),
+      /* FR 04. Null where there is no root at all, which both policies read as nobody. */
+      chiefExecutiveId: root?.id ?? null,
+    };
+  }
+
+  /** Everybody holding a role that approves as HR, who has not left. FR 38a, FR 48b. */
+  private async employeesInHr(): Promise<string[]> {
+    const ids = new Set<string>();
+
+    for (const code of APPROVES_AS_HR) {
+      for (const id of await this.roles.employeeIdsHolding(code)) {
+        ids.add(id);
+      }
     }
 
-    return (await this.employees.findRoot())?.id ?? null;
+    const records = await this.employees.findAllById([...ids]);
+
+    return records.flatMap(stillHere);
   }
 
   /**
@@ -1093,6 +1298,18 @@ export class LeaveRequestService {
  * standings, and two structurally identical types would be an invitation for them to
  * stop being identical.
  */
+/** Who staffs each desk for one request, and who FR 04's seat resolves to. FR 48b, LMS 320. */
+interface WhoIsThere {
+  available: DesksAvailable;
+  /** FR 04. */
+  chiefExecutiveId: string | null;
+}
+
 function ownerOf(employee: Employee): BalanceOwner {
   return { employeeId: employee.id, managerId: employee.managerId };
+}
+
+/** Somebody's id, where they are a record that can still answer at a desk. FR 06, FR 48b. */
+function stillHere(employee: Employee | undefined): string[] {
+  return employee === undefined || employee.employmentStatus === 'TERMINATED' ? [] : [employee.id];
 }

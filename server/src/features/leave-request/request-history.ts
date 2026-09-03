@@ -22,6 +22,8 @@ import {
   countingBasisLabel,
   type LeaveType,
 } from '../leave-type/leave-type.js';
+import type { SkippedStage } from './routing.js';
+import type { RecordedSkip } from './routing.db.js';
 import { byStartDate, type LeaveYear } from '../leave-year/leave-year.js';
 import type { CalendarDate } from '../../shared/time.js';
 
@@ -107,6 +109,8 @@ export interface RequestHistoryFacts {
   decisions: readonly LeaveDecision[];
   /** FR 52. */
   deciders: readonly Employee[];
+  /** FR 48b. The stages those requests' routing skipped. LMS 320. */
+  skipped?: readonly RecordedSkip[];
 }
 
 /** Who decided a request, by employee id. */
@@ -129,7 +133,16 @@ export function byMostRecentlyAsked(left: LeaveRequest, right: LeaveRequest): nu
 
 /** Where a request has got to, as a person says it. FR 54. */
 export function statusInWords(status: RequestStatus): string {
-  return status === 'SUBMITTED' ? 'waiting to be decided' : inWordsSettled(status);
+  if (status === 'SUBMITTED') {
+    return 'waiting to be decided';
+  }
+
+  /** FR 48b, LMS 320. Not decided, and not waiting on anybody either. */
+  if (status === 'UNROUTABLE') {
+    return 'stopped — no approver could decide it';
+  }
+
+  return inWordsSettled(status);
 }
 
 /** Who made a decision, by name. FR 52. */
@@ -251,6 +264,8 @@ export function entryFor(input: {
   type: LeaveType | undefined;
   decisions: readonly LeaveDecision[];
   deciders: Deciders;
+  /** FR 48b. The stages this request's routing skipped. LMS 320. */
+  skipped?: readonly SkippedStage[];
 }): RequestHistoryEntry {
   const { request, type, decisions, deciders } = input;
 
@@ -260,6 +275,8 @@ export function entryFor(input: {
     approvedBy: desksThatApproved(decisions),
     /** FR 44. A stage that said no has decided, and is not waiting on anybody. LMS 318. */
     refusedBy: desksThatRefused(decisions),
+    /** FR 48b, LMS 320. */
+    skipped: input.skipped,
   });
 
   return {
@@ -304,17 +321,9 @@ export function historyFor(facts: RequestHistoryFacts): RequestHistory {
     facts.deciders.map((person) => [person.id, `${person.firstName} ${person.lastName}`] as const),
   );
 
-  const decisionsByRequest = new Map<string, LeaveDecision[]>();
-
-  for (const decision of facts.decisions) {
-    const collected = decisionsByRequest.get(decision.leaveRequestId);
-
-    if (collected === undefined) {
-      decisionsByRequest.set(decision.leaveRequestId, [decision]);
-    } else {
-      collected.push(decision);
-    }
-  }
+  const decisionsByRequest = byRequest(facts.decisions);
+  /** FR 48b, LMS 320. */
+  const skipsByRequest = byRequest(facts.skipped ?? []);
 
   return {
     employeeId: facts.employeeId,
@@ -326,7 +335,25 @@ export function historyFor(facts: RequestHistoryFacts): RequestHistory {
         type: typesById.get(request.leaveTypeId),
         decisions: decisionsByRequest.get(request.id) ?? [],
         deciders,
+        skipped: skipsByRequest.get(request.id) ?? [],
       }),
     ),
   };
+}
+
+/** Rows of one page grouped by the request they belong to, in the order they arrived. */
+function byRequest<T extends { leaveRequestId: string }>(rows: readonly T[]): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+
+  for (const row of rows) {
+    const collected = grouped.get(row.leaveRequestId);
+
+    if (collected === undefined) {
+      grouped.set(row.leaveRequestId, [row]);
+    } else {
+      collected.push(row);
+    }
+  }
+
+  return grouped;
 }

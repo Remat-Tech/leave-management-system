@@ -1287,7 +1287,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        which is what stops it being "a way to reach the transition without passing the check
        that knows which desk FR 38a's chain has the request sitting on" — the sentence this
        file refused it with for two stories. */
-    it('and the decisions it holds are these eleven', () => {
+    it('and the decisions it holds are these twelve', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
         'approve',
         'cancel',
@@ -1301,6 +1301,8 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         'refuse',
         'resource',
         'reword',
+        /** FR 48b, LMS 320. Putting a request nobody could decide back into its chain. */
+        'route',
         'submit',
         'withdraw',
       ]);

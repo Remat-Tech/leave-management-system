@@ -929,10 +929,14 @@ officer approves their own leave, which is the defect the rule exists to stop.
 
 Since [LMS 319](#nobody-approves-their-own-request) the defect is refused rather
 than merely designed against: Ama's own request sitting at the HR desk she is
-admits nobody, at four altitudes down to the table the decision is written to. The
-half FR 48b still owes is the *routing* — where that request goes instead — so
-today it waits at a desk nobody can fill, which is stuck and visible rather than
-signed by the person who asked.
+admits nobody, at four altitudes down to the table the decision is written to. And
+since LMS 320 the request no longer sits there at all — the HR stage falls to the
+CEO, the skip is recorded on the request, and Kwame decides it.
+
+Kwame's own leave is the same story from the other end, which is why he is in the
+fixtures: FR 04 leaves him without a line manager, so the first stage of the
+ordinary chain has nobody at it and the request starts at HR instead. Neither
+fixture would show either defect if the two were the same person.
 
 `server/tests/integration/seed.test.ts` asserts each of these edges, so removing
 one has to be a decision rather than an accident.

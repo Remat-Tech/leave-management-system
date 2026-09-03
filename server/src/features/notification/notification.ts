@@ -18,6 +18,8 @@ export const NOTICE_EVENTS = [
   'CANCELLED',
   /** The line manager, told their decision was overturned. FR 44, §7.2, LMS 318. */
   'DECISION_OVERTURNED',
+  /** Nobody can decide it, told to the requester and to whoever can fix that. FR 48b, LMS 320. */
+  'UNROUTABLE',
 ] as const;
 
 export type NoticeEvent = (typeof NOTICE_EVENTS)[number];
@@ -250,6 +252,37 @@ export function noticeOf(happened: WhatHappened): NewNotice {
             ...said,
             'This is a record of a decision, not a question. If you think it was made on the wrong facts, speak to HR — the reason above and your own are both on the request for good.',
           ],
+        };
+      }
+
+      /* FR 48b, §8.6a, LMS 320. Two readers: the person whose leave has stopped, and
+         whoever can change the organisation so that it has not. The comment carries the
+         routing's own account of which desk was empty and what would fill it. */
+      case 'UNROUTABLE': {
+        const theirs = reader.id === employee.id;
+
+        return {
+          subject: theirs
+            ? `Your ${typeName} for ${period} has nobody who can decide it`
+            : `${possessively(employee.name)} ${typeName} for ${period} has nobody who can decide it`,
+          paragraphs: theirs
+            ? [
+                `Your request for ${cost} has stopped: there is no approver left who could ` +
+                  `decide it, so nobody has approved or turned it down.`,
+                ...said,
+                `Nothing is wrong with the request and nobody has judged it. The ${held} ` +
+                  `are still held while this is sorted out. ${left}`,
+                'HR has been told and will put it back to an approver. If you no longer need the time off, withdraw it.',
+              ]
+            : [
+                `${employee.name} asked for ${cost}, and the approval chain for it has run ` +
+                  `out of people who could decide it. The request has not been approved and ` +
+                  `has not been turned down.`,
+                ...said,
+                `Their ${held} are still held, so this is not costing them anything yet — ` +
+                  'but nothing will happen to it until somebody can be asked.',
+                'Once there is, send the request back to its approvers. Nobody may decide their own leave, whatever roles they hold. FR 48b.',
+              ],
         };
       }
 

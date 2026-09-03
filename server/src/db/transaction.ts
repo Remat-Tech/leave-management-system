@@ -8,6 +8,7 @@ import { EmployeeRepository } from '../features/employee/employee.db.js';
 import { LeaveDecisionRepository } from '../features/leave-request/leave-decision.db.js';
 import { LeaveEventRepository } from '../features/leave-event/leave-event.db.js';
 import { LeaveRequestRepository } from '../features/leave-request/leave-request.db.js';
+import { LeaveRoutingRepository } from '../features/leave-request/routing.db.js';
 import { LeaveTypeRepository } from '../features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../features/leave-year/leave-year.db.js';
 import { LedgerRepository } from '../features/balance/ledger.db.js';
@@ -28,6 +29,8 @@ export interface Repositories {
   events: LeaveEventRepository;
   requests: LeaveRequestRepository;
   decisions: LeaveDecisionRepository;
+  /** FR 48b. The stages a request's routing skipped. LMS 320. */
+  routing: LeaveRoutingRepository;
 }
 
 export class Transactions {
@@ -47,6 +50,7 @@ export class Transactions {
         events: new LeaveEventRepository(trx),
         requests: new LeaveRequestRepository(trx),
         decisions: new LeaveDecisionRepository(trx),
+        routing: new LeaveRoutingRepository(trx),
       }),
     );
   }

@@ -70,9 +70,10 @@ calculator](#the-day-calculator).
 
 FR 48 — which person a chain's desk resolves to, and what happens when the request
 reaches them — is [LMS 314](#routing-a-request-to-its-approvers) and
-[LMS 319](#nobody-approves-their-own-request). What is still not built is FR 48b,
-the reciprocal: a request whose only approver is the person who asked for it routes
-*upwards*, and until it does, such a request waits rather than moving.
+[LMS 319](#nobody-approves-their-own-request). FR 48b is the reciprocal and is
+[LMS 320](#routing-round-an-approver-who-cannot-decide): a stage its own desk cannot
+answer is skipped to the one desk that stands in for it, and where neither can be
+filled the request is `UNROUTABLE` with an alert rather than approved by nobody.
 
 **Everything is a whole number of days.** FR 24. Half days are settled between an
 employee and their manager, come off no balance, and are not in this system at all.
@@ -751,12 +752,15 @@ which took `approverAfter()` up on its offer: the walk was already a pure functi
 so the workflow had nothing left to decide about ordering and only had to say which
 person each desk is.
 
-**What is still not built.** The manager who raises their own leave and has to
-route upwards is FR 48b, and is about a reporting line rather than a leave type —
-such a request waits at a desk nobody can fill rather than being approved by
-somebody the chain never asked. Cover while an approver is themselves away is FR
-49. Parallel approval is nothing the SRS asks for and is the one thing `step_order`
-refuses outright: two rows cannot share a number.
+**And a stage no person fills is [LMS 320](#routing-round-an-approver-who-cannot-decide)**,
+which is FR 48b and is about a reporting line and a pair of granted roles rather
+than about a leave type — so the chain table knows nothing of it, and the skip is
+recorded against the *request* instead.
+
+**What is still not built.** Cover while an approver is themselves away is FR 49,
+and is a different question from an empty desk. Parallel approval is nothing the
+SRS asks for and is the one thing `step_order` refuses outright: two rows cannot
+share a number.
 
 ### The leave year, and closing one
 
@@ -2356,9 +2360,9 @@ soon as whose leave it is has been established, because nothing read afterwards 
 the answer.
 
 **What is deliberately not here.** FR 48b — the manager who raised their own request, the
-Chief Executive who has nobody above them — routes *upwards*, and that is a rule about a
-reporting line rather than about a leave type. Such a request waits at a desk nobody can
-fill, visibly, rather than being approved by somebody the chain never asked. Taking agreed
+Chief Executive who has nobody above them — is a rule about a reporting line rather than
+about a leave type, and is [LMS 320](#routing-round-an-approver-who-cannot-decide): the
+stage is skipped to the desk that stands in for it, and the skip is recorded. Taking agreed
 leave off the books afterwards is FR 26 and is not any of the three endings: the days are
 `taken` by then, so it is a movement against the `DEDUCTION`, and `LeaveCannotBeMoved` is
 what somebody reaching for withdraw is told in the meantime. And `leaveRequestPolicy.refuse`
@@ -2710,12 +2714,93 @@ code arrived with [LMS 401](#my-balances) and is `http/problems.ts`: an open ref
 because a 403 would state the very fact the message declines to. What this story settles is
 the half that has to be right on the server whatever the interface does.
 
-**What is still not built, and it is the reciprocal.** FR 48b routes such a request *upwards*
-— the manager who raised their own leave to their manager, the lone HR officer to the Chief
-Executive, which is the `lone-hr` seed scenario and §8.6a. That is a rule about a reporting
-line rather than about a leave type, and until it exists a request that reaches a desk only
-its own requester staffs waits there rather than moving. Stuck and visible is the side to be
-wrong on: the failure this story exists to stop is a person believing their leave was agreed.
+**The reciprocal is [LMS 320](#routing-round-an-approver-who-cannot-decide).** This story left
+such a request waiting at a desk only its own requester staffs — "stuck and visible is the
+side to be wrong on" — and FR 48b is where it goes instead.
+
+---
+
+### Routing round an approver who cannot decide
+
+**A stage its own desk cannot answer is skipped to one that can, and nothing is approved by
+running out of people to ask.** FR 48, FR 48b, §8.6a, LMS 320. The reciprocal LMS 319 left:
+that story refused the requester at four altitudes and the request stopped where it stood.
+
+**A desk is empty in three different ways, because the three resolve to a person by three
+different mechanisms.** `features/leave-request/routing.ts` holds the whole of it, and it is
+pure — the chain, what each desk amounts to, and nothing else.
+
+| Desk | Cannot answer when | Who that is |
+|---|---|---|
+| `MANAGER` | the requester has no line manager | FR 04's single root, the Chief Executive |
+| `HR` | every HR role is the requester's, or nobody's | the lone HR officer, `lone-hr` in the seed |
+| `CEO` | the root is the requester, or there is no root | the Chief Executive asking for unpaid leave |
+
+`DeskStanding` is those three answers rather than a boolean, because the boolean loses the
+half a person acts on: "nobody holds an HR role" and "the only person in HR is the one who
+asked" are different news and produce different sentences.
+
+**One stand-in each, and the ladder is deliberately not symmetrical.** `STAND_IN_FOR`, and it
+is written out rather than derived from an ordering of the three:
+
+*The line manager's stage goes to HR.* There is no second line manager to try — a reporting
+line has one person on it — so the stage is skipped rather than restaffed.
+
+*HR's stage goes to the Chief Executive.* "Another HR officer" is not a fallback at all: the
+desk is staffed by a *role*, so a second officer already fills it and this branch is reached
+only once there is nobody in HR but the requester.
+
+*And the Chief Executive's stage goes back to HR*, which is the one rung pointing downwards
+and the reason the table is a table. There is nothing above FR 04's root; the honest second
+best is the function that holds the policy the root would have applied.
+
+**A stand-in is one deep.** HR standing in for the manager, and then the Chief Executive
+standing in for HR standing in for the manager, is a chain of substitutions nobody configured
+and nobody could read off a screen. Where the one stand-in is empty too, the request stops.
+
+**A skipped stage is recorded, and a recorded skip is never reconsidered.**
+`leave_request_routing` is append only and holds one row per stage per request: the stage, the
+desk that took it, and why in words. It is the same rule LMS 316 gives a decision — a stage
+skipped on Monday has had its turn, and a line manager appointed on Wednesday does not send a
+request that is already with HR back down. `refuse_an_approval_a_stage_never_gave()` reads it,
+which is what lets the one request FR 48b exists to move actually be approved: without that,
+a request whose manager stage was skipped could never reach `APPROVED`.
+
+**A stage that went *nowhere* is deliberately not one of those rows.** It is the `UNROUTABLE`
+status and the alert instead, and the difference is what makes recovery possible: a skip is
+settled for ever, and a stage nobody ever answered has not been dealt with, so re-routing can
+reconsider it once somebody is at the desk.
+
+**`UNROUTABLE` is the sixth status, and it is neither an ending nor an approval.** The days
+are still held — its `RESERVATION` stands, so it is in `LIVE_STATUSES` and in
+`leave_request_never_overlaps` — the leave is still wanted, and what is missing is somebody to
+ask. Three moves come out of it and none of them is a decision: the person withdraws it, HR
+cancels it, or HR **routes** it, which works the routing out again against the organisation as
+it now stands and refuses with `StillNobodyToDecideIt` where nothing has changed.
+
+**Nothing is ever auto approved, and it is held in four places.** The walk returns `DECIDED`
+only by stages *deciding*; `isTheLastWord` answers false for an unroutable outcome so no
+ledger entry is written; `refuse_an_impossible_transition()` refuses `UNROUTABLE → APPROVED`
+on every connection; and `leave_request_is_approved_by_every_stage` still refuses a stage with
+neither a decision nor a skip. `unit/routing.test.ts` sweeps all twenty-seven states of the
+three desks against three chains and asserts the first of those directly.
+
+**The alert goes to two kinds of reader.** FR 59's `UNROUTABLE` notice reaches the person
+whose leave stopped — *nobody has approved or turned it down, and your days are still held* —
+and everybody who could change the organisation so that it has not, which is HR and the Chief
+Executive. It is written to say what to fix rather than only that something is wrong.
+
+**Deduplication is by desk, never by person.** A chain whose stages collapse onto one desk
+asks that person once: the lone HR officer's unpaid leave is HR then the Chief Executive with
+the first stage standing in on the second, and one signature settles both. Where two
+*different* desks happen to resolve to the same human — the Head of HR reporting to the Chief
+Executive — they are still two stages and are asked twice. A walk over a list of offices does
+not know which people fill them, and should not.
+
+**What is deliberately not here.** Cover while an approver is themselves away is FR 49 and is
+a different question: this story is about a desk that is empty, not one whose occupant is on
+holiday. A terminated record staffs nothing — somebody who has left cannot sign in — and that
+is the whole of the overlap.
 
 ---
 
@@ -3132,10 +3217,11 @@ decided and a decided one has left the queue in the same statement that decided 
 The story says *never actionable*, and the shape that rules out is a queue that hides them —
 one `filter`, and the wrong side to be wrong on. The case is ordinary rather than adversarial:
 unpaid leave goes to HR first, so an HR Officer asking for unpaid leave has a request standing
-at the desk she staffs. [FR 48b's routing upwards](#nobody-approves-their-own-request) is not
-built, so it waits there, and this document already settled what to do about that — *stuck and
-visible is the side to be wrong on*. Filtering it out would make the one request nobody can
-move the one request nobody can see.
+at the desk she staffs. Since
+[LMS 320](#routing-round-an-approver-who-cannot-decide) it stands there only while a colleague
+in HR can answer it — the stage falls to the Chief Executive once she is the whole of HR — and
+her own request is still on her queue, marked, because the desk is genuinely hers.
+Filtering it out would make the one request nobody can move the one request nobody can see.
 
 It appears, marked `actionable: false`, carrying `leaveRequestPolicy.notTheirOwn`'s **own**
 sentence rather than one written for the screen — so the queue and the approve door cannot

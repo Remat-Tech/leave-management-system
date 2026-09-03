@@ -130,6 +130,27 @@ export function requestRoutes({ history, form, requests, queue }: RequestRoutes)
       .catch(next);
   });
 
+  /**
+   * Sends a request nobody could decide back into its chain. FR 48b, §8.6a. LMS 320.
+   *
+   * HR's, and deliberately not a decision: it says nothing about the leave, and the request
+   * comes back waiting on whichever desk can now be asked.
+   */
+  routes.post('/requests/:id/route', (request: Request, response: Response, next) => {
+    void requests
+      .route(actorOf(response), asString(request.params.id))
+      .then((rerouted) => {
+        response.json({
+          requestId: rerouted.request.id,
+          status: rerouted.request.status,
+          /** FR 38a. The desk it can now be asked at. */
+          awaitingApprovalFrom: rerouted.request.awaitingApprovalFrom,
+          balance: rerouted.balance,
+        });
+      })
+      .catch(next);
+  });
+
   /** Every request I have made, newest first, with what became of each. */
   routes.get('/me/requests', (request: Request, response: Response, next) => {
     void history
