@@ -236,6 +236,107 @@ export interface Submitted {
   availableAfter: number;
 }
 
+/** ------------------------------------------- everything waiting on me. FR 20, LMS 404. */
+
+/** FR 17, FR 18. Worth pointing out before deciding, and not a refusal. */
+export type QueueFlag = 'SHORT_NOTICE' | 'BACKDATED';
+
+export interface QueueWarning {
+  code: QueueFlag;
+  inWords: string;
+}
+
+/** Who asked. FR 52. */
+export interface Asker {
+  employeeId: string;
+  name: string;
+  jobTitle: string | null;
+}
+
+/** What this request would spend, against what they have. §8.6. */
+export interface AskerBalance {
+  leaveTypeId: string;
+  leaveYearId: string;
+  owed: number;
+  taken: number;
+  /** Days held by requests still being decided — this one among them. */
+  pending: number;
+  /** What is left, this request's days already out of it. May be negative. §8.6b. */
+  available: number;
+  inWords: string;
+}
+
+/** One other person on the team who is away over the same days. */
+export interface TeamAway {
+  employeeId: string;
+  /** Null where this approver has no standing to be told it. */
+  name: string | null;
+  /** Ten characters. */
+  from: string;
+  to: string;
+  days: number;
+  status: RequestStatus;
+  typeName: string;
+}
+
+export interface TeamContext {
+  /** How many report to the asker's line manager, the asker included. */
+  size: number;
+  away: TeamAway[];
+  inWords: string;
+}
+
+/** One request waiting on me, with what the decision needs beside it. */
+export interface QueueItem {
+  requestId: string;
+  asker: Asker;
+  leaveTypeId: string;
+  typeName: string;
+  leaveYearId: string;
+  /** Ten characters. */
+  from: string;
+  to: string;
+  reason: string;
+  countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
+  countingBasisLabel: string;
+  /** FR 24. */
+  days: number;
+  calendarDays: number;
+  submittedAt: string;
+
+  /** FR 38a. The desk it is sitting on, which is one of mine. */
+  desk: Desk;
+  chain: Desk[];
+  approvedBy: Desk[];
+  stillToApprove: Desk[];
+  /** FR 41, written by the server in the approver's voice rather than the requester's. */
+  stageInWords: string;
+
+  /** FR 17, FR 18. Numbers as well as sentences, because a screen sorts and colours on them. */
+  noticeGivenDays: number;
+  shortNoticeBy: number;
+  backdatedBy: number;
+  /** Calendar days from today to the first day off. Negative once it has started. */
+  startsInDays: number;
+  warnings: QueueWarning[];
+
+  balance: AskerBalance;
+  team: TeamContext;
+
+  /** FR 48, §8.6a. False for my own request, whatever desk it is sitting at. */
+  actionable: boolean;
+  notActionableBecause: string | null;
+}
+
+export interface ApproverQueue {
+  approverId: string;
+  /** FR 38a. Which desks these came from. */
+  desks: Desk[];
+  inWords: string;
+  /** Soonest to start first. */
+  items: QueueItem[];
+}
+
 /** Who the session belongs to. */
 export interface Me {
   employeeId: string;
@@ -351,6 +452,22 @@ export async function quoteLeave(input: {
   });
 
   return request<Quote>('GET', `/api/me/requests/quote?${query.toString()}`);
+}
+
+/**
+ * Everything waiting on me. FR 20, FR 40. LMS 404.
+ *
+ * No parameters, and there is nothing to pass: the desks are established from the session, so
+ * there is no id a browser could name and nothing to narrow by.
+ *
+ * Refused with a 403 and the server's own sentence for somebody who staffs no desk, and the
+ * screen shows that sentence. There is deliberately no flag on `/api/me` to hide the tab in
+ * advance: `integration/balances-api.test.ts` pins that route's fields precisely so nothing
+ * like `canApprove` appears there, and the reason holds here — a client that decided what to
+ * draw from its own standing would be a second answer to a question the server owns.
+ */
+export async function myApprovals(): Promise<ApproverQueue> {
+  return request<ApproverQueue>('GET', '/api/me/approvals');
 }
 
 /**

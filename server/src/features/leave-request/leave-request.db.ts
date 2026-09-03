@@ -6,6 +6,7 @@ import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';
 import type { LeaveRequestTable } from '../../db/schema.js';
 import type { ApproverRole } from '../leave-type/approval-chain.js';
+import { companyWideDesks, type DesksStaffed } from './approver-queue.js';
 import type { Attribution } from '../audit/audit.js';
 import type { LeavePeriod } from '../leave-calculator/leave-calculator.js';
 import {
@@ -126,6 +127,86 @@ export class LeaveRequestRepository {
     }
 
     return (await query.orderBy('start_date').orderBy('id').execute()).map(toRequest);
+  }
+
+  /**
+   * Every request sitting at one of these desks. FR 20, FR 40, FR 38a, LMS 404.
+   *
+   * Filtered on the desk and not on the status: `leave_request_waits_at_a_desk` makes the two
+   * an equivalence, so a row at a desk is a row still being decided.
+   *
+   * `HR` and `CEO` are staffed for the whole company and are a plain `IN`. `MANAGER` resolves
+   * through a reporting line, so it is narrowed to this manager's own reports.
+   */
+  async awaiting(staffed: DesksStaffed): Promise<LeaveRequest[]> {
+    const companyWide = companyWideDesks(staffed);
+
+    /* Unreachable: `leaveRequestPolicy.queue` refuses somebody who staffs nothing. Answered
+       anyway, because a `WHERE` built from no desks is the shape that becomes `WHERE true`. */
+    if (companyWide.length === 0 && staffed.managerId === null) {
+      return [];
+    }
+
+    const managerId = staffed.managerId;
+
+    const rows = await this.db
+      .selectFrom('leave_request')
+      .innerJoin('employee', 'employee.id', 'leave_request.employee_id')
+      .selectAll('leave_request')
+      .where((eb) =>
+        eb.or([
+          ...(managerId === null
+            ? []
+            : [
+                eb.and([
+                  eb('leave_request.awaiting_approval_from', '=', 'MANAGER'),
+                  eb('employee.manager_id', '=', managerId),
+                ]),
+              ]),
+          ...(companyWide.length === 0
+            ? []
+            : [eb('leave_request.awaiting_approval_from', 'in', [...companyWide])]),
+        ]),
+      )
+      /** Soonest to start first, which is what `bySoonestToStart` sorts by. */
+      .orderBy('leave_request.start_date')
+      .orderBy('leave_request.submitted_at')
+      .orderBy('leave_request.id')
+      .execute();
+
+    return rows.map(toRequest);
+  }
+
+  /**
+   * The live leave these people have over this span. FR 20, LMS 404.
+   *
+   * {@link LeaveRequestRepository.findOverlapping} asked about a group, for the team context an
+   * approver decides on. A span rather than a period, so one statement answers a whole
+   * screenful and `teamFor` narrows each row with `periodsOverlap`.
+   *
+   * `LIVE_STATUSES` rather than `SUBMITTED` alone: a colleague who has asked for the same week
+   * keeps somebody off the desk as surely as one who has been granted it.
+   */
+  async liveOverlapping(
+    employeeIds: readonly string[],
+    span: LeavePeriod,
+  ): Promise<LeaveRequest[]> {
+    if (employeeIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom('leave_request')
+      .selectAll()
+      .where('employee_id', 'in', [...employeeIds])
+      .where('status', 'in', [...LIVE_STATUSES])
+      .where('end_date', '>=', span.from)
+      .where('start_date', '<=', span.to)
+      .orderBy('start_date')
+      .orderBy('id')
+      .execute();
+
+    return rows.map(toRequest);
   }
 
   /** The live leave this period would land on top of, if there is any. FR 15, §5.6.. */

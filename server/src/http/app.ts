@@ -2,6 +2,7 @@
 
 import express, { type Express, type Request, type Response } from 'express';
 import type { Guard } from '../auth/policy.js';
+import { ApproverQueueService } from '../features/leave-request/approver-queue.service.js';
 import { BalanceStatementService } from '../features/balance/balance-statement.service.js';
 import { LeaveTypeService } from '../features/leave-type/leave-type.service.js';
 import { RequestFormService } from '../features/leave-request/request-form.service.js';
@@ -117,6 +118,17 @@ export function buildApp(parts: Application): Express {
          those two have to be the same object — see `LeaveRequestService.quote`, which is
          emphatic that a quote and a submission ask the same questions of the same facts. */
       requests: parts.leaveRequests,
+      /* LMS 404. A read service built from repositories, like the two above and unlike the
+         write door: nothing an approver queue shows needs a transaction or a mailer. */
+      queue: new ApproverQueueService(
+        parts.requests,
+        parts.decisions,
+        parts.guard,
+        parts.employees,
+        parts.balances,
+        parts.types,
+        parts.years,
+      ),
     }),
   );
 

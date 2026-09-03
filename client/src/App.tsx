@@ -1,22 +1,32 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { currentSession, type Me, signOut } from './api';
+import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { BalancesPage } from './features/balances/BalancesPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
 import { RequestsPage } from './features/requests/RequestsPage';
 import { SignIn } from './features/session/SignIn';
 
-/** The application, and the three places there are to go. LMS 401, LMS 402, LMS 403. */
+/** The application, and the places there are to go. LMS 401, LMS 402, LMS 403, LMS 404. */
 
 /**
  * The places there are to go, and the labels on them.
  *
  * In the order somebody uses them rather than the order they were built: what you have, then
- * asking for some, then what became of what you asked for.
+ * asking for some, then what became of what you asked for, then what is waiting on you.
+ *
+ * **"Waiting on me" is offered to everybody**, which looks like an omission and is not.
+ * Whether somebody staffs an approver desk turns on a reporting line, an HR role and FR 04's
+ * seat, and `integration/balances-api.test.ts` pins the fields of `/api/me` so that no
+ * `canApprove` ever appears there — "a screen that knew its own roles would start deciding
+ * what to draw from them, and the day the two disagree the server is right and the page has
+ * been lying". So the tab is a link like the others, and somebody who approves nothing gets
+ * the server's own sentence saying what an approver is. FR 40, NFR USA 03.
  */
 const SCREENS = [
   { id: 'balances', label: 'My balances' },
   { id: 'ask', label: 'Ask for leave' },
   { id: 'requests', label: 'My requests' },
+  { id: 'approvals', label: 'Waiting on me' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -96,6 +106,7 @@ export function App() {
       {screen === 'balances' ? <BalancesPage onSignedOut={forget} /> : null}
       {screen === 'ask' ? <NewRequestPage onSignedOut={forget} /> : null}
       {screen === 'requests' ? <RequestsPage onSignedOut={forget} /> : null}
+      {screen === 'approvals' ? <ApprovalsPage onSignedOut={forget} /> : null}
     </>
   );
 }

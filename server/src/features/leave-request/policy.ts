@@ -2,7 +2,8 @@
  * Who may ask for leave, who may see what somebody asked for, and who may end it. FR 10, FR 26, NFR SEC 02, §6, §10., LMS 301, LMS 306, LMS 313, FR 18, LMS 314, FR 38a, FR 04, FR 48, §8.6, LMS 319, FR 48b, FR 39, LMS 315.
  */
 
-import type { ApproverRole } from '../leave-type/approval-chain.js';
+import { type ApproverRole, APPROVER_ROLES } from '../leave-type/approval-chain.js';
+import { type DesksStaffed, staffsAnyDesk } from './approver-queue.js';
 import { type DecidingAction, isADecision } from './leave-decision.js';
 import { type RequestAction, type Standing, standingsFor } from './leave-request.js';
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
@@ -67,6 +68,39 @@ function isAt(actor: Actor, subject: StandingFacts): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * Which desks this person answers at, whosever request arrives. FR 38a, FR 40, FR 04, LMS 404.
+ *
+ * {@link isAt} asked the other way round: that one takes a request and answers *are you the
+ * desk it is sitting on*, and a queue has no request in hand. Same three branches, so a desk
+ * added to `APPROVER_ROLES` cannot be answered by one and forgotten by the other — the unit
+ * suite walks every role and asserts the two agree.
+ *
+ * `MANAGER` is `actor.isManager` rather than a role, which is what {@link UnknownRole} says in
+ * words. `CEO` takes the root's id because FR 04 makes it a reporting line rather than a role;
+ * a null is nobody, as {@link isSelf} answers.
+ */
+export function desksStaffedBy(actor: Actor, chiefExecutiveId: string | null): DesksStaffed {
+  const desks = APPROVER_ROLES.filter((desk) => {
+    switch (desk) {
+      case 'MANAGER':
+        return actor.isManager;
+      case 'HR':
+        return holdsAny(actor, ...APPROVES_AS_HR);
+      default:
+        return isSelf(actor, chiefExecutiveId);
+    }
+  });
+
+  return {
+    desks,
+    /* The manager's desk covers this person's own reports and nobody else's, so the queue's
+       query needs their id beside the desk rather than the desk alone. Null where they are not
+       a manager at all, so that a caller cannot narrow by somebody who manages nobody. */
+    managerId: desks.includes('MANAGER') ? actor.employeeId : null,
+  };
 }
 
 /** Whether this actor may make this move, decided against the table. §6., LMS 313. */
@@ -185,6 +219,36 @@ export const leaveRequestPolicy = {
         'this request is not waiting on you. Most kinds of leave go to the line manager ' +
         'and then to HR; unpaid leave goes to HR and then to the Chief Executive. FR 38a.',
     });
+  },
+
+  /**
+   * Looking at everything waiting on you. FR 20, FR 40, FR 38a, LMS 404.
+   *
+   * The one decision here that names no subject: a queue is about which desks the asker staffs,
+   * which {@link desksStaffedBy} answers from the actor alone.
+   *
+   * It is the whole of the disclosure gate, because the rows are defined by it — a desk this
+   * person answers, `MANAGER` narrowed to their own reports. A per-row `read` on top would
+   * refuse the one approver §4.3.1 names: FR 32h routes unpaid leave to the Chief Executive,
+   * who is nobody's line manager and holds no role. Being the desk is its own reason to be
+   * looking, which is the seam `LeaveRequestService.approve` argues.
+   *
+   * Refused openly, because whether somebody manages a report is a fact about themselves — and
+   * refused rather than answered empty, because an empty queue and no queue are different news.
+   */
+  queue(actor: Actor, staffed: DesksStaffed): Decision {
+    return staffsAnyDesk(staffed)
+      ? about.allow(actor, 'queue', null)
+      : about.refuseOpenly(
+          actor,
+          'queue',
+          null,
+          'has nobody reporting to them and staffs no approver desk',
+          'An approver queue holds the requests waiting on you. Leave is approved by the ' +
+            'line manager it was addressed to, by HR, or by the Chief Executive — so this ' +
+            'screen belongs to somebody with a report, an HR role, or FR 04’s seat. Your own ' +
+            'requests and what became of them are on your leave pages. FR 38a.',
+        );
   },
 
   /** Improving the reason on a request already submitted. FR 18. */

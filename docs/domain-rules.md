@@ -3082,3 +3082,99 @@ rather than this screen's. What this story does is stop the window being invisib
 will ask for it" is the honest sentence until the story that adds the upload.
 
 ---
+
+### The approver queue
+
+**One place holding everything waiting on this person, so nothing sits unnoticed.** FR 20,
+FR 40, §8.6a, LMS 404. The failure it is written against is a manager going through email to
+find out what they owe an answer on, and a request nobody happens to look at.
+
+**The desks are the query, and the query is the disclosure gate.** `desksStaffedBy` in
+`features/leave-request/policy.ts` answers which desks somebody staffs, and it is `isAt` — the
+question `approve` asks — turned the other way round: that one takes a request and asks *are
+you the desk it is sitting on*, and a queue has no request in hand. `MANAGER` is
+`actor.isManager` narrowed to that person's own reports; `HR` and `CEO` are staffed for the
+whole company, because those desks are. `LeaveRequestRepository.awaiting` builds one `WHERE`
+out of the two shapes, and the rows it can return are by construction rows this person may
+decide.
+
+So there is no per-row `read` check on top, and adding one would break the one approver §4.3.1
+names: FR 32h routes unpaid leave to the Chief Executive, who is nobody's line manager and
+holds no role, so `read` would refuse them every request they exist to decide. **Being the desk
+is its own reason to be looking** — the same seam `approve` already argues. It is why the
+balance figures are read through `BalanceRepository` rather than `BalanceService`, whose
+`ledgerPolicy.read` the Chief Executive fails.
+
+**Filtered on the desk and not on the status**, which is [the state
+machine](#cancelling-a-request-nobody-has-approved) being taken at its word:
+`leave_request_waits_at_a_desk` is an equivalence, so a row at a desk is a row still being
+decided and a decided one has left the queue in the same statement that decided it.
+
+#### Own requests are on it and cannot be moved
+
+The story says *never actionable*, and the shape that rules out is a queue that hides them —
+one `filter`, and the wrong side to be wrong on. The case is ordinary rather than adversarial:
+unpaid leave goes to HR first, so an HR Officer asking for unpaid leave has a request standing
+at the desk she staffs. [FR 48b's routing upwards](#nobody-approves-their-own-request) is not
+built, so it waits there, and this document already settled what to do about that — *stuck and
+visible is the side to be wrong on*. Filtering it out would make the one request nobody can
+move the one request nobody can see.
+
+It appears, marked `actionable: false`, carrying `leaveRequestPolicy.notTheirOwn`'s **own**
+sentence rather than one written for the screen — so the queue and the approve door cannot
+disagree about who may decide what. The sentence names withdrawing, because whoever reads it
+wanted their leave gone rather than approved.
+
+#### The context, and one figure the sentence must not get wrong
+
+| | Says | Read from |
+|---|---|---|
+| Balance | what this would spend against what they have | the request's own type and leave year |
+| Team | who else reporting to the same manager is away over the same days | `LIVE_STATUSES`, narrowed by `periodsOverlap` |
+| Stage | who has already signed and who comes after this desk | `progressOf`, in the approver's voice |
+
+**`available` already has this request's days out of it.** Submitting reserved them into
+`pending`; approving moves the same days into `taken` and changes `available` by nothing. So
+the sentence says "approving this leaves 9" and not "9 now, 4 after", which would show the
+deduction twice.
+
+**Names in the team line are shown only where the approver may read that person's leave**,
+asked per colleague through `Guard.permits` — which answers without logging, because a name
+left off a line is not a refused attempt. The manager's desk and the HR desk see names; the
+Chief Executive sees the count, which is the half the decision turns on.
+
+**Soonest to start first**, because what makes a pending request urgent is the leave beginning
+rather than the request being old. Backdated ones sort to the top by the same rule: they are the
+only ones where an answer is already late.
+
+#### Flagged, and both flags say who decides
+
+FR 17 and FR 18, and **notice is measured at the moment the request was made rather than as at
+today**. Recomputing it now would shorten it every morning the approver did not answer,
+reporting their own delay as the requester's short notice. `startsInDays` is the figure that
+does move, and it is urgency rather than a judgement about anybody.
+
+Neither flag is a refusal, and the wording carries that. FR 17 warns and allows through "since
+whether short notice is workable is a judgement for the approvers" — this queue is where that
+judgement is made, so the sentence says so, or it reads as the system having found something
+wrong. `SHORT_NOTICE` is worded close to `quoteFor`'s warning of the same name deliberately:
+the requester was told "whoever approves it will see that it was short", and this is that
+person seeing it.
+
+**`DOCUMENTATION_REQUIRED` is the obvious third and is not here.** LMS 404 asks for two. The
+condition is `documentationRequired` and `quoteFor` has already written the sentence, so the
+story that wants it adds a member to `QUEUE_FLAGS` and a branch to `flagsFor`.
+
+#### Still not here
+
+**Nothing on this screen decides anything.** `approve`, `refuse` and their routes are the next
+story; what this one guarantees is that an approver can see what is waiting and what it would
+cost before they answer it.
+
+**The tab is offered to everybody**, and somebody who staffs no desk gets the server's own
+sentence saying what an approver is. There is deliberately no `canApprove` on `/api/me`:
+`integration/balances-api.test.ts` pins that route's fields because "a screen that knew its own
+roles would start deciding what to draw from them, and the day the two disagree the server is
+right and the page has been lying".
+
+---
