@@ -5,10 +5,17 @@ import {
   DECIDING_ACTIONS,
   desksThatApproved,
   isADecision,
+  InvalidDecision,
+  isAnOverride,
   type LeaveDecision,
+  OverrideNeedsAJustification,
+  overrideRequiredFor,
+  OVERRIDING_ACTIONS,
   readComment,
   RefusalNeedsAComment,
   requireAComment,
+  reverses,
+  saysYes,
   theRefusal,
   validateDecision,
 } from '../../src/features/leave-request/leave-decision.js';
@@ -56,8 +63,39 @@ describe('the verbs that are a decision at a desk', () => {
    * any subtraction anybody would write, and it would start demanding that HR justify
    * correcting a row that was entered twice.
    */
-  it('and is exactly approving and refusing', () => {
-    expect([...DECIDING_ACTIONS]).toEqual(['APPROVE', 'REFUSE']);
+  it('and is exactly the four verbs a desk can use', () => {
+    expect([...DECIDING_ACTIONS]).toEqual([
+      'APPROVE',
+      'REFUSE',
+      'OVERTURN_REJECTION',
+      'OVERTURN_APPROVAL',
+    ]);
+  });
+
+  /* FR 44, LMS 318. And the two that reverse somebody else's decision are the two that ask
+     for a justification. An override recorded as an approval with a flag beside it would
+     read as an approval in every query that forgot the flag. */
+  it('and the two that reverse a line manager are their own values', () => {
+    expect([...OVERRIDING_ACTIONS]).toEqual(['OVERTURN_REJECTION', 'OVERTURN_APPROVAL']);
+
+    for (const action of OVERRIDING_ACTIONS) {
+      expect(DECIDING_ACTIONS).toContain(action);
+      expect(isAnOverride(action)).toBe(true);
+    }
+
+    expect(isAnOverride('APPROVE')).toBe(false);
+    expect(isAnOverride('REFUSE')).toBe(false);
+  });
+
+  /* And which verb each reverses, which is what the schema checks the pair against. */
+  it('and each reverses the opposite verb', () => {
+    expect(reverses('OVERTURN_REJECTION')).toBe('REFUSE');
+    expect(reverses('OVERTURN_APPROVAL')).toBe('APPROVE');
+  });
+
+  /* And the two that say yes to a stage are an approval and an overturned rejection. */
+  it('and the verbs that say yes are approving and overturning a rejection', () => {
+    expect(DECIDING_ACTIONS.filter(saysYes)).toEqual(['APPROVE', 'OVERTURN_REJECTION']);
   });
 
   /**
@@ -142,6 +180,8 @@ describe('a decision on its way to being written', () => {
       action: 'APPROVE',
       onBehalfOf: 'HR',
       comment: 'Fine by me',
+      /** FR 44. Null on everything that is not an override. LMS 318. */
+      overridesDecisionId: null,
     });
   });
 
@@ -185,6 +225,9 @@ describe('a decision on its way to being written', () => {
       'comment',
       'leaveRequestId',
       'onBehalfOf',
+      /* FR 44, LMS 318. Null on everything but an override, and supplied by the door rather
+         than by whoever pressed the button. */
+      'overridesDecisionId',
     ]);
   });
 });
@@ -198,6 +241,7 @@ describe('the refusal among a request’s decisions', () => {
     action,
     onBehalfOf: 'MANAGER',
     comment,
+    overridesDecisionId: null,
     decidedBy: 'employee 7',
     decidedByEmployeeId: '7',
     decidedAt: new Date('2026-03-01T09:00:00Z'),
@@ -239,6 +283,7 @@ describe('the desks that have approved a request', () => {
     action,
     onBehalfOf,
     comment: action === 'REFUSE' ? 'No cover' : null,
+    overridesDecisionId: null,
     decidedBy: 'employee 7',
     decidedByEmployeeId: '7',
     decidedAt: new Date('2026-03-01T09:00:00Z'),
@@ -262,6 +307,132 @@ describe('the desks that have approved a request', () => {
 
   it('and a request nobody has decided has none', () => {
     expect(desksThatApproved([])).toEqual([]);
+  });
+});
+
+/* ------------------------------------------ overturning a line manager, FR 44 */
+
+/**
+ * What an override has to say, and what it has to be reversing. FR 44, §7.2. LMS 318.
+ *
+ * The story's second and fourth criteria are both here: a justification in writing, and a
+ * decision value of its own rather than a flag on an approval.
+ */
+describe('overturning a line manager’s decision', () => {
+  const anOverride = {
+    leaveRequestId: '41',
+    action: 'OVERTURN_REJECTION' as const,
+    onBehalfOf: 'HR' as const,
+    overridesDecisionId: '9',
+  };
+
+  /* The story's second criterion, and it is refused for the same three shapes a refusal is:
+     nothing at all, whitespace, and something that is not a string. */
+  it('says why, and a blank justification is nothing', () => {
+    for (const nothing of [undefined, null, '', '   ', '\n\t', 7, {}]) {
+      expect(() => validateDecision({ ...anOverride, comment: nothing })).toThrow(
+        OverrideNeedsAJustification,
+      );
+    }
+  });
+
+  /* And it is told apart from a refusal's, because the two are read by different people:
+     one is owed to the person whose leave it is, the other to the manager as well. */
+  it('and is refused in its own words rather than a refusal’s', () => {
+    expect(() => validateDecision({ ...anOverride, comment: '  ' })).not.toThrow(
+      RefusalNeedsAComment,
+    );
+  });
+
+  it('and carries the decision it reverses', () => {
+    expect(validateDecision({ ...anOverride, comment: 'Carry-over expires this month' })).toEqual({
+      leaveRequestId: '41',
+      action: 'OVERTURN_REJECTION',
+      onBehalfOf: 'HR',
+      comment: 'Carry-over expires this month',
+      overridesDecisionId: '9',
+    });
+  });
+
+  /**
+   * And the pointer and the verb are an equivalence, held here and by
+   * `leave_request_decision_override_names_what_it_reverses` on every connection.
+   *
+   * Both halves matter. An override naming nothing is a record of a disagreement with
+   * nobody; a plain approval naming something claims a disagreement it did not have, and
+   * would put a justification in front of a manager who was never overruled.
+   */
+  it('and an override that names nothing is refused', () => {
+    expect(() =>
+      validateDecision({ ...anOverride, overridesDecisionId: null, comment: 'Policy says so' }),
+    ).toThrow(InvalidDecision);
+  });
+
+  it('and a plain approval that names something is refused too', () => {
+    expect(() =>
+      validateDecision({
+        leaveRequestId: '41',
+        action: 'APPROVE',
+        onBehalfOf: 'HR',
+        comment: null,
+        overridesDecisionId: '9',
+      }),
+    ).toThrow(InvalidDecision);
+  });
+});
+
+/**
+ * Which verb would be overruling the line manager. FR 44, §7.2. LMS 318.
+ *
+ * The pairing that makes the justification unavoidable rather than offered: a desk about to
+ * decide the opposite way to the line manager is overruling them whether the button it
+ * pressed said so or not.
+ */
+describe('the override a plain verb would have to be', () => {
+  const managers = (action: 'APPROVE' | 'REFUSE'): LeaveDecision => ({
+    id: '9',
+    leaveRequestId: '41',
+    action,
+    onBehalfOf: 'MANAGER',
+    comment: action === 'REFUSE' ? 'No cover' : null,
+    overridesDecisionId: null,
+    decidedBy: 'Kofi Mensah',
+    decidedByEmployeeId: '3',
+    decidedAt: new Date('2026-02-10T09:00:00Z'),
+  });
+
+  it('is overturning a rejection where HR is about to approve what the manager refused', () => {
+    expect(overrideRequiredFor('APPROVE', [managers('REFUSE')])).toBe('OVERTURN_REJECTION');
+  });
+
+  it('and overturning an approval where HR is about to refuse what they agreed to', () => {
+    expect(overrideRequiredFor('REFUSE', [managers('APPROVE')])).toBe('OVERTURN_APPROVAL');
+  });
+
+  /* And nothing at all where they agree, which is every ordinary request. */
+  it('and nothing where the two desks agree', () => {
+    expect(overrideRequiredFor('APPROVE', [managers('APPROVE')])).toBeNull();
+    expect(overrideRequiredFor('REFUSE', [managers('REFUSE')])).toBeNull();
+  });
+
+  /**
+   * And nothing where no line manager has decided, which is the case that would otherwise
+   * demand a justification of the first desk to look at a request.
+   *
+   * A chain with no manager stage is the ordinary version of this — unpaid leave goes HR
+   * then the Chief Executive, §4.3.1 — so HR deciding one has nobody to overrule.
+   */
+  it('and nothing where no line manager has decided at all', () => {
+    expect(overrideRequiredFor('APPROVE', [])).toBeNull();
+    expect(overrideRequiredFor('REFUSE', [])).toBeNull();
+  });
+
+  /* And it reads the line manager's stage rather than any earlier disagreement. HR
+     overruling the Chief Executive is not FR 44's subject. */
+  it('and it reads the line manager’s stage and no other', () => {
+    const chiefExecutive: LeaveDecision = { ...managers('REFUSE'), onBehalfOf: 'CEO' };
+
+    expect(overrideRequiredFor('APPROVE', [chiefExecutive])).toBeNull();
   });
 });
 

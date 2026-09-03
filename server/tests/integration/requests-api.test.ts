@@ -74,6 +74,10 @@ const guard = new Guard();
 const WHY_NOT =
   'Two of the team are already away that week and the desk can’t be empty.\nAsk again for April.';
 
+/** FR 44. What HR writes when policy prevails over a local decision. LMS 318. */
+const BECAUSE_POLICY =
+  'Her carry-over expires on the 30th and the company owes her the days.\nCover is HR’s to arrange.';
+
 let db: Kysely<Database>;
 let admin: Client;
 let server: Server;
@@ -237,8 +241,11 @@ describe('every request I have made', () => {
     await requests.approve(asTheirManager(), agreed);
     await requests.approve(asOfficer(), agreed);
 
+    /* FR 44, LMS 318. Both desks, because a manager's rejection carries the request on to HR
+       rather than ending it — so a request turned down once is still being decided. */
     const refused = await aRequest({ from: '2026-04-06', to: '2026-04-10' });
     await requests.refuse(asTheirManager(), refused, WHY_NOT);
+    await requests.refuse(asOfficer(), refused, WHY_NOT);
 
     const takenBack = await aRequest({ from: '2026-05-04', to: '2026-05-08' });
     await requests.withdraw(asThemselves(), takenBack);
@@ -368,6 +375,7 @@ describe('how each was decided', () => {
     const id = await aRequest();
 
     await requests.refuse(asTheirManager(), id, WHY_NOT);
+    await requests.refuse(asOfficer(), id, WHY_NOT);
 
     const entry = entryOf(await historyFor(people.officer), id);
     const refusal = entry.trail.find((step) => step.comment !== null);
@@ -376,6 +384,33 @@ describe('how each was decided', () => {
     expect(refusal?.by).toBe('Kofi Boateng');
     expect(refusal?.at).not.toBeNull();
     expect(entry.statusInWords).toBe('refused');
+  });
+
+  /**
+   * FR 44, §7.2. The trail says which decision stood, and why. LMS 318.
+   *
+   * The story's "so that": the reason stays visible for ever. A trail reading "Approved by
+   * HR" under "Turned down at your line manager's stage" would leave the person to work out
+   * which one counted, so an override is its own kind of step and says what it reversed.
+   */
+  it('and says so when HR overturned the line manager, with the reason on it', async () => {
+    const id = await aRequest();
+
+    await requests.refuse(asTheirManager(), id, WHY_NOT);
+    await requests.override(asOfficer(), id, 'OVERTURN_REJECTION', BECAUSE_POLICY);
+
+    const entry = entryOf(await historyFor(people.officer), id);
+
+    expect(entry.trail.map((step) => step.kind)).toEqual(['ASKED', 'DECIDED', 'OVERTURNED']);
+    expect(entry.trail.map((step) => step.desk)).toEqual([null, 'MANAGER', 'HR']);
+
+    /* Both sentences survive: the manager's reason and HR's, neither rewritten. */
+    expect(entry.trail[1].comment).toBe(WHY_NOT);
+    expect(entry.trail[2].comment).toBe(BECAUSE_POLICY);
+    expect(entry.trail[2].inWords).toMatch(/overturned that decision and approved this leave/);
+
+    expect(entry.statusInWords).toBe('approved');
+    expect(entry.agreed).toBe(true);
   });
 
   /**
@@ -429,6 +464,115 @@ describe('how each was decided', () => {
 
     expect(commentsOf(entryOf(history, refused))).toEqual([WHY_NOT]);
     expect(commentsOf(entryOf(history, untouched))).toEqual([]);
+  });
+});
+
+/* --------------------------------------------------------- deciding one, over HTTP */
+
+/**
+ * The three verbs a desk decides with, through the routes. FR 38a, FR 39, FR 44. LMS 318.
+ *
+ * What a screen actually calls, and the one thing a service test cannot show: that the
+ * override asks for its justification at the boundary and that a plain button cannot be used
+ * to do the same thing quietly.
+ */
+describe('deciding a request', () => {
+  it('approves it at the desk it is sitting on', async () => {
+    const id = await aRequest();
+
+    const response = await post(`/api/requests/${id}/approve`, people.teamLead, {});
+    const decided = (await response.json()) as JsonDecided;
+
+    expect(response.status).toBe(200);
+    expect(decided.status).toBe('SUBMITTED');
+    expect(decided.awaitingApprovalFrom).toBe('HR');
+    expect(decided.decision).toMatchObject({ action: 'APPROVE', onBehalfOf: 'MANAGER' });
+    /* No days moved: only the last desk's yes writes a DEDUCTION. */
+    expect(decided.entryId).toBeNull();
+  });
+
+  /* FR 44. And a rejection sends it on rather than ending it, with the days still held. */
+  it('and a rejection sends it on to HR rather than ending it', async () => {
+    const id = await aRequest();
+
+    const response = await post(`/api/requests/${id}/refuse`, people.teamLead, {
+      comment: WHY_NOT,
+    });
+    const decided = (await response.json()) as JsonDecided;
+
+    expect(response.status).toBe(200);
+    expect(decided.status).toBe('SUBMITTED');
+    expect(decided.awaitingApprovalFrom).toBe('HR');
+    expect(decided.decision).toMatchObject({ action: 'REFUSE', comment: WHY_NOT });
+  });
+
+  /**
+   * And HR overturns it, with the justification and the decision it reversed on the row.
+   *
+   * FR 44's second and fourth criteria over the wire: a distinct decision value, and a
+   * written justification that is not optional.
+   */
+  it('and HR overturns a rejection, with the reason and what it reversed on the record', async () => {
+    const id = await aRequest();
+
+    await post(`/api/requests/${id}/refuse`, people.teamLead, { comment: WHY_NOT });
+
+    const response = await post(`/api/requests/${id}/override`, people.hrOfficer, {
+      action: 'OVERTURN_REJECTION',
+      justification: BECAUSE_POLICY,
+    });
+    const decided = (await response.json()) as JsonDecided;
+
+    expect(response.status).toBe(200);
+    expect(decided.status).toBe('APPROVED');
+    expect(decided.decision).toMatchObject({
+      action: 'OVERTURN_REJECTION',
+      onBehalfOf: 'HR',
+      comment: BECAUSE_POLICY,
+    });
+    expect(decided.decision.overridesDecisionId).not.toBeNull();
+    expect(decided.entryId).not.toBeNull();
+  });
+
+  /* And the justification cannot be left out, which is what makes it mandatory rather than
+     expected. A refusal rather than a five hundred: ../../src/http/problems.ts. */
+  it('and an override with nothing said is refused with a sentence', async () => {
+    const id = await aRequest();
+
+    await post(`/api/requests/${id}/refuse`, people.teamLead, { comment: WHY_NOT });
+
+    const response = await post(`/api/requests/${id}/override`, people.hrOfficer, {
+      action: 'OVERTURN_REJECTION',
+    });
+
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { message: string }).message).toContain('in writing');
+  });
+
+  /* And the plain button cannot be used to do the same thing quietly. */
+  it('and approving what the manager turned down is refused, and names the override', async () => {
+    const id = await aRequest();
+
+    await post(`/api/requests/${id}/refuse`, people.teamLead, { comment: WHY_NOT });
+
+    const response = await post(`/api/requests/${id}/approve`, people.hrOfficer, {});
+
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { message: string }).message).toContain(
+      'overturn the rejection',
+    );
+  });
+
+  /* And a verb that is neither is refused at the boundary rather than cast through it. */
+  it('and an override that is neither of the two verbs is refused', async () => {
+    const id = await aRequest();
+
+    const response = await post(`/api/requests/${id}/override`, people.hrOfficer, {
+      action: 'APPROVE',
+      justification: BECAUSE_POLICY,
+    });
+
+    expect(response.status).toBe(400);
   });
 });
 
@@ -513,6 +657,21 @@ interface JsonEntry {
   trail: JsonStep[];
 }
 
+/** What one desk's decision did to the request, as the route sends it. FR 44, LMS 318. */
+interface JsonDecided {
+  requestId: string;
+  status: string;
+  awaitingApprovalFrom: string | null;
+  decision: {
+    action: string;
+    onBehalfOf: string;
+    comment: string | null;
+    overridesDecisionId: string | null;
+  };
+  entryId: string | null;
+  availableAfter: number;
+}
+
 interface JsonHistory {
   employeeId: string;
   year: { id: string; label: string } | null;
@@ -523,6 +682,18 @@ interface JsonHistory {
 function get(path: string, { cookie }: { cookie: string }): Promise<Response> {
   return fetch(`${origin}${path}`, {
     headers: { cookie: `${SESSION_COOKIE}=${cookie}` },
+  });
+}
+
+/** A decision through the real route, as the person named. FR 44, LMS 318. */
+function post(path: string, employeeId: string, body: unknown): Promise<Response> {
+  return fetch(`${origin}${path}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: `${SESSION_COOKIE}=${mintSession(employeeId, SECRET)}`,
+    },
+    body: JSON.stringify(body),
   });
 }
 

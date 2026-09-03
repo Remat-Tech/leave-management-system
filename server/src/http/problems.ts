@@ -151,6 +151,21 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   LeaveCountsNoDays: 400,
   /** FR 16. Two requests instead of one; the message names both dates. */
   LeaveCrossesAYearEnd: 400,
+  /** FR 39. The comment box is the fix. LMS 315. */
+  RefusalNeedsAComment: 400,
+  /** FR 44. The justification box is the fix. LMS 318. */
+  OverrideNeedsAJustification: 400,
+  /**
+   * FR 44. The other button is the fix, and the message names it. LMS 318.
+   *
+   * A 400 rather than a 409 because what has to change is what was sent — the verb — rather
+   * than the state of the world. The request is in a state this desk may decide; it is the
+   * plain verb that is wrong for a request the line manager already decided the other way.
+   */
+  OverrulingNeedsAnOverride: 400,
+
+  /** FR 44. There is nothing on this request to reverse. LMS 318. */
+  NothingToOverturn: 409,
 
   /** FR 15, §5.6. Leave over leave already booked. */
   LeaveOverlapsAnother: 409,

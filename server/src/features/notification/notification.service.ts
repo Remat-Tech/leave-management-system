@@ -22,6 +22,8 @@ export interface Telling {
   event: NoticeEvent;
   /** Whose leave it is, which for FR 59 is also who is told. */
   employee: Employee;
+  /** Who is told, where FR 44 makes that somebody else — the overruled line manager. */
+  recipient?: Employee;
   /** The request **as it stands committed**, which is where the desk and status come from. */
   request: LeaveRequest;
   typeName: string;
@@ -31,6 +33,8 @@ export interface Telling {
   comment: string | null;
   /** What the person may book now, from the transaction that moved it. */
   availableAfter: number;
+  /** FR 44. */
+  overturned?: { desk: ApproverRole; said: 'APPROVE' | 'REFUSE' } | null;
 }
 
 /** What became of one telling. */
@@ -92,15 +96,23 @@ export class NotificationService {
   /** Tells somebody what happened to their leave, on both channels. FR 59. */
   async tell(telling: Telling): Promise<Told> {
     const { employee } = telling;
+    /** FR 44, FR 60. The requester on every event but the one written to their manager. */
+    const reader = telling.recipient ?? employee;
 
     const composed = noticeOf({
       event: telling.event,
-      employee: { id: employee.id, firstName: employee.firstName },
+      employee: {
+        id: employee.id,
+        firstName: employee.firstName,
+        name: `${employee.firstName} ${employee.lastName}`,
+      },
+      recipient: { id: reader.id, firstName: reader.firstName },
       request: telling.request,
       typeName: telling.typeName,
       decidedBy: telling.decidedBy,
       comment: telling.comment,
       availableAfter: telling.availableAfter,
+      overturned: telling.overturned ?? null,
     });
 
     const notice = await this.write(composed);
@@ -109,7 +121,7 @@ export class NotificationService {
       return { notice: null, emailed: false, couldNotTell: 'the notice could not be written' };
     }
 
-    return this.email(notice, employee.workEmail);
+    return this.email(notice, reader.workEmail);
   }
 
   /** One person's notifications, newest first. FR 59. */

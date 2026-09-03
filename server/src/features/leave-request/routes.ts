@@ -6,14 +6,20 @@ import { type FreeDay, freeDayInWords } from '../leave-calculator/leave-calculat
 import type {
   ApproverQueue,
   AskerBalance,
+  ManagersDecision,
   QueueItem,
   QueueWarning,
   TeamAway,
   TeamContext,
 } from './approver-queue.js';
 import type { FormRule, RequestableLeaveType, RequestForm } from './request-form.js';
-import type { LeaveRequestQuote, RequestWarning } from './leave-request.js';
-import type { LeaveRequested } from '../balance/balance.service.js';
+import { OVERRIDING_ACTIONS, type OverridingAction } from './leave-decision.js';
+import {
+  InvalidLeaveRequest,
+  type LeaveRequestQuote,
+  type RequestWarning,
+} from './leave-request.js';
+import type { LeaveApproved, LeaveRequested } from '../balance/balance.service.js';
 import type { RequestHistory, RequestHistoryEntry, TrailStep } from './request-history.js';
 import type { ApproverQueueService } from './approver-queue.service.js';
 import type { LeaveRequestService } from './leave-request.service.js';
@@ -47,6 +53,79 @@ export function requestRoutes({ history, form, requests, queue }: RequestRoutes)
       .forApprover(actorOf(response))
       .then((waiting) => {
         response.json(queueAsJson(waiting));
+      })
+      .catch(next);
+  });
+
+  /**
+   * What a line manager turned down that is now waiting on me. FR 44, §7.2. LMS 318.
+   *
+   * The dedicated view of the story's first criterion, and the same rows as `/me/approvals`
+   * narrowed to the ones a manager said no to. Bounded by the same `leaveRequestPolicy.queue`
+   * — there is no id to supply and nothing here that is not already at this person's desk.
+   */
+  routes.get('/me/approvals/rejections', (_request: Request, response: Response, next) => {
+    void queue
+      .rejectionsFor(actorOf(response))
+      .then((waiting) => {
+        response.json(queueAsJson(waiting));
+      })
+      .catch(next);
+  });
+
+  /**
+   * Says yes at the desk this request is sitting on. FR 38, FR 38a, FR 40. LMS 314.
+   *
+   * A comment is optional here and required of everything below it, which is FR 39's
+   * asymmetry: somebody whose leave is granted needs no explanation of the yes.
+   */
+  routes.post('/requests/:id/approve', (request: Request, response: Response, next) => {
+    void requests
+      .approve(actorOf(response), asString(request.params.id), asString(bodyOf(request).comment))
+      .then((decided) => {
+        response.json(decidedAsJson(decided));
+      })
+      .catch(next);
+  });
+
+  /**
+   * Turns it down at that desk, and says why. FR 39, FR 42, FR 44. LMS 315, LMS 318.
+   *
+   * Not an ending in itself since LMS 318: a rejection at a stage that is not the last sends
+   * the request on to the next desk with the days still held.
+   */
+  routes.post('/requests/:id/refuse', (request: Request, response: Response, next) => {
+    void requests
+      .refuse(actorOf(response), asString(request.params.id), asString(bodyOf(request).comment))
+      .then((decided) => {
+        response.json(decidedAsJson(decided));
+      })
+      .catch(next);
+  });
+
+  /**
+   * Overturns the line manager's decision. FR 44, §7.2. LMS 318.
+   *
+   * Two verbs at one address, because they are one act with a direction: `OVERTURN_REJECTION`
+   * lets leave a manager refused stand, `OVERTURN_APPROVAL` stops leave they agreed to. Which
+   * of the two is legitimate on this request is the domain's to say — `NothingToOverturn`
+   * refuses one that contradicts nobody — so the route passes the verb through rather than
+   * deciding it, exactly as it passes the day count through nowhere at all.
+   *
+   * The justification is mandatory and is refused before anything is read.
+   */
+  routes.post('/requests/:id/override', (request: Request, response: Response, next) => {
+    const sent = bodyOf(request);
+
+    void requests
+      .override(
+        actorOf(response),
+        asString(request.params.id),
+        readOverride(sent.action),
+        asString(sent.justification),
+      )
+      .then((decided) => {
+        response.json(decidedAsJson(decided));
       })
       .catch(next);
   });
@@ -191,6 +270,27 @@ function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/**
+ * Which way an override goes. FR 44, §7.2. LMS 318.
+ *
+ * The one place in this file that reads a value rather than coercing one, because there is no
+ * domain function further down that takes a string: `LeaveRequestService.override` is typed on
+ * {@link OverridingAction}, so an unrecognised verb has to be refused here or cast, and a cast
+ * would let `{"action": "APPROVE"}` skip the justification the override exists to demand.
+ */
+function readOverride(value: unknown): OverridingAction {
+  if (typeof value !== 'string' || !(OVERRIDING_ACTIONS as readonly string[]).includes(value)) {
+    throw new InvalidLeaveRequest(
+      'action',
+      `An override either lets leave a line manager turned down stand, or stops leave they ` +
+        `agreed to. Those are ${OVERRIDING_ACTIONS.join(' and ')}, and ${String(value)} is ` +
+        `neither. FR 44.`,
+    );
+  }
+
+  return value as OverridingAction;
+}
+
 /** The parsed body, where something object shaped arrived. */
 function bodyOf(request: Request): Record<string, unknown> {
   const body: unknown = request.body;
@@ -253,6 +353,25 @@ function queueItemAsJson(item: QueueItem): unknown {
     /** FR 48, §8.6a. */
     actionable: item.actionable,
     notActionableBecause: item.notActionableBecause,
+
+    /** FR 44, §7.2. LMS 318. */
+    managersDecision:
+      item.managersDecision === null ? null : managersDecisionAsJson(item.managersDecision),
+    /* Which of this desk's two verbs would be overturning the line manager, so a screen can
+       ask for the justification before the button rather than after the refusal. */
+    approvingIs: item.approvingIs,
+    refusingIs: item.refusingIs,
+  };
+}
+
+function managersDecisionAsJson(managers: ManagersDecision): unknown {
+  return {
+    said: managers.said,
+    /** FR 39. The reason HR is weighing, in the manager's own words. */
+    comment: managers.comment,
+    by: managers.by,
+    at: managers.at.toISOString(),
+    inWords: managers.inWords,
   };
 }
 
@@ -438,6 +557,36 @@ function freeDayAsJson(day: FreeDay): unknown {
 }
 
 /* ------------------------------------------------------- what was submitted, as JSON */
+
+/**
+ * What one desk's decision did to the request. FR 38a, FR 39, FR 44. LMS 314, LMS 318.
+ *
+ * The decision itself as well as the request, because the two answer different questions: the
+ * status says where the leave stands, and the decision says who decided it, what they said and
+ * — since LMS 318 — which earlier decision it reversed.
+ */
+function decidedAsJson(decided: LeaveApproved): unknown {
+  return {
+    requestId: decided.request.id,
+    status: decided.request.status,
+    /** FR 38a. Null once there is nobody left to ask. */
+    awaitingApprovalFrom: decided.request.awaitingApprovalFrom,
+    decision: {
+      action: decided.decision.action,
+      /** FR 52. */
+      onBehalfOf: decided.decision.onBehalfOf,
+      /** FR 39, FR 44. */
+      comment: decided.decision.comment,
+      /** FR 44. The decision this one reversed, where it reversed one. */
+      overridesDecisionId: decided.decision.overridesDecisionId,
+      decidedBy: decided.decision.decidedBy,
+      decidedAt: decided.decision.decidedAt.toISOString(),
+    },
+    /** Null where this decision was not the last word and no days moved. */
+    entryId: decided.entry?.id ?? null,
+    availableAfter: decided.balance.available,
+  };
+}
 
 /** The request that was written, and the balance it left. LMS 301. */
 function submittedAsJson(submitted: LeaveRequested): unknown {

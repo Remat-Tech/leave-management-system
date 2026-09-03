@@ -6,7 +6,8 @@ import { leaveRequestPolicy } from '../../src/features/leave-request/policy.js';
 import type { BalanceOwner } from '../../src/features/balance/policy.js';
 import { APPROVER_ROLES, type ApproverRole } from '../../src/features/leave-type/approval-chain.js';
 import {
-  approvalTo,
+  blocksTheCalendar,
+  decisionTo,
   isSettled,
   isTheLastWord,
   LeaveAlreadySettled,
@@ -166,6 +167,13 @@ describe('the transitions a request may make', () => {
    * a submitted request, and a verb added without a row out of `SUBMITTED` is a button that
    * does nothing.
    */
+  /**
+   * And everything can be done to a request that is waiting to be decided. LMS 318.
+   *
+   * Still every verb there is: `OVERTURN_APPROVAL` was the one that might have needed a state
+   * of its own, and it does not — a manager's approval leaves the request `SUBMITTED` at the
+   * next desk, which is exactly where somebody would be looking at it when they disagreed.
+   */
   it('and everything can be done to a request that is waiting to be decided', () => {
     for (const action of REQUEST_ACTIONS) {
       expect(transitionFor('SUBMITTED', action)).toBeDefined();
@@ -242,14 +250,22 @@ describe('the transitions a request may make', () => {
    *
    * The row says `SUBMITTED → APPROVED`, and that is where the *last* desk leaves it. Every
    * desk before the last leaves the status exactly where it is and moves the request along
-   * its chain instead, which is why {@link approvalTo} exists and why the table alone
+   * its chain instead, which is why {@link decisionTo} exists and why the table alone
    * cannot answer where an approval lands.
    */
-  it('and approval is the only row whose destination keeps the request alive', () => {
+  /**
+   * And the verbs whose destination keeps the request alive are the two that say yes. FR 44.
+   * LMS 318.
+   *
+   * `OVERTURN_REJECTION` joined `APPROVE` here, and the pair is the point: an override is an
+   * ordinary decision that happens to disagree with an earlier stage, so it lands exactly
+   * where the plain verb would.
+   */
+  it('and the verbs that say yes are the only rows whose destination keeps the request alive', () => {
     const live = TRANSITIONS.filter((transition) => !isSettled(transition.to));
 
-    expect(live.map((transition) => transition.action)).toEqual(['APPROVE']);
-    expect(live.map((transition) => transition.to)).toEqual(['APPROVED']);
+    expect(live.map((transition) => transition.action)).toEqual(['APPROVE', 'OVERTURN_REJECTION']);
+    expect([...new Set(live.map((transition) => transition.to))]).toEqual(['APPROVED']);
   });
 });
 
@@ -265,7 +281,6 @@ describe('where a settlement lands', () => {
    */
   it.each([
     ['WITHDRAW', 'WITHDRAWN'],
-    ['REFUSE', 'REFUSED'],
     ['CANCEL', 'CANCELLED'],
   ] as const)('%s leaves a submitted request %s', (action, to) => {
     expect(settlementTo(aRequest('SUBMITTED'), action)).toBe(to);
@@ -344,7 +359,7 @@ describe('where a settlement lands', () => {
  * 40. LMS 314's second criterion, and the whole of the routing.
  *
  * Asserted against chains written out here rather than read from a leave type, because that
- * is exactly the point: {@link approvalTo} is a function of a list of desks, and the same
+ * is exactly the point: {@link decisionTo} is a function of a list of desks, and the same
  * list gives the same answers whether it came from annual leave, from unpaid leave or from
  * a type an HR Administrator adds next year. Nothing in it knows which type is which — the
  * third criterion is that unpaid leave has no manager stage, and the way that is true is
@@ -360,14 +375,14 @@ describe('where an approval lands', () => {
   const UNPAID: readonly ApproverRole[] = ['HR', 'CEO'];
 
   it('sends a request on to the next desk, leaving it where it was', () => {
-    const outcome = approvalTo(waitingOn('MANAGER'), ORDINARY, []);
+    const outcome = decisionTo(waitingOn('MANAGER'), 'APPROVE', ORDINARY, []);
 
     expect(outcome).toEqual({ by: 'MANAGER', to: 'SUBMITTED', awaiting: 'HR' });
     expect(isTheLastWord(outcome)).toBe(false);
   });
 
   it('and approves it when every stage has approved', () => {
-    const outcome = approvalTo(waitingOn('HR'), ORDINARY, ['MANAGER']);
+    const outcome = decisionTo(waitingOn('HR'), 'APPROVE', ORDINARY, ['MANAGER']);
 
     expect(outcome).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null });
     expect(isTheLastWord(outcome)).toBe(true);
@@ -383,13 +398,13 @@ describe('where an approval lands', () => {
    * ../unit/policy.test.ts.
    */
   it('and walks an unpaid chain from HR to the Chief Executive, with no manager in it', () => {
-    expect(approvalTo(waitingOn('HR'), UNPAID, [])).toEqual({
+    expect(decisionTo(waitingOn('HR'), 'APPROVE', UNPAID, [])).toEqual({
       by: 'HR',
       to: 'SUBMITTED',
       awaiting: 'CEO',
     });
 
-    expect(approvalTo(waitingOn('CEO'), UNPAID, ['HR'])).toEqual({
+    expect(decisionTo(waitingOn('CEO'), 'APPROVE', UNPAID, ['HR'])).toEqual({
       by: 'CEO',
       to: 'APPROVED',
       awaiting: null,
@@ -400,7 +415,7 @@ describe('where an approval lands', () => {
      takes three, and neither is a case this function is told about — both fall out of
      walking a list. */
   it('and a chain of one desk is decided by that desk', () => {
-    expect(approvalTo(waitingOn('HR'), ['HR'], [])).toMatchObject({
+    expect(decisionTo(waitingOn('HR'), 'APPROVE', ['HR'], [])).toMatchObject({
       to: 'APPROVED',
       awaiting: null,
     });
@@ -409,9 +424,9 @@ describe('where an approval lands', () => {
   it('and a chain of three is walked all the way down', () => {
     const chain: readonly ApproverRole[] = ['MANAGER', 'HR', 'CEO'];
 
-    expect(approvalTo(waitingOn('MANAGER'), chain, []).awaiting).toBe('HR');
-    expect(approvalTo(waitingOn('HR'), chain, ['MANAGER']).awaiting).toBe('CEO');
-    expect(approvalTo(waitingOn('CEO'), chain, ['MANAGER', 'HR']).awaiting).toBeNull();
+    expect(decisionTo(waitingOn('MANAGER'), 'APPROVE', chain, []).awaiting).toBe('HR');
+    expect(decisionTo(waitingOn('HR'), 'APPROVE', chain, ['MANAGER']).awaiting).toBe('CEO');
+    expect(decisionTo(waitingOn('CEO'), 'APPROVE', chain, ['MANAGER', 'HR']).awaiting).toBeNull();
   });
 
   /**
@@ -431,12 +446,12 @@ describe('where an approval lands', () => {
    * done nothing wrong.
    */
   it('and refuses a request waiting on a desk the chain has since dropped', () => {
-    expect(() => approvalTo(waitingOn('MANAGER'), ['HR'], [])).toThrow(
+    expect(() => decisionTo(waitingOn('MANAGER'), 'APPROVE', ['HR'], [])).toThrow(
       expect.objectContaining({ name: 'ApprovalChainChanged', code: 'CHAIN_CHANGED' }),
     );
 
     try {
-      approvalTo(waitingOn('MANAGER'), ['HR'], []);
+      decisionTo(waitingOn('MANAGER'), 'APPROVE', ['HR'], []);
     } catch (error) {
       expect((error as Error).message).toContain('your line manager');
       expect((error as Error).message).toContain('changed to HR');
@@ -446,7 +461,9 @@ describe('where an approval lands', () => {
   /* And a widening at the end is not a refusal. The Chief Executive added after HR is HR
      asking for one more signature, which is what the administrator meant by adding them. */
   it('but follows a chain that has grown a stage at the end since the request was made', () => {
-    expect(approvalTo(waitingOn('HR'), ['MANAGER', 'HR', 'CEO'], ['MANAGER']).awaiting).toBe('CEO');
+    expect(
+      decisionTo(waitingOn('HR'), 'APPROVE', ['MANAGER', 'HR', 'CEO'], ['MANAGER']).awaiting,
+    ).toBe('CEO');
   });
 
   /**
@@ -464,7 +481,7 @@ describe('where an approval lands', () => {
   it('and asks a stage added in front of where the request had got to', () => {
     const widened: readonly ApproverRole[] = ['CEO', 'MANAGER', 'HR'];
 
-    const outcome = approvalTo(waitingOn('HR'), widened, ['MANAGER']);
+    const outcome = decisionTo(waitingOn('HR'), 'APPROVE', widened, ['MANAGER']);
 
     expect(outcome).toEqual({ by: 'HR', to: 'SUBMITTED', awaiting: 'CEO' });
     expect(isTheLastWord(outcome)).toBe(false);
@@ -475,7 +492,7 @@ describe('where an approval lands', () => {
   it('and is agreed only once that stage has signed as well', () => {
     const widened: readonly ApproverRole[] = ['CEO', 'MANAGER', 'HR'];
 
-    expect(approvalTo(waitingOn('CEO'), widened, ['MANAGER', 'HR'])).toEqual({
+    expect(decisionTo(waitingOn('CEO'), 'APPROVE', widened, ['MANAGER', 'HR'])).toEqual({
       by: 'CEO',
       to: 'APPROVED',
       awaiting: null,
@@ -486,12 +503,125 @@ describe('where an approval lands', () => {
      cannot happen through the door — `ApprovalChainChanged` refuses it — and if a row for
      one existed the walk would still ask every stage. */
   it('and a signature from outside the chain does not stand in for a stage', () => {
-    expect(approvalTo(waitingOn('HR'), UNPAID, ['MANAGER'])).toEqual({
+    expect(decisionTo(waitingOn('HR'), 'APPROVE', UNPAID, ['MANAGER'])).toEqual({
       by: 'HR',
       to: 'SUBMITTED',
       awaiting: 'CEO',
     });
   });
+});
+
+/* ------------------------------------------- a rejection that is not the end, FR 44 */
+
+/**
+ * A rejection routes, and HR overturns one. FR 44, §7.2. LMS 318.
+ *
+ * The story's rule is that both stages decide before leave is finally confirmed or
+ * rejected, and the last stage to decide is the one whose word it lands on. Everything
+ * below is that rule read off the same walk the approvals use — there is no branch in
+ * `decisionTo` for a refusal, which is the point.
+ */
+describe('a line manager’s rejection', () => {
+  const waitingOn = (desk: ApproverRole): LeaveRequest => aRequestIn('SUBMITTED', desk);
+
+  const ORDINARY: readonly ApproverRole[] = ['MANAGER', 'HR'];
+
+  /**
+   * It no longer ends the request, which is the whole change.
+   *
+   * Before LMS 318 this was `REFUSED` with the days released and HR never saw it. The
+   * manager's no is now a decision at their stage like their yes, and it carries the
+   * request to the desk that decides it finally.
+   */
+  it('sends the request on to HR rather than ending it', () => {
+    const outcome = decisionTo(waitingOn('MANAGER'), 'REFUSE', ORDINARY, []);
+
+    expect(outcome).toEqual({ by: 'MANAGER', to: 'SUBMITTED', awaiting: 'HR' });
+    expect(isTheLastWord(outcome)).toBe(false);
+  });
+
+  /* And the days are still held, which is what "to: SUBMITTED" means to a balance: nothing
+     moves until the last desk speaks, whichever way it speaks. */
+  it('and the request goes on holding its days while it does', () => {
+    const outcome = decisionTo(waitingOn('MANAGER'), 'REFUSE', ORDINARY, []);
+
+    expect(blocksTheCalendar(outcome.to)).toBe(true);
+  });
+
+  /* And the last desk's no is the one that ends it. */
+  it('and a rejection at the last desk ends the request', () => {
+    const outcome = decisionTo(waitingOn('HR'), 'REFUSE', ORDINARY, ['MANAGER']);
+
+    expect(outcome).toEqual({ by: 'HR', to: 'REFUSED', awaiting: null });
+    expect(isTheLastWord(outcome)).toBe(true);
+  });
+
+  /**
+   * And HR overturning it lands exactly where an approval would.
+   *
+   * The property the whole design rests on: an override is an ordinary decision that
+   * happens to disagree with an earlier stage, so it walks the same chain and reads the
+   * same destination off the table. Nothing about it is a special case.
+   */
+  it('and HR overturning it approves the leave, as their plain yes would', () => {
+    const overturned = decisionTo(waitingOn('HR'), 'OVERTURN_REJECTION', ORDINARY, ['MANAGER']);
+
+    expect(overturned).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null });
+    expect(overturned).toEqual(decisionTo(waitingOn('HR'), 'APPROVE', ORDINARY, ['MANAGER']));
+  });
+
+  /* And overturning an approval ends it, as their plain no would. */
+  it('and HR overturning an approval turns the leave down, as their plain no would', () => {
+    const overturned = decisionTo(waitingOn('HR'), 'OVERTURN_APPROVAL', ORDINARY, ['MANAGER']);
+
+    expect(overturned).toEqual({ by: 'HR', to: 'REFUSED', awaiting: null });
+    expect(overturned).toEqual(decisionTo(waitingOn('HR'), 'REFUSE', ORDINARY, ['MANAGER']));
+  });
+
+  /**
+   * And a stage after HR is still asked, which is LMS 316's guarantee surviving this story.
+   *
+   * The tempting shortcut is "HR's decision is final, so an override approves the leave".
+   * It is right for the chain everybody uses and wrong for any chain with a desk after HR —
+   * FR 31 lets an HR Administrator write one — and the failure is the one LMS 316 exists
+   * against: somebody told their leave is agreed while a stage the policy names has not seen
+   * it. Reading the destination off the walk rather than off the verb costs nothing and
+   * cannot make that mistake.
+   */
+  it('and a chain with a desk after HR is still routed to it', () => {
+    const longer: readonly ApproverRole[] = ['MANAGER', 'HR', 'CEO'];
+
+    expect(decisionTo(waitingOn('HR'), 'OVERTURN_REJECTION', longer, ['MANAGER'])).toEqual({
+      by: 'HR',
+      to: 'SUBMITTED',
+      awaiting: 'CEO',
+    });
+  });
+
+  /**
+   * And the walk asks which stage has *decided*, not which has approved.
+   *
+   * The one-line difference between this story and LMS 316. Asked the old way, a request
+   * the manager had turned down would route back to the manager for ever, because their
+   * stage would never count as answered.
+   */
+  it('and a stage that said no is not asked again', () => {
+    expect(decisionTo(waitingOn('MANAGER'), 'REFUSE', ORDINARY, []).awaiting).toBe('HR');
+    expect(decisionTo(waitingOn('HR'), 'APPROVE', ORDINARY, ['MANAGER']).awaiting).toBeNull();
+  });
+
+  /* And nothing reopens a request that has ended. An override is a decision at a live
+     desk, so the two verbs are refused on a settled request like any other. */
+  it.each(['OVERTURN_REJECTION', 'OVERTURN_APPROVAL'] as const)(
+    'and %s is refused on a request that has already ended',
+    (action) => {
+      for (const status of REQUEST_STATUSES.filter(isSettled)) {
+        expect(() => decisionTo(aRequestIn(status), action, ORDINARY, [])).toThrow(
+          LeaveAlreadySettled,
+        );
+      }
+    },
+  );
 });
 
 /* ------------------------------------------------- where a request has got to */
@@ -599,7 +729,10 @@ describe('how far through its chain a request has got', () => {
       approvedBy: [],
     });
 
-    expect(inWords).toMatch(/Nobody has approved it yet/);
+    /* "Decided" rather than "approved" since LMS 318, because a stage that turned it down
+       has had its say and the request is still going: a sentence counting only approvals
+       would say nobody had looked at a request the manager had already refused. */
+    expect(inWords).toMatch(/Nobody has decided it yet/);
     expect(inWords).toMatch(/still needs your line manager then HR/);
   });
 });
@@ -635,11 +768,14 @@ describe('the table, written out', () => {
         to: 'WITHDRAWN',
         by: ['THE_REQUESTER', 'LEAVE_ADMINISTRATION'],
       },
+      /* FR 44, LMS 318. Narrowed from the line manager and HR alike to the desk the request
+         is sitting on, because a rejection now advances the chain: one made away from the
+         desk would mark a stage decided by somebody who was never asked. */
       {
         from: 'SUBMITTED',
         action: 'REFUSE',
         to: 'REFUSED',
-        by: ['THEIR_LINE_MANAGER', 'LEAVE_ADMINISTRATION'],
+        by: ['THE_DESK_IT_IS_WITH'],
       },
       {
         from: 'SUBMITTED',
@@ -653,14 +789,35 @@ describe('the table, written out', () => {
         to: 'APPROVED',
         by: ['THE_DESK_IT_IS_WITH'],
       },
+      /* FR 44, §7.2, LMS 318. The same standing as the two plain verbs, because an override
+         is an ordinary decision that happens to disagree with an earlier stage. */
+      {
+        from: 'SUBMITTED',
+        action: 'OVERTURN_REJECTION',
+        to: 'APPROVED',
+        by: ['THE_DESK_IT_IS_WITH'],
+      },
+      {
+        from: 'SUBMITTED',
+        action: 'OVERTURN_APPROVAL',
+        to: 'REFUSED',
+        by: ['THE_DESK_IT_IS_WITH'],
+      },
     ]);
   });
 
   /* And the vocabulary it is keyed by, for the same reason. A standing added here
      without a branch in `hasStanding` does not compile; one added and left out of every
      row is a concept nothing uses. */
-  it('and is keyed by the four actions and the four standings there are', () => {
-    expect([...REQUEST_ACTIONS]).toEqual(['WITHDRAW', 'REFUSE', 'CANCEL', 'APPROVE']);
+  it('and is keyed by the six actions and the four standings there are', () => {
+    expect([...REQUEST_ACTIONS]).toEqual([
+      'WITHDRAW',
+      'REFUSE',
+      'CANCEL',
+      'APPROVE',
+      'OVERTURN_REJECTION',
+      'OVERTURN_APPROVAL',
+    ]);
     expect([...STANDINGS]).toEqual([
       'THE_REQUESTER',
       'THEIR_LINE_MANAGER',
@@ -678,8 +835,16 @@ describe('the table, written out', () => {
    * already agreed — would land in it by subtraction and post a `RELEASE` against days that
    * have already been taken. This is what holds the two lists together in the meantime.
    */
+  /**
+   * And the two that end a request outright are written out rather than subtracted. LMS 318.
+   *
+   * `REFUSE` left this list with LMS 318, which is the change said in one line: a refusal is
+   * a decision that may or may not end the request, so it goes through the decision door and
+   * releases days only when it is the last word. What is left is the two verbs that are not
+   * decisions at all.
+   */
   it('and the releasing actions are a sub-list of them, written out rather than subtracted', () => {
-    expect([...RELEASING_ACTIONS]).toEqual(['WITHDRAW', 'REFUSE', 'CANCEL']);
+    expect([...RELEASING_ACTIONS]).toEqual(['WITHDRAW', 'CANCEL']);
 
     for (const action of RELEASING_ACTIONS) {
       expect(REQUEST_ACTIONS).toContain(action);
@@ -852,7 +1017,7 @@ describe('one writer of the status column', () => {
    * table inside the lock, so a caller cannot name where a request ends up.
    *
    * `approveForRequest` is the sharper case since LMS 314, because it is handed a chain and
-   * could plausibly have been handed an outcome. It is not: `approvalTo` is called again
+   * could plausibly have been handed an outcome. It is not: `decisionTo` is called again
    * inside the transaction, and a caller that could pass the destination could approve a
    * request one desk early.
    */
@@ -860,15 +1025,25 @@ describe('one writer of the status column', () => {
     const door = sources.find(({ file }) => file === 'features/balance/balance.service.ts');
 
     expect(door?.code).toMatch(/settlementTo\(/);
-    expect(door?.code).toMatch(/approvalTo\(/);
+    expect(door?.code).toMatch(/decisionTo\(/);
     expect(door?.code).toMatch(/holdStill\(/);
+  });
+
+  /* And the verb is not the caller's either, since LMS 318. `decideForRequest` takes a
+     {@link DecidingAction} and asks the table what it means; a door that took a destination
+     could turn leave down at a desk that had approved it. */
+  it('and the door is handed a verb rather than a destination', () => {
+    const door = sources.find(({ file }) => file === 'features/balance/balance.service.ts');
+
+    expect(door?.code).toMatch(/action: DecidingAction/);
+    expect(door?.code).not.toMatch(/to: RequestStatus/);
   });
 
   /* And nothing outside the state machine and its doors decides where a move lands. A
      third caller of either lookup is a third place that knows the state machine. */
   it.each([
     ['settlementTo', /\bsettlementTo\s*\(/],
-    ['approvalTo', /\bapprovalTo\s*\(/],
+    ['decisionTo', /\bdecisionTo\s*\(/],
   ])('and only the state machine and its door consult the table for %s', (_name, pattern) => {
     const consulting = sources.filter(({ code }) => pattern.test(code));
 

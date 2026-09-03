@@ -4,7 +4,12 @@
 
 import { type ApproverRole, deskInWords } from '../leave-type/approval-chain.js';
 import type { Employee } from '../employee/employee.js';
-import type { LeaveDecision } from './leave-decision.js';
+import {
+  desksThatApproved,
+  desksThatRefused,
+  isAnOverride,
+  type LeaveDecision,
+} from './leave-decision.js';
 import {
   type ApprovalProgress,
   inWordsSettled,
@@ -20,8 +25,15 @@ import {
 import { byStartDate, type LeaveYear } from '../leave-year/leave-year.js';
 import type { CalendarDate } from '../../shared/time.js';
 
-/** The kinds of thing that appear on a trail. FR 54. */
-export const TRAIL_STEPS = ['ASKED', 'DECIDED', 'ENDED', 'STILL_TO_ASK'] as const;
+/** The kinds of thing that appear on a trail. FR 54, FR 44. */
+export const TRAIL_STEPS = [
+  'ASKED',
+  'DECIDED',
+  /** A decision that reversed the line manager's. FR 44, §7.2, LMS 318. */
+  'OVERTURNED',
+  'ENDED',
+  'STILL_TO_ASK',
+] as const;
 
 export type TrailStepKind = (typeof TRAIL_STEPS)[number];
 
@@ -128,6 +140,33 @@ export function whoDecided(decision: LeaveDecision, deciders: Deciders): string 
   return named ?? decision.decidedBy;
 }
 
+/**
+ * One decision, in the words the person whose leave it is reads. FR 39, FR 44. LMS 318.
+ *
+ * An override says what it reversed, because that is the sentence FR 44 asks to keep: a
+ * trail reading "Approved by HR" under "Turned down at your line manager's stage" leaves the
+ * reader to work out which one stood.
+ */
+function decisionInWords(decision: LeaveDecision): string {
+  const desk = deskInWords(decision.onBehalfOf);
+
+  switch (decision.action) {
+    case 'APPROVE':
+      return `Approved by ${desk}.`;
+    case 'REFUSE':
+      return `Turned down at ${desk}’s stage.`;
+    case 'OVERTURN_REJECTION':
+      return `${sentenceCase(desk)} overturned that decision and approved this leave.`;
+    default:
+      return `${sentenceCase(desk)} overturned that decision and turned this leave down.`;
+  }
+}
+
+/** A phrase that starts a sentence. "HR" is already there; "your line manager" is not. */
+function sentenceCase(words: string): string {
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /** How one request got where it is, oldest first. FR 39, FR 41, FR 52. */
 export function trailFor(
   request: LeaveRequest,
@@ -148,15 +187,14 @@ export function trailFor(
 
   for (const decision of decisions) {
     steps.push({
-      kind: 'DECIDED',
+      /* FR 44. An override is its own kind of step, so a screen can show it as what it is
+         rather than as an approval that happens to carry a comment. LMS 318. */
+      kind: isAnOverride(decision.action) ? 'OVERTURNED' : 'DECIDED',
       desk: decision.onBehalfOf,
       comment: decision.comment,
       by: whoDecided(decision, deciders),
       at: decision.decidedAt,
-      inWords:
-        decision.action === 'APPROVE'
-          ? `Approved by ${deskInWords(decision.onBehalfOf)}.`
-          : `Turned down at ${deskInWords(decision.onBehalfOf)}’s stage.`,
+      inWords: decisionInWords(decision),
     });
   }
 
@@ -219,9 +257,9 @@ export function entryFor(input: {
   const progress = progressOf({
     request,
     chain: type?.approvalChain ?? [],
-    approvedBy: decisions
-      .filter((decision) => decision.action === 'APPROVE')
-      .map((decision) => decision.onBehalfOf),
+    approvedBy: desksThatApproved(decisions),
+    /** FR 44. A stage that said no has decided, and is not waiting on anybody. LMS 318. */
+    refusedBy: desksThatRefused(decisions),
   });
 
   return {

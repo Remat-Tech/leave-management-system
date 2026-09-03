@@ -20,15 +20,16 @@ import {
 import type { Employee } from '../employee/employee.js';
 import { EmployeeNotFound } from '../employee/employee.js';
 import {
-  desksThatApproved,
-  isADecision,
+  type DecidingAction,
+  desksThatDecided,
+  saysYes,
   type LeaveDecision,
   validateDecision,
 } from '../leave-request/leave-decision.js';
 import { type LeaveEvent, validateNewLeaveEvent } from '../leave-event/leave-event.js';
 import type { ApproverRole } from '../leave-type/approval-chain.js';
 import {
-  approvalTo,
+  decisionTo,
   isTheLastWord,
   type LeaveRequest,
   LeaveRequestNotFound,
@@ -103,33 +104,34 @@ export interface RequestToSubmit {
   reason: string;
 }
 
-/** What `LeaveRequestService` supplies to end one. FR 26, §8.2., LMS 306. */
-export type RequestToSettle = {
+/** What `LeaveRequestService` supplies to end one outright. FR 26, §8.2., LMS 306, LMS 318. */
+export interface RequestToSettle {
   request: LeaveRequest;
+  /** Withdrawing or cancelling; a refusal is a decision and goes through the other door. */
+  action: ReleasingAction;
   /** Where the table said that leaves it, as the caller read it a moment ago. §6. */
   to: ReleasingStatus;
   /** FR 27. */
   reason: string;
-} & SettlingAct;
+}
 
-/**
- * Which of the three endings this is, and what has to be said about it. §6, FR 39, LMS 313, LMS 314, LMS 315.
- */
-type SettlingAct =
-  | { action: 'REFUSE'; comment: string }
-  | { action: Exclude<ReleasingAction, 'REFUSE'>; comment: null };
-
-/** What `LeaveRequestService` supplies to approve one. FR 38a, FR 40, LMS 314. */
-export interface RequestToApprove {
+/** What `LeaveRequestService` supplies to decide one. FR 38a, FR 40, FR 44, LMS 314, LMS 318. */
+export interface RequestToDecide {
   request: LeaveRequest;
+  /** Which way this desk went, and whether it overrules the line manager. FR 44. */
+  action: DecidingAction;
   /** FR 38a. */
   chain: readonly ApproverRole[];
   /** FR 04. */
   chiefExecutiveId: string | null;
-  /** FR 27. */
-  reason: string;
-  /** FR 39. */
+  /** FR 27. The sentence for a DEDUCTION, where this decision is a final yes. */
+  reasonForTaking: string;
+  /** FR 27. The sentence for a RELEASE, where this decision is a final no. */
+  reasonForGivingBack: string;
+  /** FR 39, FR 44. Mandatory on a refusal and on either override; optional on an approval. */
   comment: string | null;
+  /** FR 44. The line manager's decision an override reverses, and null otherwise. */
+  overturns: string | null;
 }
 
 /** The request, the movement it caused, and the balance it left. */
@@ -240,16 +242,15 @@ export class BalanceService {
   }
 
   /**
-   * Ends a leave request and gives back the days it was holding. FR 26, §8.2., LMS 306, FR 39, FR 52, LMS 315.
+   * Ends a leave request outright and gives back the days it was holding. FR 26, §8.2., LMS 306, LMS 318.
+   *
+   * Withdrawing and cancelling only. A refusal is a decision at a desk and goes through
+   * {@link BalanceService.decideForRequest}, which releases the days when it turns out to
+   * be the last word and writes no movement at all when it does not.
    */
   async releaseForRequest(actor: Actor, settlement: RequestToSettle): Promise<LeaveReleased> {
-    const { request, action, comment, reason } = settlement;
+    const { request, action, reason } = settlement;
     const owner = await this.ownerOf(request.employeeId);
-
-    /** FR 48, §8.6a. */
-    if (isADecision(action)) {
-      this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, action));
-    }
 
     this.guard.enforce(ledgerPolicy.release(actor, owner));
 
@@ -270,17 +271,6 @@ export class BalanceService {
       const to = settlementTo(current, action);
 
       const days = daysToRelease(held, current.days);
-
-      /** FR 39, FR 52. */
-      const desk = current.awaitingApprovalFrom;
-
-      if (comment !== null && desk === null) {
-        throw new Error(
-          `Leave request ${current.id} is being refused and is standing at no desk, so ` +
-            `there is no stage for the decision to be recorded at. A request being decided ` +
-            `waits on exactly one. FR 38a, FR 52.`,
-        );
-      }
 
       /* The desk goes with the status, in one statement, because
          `leave_request_waits_at_a_desk` is an equivalence between the two: a request that
@@ -307,23 +297,12 @@ export class BalanceService {
       return {
         request: written,
         entry,
-        /* FR 39. Only a refusal is a decision at a desk. Withdrawing is somebody taking
-           their own request back and cancelling is HR unwinding a row that should not be on
-           the books, and a decision recorded for either would put a judgement in front of
-           the requester that nobody made. The union on {@link SettlingAct} is what makes
-           this branch a narrowing rather than a guess: a non-null comment is a refusal. */
-        decision:
-          comment === null || desk === null
-            ? null
-            : await repositories.decisions.record(
-                actor,
-                validateDecision({
-                  leaveRequestId: current.id,
-                  action: 'REFUSE',
-                  onBehalfOf: desk,
-                  comment,
-                }),
-              ),
+        /* FR 39. Neither of these two is a decision at a desk. Withdrawing is somebody
+           taking their own request back and cancelling is HR unwinding a row that should
+           not be on the books, and a decision recorded for either would put a judgement in
+           front of the requester that nobody made. Since LMS 318 the type says so: the one
+           verb here that *was* a decision has moved to the door that decides. */
+        decision: null,
         balance: withAvailable(await repositories.balances.forOne(key)),
       };
     });
@@ -399,8 +378,9 @@ export class BalanceService {
    * rather than merely unlikely, and is the second line of defence behind
    * `leave_request_commits_once`.
    */
-  async approveForRequest(actor: Actor, approval: RequestToApprove): Promise<LeaveApproved> {
-    const { request, chain, chiefExecutiveId, comment, reason } = approval;
+  async decideForRequest(actor: Actor, decision: RequestToDecide): Promise<LeaveApproved> {
+    const { request, action, chain, chiefExecutiveId, comment, overturns } = decision;
+    const { reasonForTaking, reasonForGivingBack } = decision;
     const owner = await this.ownerOf(request.employeeId);
 
     /* FR 48, §8.6a. LMS 319. The same first question the release door asks, in the same
@@ -410,7 +390,7 @@ export class BalanceService {
        because "the identity check is the first thing every decision method does" is a
        property somebody should be able to confirm by looking rather than by working out
        that two other rules happen to cover it between them. */
-    this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, 'APPROVE'));
+    this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, action));
 
     /* The ledger's standing question, and the one that refuses somebody approving their
        own leave. `leaveRequestPolicy.approve` has already asked whether this actor is the
@@ -448,7 +428,7 @@ export class BalanceService {
          again in the release door: the answer that matters is the one taken against the row
          nobody else can move. */
       this.guard.enforce(
-        leaveRequestPolicy.approve(actor, {
+        leaveRequestPolicy.decide(actor, action, {
           ...owner,
           awaiting: current.awaitingApprovalFrom,
           chiefExecutiveId,
@@ -462,10 +442,11 @@ export class BalanceService {
          second waits, reads the decision the first wrote, and finds one fewer stage
          outstanding. Read outside it, both would see an empty list, both would route to the
          same next desk, and the second could approve leave a stage had not seen. */
-      const outcome = approvalTo(
+      const outcome = decisionTo(
         current,
+        action,
         chain,
-        desksThatApproved(await repositories.decisions.forRequest(current.id)),
+        desksThatDecided(await repositories.decisions.forRequest(current.id)),
       );
 
       const written = await repositories.requests.moveTo(
@@ -496,28 +477,48 @@ export class BalanceService {
           actor,
           validateDecision({
             leaveRequestId: current.id,
-            action: 'APPROVE',
+            action,
             onBehalfOf: outcome.by,
             comment,
+            /** FR 44. */
+            overridesDecisionId: overturns,
           }),
         ),
-        entry: isTheLastWord(outcome)
-          ? await repositories.entries.post(
-              actor,
-              validateNewLedgerEntry({
-                ...key,
-                entryType: 'DEDUCTION',
-                /* Negative, as every consuming movement is. The projection of LMS 211 is
-                   what makes a DEDUCTION the one entry type that moves two buckets: it
-                   takes the days out of `pending` and puts the same days into `taken`, so
-                   available does not move and the balance stops saying the leave is still
-                   being decided. */
-                days: -daysToCommit(held, current.days),
-                reason,
-                leaveRequestId: current.id,
-              }),
-            )
-          : null,
+        /* And the ledger entry, of which there are now three cases rather than two.
+
+           A stage that is not the last word writes none: the days have been held since
+           submission and go on being held while the next desk looks at it, whether this
+           desk said yes or no.
+
+           The last word writes one, and which one is what it said. A yes turns the held
+           days into taken ones; a no gives them back. */
+        entry: !isTheLastWord(outcome)
+          ? null
+          : saysYes(action)
+            ? await repositories.entries.post(
+                actor,
+                validateNewLedgerEntry({
+                  ...key,
+                  entryType: 'DEDUCTION',
+                  /* Negative, as every consuming entry is. A DEDUCTION is the one kind
+                     that moves two buckets: the days come out of `pending` and the same
+                     days go into `taken`, so available does not move and the balance stops
+                     saying the leave is still being decided. */
+                  days: -daysToCommit(held, current.days),
+                  reason: reasonForTaking,
+                  leaveRequestId: current.id,
+                }),
+              )
+            : await repositories.entries.post(
+                actor,
+                validateNewLedgerEntry({
+                  ...key,
+                  entryType: 'RELEASE',
+                  days: daysToRelease(held, current.days),
+                  reason: reasonForGivingBack,
+                  leaveRequestId: current.id,
+                }),
+              ),
         balance: withAvailable(await repositories.balances.forOne(key)),
       };
     });

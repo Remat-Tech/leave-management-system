@@ -61,7 +61,7 @@ function aRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
 function happened(overrides: Partial<WhatHappened> = {}): WhatHappened {
   return {
     event: 'SUBMITTED',
-    employee: { id: '7', firstName: 'Adwoa' },
+    employee: { id: '7', firstName: 'Adwoa', name: 'Adwoa Frimpong' },
     request: aRequest(),
     typeName: 'Annual Leave',
     decidedBy: null,
@@ -74,26 +74,29 @@ function happened(overrides: Partial<WhatHappened> = {}): WhatHappened {
 /* ------------------------------------------------------- the six pieces of news */
 
 describe('the events somebody is told about', () => {
-  /* FR 59's list, minus the override nothing can perform. See the module note in
-     /features/notification/notification.ts and the CHECK in the migration, which say the same thing. */
-  it('are the six FR 59 names that this system can actually produce', () => {
+  /* FR 59's list, and LMS 318 brought the two the notification migration said were coming.
+     See the CHECK in that migration, which says the same thing. */
+  it('are the eight FR 59 names that this system can actually produce', () => {
     expect(NOTICE_EVENTS).toEqual([
       'SUBMITTED',
       'STAGE_APPROVED',
+      'STAGE_REFUSED',
       'APPROVED',
       'REFUSED',
       'WITHDRAWN',
       'CANCELLED',
+      'DECISION_OVERTURNED',
     ]);
   });
 
-  /* The three endings and the three events they produce cannot come apart. */
+  /* The two endings that are not decisions, and the two events they produce. */
   it('and every ending a request can have is one of them', () => {
-    for (const status of RELEASING_STATUSES) {
+    for (const status of ['WITHDRAWN', 'CANCELLED'] as const) {
       expect(NOTICE_EVENTS).toContain(endingNews(status));
     }
 
-    expect(new Set(RELEASING_STATUSES.map(endingNews)).size).toBe(RELEASING_STATUSES.length);
+    expect(RELEASING_STATUSES).toContain('REFUSED');
+    expect(NOTICE_EVENTS).toContain('REFUSED');
   });
 
   /* An approval is two pieces of news, and which one is a fact on the committed row. */
@@ -106,7 +109,7 @@ describe('the events somebody is told about', () => {
     );
   });
 
-  it('and three of the six mean the days are back', () => {
+  it('and three of them mean the days are back', () => {
     const back = NOTICE_EVENTS.filter(givesTheDaysBack);
 
     expect(back).toEqual(['REFUSED', 'WITHDRAWN', 'CANCELLED']);
@@ -118,11 +121,10 @@ describe('the events somebody is told about', () => {
       const notice = noticeOf(
         happened({
           event,
-          request: aRequest(
-            event === 'APPROVED' ? { status: 'APPROVED', awaitingApprovalFrom: null } : {},
-          ),
+          request: aRequest(requestFor(event)),
           decidedBy: event === 'SUBMITTED' ? null : 'MANAGER',
-          comment: event === 'REFUSED' ? WHY_NOT : null,
+          comment: saysWhy(event) ? WHY_NOT : null,
+          overturned: event === 'DECISION_OVERTURNED' ? { desk: 'MANAGER', said: 'REFUSE' } : null,
         }),
       );
 
@@ -138,7 +140,15 @@ describe('the events somebody is told about', () => {
      one has more than one request in flight and a subject line is all they see. */
   it('and every one of them names the leave, the dates and the day count', () => {
     for (const event of NOTICE_EVENTS) {
-      const notice = noticeOf(happened({ event, decidedBy: 'MANAGER', comment: WHY_NOT }));
+      const notice = noticeOf(
+        happened({
+          event,
+          request: aRequest(requestFor(event)),
+          decidedBy: 'MANAGER',
+          comment: WHY_NOT,
+          overturned: event === 'DECISION_OVERTURNED' ? { desk: 'MANAGER', said: 'REFUSE' } : null,
+        }),
+      );
 
       expect(notice.subject).toContain('Annual Leave');
       expect(notice.body).toContain('6 days of Annual Leave');
@@ -148,6 +158,32 @@ describe('the events somebody is told about', () => {
     }
   });
 });
+
+/**
+ * The state each event describes, so a message is composed from a row that could exist.
+ *
+ * `noticeOf` reads the status and the desk to say where the leave stands, so handing every
+ * branch a submitted request would test sentences the system never sends. FR 44, LMS 318.
+ */
+function requestFor(event: NoticeEvent): Partial<LeaveRequest> {
+  switch (event) {
+    case 'APPROVED':
+    case 'DECISION_OVERTURNED':
+      return { status: 'APPROVED', awaitingApprovalFrom: null };
+    case 'REFUSED':
+      return { status: 'REFUSED', awaitingApprovalFrom: null };
+    case 'STAGE_APPROVED':
+    case 'STAGE_REFUSED':
+      return { awaitingApprovalFrom: 'HR' };
+    default:
+      return {};
+  }
+}
+
+/** The events whose message quotes a reason. FR 39, FR 44. */
+function saysWhy(event: NoticeEvent): boolean {
+  return ['REFUSED', 'STAGE_REFUSED', 'DECISION_OVERTURNED'].includes(event);
+}
 
 /* ------------------------------------------- the sentence the whole story is about */
 
