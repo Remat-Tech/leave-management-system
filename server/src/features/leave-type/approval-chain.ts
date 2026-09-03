@@ -215,6 +215,22 @@ export function stagesNotApproved(
   return chain.filter((desk) => !approved.includes(desk));
 }
 
+/** Every stage that has not decided at all, in chain order. FR 44, §7.2, LMS 318. */
+export function stagesYetToDecide(
+  chain: readonly ApproverRole[],
+  decided: readonly ApproverRole[],
+): ApproverRole[] {
+  return chain.filter((desk) => !decided.includes(desk));
+}
+
+/** The next desk to be asked, or undefined once every stage has had its say. FR 44. */
+export function nextToDecide(
+  chain: readonly ApproverRole[],
+  decided: readonly ApproverRole[],
+): ApproverRole | undefined {
+  return stagesYetToDecide(chain, decided)[0];
+}
+
 /** Whether that desk is asked at all. */
 export function isApprovedBy(chain: readonly ApproverRole[], role: ApproverRole): boolean {
   return chain.includes(role);

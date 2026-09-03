@@ -22,7 +22,16 @@ import {
   noticeShortfall,
 } from '../leave-type/leave-type.js';
 import type { Employee } from '../employee/employee.js';
-import type { LeaveDecision } from './leave-decision.js';
+import {
+  type DecidingAction,
+  desksThatApproved,
+  desksThatRefused,
+  type LeaveDecision,
+  type OverridingAction,
+  overrideRequiredFor,
+  saysYes,
+  theManagersDecision,
+} from './leave-decision.js';
 import type { LeaveYear } from '../leave-year/leave-year.js';
 import {
   type LeaveRequest,
@@ -212,6 +221,29 @@ export interface QueueItem {
   actionable: boolean;
   /** The policy's own sentence, where it is not. Null where it is. NFR USA 03. */
   notActionableBecause: string | null;
+
+  /** FR 44, §7.2. What the line manager said, where they have decided. LMS 318. */
+  managersDecision: ManagersDecision | null;
+  /**
+   * FR 44. The override deciding this way would be, or null where it overrules nobody.
+   *
+   * What the two buttons on the screen have to know: pressing them on a request the line
+   * manager decided the other way is an override, and an override asks for a justification.
+   */
+  approvingIs: OverridingAction | null;
+  refusingIs: OverridingAction | null;
+}
+
+/** What the line manager decided, for the desk about to disagree with them. FR 44, LMS 318. */
+export interface ManagersDecision {
+  said: DecidingAction;
+  /** FR 39. Their reason, which is the thing HR is weighing. */
+  comment: string | null;
+  /** FR 52. */
+  by: string;
+  at: Date;
+  /** NFR USA 03. */
+  inWords: string;
 }
 
 /** Everything waiting on one person. */
@@ -323,6 +355,38 @@ export function queueFor(facts: QueueFacts): ApproverQueue {
   };
 }
 
+/**
+ * The queue narrowed to what a line manager turned down. FR 44, §7.2. LMS 318's first criterion.
+ *
+ * The dedicated view, and it is a narrowing of the approver queue rather than a second
+ * screen assembled from its own query — a rejection no longer ends a request, so every one
+ * of these is already sitting at HR's desk with the balance and the team beside it. What
+ * makes it its own view is that the decision on it is a different one: not "should this
+ * leave happen" but "should this manager's answer stand".
+ */
+export function rejectionsToReview(queue: ApproverQueue): ApproverQueue {
+  const items = queue.items.filter((item) => item.approvingIs === 'OVERTURN_REJECTION');
+
+  return { ...queue, items, inWords: rejectionsInWords(items) };
+}
+
+/** NFR USA 03. */
+function rejectionsInWords(items: readonly QueueItem[]): string {
+  if (items.length === 0) {
+    return 'No line manager has turned anything down that is waiting on you.';
+  }
+
+  const decidable = items.filter((item) => item.actionable).length;
+  const held = items.length === 1 ? '1 request' : `${items.length} requests`;
+
+  return (
+    `${held} that a line manager turned down and that policy may still allow. ` +
+    (decidable === items.length
+      ? 'Approving one overturns their decision and asks you why, in writing.'
+      : `${decidable} of them are yours to decide.`)
+  );
+}
+
 /** Soonest to start first, then longest waiting. {@link queueFor}. */
 export function bySoonestToStart(left: LeaveRequest, right: LeaveRequest): number {
   if (left.from !== right.from) {
@@ -361,10 +425,14 @@ function itemFor(input: {
   const progress = progressOf({
     request,
     chain: type?.approvalChain ?? [],
-    approvedBy: decisions
-      .filter((decision) => decision.action === 'APPROVE')
-      .map((decision) => decision.onBehalfOf),
+    approvedBy: desksThatApproved(decisions),
+    refusedBy: desksThatRefused(decisions),
   });
+
+  /* FR 44, §7.2. LMS 318. What the line manager said, and which of this desk's two verbs
+     would be overruling them. Both are read from the decisions rather than decided here, so
+     the queue and the decide door cannot disagree about what counts as an override. */
+  const managers = theManagersDecision(decisions);
 
   /* FR 17, FR 18. Measured when the request was made rather than as at today, because notice is
      how much warning somebody gave: recomputing it now would shorten it every morning the
@@ -434,7 +502,36 @@ function itemFor(input: {
 
     actionable: notActionableBecause === null,
     notActionableBecause,
+
+    /** FR 44, §7.2. LMS 318. */
+    managersDecision:
+      managers === undefined
+        ? null
+        : {
+            said: managers.action,
+            comment: managers.comment,
+            by: managers.decidedBy,
+            at: managers.decidedAt,
+            inWords: managersDecisionInWords(managers, askerName),
+          },
+    approvingIs: overrideRequiredFor('APPROVE', decisions),
+    refusingIs: overrideRequiredFor('REFUSE', decisions),
   };
+}
+
+/** What the line manager did, said to the desk now holding the request. FR 44, NFR USA 03. */
+function managersDecisionInWords(managers: LeaveDecision, askerName: string): string {
+  const whose = possessively(askerName);
+
+  const said = saysYes(managers.action)
+    ? `${managers.decidedBy} approved this at ${whose} line manager’s stage.`
+    : `${managers.decidedBy} turned this down at ${whose} line manager’s stage.`;
+
+  const weighing = saysYes(managers.action)
+    ? 'Turning it down here overturns that decision, and asks you for a reason in writing.'
+    : 'Approving it here overturns that decision, and asks you for a reason in writing.';
+
+  return managers.comment === null ? `${said} ${weighing}` : `${said} ${weighing}`;
 }
 
 /* ------------------------------------------------------------------ the sentences */

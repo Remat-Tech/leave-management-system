@@ -511,21 +511,23 @@ async function askFor(employeeId: string, leaveTypeId: string, days: number) {
  * each door re-reads it inside the lock and the desk it is standing at has just moved.
  */
 async function approve(request: LeaveRequest): Promise<void> {
-  const atTheManager = await balances.approveForRequest(asTheirManager(), {
-    request,
-    chain: [...DEFAULT_APPROVAL_CHAIN],
-    chiefExecutiveId: null,
-    reason: `${String(request.days)} days taken`,
-    comment: null,
-  });
+  const atTheManager = await balances.decideForRequest(asTheirManager(), yes(request));
 
-  await balances.approveForRequest(asAdministrator(), {
-    request: atTheManager.request,
+  await balances.decideForRequest(asAdministrator(), yes(atTheManager.request));
+}
+
+/** One desk saying yes, as the door wants it. FR 38a, FR 44. */
+function yes(request: LeaveRequest) {
+  return {
+    request,
+    action: 'APPROVE' as const,
     chain: [...DEFAULT_APPROVAL_CHAIN],
     chiefExecutiveId: null,
-    reason: `${String(request.days)} days taken`,
+    reasonForTaking: `${String(request.days)} days taken`,
+    reasonForGivingBack: `${String(request.days)} days given back`,
     comment: null,
-  });
+    overturns: null,
+  };
 }
 
 function lineOf(statement: BalanceStatement, code: string): BalanceStatementLine {

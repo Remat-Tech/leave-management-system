@@ -316,6 +316,8 @@ export interface LeaveRequestDecisionTable {
   on_behalf_of: ColumnType<string, string, never>;
   /** FR 39. */
   comment: ColumnType<string | null, string | null, never>;
+  /** The decision this one reverses. FR 44, §7.2, LMS 318. */
+  overrides_decision_id: ColumnType<string | null, string | null, never>;
   decided_by: ColumnType<string, never, never>;
   decided_by_employee_id: ColumnType<string | null, never, never>;
   decided_at: Timestamp;

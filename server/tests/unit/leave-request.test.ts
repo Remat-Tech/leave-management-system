@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DayCount } from '../../src/features/leave-calculator/leave-calculator.js';
 import {
-  approvalTo,
+  decisionTo,
   assertItCostsSomething,
   settlementTo,
   transitionsFrom,
@@ -1224,7 +1224,9 @@ describe('where this story stops', () => {
   it('and no desk is skipped when there is nobody at it', () => {
     const chain = ['MANAGER', 'HR'] as const;
 
-    expect(approvalTo(aStoredRequest({ awaitingApprovalFrom: 'MANAGER' }), chain, [])).toEqual({
+    expect(
+      decisionTo(aStoredRequest({ awaitingApprovalFrom: 'MANAGER' }), 'APPROVE', chain, []),
+    ).toEqual({
       by: 'MANAGER',
       to: 'SUBMITTED',
       awaiting: 'HR',

@@ -44,6 +44,9 @@ const testDatabaseUrl = await databaseForThisFile();
 
 const SECRET = 'a-test-signing-secret-of-at-least-32-chars';
 
+/** FR 39. What a line manager writes when they turn leave down. */
+const WHY_NOT = 'Two of the team are already away that week and the desk cannot be empty';
+
 const system = theSystem('approver queue integration fixtures');
 const guard = new Guard();
 
@@ -223,6 +226,69 @@ describe('what a manager sees', () => {
     expect(idsOf(await queueFor(people.teamLead))).toEqual([]);
   });
 
+  /**
+   * And it turns up in the HR queue when the manager turns it down, too. FR 44, §7.2. LMS 318.
+   *
+   * The story's first criterion, and the reason it needs no query of its own: a rejection is
+   * a decision at a stage rather than an ending, so a manager-rejected request arrives at
+   * HR's desk exactly as an approved one does — with the balance and the team beside it, and
+   * with what the manager said and why.
+   */
+  it('and it turns up in the HR queue when the manager turns it down', async () => {
+    const id = await aRequest({ employeeId: people.officer });
+
+    await requests.refuse(asTheirManager(), id, WHY_NOT);
+
+    expect(idsOf(await queueFor(people.teamLead))).toEqual([]);
+
+    const item = itemOf(await queueFor(people.hrOfficer), id);
+
+    expect(item.desk).toBe('HR');
+    expect(item.approvedBy).toEqual([]);
+    expect(item.managersDecision).toMatchObject({ said: 'REFUSE', comment: WHY_NOT });
+    expect(item.managersDecision?.inWords).toContain('turned this down');
+
+    /* And which of the two buttons would be overruling them, so the screen can ask for the
+       justification before the press rather than after the refusal. */
+    expect(item.approvingIs).toBe('OVERTURN_REJECTION');
+    expect(item.refusingIs).toBeNull();
+  });
+
+  /**
+   * And the dedicated view is that queue narrowed. FR 44's first criterion.
+   *
+   * A second screen assembled from its own query would be a second answer to what is waiting
+   * on somebody. What makes this its own view is the decision on it: not *should this leave
+   * happen* but *should this manager's answer stand*.
+   */
+  it('and the rejections view holds those and nothing else', async () => {
+    const turnedDown = await aRequest({
+      employeeId: people.officer,
+      from: '2026-09-07',
+      to: '2026-09-11',
+    });
+    const approved = await aRequest({ employeeId: people.officer });
+
+    await requests.refuse(asTheirManager(), turnedDown, WHY_NOT);
+    await requests.approve(asTheirManager(), approved);
+
+    /* Both are at the HR desk, and only one of them is a manager's rejection. */
+    expect(idsOf(await queueFor(people.hrOfficer)).sort()).toEqual([approved, turnedDown].sort());
+    expect(idsOf(await rejectionsFor(people.hrOfficer))).toEqual([turnedDown]);
+  });
+
+  /* And a manager, who staffs no desk a rejection reaches, has an empty one that says so. */
+  it('and a manager’s rejections view is empty, and says what it is for', async () => {
+    const id = await aRequest({ employeeId: people.officer });
+
+    await requests.refuse(asTheirManager(), id, WHY_NOT);
+
+    const view = await rejectionsFor(people.teamLead);
+
+    expect(view.items).toEqual([]);
+    expect(view.inWords).toContain('No line manager has turned anything down');
+  });
+
   /* FR 38a. Approved at the manager stage, the same request is now HR's. */
   it('and it turns up in the HR queue once the manager has signed', async () => {
     const id = await aRequest({ employeeId: people.officer });
@@ -391,6 +457,9 @@ describe('the wire', () => {
     expect(Object.keys(itemOf(await queueFor(people.teamLead), id)).sort()).toEqual([
       'actionable',
       'approvedBy',
+      /* FR 44, LMS 318. Which of the two buttons would be overruling the line manager, so a
+         screen asks for the justification before the press rather than after the refusal. */
+      'approvingIs',
       'asker',
       'backdatedBy',
       'balance',
@@ -403,9 +472,12 @@ describe('the wire', () => {
       'from',
       'leaveTypeId',
       'leaveYearId',
+      /** FR 44. What the line manager said, and why, where they have decided. */
+      'managersDecision',
       'notActionableBecause',
       'noticeGivenDays',
       'reason',
+      'refusingIs',
       'requestId',
       'shortNoticeBy',
       'stageInWords',
@@ -469,6 +541,10 @@ interface JsonItem {
   team: { size: number; away: JsonAway[]; inWords: string };
   actionable: boolean;
   notActionableBecause: string | null;
+  /** FR 44, §7.2. LMS 318. */
+  managersDecision: { said: string; comment: string | null; by: string; inWords: string } | null;
+  approvingIs: string | null;
+  refusingIs: string | null;
 }
 
 interface JsonQueue {
@@ -486,6 +562,15 @@ function get(path: string, employeeId: string): Promise<Response> {
 
 async function queueFor(employeeId: string): Promise<JsonQueue> {
   const response = await get('/api/me/approvals', employeeId);
+
+  expect(response.status).toBe(200);
+
+  return (await response.json()) as JsonQueue;
+}
+
+/** The same queue, narrowed to what a line manager turned down. FR 44, §7.2. LMS 318. */
+async function rejectionsFor(employeeId: string): Promise<JsonQueue> {
+  const response = await get('/api/me/approvals/rejections', employeeId);
 
   expect(response.status).toBe(200);
 

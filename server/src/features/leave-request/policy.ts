@@ -4,7 +4,7 @@
 
 import { type ApproverRole, APPROVER_ROLES } from '../leave-type/approval-chain.js';
 import { type DesksStaffed, staffsAnyDesk } from './approver-queue.js';
-import { type DecidingAction, isADecision } from './leave-decision.js';
+import { type DecidingAction, isADecision, type OverridingAction } from './leave-decision.js';
 import { type RequestAction, type Standing, standingsFor } from './leave-request.js';
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import type { BalanceOwner } from '../balance/policy.js';
@@ -186,14 +186,16 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Turning down leave somebody asked for. FR 26, FR 38a, LMS 306, LMS 212, LMS 314, §4.3.1, LMS 319.
+   * Turning down leave at the desk it is sitting on. FR 26, FR 38a, FR 44, LMS 306, LMS 314, §4.3.1, LMS 319, LMS 318.
    */
-  refuse(actor: Actor, owner: BalanceOwner): Decision {
-    return mayMove(actor, owner, 'REFUSE', {
-      because: 'is not their line manager and holds no role that decides leave for the company',
+  refuse(actor: Actor, subject: RequestAtADesk): Decision {
+    return mayMove(actor, subject, 'REFUSE', {
+      because: 'is not the approver this request is currently waiting on',
       told:
-        'Leave is turned down by the line manager it was addressed to, or by HR. Taking ' +
-        'back your own request is withdrawing it. FR 38a.',
+        'Leave is turned down by each desk in its type’s approval chain, in order, and ' +
+        'this request is not waiting on you. A rejection at one stage sends the request ' +
+        'on to the next rather than ending it, so it is the desk’s to make. Taking back ' +
+        'your own request is withdrawing it. FR 38a, FR 44.',
     });
   },
 
@@ -219,6 +221,32 @@ export const leaveRequestPolicy = {
         'this request is not waiting on you. Most kinds of leave go to the line manager ' +
         'and then to HR; unpaid leave goes to HR and then to the Chief Executive. FR 38a.',
     });
+  },
+
+  /**
+   * Overturning a line manager's decision, which is a decision at this desk like any other. FR 44, §7.2, LMS 318.
+   */
+  override(actor: Actor, action: OverridingAction, subject: RequestAtADesk): Decision {
+    return mayMove(actor, subject, action, {
+      because: 'is not the approver this request is currently waiting on',
+      told:
+        'A line manager’s decision is overturned by the next desk the request goes to, ' +
+        'and this request is not waiting on you. It is the same standing as approving or ' +
+        'refusing it — an override is an ordinary decision that happens to disagree with ' +
+        'an earlier stage. FR 44.',
+    });
+  },
+
+  /** Whichever of the four this is. FR 38a, FR 44, LMS 314, LMS 318. */
+  decide(actor: Actor, action: DecidingAction, subject: RequestAtADesk): Decision {
+    switch (action) {
+      case 'APPROVE':
+        return this.approve(actor, subject);
+      case 'REFUSE':
+        return this.refuse(actor, subject);
+      default:
+        return this.override(actor, action, subject);
+    }
   },
 
   /**

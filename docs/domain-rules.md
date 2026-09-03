@@ -2474,6 +2474,12 @@ to tell them.
 The routing gets a request to the right desks and the decisions record what each said; this
 is the story that makes "approved" mean what the employee thinks it means.
 
+Since [LMS 318](#hr-overturns-a-line-managers-decision) the *routing* half of this asks which
+stage has **decided** rather than which has approved, so a rejection carries the request on to
+the next desk instead of ending it. What is unchanged is the sentence above: a request is
+`APPROVED` only where the last stage to decide said yes, and a stage nobody asked has neither
+an approval nor a rejection on record.
+
 **The walk asks which stage has not signed, not which desk comes next.** That is the whole
 change, and it is one line. LMS 314 walked with `approverAfter(chain, theDeskItWasAt)` — a
 question about a *position* in a list — against a cursor on the request. It is right while
@@ -2608,14 +2614,25 @@ trigger catches is the second writer LMS 306 named and only half-covered — "a 
 marking a batch REFUSED, a migration correcting somebody's leave" — each of which can as
 easily release the wrong figure as none.
 
-**One thing this story did not change, and it is worth knowing.** *Who* may reject is still
-`leaveRequestPolicy.refuse` — the line manager or HR — and it is [still not the
-chain](#routing-a-request-to-its-approvers). So a request sitting at the `CEO` desk cannot be
-rejected by the Chief Executive unless they happen to be that employee's line manager: they
-can approve it or leave it. "Rejection at any stage" is true of the *release* at every stage,
-and true of the *rejecting* at two desks of the three. Closing that is one standing added to
-the `REFUSE` row of `TRANSITIONS`, and it hands a power to a desk that does not have it today
-— which is somebody's decision to make rather than a side effect of giving days back faster.
+**One thing this story did not change, and it is worth knowing.** *Who* may reject was still
+`leaveRequestPolicy.refuse` — the line manager or HR — and it was [not the
+chain](#routing-a-request-to-its-approvers). So a request sitting at the `CEO` desk could not
+be rejected by the Chief Executive unless they happened to be that employee's line manager.
+Closing that is one standing on the `REFUSE` row of `TRANSITIONS`, "which hands a power to a
+desk that does not have it today — somebody's decision to make rather than a side effect of
+giving days back faster".
+
+[LMS 318](#hr-overturns-a-line-managers-decision) is the story that made it, and it went the
+other way round: the row now admits `THE_DESK_IT_IS_WITH` and nobody else. A rejection
+advances the chain there, so it has to be the desk's — and the Chief Executive gained the
+power in the same line that took it from a line manager whose stage the request had already
+passed.
+
+**And "at the moment of the rejection" now means the moment of the *last* one.** The days come
+back when the rejection ends the request, which is when the stage saying no is the last to
+decide. A manager's no partway along the chain moves no figure at all: the days go on being
+held while HR looks at it, exactly as an approval partway along leaves them held. What has not
+changed is that nothing waits on HR, a job or a nightly anything once the request does end.
 
 ---
 
@@ -3167,14 +3184,128 @@ story that wants it adds a member to `QUEUE_FLAGS` and a branch to `flagsFor`.
 
 #### Still not here
 
-**Nothing on this screen decides anything.** `approve`, `refuse` and their routes are the next
-story; what this one guarantees is that an approver can see what is waiting and what it would
-cost before they answer it.
-
 **The tab is offered to everybody**, and somebody who staffs no desk gets the server's own
 sentence saying what an approver is. There is deliberately no `canApprove` on `/api/me`:
 `integration/balances-api.test.ts` pins that route's fields because "a screen that knew its own
 roles would start deciding what to draw from them, and the day the two disagree the server is
 right and the page has been lying".
+
+The routes that decide arrived with [LMS 318](#hr-overturns-a-line-managers-decision).
+
+---
+
+### HR overturns a line manager's decision
+
+**Both stages decide before leave is finally confirmed or rejected, and HR's is the last
+word.** FR 44, §7.2, LMS 318. A line manager turning leave down is a decision at their stage,
+not the end of the request.
+
+**This is the story that made a rejection stop being an ending**, and that is the whole of it.
+Until LMS 318 only approval needed every stage — [LMS 316](#every-stage-must-approve) — while a
+refusal at *any* desk ended the request and released its days. So a manager's no was final and
+HR, the desk FR 38a sends the request to next, never saw it. Now both verbs route: the walk
+asks which stage has **decided** rather than which has approved, and the last stage to decide
+is the one whose word the request lands on.
+
+| The manager says | HR says | The request | The days |
+|---|---|---|---|
+| yes | yes | `APPROVED` | taken |
+| yes | no | `REFUSED` | back |
+| no | yes | `APPROVED` | taken |
+| no | no | `REFUSED` | back |
+
+**There is no branch for a refusal anywhere in the walk.** `decisionTo` takes the verb, reads
+the destination off `TRANSITIONS` and asks `nextToDecide` where to send it, and that one
+function answers all four rows above. The unit suite asserts that overturning a rejection
+lands exactly where HR's plain yes would, because if the two ever differ one of them is wrong.
+
+**An override is an ordinary decision that happens to disagree with an earlier stage.** Same
+standing — `THE_DESK_IT_IS_WITH` — same door, same lock, same movement. What is different is
+two things it asks for that a plain decision does not: a justification, and a line manager's
+decision to actually be reversing.
+
+#### Recorded as its own decision value, not as a flag
+
+FR 44's fourth criterion. `OVERTURN_REJECTION` and `OVERTURN_APPROVAL` are values of
+`leave_request_decision.action` beside `APPROVE` and `REFUSE`, and the alternative — `action =
+'APPROVE'` with a boolean beside it — would sort together, filter together and read identically
+in every query that forgot the second column. The fact FR 44 wants readable is exactly the one
+that would go missing.
+
+`overrides_decision_id` is the other half, and it is a real foreign key: "the reason stays
+visible for ever" is a claim about two rows, the override's justification and what the manager
+originally said and why. An equivalence holds the pair together —
+`leave_request_decision_override_names_what_it_reverses` — and
+`leave_request_decision_reverses_the_same_request` refuses one that names another request's
+decision, itself, or a decision that said the same thing.
+
+#### The justification cannot be skipped by pressing the ordinary button
+
+The pairing that makes "mandatory" mean something. A desk about to decide the opposite way to
+the line manager is overruling them whether the button said so or not, so:
+
+* a plain `approve` or `refuse` that would contradict them is refused with
+  `OverrulingNeedsAnOverride`, naming the verb to use instead;
+* an override that contradicts nobody is refused with `NothingToOverturn`, because a record
+  saying policy prevailed over a local decision when there was no local decision is a record
+  of something that did not happen.
+
+`overrideRequiredFor` is the one place that answers which of the two applies, and the approver
+queue reads it too — `approvingIs` and `refusingIs` on each item — so a screen can ask for the
+reason before the button rather than after the refusal.
+
+**It reads the line manager's stage and no other.** HR overruling the Chief Executive is not
+FR 44's subject, and unpaid leave — HR then the Chief Executive, §4.3.1 — has no manager stage
+at all, so HR deciding one has nobody to overrule and is asked for nothing.
+
+#### The dedicated view is the approver queue, narrowed
+
+FR 44's first criterion. A rejection no longer ends a request, so every manager-rejected
+request is already sitting at HR's desk with the balance and the team context beside it —
+`rejectionsToReview` filters the queue to the items whose `approvingIs` is
+`OVERTURN_REJECTION`, and `/api/me/approvals/rejections` is that. A second screen assembled
+from its own query would be a second answer to what is waiting on somebody.
+
+What makes it worth being its own view is that the decision on it is a different one: not
+*should this leave happen* but *should this manager's answer stand*. Each item carries
+`managersDecision` — what they said, in their words, with their name and the date on it.
+
+#### Who is told, and what they are told
+
+FR 44's fifth criterion, and a second event the story needed on the way.
+
+**`STAGE_REFUSED`** goes to the person whose leave it is, and is the counterpart of
+`STAGE_APPROVED`. A manager's no no longer ends their request, so the old message — "turned
+down, your days are back" — would be wrong in both halves.
+
+**`DECISION_OVERTURNED`** goes to the line manager, and is the one notice in this system
+written to somebody other than the person taking the leave. `notification.employee_id` was
+built to allow exactly that: "the recipient rather than the subject, and for FR 59 those are
+the same person. The approver's queue is FR 60 and would put a different id here." It quotes
+the justification whole, in HR's words, because that is what the manager is owed.
+
+A manager who has since left, or a decision row that has somehow gone, does not unpick the
+override — a notice nobody can be sent is not a reason to reverse a decision that was made.
+
+#### What this cost elsewhere
+
+**Refusing narrowed to the desk.** `TRANSITIONS` had the `REFUSE` row admitting the line
+manager and `LEAVE_ADMINISTRATION` alike, which LMS 314 deliberately left wide. A refusal now
+advances the chain, so one made away from the desk would mark a stage decided by somebody who
+was never asked. HR unwinding a request that should not be on the books is still `CANCEL`.
+
+**`RELEASING_ACTIONS` is two verbs.** Withdrawing and cancelling — neither is a decision at a
+desk. `REFUSE` moved to the door that decides, which writes the `RELEASE` only when the
+rejection turns out to be the last word and no movement at all when it does not.
+
+**`leave_request_is_approved_by_every_stage` asks whether each stage has decided.** Weaker
+than the rule LMS 316 wrote, and the correct weakening: a stage that has not been asked has
+neither an approval nor a rejection on record, so the failure that story was written against —
+somebody booking a flight on leave a stage the policy names had not seen — is caught exactly
+as before.
+
+**Nothing here reopens a settled request.** No ledger entry type was added, no reservation is
+posted twice, and `leave_request_reserves_once` and `leave_request_releases_once` are
+untouched. An override is a decision at a live desk.
 
 ---

@@ -7,9 +7,11 @@ import {
   chainInWords,
   firstApprover,
   isApprovedBy,
-  nextUnapproved,
+  nextToDecide,
   stagesNotApproved,
+  stagesYetToDecide,
 } from '../leave-type/approval-chain.js';
+import type { DecidingAction } from './leave-decision.js';
 import type { DayCount, FreeDay, LeavePeriod } from '../leave-calculator/leave-calculator.js';
 import {
   approvalChainInWords,
@@ -106,11 +108,11 @@ export class LeaveCannotBeMoved extends Error {
 
   constructor(request: LeaveRequest, action: RequestAction) {
     const instead = transitionsFrom(request.status).map((transition) =>
-      transition.action.toLowerCase(),
+      actionInWords(transition.action),
     );
 
     super(
-      `This leave has been ${inWordsSettled(request.status)}, and ${action.toLowerCase()} ` +
+      `This leave has been ${inWordsSettled(request.status)}, and ${actionInWords(action)} ` +
         `is not something that can be done to it from there. ` +
         (instead.length > 0
           ? `What it can be is ${listOf(instead)}.`
@@ -183,6 +185,66 @@ export class ApprovalChainChanged extends Error {
   }
 }
 
+/**
+ * An override with no line manager's decision under it to reverse. FR 44, §7.2. LMS 318.
+ *
+ * Told apart from {@link LeaveCannotBeMoved} because the request may be sitting in exactly
+ * the right place and still have nothing to overturn — leave nobody has decided yet, or
+ * leave whose manager already agreed with the desk now looking at it.
+ */
+export class NothingToOverturn extends Error {
+  /** FR 44. */
+  readonly code = 'NOTHING_TO_OVERTURN';
+  readonly leaveRequestId: string;
+  /** What the line manager actually said, where they have said anything. */
+  readonly managerSaid: DecidingAction | null;
+
+  constructor(request: LeaveRequest, action: RequestAction, managerSaid: DecidingAction | null) {
+    const wanted = action === 'OVERTURN_REJECTION' ? 'turned down' : 'approved';
+
+    super(
+      `An override reverses a line manager’s decision, and this leave has not been ` +
+        `${wanted} by one. ${
+          managerSaid === null
+            ? 'No line manager has decided it.'
+            : 'Their line manager decided it the same way you are about to.'
+        } Decide it as you would any other request. FR 44.`,
+    );
+    this.name = 'NothingToOverturn';
+    this.leaveRequestId = request.id;
+    this.managerSaid = managerSaid;
+  }
+}
+
+/**
+ * A plain decision that would silently contradict a line manager. FR 44, §7.2. LMS 318.
+ *
+ * The refusal that makes "written justification mandatory" mean something. Approving leave
+ * a manager turned down, or turning down leave a manager agreed to, is an override whether
+ * or not the person pressing the button called it one — so the plain verb is refused and
+ * the override is named, which is the one path that asks for the reason in writing.
+ */
+export class OverrulingNeedsAnOverride extends Error {
+  /** FR 44. */
+  readonly code = 'OVERRULING_NEEDS_AN_OVERRIDE';
+  readonly leaveRequestId: string;
+  /** The verb to use instead. */
+  readonly instead: RequestAction;
+
+  constructor(request: LeaveRequest, instead: RequestAction) {
+    super(
+      `This leave has already been decided the other way by the line manager, so ` +
+        `${actionInWords(instead)} rather than deciding it afresh. Overturning a ` +
+        `manager’s decision is recorded as what it is and asks for a justification in ` +
+        `writing, which is what they and the person who asked for the leave will read. ` +
+        `FR 44.`,
+    );
+    this.name = 'OverrulingNeedsAnOverride';
+    this.leaveRequestId = request.id;
+    this.instead = instead;
+  }
+}
+
 /* ------------------------------------------------------- the state machine, §6 */
 
 /**
@@ -202,27 +264,46 @@ export class ApprovalChainChanged extends Error {
  * two happened is {@link approvalTo}, and it is a question about the chain rather than
  * about the status — see that function.
  */
-export const REQUEST_ACTIONS = ['WITHDRAW', 'REFUSE', 'CANCEL', 'APPROVE'] as const;
+export const REQUEST_ACTIONS = [
+  'WITHDRAW',
+  'REFUSE',
+  'CANCEL',
+  'APPROVE',
+  /** HR reversing a line manager's rejection. FR 44, §7.2, LMS 318. */
+  'OVERTURN_REJECTION',
+  /** HR reversing a line manager's approval. FR 44, §7.2, LMS 318. */
+  'OVERTURN_APPROVAL',
+] as const;
 
 export type RequestAction = (typeof REQUEST_ACTIONS)[number];
 
+/** A verb as a person says it, rather than as the column holds it. NFR USA 03, FR 44. */
+export function actionInWords(action: RequestAction): string {
+  switch (action) {
+    case 'OVERTURN_REJECTION':
+      return 'overturn the rejection';
+    case 'OVERTURN_APPROVAL':
+      return 'overturn the approval';
+    default:
+      return action.toLowerCase();
+  }
+}
+
 /**
- * The three that end a request and give its days back. FR 26, §8.2. LMS 306, LMS 314.
+ * The two that end a request outright and give its days back. FR 26, §8.2, FR 44. LMS 306, LMS 314, LMS 318.
  *
- * The verbs {@link RELEASING_STATUSES} are the destinations of, and the list
- * `LeaveRequestService.settle` and `BalanceService.releaseForRequest` are typed on — so
- * the one action neither of them can be handed is `APPROVE`, which commits days rather
- * than releasing them and goes through its own door.
+ * The verbs `LeaveRequestService.settle` and `BalanceService.releaseForRequest` are typed
+ * on. Neither is a decision at a desk: taking back your own leave and HR unwinding a row
+ * that should not be on the books both end a request wherever it has got to.
  *
- * **Written out rather than derived from {@link REQUEST_ACTIONS}**, for the reason
- * {@link RELEASING_STATUSES} is written out rather than derived from
- * {@link REQUEST_STATUSES}: "every action but the approving one" is a definition that
- * absorbs whatever verb arrives next, and the next verb — FR 26's cancelling of leave
- * already agreed — is one that would land here by subtraction and post a `RELEASE` against
- * days that have already been taken. The unit suite asserts every member of this list is a
- * member of that one and lands in a releasing status.
+ * `REFUSE` left this list with LMS 318 — a refusal is a decision that may or may not end
+ * the request, so it goes through the decision door like an approval and releases days
+ * only when it is the last word.
+ *
+ * Written out rather than derived from {@link REQUEST_ACTIONS}, so that the next verb to
+ * arrive does not join it by subtraction.
  */
-export const RELEASING_ACTIONS = ['WITHDRAW', 'REFUSE', 'CANCEL'] as const;
+export const RELEASING_ACTIONS = ['WITHDRAW', 'CANCEL'] as const;
 
 export type ReleasingAction = (typeof RELEASING_ACTIONS)[number];
 
@@ -353,14 +434,17 @@ export const TRANSITIONS: readonly Transition[] = [
     by: ['THE_REQUESTER', 'LEAVE_ADMINISTRATION'],
   },
 
-  /* Turning down somebody else's request. Deliberately not the requester's: marking your
-     own leave refused is a record of a decision nobody made. */
-  {
-    from: 'SUBMITTED',
-    action: 'REFUSE',
-    to: 'REFUSED',
-    by: ['THEIR_LINE_MANAGER', 'LEAVE_ADMINISTRATION'],
-  },
+  /* Turning down a request at the desk it is sitting on. FR 44, §7.2. LMS 318.
+
+     `to` is where the *last* desk's no leaves it. A stage before the last records the
+     refusal and hands the request on, exactly as an approval does — both are decisions,
+     and neither is the answer until every stage has given one.
+
+     Narrowed to `THE_DESK_IT_IS_WITH` by LMS 318, from the line manager and HR alike.
+     A refusal now advances the chain, so one made away from the desk would mark a stage
+     decided by somebody who was never asked. Unwinding a request that should not be on
+     the books is still HR's, and is `CANCEL`. */
+  { from: 'SUBMITTED', action: 'REFUSE', to: 'REFUSED', by: ['THE_DESK_IT_IS_WITH'] },
 
   /* Unwinding a request that should not be on the books — the wrong person, entered
      twice, days in the wrong year. Nobody's own leave and nobody's own report. */
@@ -377,6 +461,19 @@ export const TRANSITIONS: readonly Transition[] = [
      request is actually waiting on. A chain that does not name the manager does not admit
      the manager, which is the whole of the third criterion. */
   { from: 'SUBMITTED', action: 'APPROVE', to: 'APPROVED', by: ['THE_DESK_IT_IS_WITH'] },
+
+  /* The same two verbs said over a line manager who decided otherwise. FR 44, §7.2. LMS 318.
+
+     An override is an ordinary decision at the desk the request is sitting on, and the
+     only thing that distinguishes it is that an earlier stage said the opposite. It is a
+     separate verb rather than a flag on the two above because it asks something of the
+     person making it that the plain verbs do not — a justification in writing — and
+     because it is the value FR 44 wants readable on the record for ever.
+
+     Nothing moves out of an ending. `to` is where the *last* stage leaves it, as on the
+     two rows above. */
+  { from: 'SUBMITTED', action: 'OVERTURN_REJECTION', to: 'APPROVED', by: ['THE_DESK_IT_IS_WITH'] },
+  { from: 'SUBMITTED', action: 'OVERTURN_APPROVAL', to: 'REFUSED', by: ['THE_DESK_IT_IS_WITH'] },
 ];
 
 /**
@@ -495,43 +592,50 @@ export function settlementTo(request: LeaveRequest, action: ReleasingAction): Re
 }
 
 /**
- * Where an approval leaves the request: on to the next desk, or agreed. FR 38, FR 38a, FR 40, FR 41, FR 42, §6., LMS 314, LMS 316, FR 31, FR 11.
+ * Where a decision leaves the request: on to the next desk, or decided. FR 38, FR 38a, FR 40, FR 41, FR 42, FR 44, §6., §7.2, LMS 314, LMS 316, LMS 318, FR 31, FR 11.
+ *
+ * One walk for all four deciding verbs. What ends a request is the chain running out of
+ * desks, not which way this desk went — so a line manager's rejection carries the request
+ * on to HR exactly as their approval would, and the last stage to decide is the one whose
+ * verb the request lands on. That is FR 44's "both stages decide, and HR's is final" said
+ * as an ordering rather than as a special case.
  */
-export function approvalTo(
+export function decisionTo(
   request: LeaveRequest,
+  action: DecidingAction,
   chain: readonly ApproverRole[],
-  /** FR 41. */
-  approvedAlready: readonly ApproverRole[],
+  /** FR 44. The desks that have decided, whichever way they went. */
+  decidedAlready: readonly ApproverRole[],
 ): ApprovalOutcome {
-  const transition = transitionFor(request.status, 'APPROVE');
+  const transition = transitionFor(request.status, action);
 
   if (transition === undefined) {
-    throw refuseTheMove(request, 'APPROVE');
+    throw refuseTheMove(request, action);
   }
 
   const desk = request.awaitingApprovalFrom;
 
   if (desk === null) {
-    throw new LeaveCannotBeMoved(request, 'APPROVE');
+    throw new LeaveCannotBeMoved(request, action);
   }
 
   if (!isApprovedBy(chain, desk)) {
     throw new ApprovalChainChanged(request, desk, chain);
   }
 
-  const next = nextUnapproved(chain, [...approvedAlready, desk]);
+  const next = nextToDecide(chain, [...decidedAlready, desk]);
 
   return next === undefined
     ? { by: desk, to: transition.to, awaiting: null }
     : { by: desk, to: request.status, awaiting: next };
 }
 
-/** Whether that approval was the last word, rather than a step towards one. */
+/** Whether that decision was the last word, rather than a step towards one. */
 export function isTheLastWord(outcome: ApprovalOutcome): boolean {
   return outcome.awaiting === null;
 }
 
-/** How far through its chain a request has got. FR 41, FR 42, LMS 316. */
+/** How far through its chain a request has got. FR 41, FR 42, FR 44, LMS 316, LMS 318. */
 export interface ApprovalProgress {
   /** FR 41. */
   agreed: boolean;
@@ -539,6 +643,8 @@ export interface ApprovalProgress {
   chain: readonly ApproverRole[];
   /** The stages that have said yes, in chain order. */
   approvedBy: readonly ApproverRole[];
+  /** The stages that have said no, in chain order. FR 44, LMS 318. */
+  refusedBy: readonly ApproverRole[];
   /** The stages still to be asked, in chain order. */
   stillToApprove: readonly ApproverRole[];
   /** The desk it is sitting on now, or null once it is sitting nowhere. */
@@ -549,17 +655,24 @@ export interface ApprovalProgress {
   inWords: string;
 }
 
-/** Where a request stands, from the four facts that say so. */
+/** Where a request stands, from the facts that say so. FR 41, FR 44. */
 export function progressOf(input: {
   request: LeaveRequest;
   chain: readonly ApproverRole[];
   /** FR 41. */
   approvedBy: readonly ApproverRole[];
+  /** FR 44, LMS 318. */
+  refusedBy?: readonly ApproverRole[];
 }): ApprovalProgress {
   const { request, chain, approvedBy } = input;
+  const refusedBy = input.refusedBy ?? [];
 
   const missing = stagesNotApproved(chain, approvedBy);
   const signed = chain.filter((desk) => approvedBy.includes(desk));
+  const turnedDown = chain.filter((desk) => refusedBy.includes(desk));
+  /* FR 44. Still to be *asked*, which is not the same as still to approve: a stage that
+     turned the leave down has been asked and is not waiting on anybody. */
+  const unasked = stagesYetToDecide(chain, [...approvedBy, ...refusedBy]);
   const beingDecided = request.status === 'SUBMITTED';
   const agreed = request.status === 'APPROVED';
 
@@ -567,39 +680,48 @@ export function progressOf(input: {
     agreed,
     chain: [...chain],
     approvedBy: signed,
-    stillToApprove: beingDecided ? missing : [],
+    refusedBy: turnedDown,
+    stillToApprove: beingDecided ? unasked : [],
     awaiting: request.awaitingApprovalFrom,
     stagesMissing: missing,
-    inWords: progressInWords(request, signed, missing, agreed),
+    inWords: progressInWords(request, signed, turnedDown, unasked, agreed),
   };
 }
 
-/** The sentence, and it says what has happened before it says what has not. NFR USA 03. */
+/** The sentence, and it says what has happened before it says what has not. NFR USA 03, FR 44. */
 function progressInWords(
   request: LeaveRequest,
   approved: readonly ApproverRole[],
-  missing: readonly ApproverRole[],
+  refused: readonly ApproverRole[],
+  unasked: readonly ApproverRole[],
   agreed: boolean,
 ): string {
-  const signed =
-    approved.length === 0
-      ? 'Nobody has approved it yet.'
-      : `Approved by ${chainInWords(approved)}.`;
+  const said = [
+    approved.length === 0 ? null : `Approved by ${chainInWords(approved)}.`,
+    /* FR 44. A stage that said no is on the record whether or not it was the last word,
+       because a request carrying a rejection and still going to HR is precisely the state
+       somebody would otherwise read as agreed. */
+    refused.length === 0 ? null : `Turned down by ${chainInWords(refused)}.`,
+  ]
+    .filter((sentence): sentence is string => sentence !== null)
+    .join(' ');
+
+  const soFar = said === '' ? 'Nobody has decided it yet.' : said;
 
   if (agreed) {
-    return `This leave is agreed and is yours to take. ${signed}`;
+    return `This leave is agreed and is yours to take. ${soFar}`;
   }
 
   if (isSettled(request.status)) {
     return (
-      `This leave was ${inWordsSettled(request.status)} and is not yours to take. ${signed} ` +
+      `This leave was ${inWordsSettled(request.status)} and is not yours to take. ${soFar} ` +
       `The days are back in your balance.`
     );
   }
 
   return (
-    `This leave is not agreed yet, so do not book anything on it. ${signed} It still ` +
-    `needs ${chainInWords(missing)}.`
+    `This leave is not agreed yet, so do not book anything on it. ${soFar} It still ` +
+    `needs ${chainInWords(unasked)}.`
   );
 }
 

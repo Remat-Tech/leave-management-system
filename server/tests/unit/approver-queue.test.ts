@@ -503,6 +503,7 @@ function decision(changes: Partial<LeaveDecision>): LeaveDecision {
     action: 'APPROVE',
     onBehalfOf: 'MANAGER',
     comment: null,
+    overridesDecisionId: null,
     decidedBy: 'employee kofi',
     decidedByEmployeeId: KOFI.id,
     decidedAt: at('01-06'),

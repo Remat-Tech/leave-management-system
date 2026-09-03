@@ -12,18 +12,26 @@ import { EmployeeNotFound } from '../employee/employee.js';
 import type { DayCount, LeavePeriod } from '../leave-calculator/leave-calculator.js';
 import { validateLeavePeriod } from '../leave-calculator/leave-calculator.js';
 import {
+  type DecidingAction,
   desksThatApproved,
+  desksThatDecided,
+  desksThatRefused,
+  isAnOverride,
   type LeaveDecision,
+  type OverridingAction,
+  overrideRequiredFor,
   readComment,
   requireAComment,
+  requireAJustification,
+  saysYes,
+  theManagersDecision,
 } from './leave-decision.js';
 import {
-  approvalTo,
   type ApprovalProgress,
   assertItCostsSomething,
   assertTheDaysAreThere,
+  decisionTo,
   InvalidLeaveRequest,
-  isSettled,
   LeaveCrossesAYearEnd,
   type LeaveRequest,
   type LeaveRequestQuote,
@@ -31,6 +39,8 @@ import {
   LeaveOverlapsAnother,
   type NewLeaveRequest,
   noticeGiven,
+  NothingToOverturn,
+  OverrulingNeedsAnOverride,
   progressOf,
   quoteFor,
   reachesPastTheEndOf,
@@ -42,7 +52,7 @@ import {
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
 } from './leave-request.js';
-import { approvalNews, endingNews } from '../notification/notification.js';
+import { decisionNews, endingNews } from '../notification/notification.js';
 import {
   assertEligible,
   assertSomebodyApprovesIt,
@@ -313,63 +323,8 @@ export class LeaveRequestService {
    * something true to tell them.
    */
   async withdraw(actor: Actor, id: string): Promise<LeaveReleased> {
-    return this.settle(actor, id, 'WITHDRAW', null, (owner) =>
-      leaveRequestPolicy.withdraw(actor, owner),
-    );
+    return this.settle(actor, id, 'WITHDRAW', (owner) => leaveRequestPolicy.withdraw(actor, owner));
   }
-
-  /**
-   * Turns down leave somebody asked for, and gives the days back. FR 26. LMS 306.
-   *
-   * The line manager's, or HR's. See {@link leaveRequestPolicy.refuse} for why this is
-   * not yet FR 38a's chain and why the approval story narrows it rather than replacing
-   * it.
-   *
-   * **The days come back at the moment of the refusal**, which is the half of the story
-   * that matters to the person who asked: leave they were turned down for is not leave
-   * that goes on being deducted from what they may book while somebody gets round to
-   * tidying it up.
-   *
-   * ## And it says why. FR 39, FR 52. LMS 315
-   *
-   * The one ending that takes a comment, and the only method here that requires one. A
-   * refusal is a decision made about somebody by somebody else, and the person it is made
-   * about is owed the reason in the record rather than in a corridor: {@link LeaveDecision}
-   * is where it lands, with the desk it was decided at and the name of whoever decided it,
-   * in the same transaction as the status and the `RELEASE`.
-   *
-   * **Refused before anything at all is read**, which is a deliberate choice about the
-   * order rather than an optimisation. `settle` below asks *may you*, then *is this move
-   * available*, and both of those answers describe a request; asking for the reason first
-   * means an approver who forgot the box is told so without a single row being fetched, and
-   * without the refusal depending on whether the id was anybody's. {@link requireAComment}
-   * asks it again inside the transaction that writes, and
-   * `leave_request_refusal_says_why` asks it a third time where no service can reach.
-   *
-   * ## And never by the person who asked for it. FR 48, §8.6a. LMS 319
-   *
-   * The other decision method, and the one that needed this story. Approving your own leave
-   * has been refused since LMS 314 — the desk excluded the requester — but refusing it was
-   * not: the `REFUSE` row admits `LEAVE_ADMINISTRATION`, so an HR Officer or Administrator
-   * asking for their own leave could turn it down, recorded as a decision at a desk under
-   * their own name. {@link leaveRequestPolicy.refuse} now asks {@link
-   * leaveRequestPolicy.notTheirOwn} before it consults a standing at all, and
-   * `BalanceService.releaseForRequest` asks it again inside the lock.
-   *
-   * **Withdrawing is what that person wanted**, and it is untouched. The refusal names it —
-   * see `DECIDING_IS_SOMEBODY_ELSE` — because somebody who no longer wants their own leave
-   * has an act of their own to reach for, and being told only "no" would leave them looking
-   * for a colleague to do something they never needed done.
-   *
-   * Throws {@link RefusalNeedsAComment} for a refusal with nothing said, before
-   * {@link LeaveRequestNotFound} and before {@link NotAuthorised}.
-   */
-  async refuse(actor: Actor, id: string, comment: string): Promise<LeaveReleased> {
-    return this.settle(actor, id, 'REFUSE', requireAComment(comment), (owner) =>
-      leaveRequestPolicy.refuse(actor, owner),
-    );
-  }
-
   /**
    * Unwinds a request that should not be on the books, and gives the days back. FR 26.
    *
@@ -377,9 +332,7 @@ export class LeaveRequestService {
    * that belong in another year. See {@link leaveRequestPolicy.cancel}.
    */
   async cancel(actor: Actor, id: string): Promise<LeaveReleased> {
-    return this.settle(actor, id, 'CANCEL', null, (owner) =>
-      leaveRequestPolicy.cancel(actor, owner),
-    );
+    return this.settle(actor, id, 'CANCEL', (owner) => leaveRequestPolicy.cancel(actor, owner));
   }
 
   /**
@@ -451,6 +404,56 @@ export class LeaveRequestService {
    * has moved out from under it.
    */
   async approve(actor: Actor, id: string, comment?: string): Promise<LeaveApproved> {
+    return this.decide(actor, id, 'APPROVE', readComment(comment));
+  }
+
+  /**
+   * Turns down leave at the desk it is sitting on. FR 26, FR 39, FR 42, FR 44. LMS 315, LMS 317, LMS 318.
+   *
+   * The same door as {@link LeaveRequestService.approve} since LMS 318: a rejection is a
+   * decision at a stage, so it records the no and hands the request on to the next desk.
+   * The days come back only when the last desk is the one saying it.
+   */
+  async refuse(actor: Actor, id: string, comment: string): Promise<LeaveApproved> {
+    return this.decide(actor, id, 'REFUSE', requireAComment(comment));
+  }
+
+  /**
+   * Overturns the line manager's decision, with the reason in writing. FR 44, §7.2. LMS 318.
+   *
+   * An ordinary decision at the desk the request is sitting on, asking two things a plain
+   * one does not: a justification, and a line manager's decision to actually be reversing.
+   *
+   * Throws {@link OverrideNeedsAJustification} for one with nothing said, before anything
+   * is read, and {@link NothingToOverturn} where the line manager decided the same way or
+   * has not decided at all.
+   */
+  async override(
+    actor: Actor,
+    id: string,
+    action: OverridingAction,
+    justification: string,
+  ): Promise<LeaveApproved> {
+    return this.decide(actor, id, action, requireAJustification(justification));
+  }
+
+  /**
+   * The one path a desk decides by. FR 38, FR 38a, FR 40, FR 44, §6, §7.2. LMS 314, LMS 318.
+   *
+   * Four verbs, one method, and which of the three things it does — hand the request on,
+   * agree it, or turn it down — is the chain's answer rather than the caller's.
+   *
+   * The order of the questions is a disclosure rule. Whose leave it is, then whether the
+   * asker may see it at all — asked only of somebody who is not the desk, because being
+   * the desk is its own reason to be looking — then whether there is a decision to make,
+   * then whether it contradicts the line manager, and last whether this actor is the desk.
+   */
+  private async decide(
+    actor: Actor,
+    id: string,
+    action: DecidingAction,
+    comment: string | null,
+  ): Promise<LeaveApproved> {
     const request = await this.requests.findById(id);
 
     if (request === undefined) {
@@ -460,83 +463,77 @@ export class LeaveRequestService {
     const employee = await this.employeeFor(request.employeeId);
     const owner = ownerOf(employee);
 
-    /* FR 48, §8.6a. LMS 319. First, and before the chain, the type or the Chief Executive is
-       read, because none of them can change the answer: whatever this request's approvers
-       are and wherever it has got to, the person who asked for it is not one of them. It is
-       the first question of the two paths below rather than a fourth, and it is asked as
-       soon as whose leave this is has been established — which is the earliest anything can
-       be asked at all, since an id says nothing about whose it is. */
-    this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, 'APPROVE'));
+    /** FR 48, §8.6a. LMS 319. */
+    this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, action));
 
     const type = await this.typeFor(request.leaveTypeId);
     const chiefExecutiveId = await this.chiefExecutiveFor(type.approvalChain);
 
-    const standing = leaveRequestPolicy.approve(actor, {
+    const standing = leaveRequestPolicy.decide(actor, action, {
       ...owner,
       awaiting: request.awaitingApprovalFrom,
       chiefExecutiveId,
     });
 
-    /* Somebody who is not the desk has to have some other reason to be looking at this
-       request before it is described to them, and being the desk is itself a reason — which
-       is why the read is asked only of everybody else. The Chief Executive is why it has to
-       be that way round rather than a read for all comers: FR 32h routes unpaid leave to
-       them, and they are nobody's line manager and hold no role, so `read` refuses the one
-       approver §4.3.1 names. A colleague with no standing at all meets that refusal, which
-       is silent — see ../auth/policy.ts. */
     if (!standing.allowed) {
       this.guard.enforce(leaveRequestPolicy.read(actor, owner));
     }
 
-    /* Where this leaves it, and the refusals for a request that has nowhere to go. Asked
-       before the standing is enforced, so that somebody clicking approve on leave that was
-       withdrawn a minute ago is told *that* rather than told they are not the approver of a
-       request waiting on nobody — which is true and useless. It is safe in that order
-       because everybody who reaches this line may already read the request.
+    const decisions = await this.decisions.forRequest(request.id);
 
-       The outcome is also what lets the `DEDUCTION`'s sentence name the desk that decided
-       it. It is worked out again inside the lock, and that is the answer that binds.
+    /* FR 44. Which stage has not *decided*, rather than which has not approved. Asked again
+       inside the lock, where the answer binds. */
+    const outcome = decisionTo(request, action, type.approvalChain, desksThatDecided(decisions));
 
-       FR 41, LMS 316. The desks that have already signed are read here for the same reason
-       the chain is: the walk asks which stage has *not* approved rather than which comes
-       after this one, so it needs the decisions and not only the cursor. Read again inside
-       the lock, where the answer binds — see `approveForRequest`. */
-    const outcome = approvalTo(
-      request,
-      type.approvalChain,
-      desksThatApproved(await this.decisions.forRequest(request.id)),
-    );
+    /** FR 44, §7.2. */
+    const overturns = this.whatThisReverses(request, action, decisions);
 
     this.guard.enforce(standing);
 
-    const approved = await this.balances.approveForRequest(actor, {
+    const decided = await this.balances.decideForRequest(actor, {
       request,
+      action,
       chain: type.approvalChain,
       chiefExecutiveId,
-      /* FR 39, LMS 315. Optional, and normalised here rather than at the door so that an
-         approver who typed two spaces and one who typed nothing produce the same row.
-         The desk it is filed under is not this method's — see `approveForRequest`. */
-      comment: readComment(comment),
-      reason: reasonForApproval(type.name, request, request.days, outcome.by),
+      comment,
+      overturns,
+      reasonForTaking: reasonForApproval(type.name, request, request.days, outcome.by),
+      reasonForGivingBack: reasonForRelease(type.name, request, request.days, 'REFUSED'),
     });
 
-    /* FR 59, LMS 329. Which of the two pieces of news this was is {@link approvalNews},
-       read off the committed row rather than off `outcome` above — the walk was made twice
-       and only the one inside the lock decided anything, so a chain that gained a stage
-       while somebody was reading a screen produces "your manager approved it, HR still has
-       to" rather than "your leave is agreed". The desk and the comment are the decision's
-       own, for the same reason. */
-    await this.notifications.tell({
-      event: approvalNews(approved.request),
-      employee,
-      request: approved.request,
-      typeName: type.name,
-      decidedBy: approved.decision.onBehalfOf,
-      comment: approved.decision.comment,
-      availableAfter: approved.balance.available,
-    });
+    await this.tellThemAbout(decided, employee, type.name);
 
-    return approved;
+    return decided;
+  }
+
+  /**
+   * The line manager's decision this verb reverses, or null where it reverses nothing. FR 44, §7.2. LMS 318.
+   *
+   * What makes the justification unavoidable: a plain verb that would contradict the line
+   * manager is refused and pointed at the override, and an override that contradicts nobody
+   * is refused too.
+   */
+  private whatThisReverses(
+    request: LeaveRequest,
+    action: DecidingAction,
+    decisions: readonly LeaveDecision[],
+  ): string | null {
+    const managers = theManagersDecision(decisions);
+    const required = overrideRequiredFor(action, decisions);
+
+    if (!isAnOverride(action)) {
+      if (required !== null) {
+        throw new OverrulingNeedsAnOverride(request, required);
+      }
+
+      return null;
+    }
+
+    if (required !== action || managers === undefined) {
+      throw new NothingToOverturn(request, action, managers?.action ?? null);
+    }
+
+    return managers.id;
   }
 
   /**
@@ -591,10 +588,14 @@ export class LeaveRequestService {
 
     const type = await this.typeFor(request.leaveTypeId);
 
+    const decisions = await this.decisions.forRequest(request.id);
+
     return progressOf({
       request,
       chain: type.approvalChain,
-      approvedBy: desksThatApproved(await this.decisions.forRequest(request.id)),
+      approvedBy: desksThatApproved(decisions),
+      /** FR 44. A stage that said no has had its say and is not waiting on anybody. */
+      refusedBy: desksThatRefused(decisions),
     });
   }
 
@@ -676,18 +677,6 @@ export class LeaveRequestService {
     actor: Actor,
     id: string,
     action: ReleasingAction,
-    /**
-     * FR 39. The reason, for the one of the three that is a decision. LMS 315.
-     *
-     * A string for a refusal and null for the other two, checked by whichever verb built
-     * it — {@link LeaveRequestService.refuse} is the only one that can produce a string, and
-     * it does so with {@link requireAComment} before this method is entered.
-     *
-     * It stays a plain parameter here and becomes a discriminated union at the door, where
-     * `SettlingAct` makes the pairing something the compiler holds rather than something
-     * this method promises.
-     */
-    comment: string | null,
     decide: (owner: BalanceOwner) => Decision,
   ): Promise<LeaveReleased> {
     const request = await this.requests.findById(id);
@@ -717,42 +706,85 @@ export class LeaveRequestService {
 
     const reason = reasonForRelease(typeName, request, request.days, to);
 
-    /* The one branch on the way to the one path, and it is a narrowing rather than a
-       decision: `SettlingAct` pairs the verb with what has to be said about it, so a
-       refusal is handed over with its reason and the other two with an explicit null.
-       Writing it as a spread of `{ action, comment }` would compile and would let a
-       withdrawal carry a comment, which is the mistake the union exists to make
-       unwritable. */
-    const settled = await this.balances.releaseForRequest(
-      actor,
-      action === 'REFUSE'
-        ? { request, action, to, reason, comment: requireAComment(comment) }
-        : { request, action, to, reason, comment: null },
-    );
+    const settled = await this.balances.releaseForRequest(actor, { request, action, to, reason });
 
-    /* FR 59, LMS 329. All three endings tell the person, and they tell them three different
-       things — five days coming back look identical in a balance whether somebody changed
-       their mind, a manager turned it down or HR unwound a row, which is the argument
-       `reasonForRelease` already makes about the ledger's sentence.
-
-       The status is taken off the committed row rather than from `to` above, the same
-       discipline the door itself keeps: `to` was worked out before the lock, and while the
-       door would have refused an ending that disagreed with it, the row is what happened.
-       The narrowing cannot fail — a request that came back from the release door has
-       settled — and `to` is the answer if it somehow did. */
+    /* FR 59, LMS 329. Both endings tell the person, and they tell them different things —
+       days coming back look identical in a balance whether somebody changed their mind or
+       HR unwound a row. */
     await this.notifications.tell({
-      event: endingNews(isSettled(settled.request.status) ? settled.request.status : to),
+      event: endingNews(action === 'WITHDRAW' ? 'WITHDRAWN' : 'CANCELLED'),
       employee,
       request: settled.request,
       typeName,
-      /* FR 52. Only a refusal was decided at a desk; the other two carry null, which is the
-         same asymmetry `LeaveReleased.decision` has and for the same reason. */
-      decidedBy: settled.decision?.onBehalfOf ?? null,
-      comment: settled.decision?.comment ?? null,
+      /** FR 52. Neither of these is a decision at a desk. */
+      decidedBy: null,
+      comment: null,
       availableAfter: settled.balance.available,
     });
 
     return settled;
+  }
+
+  /**
+   * Tells the people a decision concerns. FR 59, FR 44, §7.1. LMS 329, LMS 318.
+   *
+   * The requester always, and the line manager as well where their decision was the one
+   * reversed — which is FR 44's last criterion. Both notices go out after the transaction
+   * has committed, and both are composed from the rows that were written rather than from
+   * what the caller expected.
+   */
+  private async tellThemAbout(
+    decided: LeaveApproved,
+    employee: Employee,
+    typeName: string,
+  ): Promise<void> {
+    const { decision, request, balance } = decided;
+    const saidYes = saysYes(decision.action);
+
+    await this.notifications.tell({
+      event: decisionNews(request, saidYes),
+      employee,
+      request,
+      typeName,
+      decidedBy: decision.onBehalfOf,
+      comment: decision.comment,
+      availableAfter: balance.available,
+    });
+
+    if (decision.overridesDecisionId === null) {
+      return;
+    }
+
+    /* FR 44. The line manager, told their decision was overturned and why. Read back off
+       the committed rows: the decision that was reversed says which desk made it and which
+       way it went, and the employee record says who to send it to. */
+    const reversed = (await this.decisions.forRequest(request.id)).find(
+      (one) => one.id === decision.overridesDecisionId,
+    );
+
+    const manager =
+      employee.managerId === null ? undefined : await this.employees.findById(employee.managerId);
+
+    /* A manager who has since left, or a decision that has somehow gone: the override
+       stands either way, and a notice nobody can be sent is not a reason to unpick it. */
+    if (manager === undefined || reversed === undefined) {
+      return;
+    }
+
+    await this.notifications.tell({
+      event: 'DECISION_OVERTURNED',
+      employee,
+      recipient: manager,
+      request,
+      typeName,
+      decidedBy: decision.onBehalfOf,
+      comment: decision.comment,
+      availableAfter: balance.available,
+      overturned: {
+        desk: reversed.onBehalfOf,
+        said: saysYes(reversed.action) ? 'APPROVE' : 'REFUSE',
+      },
+    });
   }
 
   /** One request, if the actor may see whose it is. */

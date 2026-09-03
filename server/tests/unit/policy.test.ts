@@ -886,6 +886,21 @@ describe('moving a balance, FR 26 and LMS 212', () => {
   /** Ama's balance. Akosua is her line manager. */
   const hers = { employeeId: 'ama', managerId: 'akosua' };
 
+  /**
+   * Her request, sitting at a desk. FR 38a, FR 44. LMS 318.
+   *
+   * Refusing takes one of these since LMS 318, as approving has since LMS 314: a rejection
+   * advances the chain, so it belongs to the desk the request is on rather than to a role.
+   */
+  const atDesk = (awaiting: 'MANAGER' | 'HR' | 'CEO') => ({
+    ...hers,
+    awaiting,
+    chiefExecutiveId: 'yaw',
+  });
+
+  const atManager = atDesk('MANAGER');
+  const atHrDesk = atDesk('HR');
+
   it('is read by the same three standings the employee record has', () => {
     expect(ledgerPolicy.read(employee('ama'), hers).allowed).toBe(true);
     expect(ledgerPolicy.read(manager('akosua'), hers).allowed).toBe(true);
@@ -1272,11 +1287,15 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        which is what stops it being "a way to reach the transition without passing the check
        that knows which desk FR 38a's chain has the request sitting on" — the sentence this
        file refused it with for two stories. */
-    it('and the decisions it holds are these nine', () => {
+    it('and the decisions it holds are these eleven', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
         'approve',
         'cancel',
+        /* FR 44, LMS 318. `decide` dispatches on the verb, and `override` is the two verbs
+           that disagree with a line manager. */
+        'decide',
         'notTheirOwn',
+        'override',
         'queue',
         'read',
         'refuse',
@@ -1310,8 +1329,8 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       /* Refusing is a decision about somebody else's request. Not the requester's:
          taking back your own leave is withdrawing it, and `reasonForRelease` writes
          which of the two happened into the ledger. */
-      expect(leaveRequestPolicy.refuse(akosua, hers).allowed).toBe(true);
-      expect(leaveRequestPolicy.refuse(ama, hers).allowed).toBe(false);
+      expect(leaveRequestPolicy.refuse(akosua, atManager).allowed).toBe(true);
+      expect(leaveRequestPolicy.refuse(ama, atManager).allowed).toBe(false);
 
       /* Cancelling is HR unwinding something that should not be on the books, and is
          the narrowest of the three: neither the requester's nor the manager's. */
@@ -1328,8 +1347,14 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         const carries = MAINTAINS_EMPLOYEE_RECORDS.includes(code);
 
         expect(leaveRequestPolicy.withdraw(holder, hers).allowed).toBe(carries);
-        expect(leaveRequestPolicy.refuse(holder, hers).allowed).toBe(carries);
         expect(leaveRequestPolicy.cancel(holder, hers).allowed).toBe(carries);
+
+        /* FR 44, LMS 318. Refusing left that pair, and is now the desk's rather than a
+           role's: holding HR_OFFICER is standing at the HR desk and at no other. */
+        expect(leaveRequestPolicy.refuse(holder, atManager).allowed).toBe(false);
+        expect(leaveRequestPolicy.refuse(holder, atHrDesk).allowed).toBe(
+          APPROVES_AS_HR.includes(code),
+        );
       }
     });
 
@@ -1477,7 +1502,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
           const ama = employee('ama', roles);
 
           expect(leaveRequestPolicy.approve(ama, atHr).allowed).toBe(false);
-          expect(leaveRequestPolicy.refuse(ama, hers).allowed).toBe(false);
+          expect(leaveRequestPolicy.refuse(ama, atManager).allowed).toBe(false);
         }
       });
 
@@ -1489,7 +1514,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
 
         for (const decision of [
           leaveRequestPolicy.approve(ama, atHr),
-          leaveRequestPolicy.refuse(ama, hers),
+          leaveRequestPolicy.refuse(ama, atManager),
           leaveRequestPolicy.notTheirOwn(ama, hers, 'APPROVE'),
           leaveRequestPolicy.notTheirOwn(ama, hers, 'REFUSE'),
         ]) {
@@ -1507,7 +1532,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         const ama = employee('ama', ['EMPLOYEE', 'HR_OFFICER']);
 
         expect(leaveRequestPolicy.approve(ama, atHr).action).toBe('approve');
-        expect(leaveRequestPolicy.refuse(ama, hers).action).toBe('refuse');
+        expect(leaveRequestPolicy.refuse(ama, atManager).action).toBe('refuse');
         expect(leaveRequestPolicy.notTheirOwn(ama, hers, 'REFUSE').subject).toBe('ama');
       });
 
@@ -1536,7 +1561,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
          leave is for and nothing else, so the manager, HR and the desk keep every standing
          they had — which is what makes this a check rather than a narrowing. */
       it('and refuses nobody who is deciding somebody else’s', () => {
-        expect(leaveRequestPolicy.refuse(manager('akosua'), hers).allowed).toBe(true);
+        expect(leaveRequestPolicy.refuse(manager('akosua'), atManager).allowed).toBe(true);
         expect(
           leaveRequestPolicy.approve(employee('efua', ['EMPLOYEE', 'HR_OFFICER']), atHr).allowed,
         ).toBe(true);
@@ -1567,7 +1592,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        refusal is doing legitimate work at the wrong window. */
     it('and each of them says why, and names the desk that can', () => {
       for (const decision of [
-        leaveRequestPolicy.refuse(employee('ama'), hers),
+        leaveRequestPolicy.refuse(employee('ama'), atManager),
         leaveRequestPolicy.cancel(employee('ama'), hers),
         leaveRequestPolicy.withdraw(manager('akosua'), hers),
       ]) {

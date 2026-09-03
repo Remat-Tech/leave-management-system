@@ -88,6 +88,9 @@ const TO = '2026-03-10';
 
 const WHY_NOT = 'Two of the team are already away that week and the desk cannot be empty';
 
+/** FR 44. What HR writes when policy prevails over a local decision. LMS 318. */
+const BECAUSE_POLICY = 'Her carry-over expires this month and cover is HR’s to arrange';
+
 /**
  * What the request looked like from another connection at the moment the email was sent.
  *
@@ -302,14 +305,65 @@ describe('what happens to a request reaches the person who asked', () => {
     mailer.clear();
 
     await requests.refuse(asTheirManager(), id, WHY_NOT);
+    await requests.refuse(asOfficer(), id, WHY_NOT);
 
-    const notice = (await noticesFor())[1];
+    const notice = (await noticesFor())[2];
 
     expect(notice.event).toBe('REFUSED');
     expect(notice.body).toContain(WHY_NOT);
     expect(notice.body).toContain('The 6 days are back in your balance.');
     expect(notice.body).toContain('You have 20 days to book.');
     expect(mailer.last().text).toContain(WHY_NOT);
+  });
+
+  /**
+   * And a rejection that is not the end of it says so. FR 44, §7.2. LMS 318.
+   *
+   * The counterpart of a stage approval, and it exists for the same reason: "turned down,
+   * your days are back" would be wrong in both halves while HR still has to decide, and it
+   * is the sentence somebody stops reading after.
+   */
+  it('and a rejection partway along says the days are still held and HR has it', async () => {
+    const id = await submit();
+    mailer.clear();
+
+    await requests.refuse(asTheirManager(), id, WHY_NOT);
+
+    const notice = (await noticesFor())[1];
+
+    expect(notice.event).toBe('STAGE_REFUSED');
+    expect(notice.subject).toContain('it has gone to HR');
+    expect(notice.body).toContain(WHY_NOT);
+    expect(notice.body).toContain('That is not the end of it.');
+    expect(notice.body).toContain('Your balance has not moved');
+  });
+
+  /**
+   * And the line manager is told when HR overturns them. FR 44's fifth criterion. LMS 318.
+   *
+   * The one notice in this system addressed to somebody other than the person taking the
+   * leave, and it quotes HR's justification whole — which is the whole of what the manager
+   * is owed for a decision that was reversed over their head.
+   */
+  it('and the line manager is told when HR overturns their rejection', async () => {
+    const id = await submit();
+    mailer.clear();
+
+    await requests.refuse(asTheirManager(), id, WHY_NOT);
+    await requests.override(asOfficer(), id, 'OVERTURN_REJECTION', BECAUSE_POLICY);
+
+    const [theirs] = await noticesFor(people.teamLead);
+
+    expect(theirs.event).toBe('DECISION_OVERTURNED');
+    expect(theirs.employeeId).toBe(people.teamLead);
+    expect(theirs.subject).toContain('overturned your decision');
+    expect(theirs.body).toContain(BECAUSE_POLICY);
+
+    /* And the person who asked is told too, and told the leave is theirs to take. */
+    const hers = (await noticesFor())[2];
+
+    expect(hers.event).toBe('APPROVED');
+    expect(hers.employeeId).toBe(people.officer);
   });
 
   it('a withdrawal reaches the person who made it', async () => {
@@ -382,9 +436,13 @@ describe('a notice goes out after the transaction commits', () => {
     const id = await submit();
     statusesSeenWhileSending.length = 0;
 
+    /* FR 44, LMS 318. Two rejections, because the manager's carries the request on to HR —
+       so the pair also shows the intermediate one being read as `SUBMITTED`, which is what
+       committed at that moment. */
     await requests.refuse(asTheirManager(), id, WHY_NOT);
+    await requests.refuse(asOfficer(), id, WHY_NOT);
 
-    expect(statusesSeenWhileSending).toEqual(['REFUSED']);
+    expect(statusesSeenWhileSending).toEqual(['SUBMITTED', 'REFUSED']);
   });
 
   /* And the mirror: nothing that did not happen is announced. A submission the balance
@@ -417,11 +475,13 @@ describe('a mail server that is not answering', () => {
 
   it('and the person still has the notice waiting when they next look', async () => {
     const id = await submit();
-    mailer.failNext(new Error('connect ECONNREFUSED 127.0.0.1:1025'));
-
     await requests.refuse(asTheirManager(), id, WHY_NOT);
 
-    const notice = (await noticesFor())[1];
+    mailer.failNext(new Error('connect ECONNREFUSED 127.0.0.1:1025'));
+
+    await requests.refuse(asOfficer(), id, WHY_NOT);
+
+    const notice = (await noticesFor())[2];
 
     expect(notice.event).toBe('REFUSED');
     expect(notice.body).toContain(WHY_NOT);

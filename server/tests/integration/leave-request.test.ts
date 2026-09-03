@@ -125,6 +125,9 @@ const TO = '2026-03-10';
  */
 const WHY_NOT = 'Two of the team are already away that week and the desk cannot be empty';
 
+/** FR 44. What HR writes when policy prevails over a local decision. LMS 318. */
+const BECAUSE_POLICY = 'Her carry-over expires this month and cover is HR’s to arrange';
+
 beforeAll(async () => {
   db = databaseFor(testDatabaseUrl);
 
@@ -271,6 +274,27 @@ function asOfficer() {
 
 function asAColleague() {
   return signedInAs(people.engineer, { roles: ['EMPLOYEE'], isManager: false });
+}
+
+/** FR 04. The one employee with no line manager, which is what the `CEO` desk resolves to. */
+function asChiefExecutive() {
+  return signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
+}
+
+/**
+ * A rejection that actually ends the request. FR 44, §7.2. LMS 318.
+ *
+ * A line manager's no carries the request on to HR rather than ending it, so a test that
+ * wants a `REFUSED` row has to walk the chain to the desk that decides it finally. Annual
+ * leave goes manager then HR, so that desk is HR's.
+ *
+ * The first call is made by whoever the test names — usually the manager — and is refused
+ * where they have no standing, which is what the authorisation tests here rely on.
+ */
+async function refusedOutright(actor: Actor, id: string) {
+  const first = await requests.refuse(actor, id, WHY_NOT);
+
+  return first.request.status === 'REFUSED' ? first : requests.refuse(asOfficer(), id, WHY_NOT);
 }
 
 function aRequest(overrides: Partial<NewLeaveRequest> = {}): NewLeaveRequest {
@@ -1431,7 +1455,7 @@ describe('withdrawing, refusing and cancelling', () => {
 
     expect(ended.request.status).toBe(status);
     expect(ended.balance.available).toBe(20);
-    expect(ended.entry.reason).toContain(status.toLowerCase());
+    expect(ended.entry?.reason).toContain(status.toLowerCase());
   });
 
   /**
@@ -1497,7 +1521,7 @@ describe('withdrawing, refusing and cancelling', () => {
      record of what somebody asked for and why is what an appeal is worked from. */
   it('and the reason can still be improved after a refusal', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
-    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+    await refusedOutright(asTheirManager(), request.id);
 
     await expect(
       requests.reword(asThemselves(), request.id, 'It is my sister, and it is her wedding'),
@@ -1510,8 +1534,8 @@ describe('withdrawing, refusing and cancelling', () => {
    * A manager may refuse leave and may not withdraw it, and the difference is the record.
    *
    * A manager who could withdraw a report's leave could empty their calendar without ever
-   * refusing anything and without a decision appearing anywhere. Refusing is the same
-   * movement wearing its own name, and `reasonForRelease` writes which one happened.
+   * refusing anything and without a decision appearing anywhere. Refusing writes a decision
+   * at their stage, and since LMS 318 it sends the request on to HR rather than ending it.
    */
   it('is refused by a manager, and never withdrawn by one', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
@@ -1520,7 +1544,8 @@ describe('withdrawing, refusing and cancelling', () => {
       NotAuthorised,
     );
     await expect(requests.refuse(asTheirManager(), request.id, WHY_NOT)).resolves.toMatchObject({
-      request: { status: 'REFUSED' },
+      request: { status: 'SUBMITTED', awaitingApprovalFrom: 'HR' },
+      decision: { action: 'REFUSE', onBehalfOf: 'MANAGER' },
     });
   });
 
@@ -1715,9 +1740,11 @@ describe('withdrawing, refusing and cancelling', () => {
       [request.id],
     );
 
-    expect(rows).toHaveLength(1);
+    /* FR 44, LMS 318. A rejection takes two moves rather than one — the manager's, which
+       hands it on, and the last desk's, which ends it — so the log has an entry each. What
+       matters is the one that reached the ending, and who made the first. */
+    expect(rows.find((row) => row.after.status === status)).toBeDefined();
     expect(rows[0].actor).toContain(actor());
-    expect(rows[0].after.status).toBe(status);
   });
 
   /**
@@ -1778,7 +1805,7 @@ describe('withdrawing, refusing and cancelling', () => {
          would have typed. The other two are not decisions at a desk and take none, which
          is why this cannot go on being three bound methods with one shape. */
       case 'REFUSED':
-        return (actor: Actor, id: string) => requests.refuse(actor, id, WHY_NOT);
+        return refusedOutright;
       default:
         return (actor: Actor, id: string) => requests.cancel(actor, id);
     }
@@ -2335,7 +2362,7 @@ describe('routing a request to its approvers', () => {
          would have typed. The other two are not decisions at a desk and take none, which
          is why this cannot go on being three bound methods with one shape. */
       case 'REFUSED':
-        return (actor: Actor, id: string) => requests.refuse(actor, id, WHY_NOT);
+        return refusedOutright;
       default:
         return (actor: Actor, id: string) => requests.cancel(actor, id);
     }
@@ -2482,7 +2509,10 @@ describe('the decision at a stage', () => {
 
     const refused = await requests.refuse(asTheirManager(), request.id, WHY_NOT);
 
-    expect(refused.request.status).toBe('REFUSED');
+    /* FR 44, LMS 318. The rejection is recorded at the manager's stage and the request goes
+       on to HR — a decision at a desk rather than an ending. */
+    expect(refused.request.status).toBe('SUBMITTED');
+    expect(refused.request.awaitingApprovalFrom).toBe('HR');
     expect(refused.decision).toMatchObject({
       leaveRequestId: request.id,
       action: 'REFUSE',
@@ -2572,27 +2602,43 @@ describe('the decision at a stage', () => {
   /* ------------------------------------------------------ on whose behalf. FR 52 */
 
   /**
-   * And the desk is recorded apart from the person, because they are not always the same.
+   * And the desk is recorded apart from the person. FR 52, FR 44. LMS 315, LMS 318.
    *
-   * The one column here worth arguing about. An approval can only come from the person the
-   * desk resolves to, so the two agree. A refusal need not: `TRANSITIONS` admits HR to the
-   * REFUSE row whichever desk the request is sitting at, and LMS 314 deliberately left it
-   * that way.
+   * The one column here worth arguing about, and LMS 318 narrowed the case that made it
+   * necessary rather than removing it. `TRANSITIONS` used to admit HR to the `REFUSE` row
+   * whichever desk the request was sitting at; a rejection now advances the chain, so it
+   * belongs to the desk and an HR Officer meets `NotAuthorised` at the manager's stage.
    *
-   * So an HR Officer turning down leave that is still with the line manager is recorded as
-   * their act, at the manager's stage — a sentence a manager can read and recognise as a
-   * decision that was not theirs. Folding the two into one field would make that
-   * unanswerable in exactly the case somebody asks.
+   * What keeps the two columns apart is the override: HR overturning a manager's rejection
+   * is their act at the HR desk, and the manager's row beside it names a decision that was
+   * not HR's. Folding the two into one field would make that unanswerable.
    */
-  it('names the stage it was decided at, even where that is not the decider’s own desk', async () => {
+  it('names the stage it was decided at, and not the decider’s own desk', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
-    const refused = await requests.refuse(asOfficer(), request.id, WHY_NOT);
+    await expect(requests.refuse(asOfficer(), request.id, WHY_NOT)).rejects.toBeInstanceOf(
+      NotAuthorised,
+    );
 
-    expect(refused.decision).toMatchObject({
-      onBehalfOf: 'MANAGER',
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+    const overturned = await requests.override(
+      asOfficer(),
+      request.id,
+      'OVERTURN_REJECTION',
+      BECAUSE_POLICY,
+    );
+
+    expect(overturned.decision).toMatchObject({
+      action: 'OVERTURN_REJECTION',
+      onBehalfOf: 'HR',
       decidedByEmployeeId: people.hrOfficer,
     });
+
+    const [managers] = await decisions.forRequest(request.id);
+
+    expect(managers).toMatchObject({ onBehalfOf: 'MANAGER', decidedByEmployeeId: people.teamLead });
+    expect(overturned.decision.overridesDecisionId).toBe(managers.id);
   });
 
   /* And the endings that are not decisions record none. Withdrawing is somebody taking
@@ -2640,6 +2686,180 @@ describe('the decision at a stage', () => {
     await expect(requests.decisionsFor(asAColleague(), request.id)).rejects.toBeInstanceOf(
       NotAuthorised,
     );
+  });
+
+  /* ------------------------------------------ overturning a line manager, FR 44 */
+
+  /**
+   * HR overturns a rejection, the leave stands, and both sentences survive. FR 44, §7.2. LMS 318.
+   *
+   * The story end to end. The manager's no is on the record with their reason; HR's override
+   * is on the record with theirs and a pointer to the decision it reversed; and the request
+   * is approved with its days taken.
+   */
+  it('is overturned by HR, and the record says what was reversed and why', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+    const overturned = await requests.override(
+      asOfficer(),
+      request.id,
+      'OVERTURN_REJECTION',
+      BECAUSE_POLICY,
+    );
+
+    expect(overturned.request.status).toBe('APPROVED');
+    expect(overturned.request.awaitingApprovalFrom).toBeNull();
+    expect(overturned.balance.taken).toBe(6);
+    expect(overturned.balance.pending).toBe(0);
+    expect(overturned.entry?.entryType).toBe('DEDUCTION');
+
+    const [managers, hrs] = await requests.decisionsFor(asThemselves(), request.id);
+
+    expect(managers).toMatchObject({ action: 'REFUSE', onBehalfOf: 'MANAGER', comment: WHY_NOT });
+    expect(hrs).toMatchObject({
+      action: 'OVERTURN_REJECTION',
+      onBehalfOf: 'HR',
+      comment: BECAUSE_POLICY,
+      overridesDecisionId: managers.id,
+    });
+  });
+
+  /* And the justification is mandatory, refused before anything at all is read — the same
+     order `refuse` asks for its comment in, and for the same reason. */
+  it('and an override with nothing said is refused before anything is read', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+    for (const nothing of ['', '   ']) {
+      await expect(
+        requests.override(asOfficer(), request.id, 'OVERTURN_REJECTION', nothing),
+      ).rejects.toMatchObject({ code: 'OVERRIDE_NEEDS_A_JUSTIFICATION' });
+    }
+
+    expect((await requests.byId(asThemselves(), request.id)).status).toBe('SUBMITTED');
+  });
+
+  /* And an override that contradicts nobody is refused too: a record saying policy prevailed
+     over a local decision, where there was no local decision, is a record of something that
+     did not happen. */
+  it('and an override with nothing to overturn is refused', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id);
+
+    await expect(
+      requests.override(asOfficer(), request.id, 'OVERTURN_REJECTION', BECAUSE_POLICY),
+    ).rejects.toMatchObject({ code: 'NOTHING_TO_OVERTURN' });
+  });
+
+  /* And a manager's rejection is overturned once. The second attempt finds a request that
+     has been decided and nothing left to reverse. */
+  it('and a decision is overturned once', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+    await requests.override(asOfficer(), request.id, 'OVERTURN_REJECTION', BECAUSE_POLICY);
+
+    await expect(
+      requests.override(asOfficer(), request.id, 'OVERTURN_REJECTION', BECAUSE_POLICY),
+    ).rejects.toMatchObject({ code: 'MOVE_NOT_AVAILABLE' });
+  });
+
+  /**
+   * And an override naming another request's decision is refused by the database. FR 44.
+   *
+   * The check a foreign key cannot make. Without it an override on Kofi's leave could name
+   * the refusal on Ama's, and every screen reading "reversed the line manager's decision"
+   * would be reading somebody else's sentence out to the wrong person.
+   */
+  it('and one that names another request’s decision is refused, on every connection', async () => {
+    const hers = await requests.submit(asThemselves(), aRequest());
+    await requests.refuse(asTheirManager(), hers.request.id, WHY_NOT);
+
+    const [hersRefusal] = await decisions.forRequest(hers.request.id);
+
+    const theirs = await requests.submit(
+      asThemselves(),
+      aRequest({ from: '2026-05-04', to: '2026-05-08' }),
+    );
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_request_decision
+           (leave_request_id, action, on_behalf_of, comment, overrides_decision_id)
+         VALUES ($1, 'OVERTURN_REJECTION', 'HR', 'Policy says so', $2)`,
+        [theirs.request.id, hersRefusal.id],
+      ),
+    ).rejects.toMatchObject({
+      constraint: 'leave_request_decision_reverses_the_same_request',
+    });
+  });
+
+  /* And one that agrees with what it names, which is a record of a disagreement nobody had. */
+  it('and one that reverses a decision saying the same thing is refused too', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.approve(asTheirManager(), request.id);
+
+    const [approval] = await decisions.forRequest(request.id);
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_request_decision
+           (leave_request_id, action, on_behalf_of, comment, overrides_decision_id)
+         VALUES ($1, 'OVERTURN_REJECTION', 'HR', 'Policy says so', $2)`,
+        [request.id, approval.id],
+      ),
+    ).rejects.toMatchObject({
+      constraint: 'leave_request_decision_reverses_the_same_request',
+    });
+  });
+
+  /* And the justification is required by the schema as well as by the service, with its own
+     constraint name so the two refusals say different things to different people. */
+  it('and an override with no justification is refused where no service reaches', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+    const [refusal] = await decisions.forRequest(request.id);
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_request_decision
+           (leave_request_id, action, on_behalf_of, overrides_decision_id)
+         VALUES ($1, 'OVERTURN_REJECTION', 'HR', $2)`,
+        [request.id, refusal.id],
+      ),
+    ).rejects.toMatchObject({ constraint: 'leave_request_override_says_why' });
+  });
+
+  /* And the equivalence, from both sides: an override naming nothing, and a plain approval
+     claiming to reverse something. */
+  it('and the pointer and the verb go together, on every connection', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+    const [refusal] = await decisions.forRequest(request.id);
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_request_decision (leave_request_id, action, on_behalf_of, comment)
+         VALUES ($1, 'OVERTURN_REJECTION', 'HR', 'Policy says so')`,
+        [request.id],
+      ),
+    ).rejects.toMatchObject({
+      constraint: 'leave_request_decision_override_names_what_it_reverses',
+    });
+
+    await expect(
+      admin.query(
+        `INSERT INTO leave_request_decision
+           (leave_request_id, action, on_behalf_of, overrides_decision_id)
+         VALUES ($1, 'APPROVE', 'HR', $2)`,
+        [request.id, refusal.id],
+      ),
+    ).rejects.toMatchObject({
+      constraint: 'leave_request_decision_override_names_what_it_reverses',
+    });
   });
 
   /* ------------------------------------------- what holds where no service reaches */
@@ -2960,7 +3180,19 @@ describe('leave that is agreed only once every stage has agreed', () => {
 
     await requests.approve(asTheirManager(), request.id, 'Cover is arranged');
 
-    const refused = await requests.refuse(asOfficer(), request.id, WHY_NOT);
+    /* FR 44, LMS 318. HR turning down leave the manager agreed to overrules them, so it is
+       recorded as what it is and asks for the reason in writing. The plain verb is refused
+       rather than quietly doing the same thing under another name. */
+    await expect(requests.refuse(asOfficer(), request.id, WHY_NOT)).rejects.toMatchObject({
+      code: 'OVERRULING_NEEDS_AN_OVERRIDE',
+    });
+
+    const refused = await requests.override(
+      asOfficer(),
+      request.id,
+      'OVERTURN_APPROVAL',
+      BECAUSE_POLICY,
+    );
 
     expect(refused.request.status).toBe('REFUSED');
     expect(refused.request.awaitingApprovalFrom).toBeNull();
@@ -2981,7 +3213,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
     await requests.approve(asTheirManager(), request.id, 'Cover is arranged');
-    await requests.refuse(asOfficer(), request.id, WHY_NOT);
+    await requests.override(asOfficer(), request.id, 'OVERTURN_APPROVAL', BECAUSE_POLICY);
 
     expect(
       (await requests.decisionsFor(asThemselves(), request.id)).map((decision) => [
@@ -2990,7 +3222,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
       ]),
     ).toEqual([
       ['MANAGER', 'APPROVE'],
-      ['HR', 'REFUSE'],
+      ['HR', 'OVERTURN_APPROVAL'],
     ]);
   });
 
@@ -3000,7 +3232,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
     await requests.approve(asTheirManager(), request.id);
-    await requests.refuse(asOfficer(), request.id, WHY_NOT);
+    await requests.override(asOfficer(), request.id, 'OVERTURN_APPROVAL', BECAUSE_POLICY);
 
     expect(
       (
@@ -3088,7 +3320,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
   it('and days cannot be taken for a request that was refused', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
-    await requests.approve(asTheirManager(), request.id);
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
     await requests.refuse(asOfficer(), request.id, WHY_NOT);
 
     await expect(
@@ -3240,41 +3472,66 @@ describe('leave that is agreed only once every stage has agreed', () => {
  * rather than about the ledger: the same dates can be asked for again straight away.
  */
 describe('the days a rejected request was holding', () => {
-  /* The first stage, which is where LMS 306 left it: the whole hold, at once, with the
-     balance reading exactly what it did before the request was made. */
-  it('come back in full when the first approver rejects it', async () => {
+  /**
+   * The whole hold, at once, with the balance reading exactly what it did before the request
+   * was made — and it comes back when the *last* desk says no. FR 43, FR 44. LMS 317, LMS 318.
+   *
+   * The first desk's no used to be the end of it. Since LMS 318 a manager's rejection carries
+   * the request on to HR with the days still held, and this is that walk followed to the
+   * point where it does end.
+   */
+  it('come back in full when the last approver rejects it', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
-    const refused = await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+    /* The manager's no moves no figure at all: the days go on being held while HR looks at
+       it, exactly as an approval partway along leaves them held. */
+    const atTheManager = await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+    expect(atTheManager.request.status).toBe('SUBMITTED');
+    expect(atTheManager.request.awaitingApprovalFrom).toBe('HR');
+    expect(atTheManager.entry).toBeNull();
+    expect(atTheManager.balance.pending).toBe(6);
+
+    const refused = await requests.refuse(asOfficer(), request.id, WHY_NOT);
 
     expect(refused.request.status).toBe('REFUSED');
-    expect(refused.entry.days).toBe(6);
+    expect(refused.entry?.days).toBe(6);
     expect(refused.balance.pending).toBe(0);
     expect(refused.balance.available).toBe(20);
   });
 
   /**
-   * And in full when a middle stage rejects it, which is the case a chain of three makes
-   * possible for the first time.
+   * And a rejection in the middle of a chain of three carries on rather than ending it. FR 44. LMS 318.
    *
-   * Two desks have approved. Nothing has been taken — a `DEDUCTION` is written by the last
-   * approval and by nothing else — so what comes back is the same six days, and the earlier
-   * approvals cost the employee nothing.
+   * The case a chain of three makes possible, and the one LMS 318 changed. HR's no on a
+   * manager-HR-CEO chain is a decision at a stage with a stage after it, so the request goes
+   * to the Chief Executive with its days still held — and the days come back only when they
+   * say no too. Nothing has been taken at any point: a `DEDUCTION` is written by the last
+   * *approval* and by nothing else.
    */
-  it('and in full when a stage in the middle of the chain rejects it', async () => {
+  it('and stay held when a stage in the middle of the chain rejects it', async () => {
     await rewriteTheAnnualChain('MANAGER', 'HR', 'CEO');
 
     const { request } = await requests.submit(asThemselves(), aRequest());
 
-    await requests.approve(asTheirManager(), request.id);
+    /* The manager turns it down too, so HR's own no agrees with them and is a plain
+       refusal rather than an override — which is the case this test is about. */
+    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
 
     const waiting = await requests.byId(asThemselves(), request.id);
     expect(waiting.awaitingApprovalFrom).toBe('HR');
 
-    const refused = await requests.refuse(asOfficer(), request.id, WHY_NOT);
+    const atHr = await requests.refuse(asOfficer(), request.id, WHY_NOT);
+
+    expect(atHr.request.status).toBe('SUBMITTED');
+    expect(atHr.request.awaitingApprovalFrom).toBe('CEO');
+    expect(atHr.entry).toBeNull();
+    expect(atHr.balance.pending).toBe(6);
+
+    const refused = await requests.refuse(asChiefExecutive(), request.id, WHY_NOT);
 
     expect(refused.request.status).toBe('REFUSED');
-    expect(refused.entry.days).toBe(6);
+    expect(refused.entry?.days).toBe(6);
     expect(refused.balance.pending).toBe(0);
     expect(refused.balance.available).toBe(20);
     expect(refused.balance.taken).toBe(0);
@@ -3285,11 +3542,11 @@ describe('the days a rejected request was holding', () => {
   it('and the movement says the request was refused', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
-    const refused = await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+    const refused = await refusedOutright(asTheirManager(), request.id);
 
-    expect(refused.entry.entryType).toBe('RELEASE');
-    expect(refused.entry.reason).toContain('6 days of Annual Leave given back');
-    expect(refused.entry.reason).toContain('the request was refused');
+    expect(refused.entry?.entryType).toBe('RELEASE');
+    expect(refused.entry?.reason).toContain('6 days of Annual Leave given back');
+    expect(refused.entry?.reason).toContain('the request was refused');
   });
 
   /**
@@ -3305,7 +3562,7 @@ describe('the days a rejected request was holding', () => {
     const first = await requests.submit(asThemselves(), aRequest());
 
     await requests.approve(asTheirManager(), first.request.id);
-    await requests.refuse(asOfficer(), first.request.id, WHY_NOT);
+    await requests.override(asOfficer(), first.request.id, 'OVERTURN_APPROVAL', BECAUSE_POLICY);
 
     const again = await requests.submit(asThemselves(), aRequest());
 
@@ -3321,8 +3578,9 @@ describe('the days a rejected request was holding', () => {
   it('and the days were given back exactly once', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
-    await requests.refuse(asTheirManager(), request.id, WHY_NOT);
-    await requests.refuse(asTheirManager(), request.id, WHY_NOT).catch(() => undefined);
+    await refusedOutright(asTheirManager(), request.id);
+    /* And a second attempt at the same ending, which meets `LeaveAlreadySettled`. */
+    await requests.refuse(asOfficer(), request.id, WHY_NOT).catch(() => undefined);
 
     expect(
       (

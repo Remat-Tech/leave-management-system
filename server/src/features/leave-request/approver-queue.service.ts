@@ -3,7 +3,12 @@
 import type { Actor } from '../../auth/actor.js';
 import { desksStaffedBy, leaveRequestPolicy } from './policy.js';
 import type { Guard } from '../../auth/policy.js';
-import { type ApproverQueue, balanceKeyOf, queueFor } from './approver-queue.js';
+import {
+  type ApproverQueue,
+  balanceKeyOf,
+  queueFor,
+  rejectionsToReview,
+} from './approver-queue.js';
 import type { Employee } from '../employee/employee.js';
 import type { LeaveRequest } from './leave-request.js';
 import type { LeavePeriod } from '../leave-calculator/leave-calculator.js';
@@ -38,6 +43,16 @@ export class ApproverQueueService {
     /** The year label the balance sentence names. */
     private readonly years: LeaveYearRepository,
   ) {}
+
+  /**
+   * The requests a line manager turned down that are now waiting on this person. FR 44, §7.2. LMS 318.
+   *
+   * The same queue, narrowed. Since a rejection routes rather than ends, these arrive at
+   * HR's desk on their own and each carries what the manager said and why.
+   */
+  async rejectionsFor(actor: Actor): Promise<ApproverQueue> {
+    return rejectionsToReview(await this.forApprover(actor));
+  }
 
   /** Everything waiting on this person, soonest to start first. LMS 404. */
   async forApprover(actor: Actor): Promise<ApproverQueue> {

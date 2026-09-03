@@ -8,6 +8,7 @@ import type { Attribution } from '../audit/audit.js';
 import {
   type DecidingAction,
   type LeaveDecision,
+  OverrideNeedsAJustification,
   RefusalNeedsAComment,
   type ValidatedDecision,
 } from './leave-decision.js';
@@ -16,8 +17,11 @@ import { recording } from '../../db/recording.js';
 /** Postgres `check_violation`. */
 const CHECK_VIOLATION = '23514';
 
-/** The CHECK that carries the story's first criterion into the schema. */
+/** The CHECK that carries LMS 315's first criterion into the schema. */
 const REFUSAL_SAYS_WHY = 'leave_request_refusal_says_why';
+
+/** The CHECK that carries FR 44's second criterion into the schema. LMS 318. */
+const OVERRIDE_SAYS_WHY = 'leave_request_override_says_why';
 
 type DecisionRow = Selectable<LeaveRequestDecisionTable>;
 
@@ -78,6 +82,11 @@ export class LeaveDecisionRepository {
         throw new RefusalNeedsAComment();
       }
 
+      /** FR 44. Two constraints rather than one widened, because they say different things. */
+      if (failure.code === CHECK_VIOLATION && failure.constraint === OVERRIDE_SAYS_WHY) {
+        throw new OverrideNeedsAJustification();
+      }
+
       throw error;
     }
   }
@@ -90,6 +99,8 @@ function rowFor(decision: ValidatedDecision): Insertable<LeaveRequestDecisionTab
     action: decision.action,
     on_behalf_of: decision.onBehalfOf,
     comment: decision.comment,
+    /** FR 44. */
+    overrides_decision_id: decision.overridesDecisionId,
   };
 }
 
@@ -100,6 +111,7 @@ function toDecision(row: DecisionRow): LeaveDecision {
     action: row.action as DecidingAction,
     onBehalfOf: row.on_behalf_of as ApproverRole,
     comment: row.comment,
+    overridesDecisionId: row.overrides_decision_id,
     decidedBy: row.decided_by,
     decidedByEmployeeId: row.decided_by_employee_id,
     decidedAt: row.decided_at,

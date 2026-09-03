@@ -2,18 +2,22 @@
  * What somebody is told when something happens to their leave, and in what words. FR 59, §7.1., LMS 329, LMS 306, LMS 315, LMS 316, LMS 323, FR 60, LMS 209.
  */
 
-import { type ApproverRole, deskInWords } from '../leave-type/approval-chain.js';
+import { type ApproverRole, deskInWords, possessively } from '../leave-type/approval-chain.js';
 import type { LeaveRequest } from '../leave-request/leave-request.js';
 import { type CalendarDate, formatDay } from '../../shared/time.js';
 
-/** The things somebody is told about. FR 59. */
+/** The things somebody is told about. FR 59, FR 44. */
 export const NOTICE_EVENTS = [
   'SUBMITTED',
   'STAGE_APPROVED',
+  /** A stage said no and the request went on to the next desk. FR 44, LMS 318. */
+  'STAGE_REFUSED',
   'APPROVED',
   'REFUSED',
   'WITHDRAWN',
   'CANCELLED',
+  /** The line manager, told their decision was overturned. FR 44, §7.2, LMS 318. */
+  'DECISION_OVERTURNED',
 ] as const;
 
 export type NoticeEvent = (typeof NOTICE_EVENTS)[number];
@@ -81,8 +85,10 @@ export class NoticeNotFound extends Error {
  */
 export interface WhatHappened {
   event: NoticeEvent;
-  /** Whose leave it is. The first name is what the message opens with. */
-  employee: { id: string; firstName: string };
+  /** Whose leave it is, and their name for a message written to somebody else. FR 44. */
+  employee: { id: string; firstName: string; name: string };
+  /** Who is being told, where that is not the person whose leave it is. FR 44, FR 60. */
+  recipient?: { id: string; firstName: string };
   /** The request **as it stands now**, which is where the desk and the status come from. */
   request: LeaveRequest;
   /** FR 27's problem again: a row carries a `leaveTypeId` and nobody recognises one. */
@@ -112,6 +118,8 @@ export interface WhatHappened {
    * came back.
    */
   availableAfter: number;
+  /** FR 44. Which decision was overturned, on the one event that is about that. LMS 318. */
+  overturned?: { desk: ApproverRole; said: 'APPROVE' | 'REFUSE' } | null;
 }
 
 /**
@@ -152,6 +160,9 @@ export interface WhatHappened {
  */
 export function noticeOf(happened: WhatHappened): NewNotice {
   const { event, employee, request, typeName, decidedBy, comment, availableAfter } = happened;
+
+  /** FR 44, FR 60. The person being told, who is the requester on every event but one. */
+  const reader = happened.recipient ?? employee;
 
   const period = periodInWords(request.from, request.to);
   const cost = `${inDays(request.days)} of ${typeName}, ${period}`;
@@ -198,6 +209,22 @@ export function noticeOf(happened: WhatHappened): NewNotice {
           ],
         };
 
+      /* FR 44, LMS 318. A stage said no and the request carried on to the next desk. The
+         days are still held and the leave is not over, which is exactly the thing somebody
+         reading "turned down" would otherwise get wrong. */
+      case 'STAGE_REFUSED':
+        return {
+          subject:
+            `${sentenceCase(decided)} turned down your ${typeName} — ` +
+            `it has gone to ${withWhom(request)}`,
+          paragraphs: [
+            `${sentenceCase(decided)} has turned down your request for ${cost}.`,
+            `That is not the end of it. Every stage decides, and it has gone on to ${withWhom(request)}, who will make the final call.`,
+            ...said,
+            `Your balance has not moved — the ${held} are still being held while it is decided. ${left}`,
+          ],
+        };
+
       case 'REFUSED':
         return {
           subject: `Your ${typeName} for ${period} was turned down`,
@@ -208,6 +235,23 @@ export function noticeOf(happened: WhatHappened): NewNotice {
             'Nothing is blocking those dates now, so if you still need the time off you can ask for it again — for the same days or for different ones.',
           ],
         };
+
+      /* FR 44, §7.2, LMS 318. The one message written to somebody other than the person
+         taking the leave: the line manager whose decision was reversed. It names the
+         justification in full, which is the whole of what they are owed. */
+      case 'DECISION_OVERTURNED': {
+        const theirs = happened.overturned?.said === 'APPROVE' ? 'approved' : 'turned down';
+        const now = request.status === 'APPROVED' ? 'approved' : 'turned down';
+
+        return {
+          subject: `${decided} overturned your decision on ${possessively(employee.name)} ${typeName}`,
+          paragraphs: [
+            `You ${theirs} ${possessively(employee.name)} request for ${cost}, and ${decided} has decided otherwise. The leave is ${now}.`,
+            ...said,
+            'This is a record of a decision, not a question. If you think it was made on the wrong facts, speak to HR — the reason above and your own are both on the request for good.',
+          ],
+        };
+      }
 
       case 'WITHDRAWN':
         return {
@@ -233,11 +277,12 @@ export function noticeOf(happened: WhatHappened): NewNotice {
   })();
 
   return validateNotice({
-    employeeId: employee.id,
+    /** FR 44, FR 60. The recipient rather than the subject; the two differ on one event. */
+    employeeId: reader.id,
     leaveRequestId: request.id,
     event,
     subject: message.subject,
-    body: [`Hello ${employee.firstName},`, ...message.paragraphs, SIGN_OFF].join('\n\n'),
+    body: [`Hello ${reader.firstName},`, ...message.paragraphs, SIGN_OFF].join('\n\n'),
   });
 }
 
@@ -310,6 +355,21 @@ export function approvalNews(request: LeaveRequest): NoticeEvent {
 }
 
 /**
+ * Which piece of news one desk's decision was. FR 44, LMS 318.
+ *
+ * Four answers from two facts: which way the desk went, and whether the request has
+ * anywhere left to go. Read off the committed row, so a stage that turned leave down
+ * without ending it says so rather than telling somebody their leave is over.
+ */
+export function decisionNews(request: LeaveRequest, saidYes: boolean): NoticeEvent {
+  if (saidYes) {
+    return approvalNews(request);
+  }
+
+  return request.status === 'REFUSED' ? 'REFUSED' : 'STAGE_REFUSED';
+}
+
+/**
  * Which piece of news an ending was.
  *
  * A total function over {@link ReleasingStatus} and nothing wider, so the three endings and
@@ -318,15 +378,8 @@ export function approvalNews(request: LeaveRequest): NoticeEvent {
  * than cast: the day an ending arrives whose news is not its status is the day a cast would
  * be silently wrong.
  */
-export function endingNews(status: 'WITHDRAWN' | 'CANCELLED' | 'REFUSED'): NoticeEvent {
-  switch (status) {
-    case 'WITHDRAWN':
-      return 'WITHDRAWN';
-    case 'CANCELLED':
-      return 'CANCELLED';
-    default:
-      return 'REFUSED';
-  }
+export function endingNews(status: 'WITHDRAWN' | 'CANCELLED'): NoticeEvent {
+  return status === 'WITHDRAWN' ? 'WITHDRAWN' : 'CANCELLED';
 }
 
 /**
