@@ -19,6 +19,7 @@ import {
   whatWouldRouteIt,
 } from './routing.js';
 import type { DecidingAction } from './leave-decision.js';
+import type { GrantingAction, WithdrawalAction } from './withdrawal.js';
 import type { DayCount, FreeDay, LeavePeriod } from '../leave-calculator/leave-calculator.js';
 import {
   approvalChainInWords,
@@ -107,16 +108,13 @@ export class LeaveAlreadySettled extends Error {
  * approved and its days have been given back, so there is nothing left to give back" is
  * wrong twice over: the days are not back, they are taken, and the request has not ended.
  *
- * The overwhelmingly likely reader is somebody looking at leave that has been agreed and
- * reaching for withdraw, which is a reasonable thing to want and is FR 26's cancellation of
- * approved leave — a different movement, against the `DEDUCTION` rather than the
- * `RESERVATION`, and not built. So the message says what state the request is in, what can
- * still be done to it, and where to go for the thing that cannot.
+ * The likely reader is somebody looking at leave that has been agreed and reaching for
+ * withdraw, which is FR 47 — a different movement and a different act. So the message says
+ * what state the request is in and what can still be done to it.
  *
  * **What can still be done is read off {@link transitionsFrom} rather than written out**,
- * for the reason every list in this file is read rather than restated: the day a row out of
- * `APPROVED` is added, this sentence starts offering it without anybody remembering to come
- * back here.
+ * and LMS 324 collected on that: the four rows out of `APPROVED` arrived and this sentence
+ * started offering them by name. The fallback branch stays for the next state with none.
  */
 export class LeaveCannotBeMoved extends Error {
   /** FR 26. What a client branches on, as `ALREADY_SETTLED` is. */
@@ -326,6 +324,16 @@ export const REQUEST_ACTIONS = [
    * act the alert asks HR for once the desk that came up empty has somebody at it.
    */
   'ROUTE',
+  /**
+   * The four that take agreed leave off the books. FR 47, LMS 324.
+   *
+   * One conversation with four turns. `ASK_TO_WITHDRAW` moves nothing; which of the two
+   * grants answers it is {@link grantingAction}. See ./withdrawal.ts.
+   */
+  'ASK_TO_WITHDRAW',
+  'WITHDRAW_APPROVED',
+  'AMEND',
+  'REFUSE_WITHDRAWAL',
 ] as const;
 
 export type RequestAction = (typeof REQUEST_ACTIONS)[number];
@@ -340,6 +348,15 @@ export function actionInWords(action: RequestAction): string {
     /** FR 48b. */
     case 'ROUTE':
       return 'send it to an approver';
+    /** FR 47, LMS 324. */
+    case 'ASK_TO_WITHDRAW':
+      return 'ask for it to be taken off the books';
+    case 'WITHDRAW_APPROVED':
+      return 'take it off the books';
+    case 'AMEND':
+      return 'amend it to the days actually taken';
+    case 'REFUSE_WITHDRAWAL':
+      return 'turn down the ask to take it off the books';
     default:
       return action.toLowerCase();
   }
@@ -465,15 +482,11 @@ export interface ApprovalOutcome {
  * absence of a row is where that is written. `refuse_an_impossible_transition()` holds
  * the same shape where no service can reach.
  *
- * **No row out of `APPROVED` either, and that one is a boundary rather than a rule.** LMS
- * 314 gets a request as far as leave that has been agreed and stops there. Taking agreed
- * leave off the books afterwards is a real thing FR 26 asks for, and it is none of the
- * three verbs here: by then the days are `taken` rather than `pending`, so giving them back
- * is a movement against a `DEDUCTION` rather than against a `RESERVATION`, and
- * `daysToRelease` would find nothing held to release. The story that offers it brings that
- * movement and a row here. Until it does, {@link LeaveCannotBeMoved} is what somebody
- * reaching for withdraw on approved leave is told — which is why that refusal had to exist
- * the moment a live state stopped answering every verb.
+ * **Four rows out of `APPROVED`, and none of them is one of the three verbs above.** LMS
+ * 314 left this state empty and said the story filling it would have to bring a movement
+ * against the `DEDUCTION`. LMS 324 is that story, and it brings four rows rather than one
+ * because the person asks and HR answers. FR 47. `WITHDRAW`, `REFUSE` and `CANCEL` are
+ * still absent and still meet {@link LeaveCannotBeMoved}.
  *
  * **One row whose `to` is live, and whose destination the table alone cannot give.**
  * `APPROVE` out of `SUBMITTED` lands in `APPROVED` — the first destination here that does
@@ -545,6 +558,29 @@ export const TRANSITIONS: readonly Transition[] = [
   },
   { from: 'UNROUTABLE', action: 'CANCEL', to: 'CANCELLED', by: ['LEAVE_ADMINISTRATION'] },
   { from: 'UNROUTABLE', action: 'ROUTE', to: 'SUBMITTED', by: ['LEAVE_ADMINISTRATION'] },
+
+  /* Taking agreed leave off the books. FR 47, §8.2. LMS 324.
+
+     One row the person may make and three that answer it. `ASK_TO_WITHDRAW` is
+     `THE_REQUESTER` alone, where the `WITHDRAW` rows admit HR beside them: HR asking on
+     somebody's behalf and then granting their own ask would put one desk on both sides.
+
+     `to` is `APPROVED` on three of the four. Only `WITHDRAW_APPROVED` ends the request, and
+     its days come back out of `taken` rather than out of `pending`. */
+  { from: 'APPROVED', action: 'ASK_TO_WITHDRAW', to: 'APPROVED', by: ['THE_REQUESTER'] },
+  {
+    from: 'APPROVED',
+    action: 'WITHDRAW_APPROVED',
+    to: 'WITHDRAWN',
+    by: ['LEAVE_ADMINISTRATION'],
+  },
+  { from: 'APPROVED', action: 'AMEND', to: 'APPROVED', by: ['LEAVE_ADMINISTRATION'] },
+  {
+    from: 'APPROVED',
+    action: 'REFUSE_WITHDRAWAL',
+    to: 'APPROVED',
+    by: ['LEAVE_ADMINISTRATION'],
+  },
 ];
 
 /**
@@ -660,6 +696,95 @@ export function settlementTo(request: LeaveRequest, action: ReleasingAction): Re
   }
 
   return transition.to;
+}
+
+/* ------------------------------------------- taking agreed leave off the books, FR 47 */
+
+/**
+ * Where an act on an approved request's withdrawal leaves it. FR 47, §6. LMS 324.
+ *
+ * The counterpart of {@link settlementTo}, reading its destination off {@link TRANSITIONS}
+ * for the same reason. Three of the four verbs land back on `APPROVED`.
+ */
+export function withdrawalTo(request: LeaveRequest, action: WithdrawalAction): RequestStatus {
+  const transition = transitionFor(request.status, action);
+
+  if (transition === undefined) {
+    throw refuseTheMove(request, action);
+  }
+
+  return transition.to;
+}
+
+/**
+ * Which of the two grants an ask gets: the whole of it back, or what is left. FR 47. LMS 324.
+ *
+ * The calendar's answer and not HR's, which is the difference between FR 47's second
+ * criterion and its third. Compared on the first day, not the last: a request that started
+ * yesterday has started, and the rest of it is {@link whatIsLeftOf}.
+ */
+export function grantingAction(request: LeaveRequest, today: CalendarDate): GrantingAction {
+  return request.from > today ? 'WITHDRAW_APPROVED' : 'AMEND';
+}
+
+/**
+ * The part of an approved period that has not been taken yet, or null where none has. FR 47.
+ *
+ * Tomorrow to the last day. Today is on the spent side: the person is on leave today. What
+ * the period costs is `LeaveCalculatorService.count`'s, on the request's own basis. FR 11.
+ */
+export function whatIsLeftOf(request: LeaveRequest, today: CalendarDate): LeavePeriod | null {
+  const resumes = dayAfter(today);
+
+  if (resumes > request.to) {
+    return null;
+  }
+
+  return { from: resumes > request.from ? resumes : request.from, to: request.to };
+}
+
+/**
+ * Agreed leave with nothing left to give back. FR 47, NFR USA 03. LMS 324.
+ *
+ * Leave that is already over, or whose remaining days cost nothing. A refusal rather than a
+ * movement of nought days, which {@link LeaveCountsNoDays} declines for the same reason.
+ */
+export class NothingLeftToGiveBack extends Error {
+  /** FR 47. What a client branches on. */
+  readonly code = 'NOTHING_LEFT_TO_GIVE_BACK';
+  readonly leaveRequestId: string;
+
+  constructor(request: LeaveRequest, typeName: string) {
+    super(
+      `This ${typeName} ran from ${formatDay(request.from)} to ${formatDay(request.to)} and ` +
+        `there is none of it left to give back — the days were taken. Leave that has ` +
+        `already happened is on the record because it happened, and days somebody was ` +
+        `absent for are not days a balance can have back. If the record itself is wrong, ` +
+        `that is an adjustment with a reason on it. FR 27, FR 47.`,
+    );
+    this.name = 'NothingLeftToGiveBack';
+    this.leaveRequestId = request.id;
+  }
+}
+
+/**
+ * What the `RECALCULATION` says it is for. FR 27, FR 47. LMS 324.
+ *
+ * The fourth of the family {@link reasonForReservation} opened. It says which of the two
+ * grants it was, because the dates are still on the record either way.
+ */
+export function reasonForGivingBackTakenDays(
+  typeName: string,
+  period: LeavePeriod,
+  days: number,
+  action: GrantingAction,
+): string {
+  const gave = `${days} ${days === 1 ? 'day' : 'days'} of ${typeName} given back`;
+
+  return action === 'WITHDRAW_APPROVED'
+    ? `${gave}, ${period.from} to ${period.to}, the approved leave was taken off the books`
+    : `${gave}, ${period.from} to ${period.to}, the leave had started and was amended to ` +
+        `the days actually taken`;
 }
 
 /** Everything a decision's destination is worked out from. FR 38a, FR 44, FR 48b. */

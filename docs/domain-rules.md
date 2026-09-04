@@ -3467,3 +3467,76 @@ the middle would refuse the one approver §4.3.1 names — the same seam the app
 about balances.
 
 ---
+
+### Withdrawing leave that has been approved
+
+**Agreed leave comes off the books because the person asks and HR answers.** FR 47, LMS 324.
+Two acts, not one, and neither half alone is enough: by then the days are `taken` rather than
+`pending`, the dates are on a team calendar, and somebody has been told the leave is theirs.
+
+`leave_request_withdrawal` holds both halves — one row per act, append only, stamped with its
+writer — for the reason [`leave_request_decision`](#approving-or-rejecting-at-a-stage) is a
+table. A status would be a fourth live state whose only content is that a conversation is
+open, and a `withdrawal_requested_at` column would lose HR's answer.
+
+**The ask is the employee's alone**, which is the one place a withdrawal is *narrower* than
+[`withdraw()`](#cancelling-a-request-nobody-has-approved) rather than wider: HR may take back a
+request nobody has approved on somebody's behalf, and may not ask on their behalf here. One
+desk on both sides of the conversation is what the answer exists to prevent. And nobody
+answers their own ask, which is [FR 48](#nobody-approves-their-own-request) reaching the door
+LMS 319 had not yet got to.
+
+**What HR's answer does is the calendar's decision, not theirs.**
+
+| | Leave has not started | Leave has started |
+|---|---|---|
+| the act | `WITHDRAW_APPROVED` | `AMEND` |
+| the request | ends, `WITHDRAWN` | stands, `APPROVED` |
+| the ledger | a `RECALCULATION` of everything it took | a `RECALCULATION` of what is left |
+| a reason | optional | **required** |
+
+`grantingAction` is where the two are told apart and HR passes no verb. Handing the choice to
+the caller would make "restores the days if leave has not started" something somebody
+remembers rather than something that is true, and the day a fortnight was fully withdrawn
+halfway through it the balance would be two working weeks better off than the absence.
+
+**The days come back as a `RECALCULATION`** — the entry type
+[immutable-leave-ledger](#the-balance-ledger) listed with no writer, whose sign adds and whose
+bucket is `taken`. It is the movement LMS 314 said this story would need: against the
+`DEDUCTION` rather than against the `RESERVATION`, because approval already spent the hold.
+`daysToRelease` would find nothing there.
+
+**A request that has started is never repriced.** `leave_request_says_what_it_said` is
+untouched: the leave happened, in part, so the dates and the day count stand and the
+difference comes back as a compensating movement with HR's sentence on it. That is the escape
+hatch that trigger's own hint has always named. What is left is *counted* rather than
+subtracted — a fortnight abandoned after three days leaves working days, not calendar ones —
+against the basis the request was priced under. Leave that is over has nothing left, and
+`NothingLeftToGiveBack` says so rather than posting a movement of no days.
+
+**One ask is open at a time, and asking again after an answer is not that.** HR turned it down
+in March because cover was arranged; by April the leave is genuinely not wanted, and the table
+holds both conversations. `leave_request_is_asked_to_withdraw_once_at_a_time` is a constraint
+trigger rather than a unique index, because "at most one row with no answer" is a statement
+about the absence of another row.
+
+**Three rules arrive in the schema and one is widened.**
+
+| | Covers |
+|---|---|
+| `leave_request_moves_as_the_table_says` | `APPROVED` may now become `WITHDRAWN`, and nothing else — not `CANCELLED`, which is HR's adjustment, and not `REFUSED`, which is FR 44's override and happens earlier |
+| `leave_request_gives_its_days_back` | widened: an ending gives back everything it was holding, as a `RELEASE` from a live state and as a `RECALCULATION` from `APPROVED` |
+| `leave_request_withdrawn_from_approved_was_asked_for` | agreed leave off the books with nobody's ask and nobody's answer behind it |
+| `leave_request_gives_back_no_more_than_it_took` | a request credited more days than it ever spent — which covers FR 25's recalculation too, when it arrives |
+
+**Four notices, because none of the existing ones is true of this.** `WITHDRAWAL_ASKED` goes
+to HR, who has to answer it. `WITHDRAWN` says "nobody has to approve anything for that to take
+effect", which is the opposite of `WITHDRAWAL_GRANTED`; `LEAVE_AMENDED` says the half nobody
+expects, that some of the days are spent; `WITHDRAWAL_REFUSED` says the leave still stands.
+
+**What is deliberately not here.** Nothing changes a request's dates — a shortened period is
+still a new request. FR 25's holiday falling inside approved leave writes the same entry type
+and is a different story; what this one leaves behind for it is the entry, the door and the
+rule that neither may give back more than was taken.
+
+---

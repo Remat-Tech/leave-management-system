@@ -76,7 +76,7 @@ function happened(overrides: Partial<WhatHappened> = {}): WhatHappened {
 describe('the events somebody is told about', () => {
   /* FR 59's list, and LMS 318 brought the two the notification migration said were coming.
      See the CHECK in that migration, which says the same thing. */
-  it('are the nine FR 59 names that this system can actually produce', () => {
+  it('are the thirteen FR 59 names that this system can actually produce', () => {
     expect(NOTICE_EVENTS).toEqual([
       'SUBMITTED',
       'STAGE_APPROVED',
@@ -88,6 +88,11 @@ describe('the events somebody is told about', () => {
       'DECISION_OVERTURNED',
       /** FR 48b, LMS 320. The alert, told to the requester and to whoever can unstick it. */
       'UNROUTABLE',
+      /** FR 47, LMS 324. The ask goes to HR; the three answers go back to the person. */
+      'WITHDRAWAL_ASKED',
+      'WITHDRAWAL_GRANTED',
+      'LEAVE_AMENDED',
+      'WITHDRAWAL_REFUSED',
     ]);
   });
 
@@ -111,10 +116,18 @@ describe('the events somebody is told about', () => {
     );
   });
 
-  it('and three of them mean the days are back', () => {
+  /* FR 47, LMS 324. `LEAVE_AMENDED` is the one where days came back and the leave still
+     went ahead, which is why the list is named for what the balance did. */
+  it('and five of them mean the days are back', () => {
     const back = NOTICE_EVENTS.filter(givesTheDaysBack);
 
-    expect(back).toEqual(['REFUSED', 'WITHDRAWN', 'CANCELLED']);
+    expect(back).toEqual([
+      'REFUSED',
+      'WITHDRAWN',
+      'CANCELLED',
+      'WITHDRAWAL_GRANTED',
+      'LEAVE_AMENDED',
+    ]);
   });
 
   /* Nothing composes an empty message, whichever branch it took. */
@@ -174,6 +187,13 @@ function requestFor(event: NoticeEvent): Partial<LeaveRequest> {
       return { status: 'APPROVED', awaitingApprovalFrom: null };
     case 'REFUSED':
       return { status: 'REFUSED', awaitingApprovalFrom: null };
+    /** FR 47, LMS 324. The ask and the two answers that leave the leave standing. */
+    case 'WITHDRAWAL_ASKED':
+    case 'LEAVE_AMENDED':
+    case 'WITHDRAWAL_REFUSED':
+      return { status: 'APPROVED', awaitingApprovalFrom: null };
+    case 'WITHDRAWAL_GRANTED':
+      return { status: 'WITHDRAWN', awaitingApprovalFrom: null };
     case 'STAGE_APPROVED':
     case 'STAGE_REFUSED':
       return { awaitingApprovalFrom: 'HR' };
@@ -184,7 +204,15 @@ function requestFor(event: NoticeEvent): Partial<LeaveRequest> {
 
 /** The events whose message quotes a reason. FR 39, FR 44. */
 function saysWhy(event: NoticeEvent): boolean {
-  return ['REFUSED', 'STAGE_REFUSED', 'DECISION_OVERTURNED'].includes(event);
+  return [
+    'REFUSED',
+    'STAGE_REFUSED',
+    'DECISION_OVERTURNED',
+    /** FR 47, LMS 324. */
+    'WITHDRAWAL_ASKED',
+    'LEAVE_AMENDED',
+    'WITHDRAWAL_REFUSED',
+  ].includes(event);
 }
 
 /* ------------------------------------------- the sentence the whole story is about */

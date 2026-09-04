@@ -4,6 +4,7 @@ import {
   decisionTo,
   assertItCostsSomething,
   settlementTo,
+  transitionFor,
   transitionsFrom,
   assertTheDaysAreThere,
   blocksTheCalendar,
@@ -1206,21 +1207,24 @@ describe('where this story stops', () => {
   });
 
   /**
-   * And there is nothing after `APPROVED`, which is the boundary this story stopped at.
+   * And what follows `APPROVED` is FR 47's conversation and nothing else. LMS 324.
    *
-   * Taking agreed leave off the books is FR 26 and is a real thing HR does. It is not any of
-   * the three endings, because by then the days are `taken` rather than `pending`: giving
-   * them back is a movement against the `DEDUCTION` and `daysToRelease` would find no hold
-   * to work on. The story that offers it brings that movement, a row in `TRANSITIONS` and a
-   * destination in `refuse_an_impossible_transition()`.
-   *
-   * Written as an assertion rather than a comment because the tempting thing, on the
-   * afternoon somebody starts that story, is to add the row here and reach the movement
-   * later — which would post a `RELEASE` against a hold that is not there and credit
-   * somebody for leave they have taken.
+   * LMS 314 left this state with no rows at all and said what the story filling it would have
+   * to bring: a movement against the `DEDUCTION`, because `daysToRelease` would find no hold
+   * to work on. That is `RECALCULATION`, and none of the three endings' verbs is here — the
+   * person asks, HR answers, and only one of the three answers ends the request.
    */
-  it('and nothing moves a request on from there, which is the next story’s', () => {
-    expect(transitionsFrom('APPROVED')).toEqual([]);
+  it('and the only way on from there is asking HR to take it off the books', () => {
+    expect(transitionsFrom('APPROVED').map((transition) => transition.action)).toEqual([
+      'ASK_TO_WITHDRAW',
+      'WITHDRAW_APPROVED',
+      'AMEND',
+      'REFUSE_WITHDRAWAL',
+    ]);
+
+    for (const verb of ['WITHDRAW', 'CANCEL', 'REFUSE', 'APPROVE', 'ROUTE'] as const) {
+      expect(transitionFor('APPROVED', verb)).toBeUndefined();
+    }
   });
 
   /**

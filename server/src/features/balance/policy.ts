@@ -196,6 +196,28 @@ export const ledgerPolicy = {
         );
   },
 
+  /**
+   * Putting back days that were already taken, when agreed leave comes off the books. FR 47, §10, LMS 324.
+   *
+   * Narrower than {@link ledgerPolicy.release}: neither the employee nor their line manager
+   * may reverse a `DEDUCTION`. Both HR desks, unlike {@link ledgerPolicy.adjust} — the figure
+   * is the calendar's rather than somebody's judgement.
+   */
+  giveBackTakenDays(actor: Actor, owner: BalanceOwner): Decision {
+    return holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)
+      ? about.allow(actor, 'giveBackTakenDays', owner.employeeId)
+      : about.refuseOpenly(
+          actor,
+          'giveBackTakenDays',
+          owner.employeeId,
+          'holds no role that maintains leave for the company',
+          'Leave that has been agreed has already come out of a balance, and putting those ' +
+            'days back is HR’s answer to somebody asking for it — not the person’s own, ' +
+            'and not their line manager’s. Ask for it to be taken off the books, and HR ' +
+            'will answer. FR 47.',
+        );
+  },
+
   /** Giving held days back, when a request is withdrawn, refused or cancelled. */
   release(actor: Actor, owner: BalanceOwner): Decision {
     if (

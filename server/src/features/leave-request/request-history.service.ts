@@ -14,6 +14,7 @@ import type { EmployeeRepository } from '../employee/employee.db.js';
 import type { LeaveDecisionRepository } from './leave-decision.db.js';
 import type { LeaveRequestRepository } from './leave-request.db.js';
 import type { LeaveRoutingRepository } from './routing.db.js';
+import type { WithdrawalRepository } from './withdrawal.db.js';
 import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
 
@@ -40,6 +41,8 @@ export class RequestHistoryService {
     private readonly years: LeaveYearRepository,
     /** FR 48b. The stages each request's routing skipped. LMS 320. */
     private readonly routing: LeaveRoutingRepository,
+    /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
+    private readonly withdrawals: WithdrawalRepository,
   ) {}
 
   /** One person's requests, newest first, each with the account of how it was decided. LMS 402. */
@@ -73,6 +76,8 @@ export class RequestHistoryService {
       deciders: await this.employees.findAllById(whoDecidedThem(decisions)),
       /** FR 48b. A skipped stage is not still owed an answer. LMS 320. */
       skipped: await this.routing.forRequests(shown.map((request) => request.id)),
+      /** FR 47, LMS 324. */
+      withdrawals: await this.withdrawals.forRequests(shown.map((request) => request.id)),
     });
   }
 

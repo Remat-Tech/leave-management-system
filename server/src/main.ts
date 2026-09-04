@@ -9,6 +9,7 @@ import { EmployeeRepository } from './features/employee/employee.db.js';
 import { HolidayRepository } from './features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from './features/leave-request/leave-decision.db.js';
 import { LeaveRoutingRepository } from './features/leave-request/routing.db.js';
+import { WithdrawalRepository } from './features/leave-request/withdrawal.db.js';
 import { LeaveRequestRepository } from './features/leave-request/leave-request.db.js';
 import { LeaveTypeRepository } from './features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from './features/leave-year/leave-year.db.js';
@@ -54,6 +55,8 @@ const requests = new LeaveRequestRepository(db);
 const decisions = new LeaveDecisionRepository(db);
 /** FR 48b, LMS 320. */
 const routing = new LeaveRoutingRepository(db);
+/** FR 47, LMS 324. */
+const withdrawals = new WithdrawalRepository(db);
 const balances = new BalanceRepository(db);
 /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
 const organisation = new OrganisationRepository(db);
@@ -78,6 +81,7 @@ const leaveRequests = new LeaveRequestService(
   requests,
   decisions,
   routing,
+  withdrawals,
   roles,
   organisation,
   new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -95,6 +99,7 @@ const app = buildApp({
   leaveRequests,
   decisions,
   routing,
+  withdrawals,
   accounts,
   roles,
   organisation,

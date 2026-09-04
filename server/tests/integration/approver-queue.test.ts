@@ -14,6 +14,7 @@ import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
 import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
 import { LeaveRoutingRepository } from '../../src/features/leave-request/routing.db.js';
+import { WithdrawalRepository } from '../../src/features/leave-request/withdrawal.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
 import { NotificationRepository } from '../../src/features/notification/notification.db.js';
@@ -91,6 +92,8 @@ beforeAll(async () => {
     decisions,
     /** FR 48b, LMS 320. */
     new LeaveRoutingRepository(db),
+    /** FR 47, LMS 324. */
+    new WithdrawalRepository(db),
     new RoleRepository(db),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -111,6 +114,8 @@ beforeAll(async () => {
     decisions,
     /** FR 48b, LMS 320. */
     routing: new LeaveRoutingRepository(db),
+    /** FR 47, LMS 324. */
+    withdrawals: new WithdrawalRepository(db),
     accounts,
     roles,
     organisation: new OrganisationRepository(db),
@@ -618,12 +623,22 @@ function aBackdatedRequest(): Promise<string> {
   });
 }
 
-/** FR 17. Annual leave expects seven days' notice; this gives one. */
+/**
+ * FR 17. Annual leave expects seven days' notice; this gives one.
+ *
+ * Five days rather than two, and the width is the fix rather than the point. Annual leave
+ * counts working days, so a two day period is a Saturday and a Sunday once a week: run on a
+ * Friday, this cost nothing at all and `LeaveCountsNoDays` refused it before the flag under
+ * test could be raised. Five consecutive days hold at least three working ones in every
+ * alignment, which no run of gazetted holidays can empty.
+ *
+ * What makes it short notice is the *start*, which is still tomorrow.
+ */
 function aRequestStartingTomorrow(): Promise<string> {
   return aRequest({
     employeeId: people.officer,
     from: daysFromToday(1),
-    to: daysFromToday(2),
+    to: daysFromToday(5),
   });
 }
 
@@ -691,7 +706,7 @@ async function typeIdOf(code: string): Promise<string> {
 function emptyTheLeaveTables(): Promise<unknown> {
   return admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'leave_request_decision, leave_request_routing, leave_request, leave_balance',
+      'leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request, leave_balance',
   );
 }
 

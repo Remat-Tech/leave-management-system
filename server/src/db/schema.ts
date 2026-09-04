@@ -323,6 +323,21 @@ export interface LeaveRequestDecisionTable {
   decided_at: Timestamp;
 }
 
+/** An ask for approved leave to be taken off the books, or HR's answer to one. FR 47, LMS 324. */
+export interface LeaveRequestWithdrawalTable {
+  id: Generated<string>;
+  leave_request_id: ColumnType<string, string, never>;
+  /** Which of the four acts this row is. */
+  action: ColumnType<string, string, never>;
+  /** FR 47. The employee's account, or HR's; absent only on an agreed withdrawal. */
+  reason: ColumnType<string | null, string | null, never>;
+  /** The ask this answers, and null on the ask itself. */
+  answers_id: ColumnType<string | null, string | null, never>;
+  recorded_by: ColumnType<string, never, never>;
+  recorded_by_employee_id: ColumnType<string | null, never, never>;
+  recorded_at: Timestamp;
+}
+
 /** One stage of a request's chain that another desk answered. FR 48b, §8.6a, LMS 320. */
 export interface LeaveRequestRoutingTable {
   id: Generated<string>;
@@ -377,6 +392,7 @@ export interface Database {
   leave_request: LeaveRequestTable;
   leave_request_decision: LeaveRequestDecisionTable;
   leave_request_routing: LeaveRequestRoutingTable;
+  leave_request_withdrawal: LeaveRequestWithdrawalTable;
   leave_type: LeaveTypeTable;
   leave_type_approval_step: LeaveTypeApprovalStepTable;
   leave_year: LeaveYearTable;

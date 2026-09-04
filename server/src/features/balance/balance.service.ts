@@ -11,6 +11,7 @@ import {
   type BalanceKey,
   daysToCarry,
   daysToCommit,
+  daysToGiveBackFromTaken,
   daysToGrant,
   daysToLapse,
   daysToRelease,
@@ -38,8 +39,18 @@ import {
   routingTo,
   settlementTo,
   type ValidatedLeaveRequest,
+  withdrawalTo,
 } from '../leave-request/leave-request.js';
 import type { DesksAvailable } from '../leave-request/routing.js';
+import {
+  AlreadyAskedToWithdraw,
+  isAGrant,
+  NothingToAnswer,
+  theOpenAsk,
+  validateWithdrawal,
+  type Withdrawal,
+  type WithdrawalAnswer,
+} from '../leave-request/withdrawal.js';
 import { LeaveTypeNotFound } from '../leave-type/leave-type.js';
 import { LeaveYearNotFound } from '../leave-year/leave-year.js';
 import type { CalendarDate } from '../../shared/time.js';
@@ -150,6 +161,39 @@ export interface RequestToReroute {
 /** The request, the movement it caused, and the balance it left. */
 export interface LeaveRequested extends BalanceMoved {
   request: LeaveRequest;
+}
+
+/** What `LeaveRequestService` supplies to ask for agreed leave to be withdrawn. FR 47, LMS 324. */
+export interface WithdrawalToAsk {
+  request: LeaveRequest;
+  /** FR 47. The employee's account, which is what HR will answer. */
+  reason: string;
+}
+
+/** What it supplies to answer one. FR 47, LMS 324. */
+export interface WithdrawalToAnswer {
+  request: LeaveRequest;
+  /** Which answer: the whole of it back, what is left of it, or none of it. */
+  action: WithdrawalAnswer;
+  /** FR 47. Mandatory on an amendment and on a refusal; optional on a full withdrawal. */
+  reason: string | null;
+  /** FR 47. How many days come back, worked out from the calendar rather than chosen. */
+  days: number;
+  /** FR 27. The sentence on the `RECALCULATION`. */
+  reasonForGivingBack: string;
+}
+
+/** An ask on the record, and the balance it did not move. FR 47, LMS 324. */
+export interface WithdrawalAsked {
+  request: LeaveRequest;
+  withdrawal: Withdrawal;
+  balance: BalanceWithAvailable;
+}
+
+/** HR's answer, what it gave back, and where that left things. FR 47, LMS 324. */
+export interface WithdrawalAnswered extends WithdrawalAsked {
+  /** The `RECALCULATION`, and null where HR turned the ask down. */
+  entry: LedgerEntry | null;
 }
 
 /** A request put back into its chain, and the balance it did not move. FR 48b, LMS 320. */
@@ -614,6 +658,145 @@ export class BalanceService {
         /* Nothing moved. The RESERVATION written at submission has held the days
            throughout, including while the request was stuck. */
         entry: null,
+        balance: withAvailable(await repositories.balances.forOne(key)),
+      };
+    });
+  }
+
+  /**
+   * Records somebody asking for their agreed leave to be taken off the books. FR 47, §8.2. LMS 324.
+   *
+   * The fifth door, and the second that moves no days. It takes the lock anyway, for the
+   * reason {@link BalanceService.rerouteRequest} does: the status and the open ask are
+   * re-read inside it, which is what makes "one ask at a time" true rather than likely.
+   */
+  async askToWithdraw(actor: Actor, ask: WithdrawalToAsk): Promise<WithdrawalAsked> {
+    const { request, reason } = ask;
+    const owner = await this.ownerOf(request.employeeId);
+
+    this.guard.enforce(leaveRequestPolicy.askToWithdraw(actor, owner));
+
+    const key = keyOf(request);
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      await repositories.balances.holdStill(key);
+
+      const current = await repositories.requests.findById(request.id);
+
+      /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
+      if (current === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      /* Asked for its refusal rather than its answer: agreed leave is the only state with a
+         row for this verb. */
+      withdrawalTo(current, 'ASK_TO_WITHDRAW');
+
+      const asked = await repositories.withdrawals.forRequest(current.id);
+      const open = theOpenAsk(asked);
+
+      if (open !== undefined) {
+        throw new AlreadyAskedToWithdraw(current.id, open.recordedAt);
+      }
+
+      return {
+        request: current,
+        withdrawal: await repositories.withdrawals.record(
+          actor,
+          validateWithdrawal({
+            leaveRequestId: current.id,
+            action: 'ASK_TO_WITHDRAW',
+            reason,
+            answersId: null,
+          }),
+        ),
+        /* Nothing moved: the DEDUCTION written at approval still stands. */
+        balance: withAvailable(await repositories.balances.forOne(key)),
+      };
+    });
+  }
+
+  /**
+   * Answers one, putting back the days it gives back. FR 26, FR 27, FR 47, §8.2. LMS 324.
+   *
+   * The sixth door, and the only writer of a `RECALCULATION` — the movement LMS 314 said
+   * this story would need, against the `DEDUCTION` rather than the `RESERVATION`. A full
+   * withdrawal ends the request and gives back everything; an amendment leaves it `APPROVED`
+   * and gives back what was not taken; a refusal moves nothing and is still written down.
+   *
+   * The status, the open ask and the destination are re-read inside the lock, so two HR
+   * officers answering one ask are ordered and the second meets {@link NothingToAnswer}.
+   * `daysToGiveBackFromTaken` refuses to put back more than the balance ever spent.
+   */
+  async answerAWithdrawal(actor: Actor, answer: WithdrawalToAnswer): Promise<WithdrawalAnswered> {
+    const { request, action, reason, days, reasonForGivingBack } = answer;
+    const owner = await this.ownerOf(request.employeeId);
+
+    /** FR 48, §8.6a. Nobody answers their own ask. LMS 319. */
+    this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, action));
+    this.guard.enforce(leaveRequestPolicy.answerAWithdrawal(actor, action, owner));
+    this.guard.enforce(ledgerPolicy.giveBackTakenDays(actor, owner));
+
+    const key = keyOf(request);
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      const held = await repositories.balances.holdStill(key);
+
+      const current = await repositories.requests.findById(request.id);
+
+      /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
+      if (current === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      const to = withdrawalTo(current, action);
+
+      const open = theOpenAsk(await repositories.withdrawals.forRequest(current.id));
+
+      if (open === undefined) {
+        throw new NothingToAnswer(current.id);
+      }
+
+      /* The answer first: `leave_request_withdrawn_from_approved_was_asked_for` reads it at
+         COMMIT. */
+      const withdrawal = await repositories.withdrawals.record(
+        actor,
+        validateWithdrawal({
+          leaveRequestId: current.id,
+          action,
+          reason,
+          answersId: open.id,
+        }),
+      );
+
+      /* Only one of the three answers moves the request. */
+      const written =
+        to === current.status
+          ? current
+          : await repositories.requests.moveTo(actor, current.id, to, null);
+
+      /* Unreachable for the same reason, and one statement later. */
+      if (written === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      return {
+        request: written,
+        withdrawal,
+        entry: !isAGrant(action)
+          ? null
+          : await repositories.entries.post(
+              actor,
+              validateNewLedgerEntry({
+                ...key,
+                entryType: 'RECALCULATION',
+                /* Positive. A RECALCULATION moves one bucket: the days come out of
+                   `taken`, so available goes up by exactly what came back. */
+                days: daysToGiveBackFromTaken(held, days),
+                reason: reasonForGivingBack,
+                leaveRequestId: current.id,
+              }),
+            ),
         balance: withAvailable(await repositories.balances.forOne(key)),
       };
     });
