@@ -22,6 +22,11 @@ import type { LeaveYearRepository } from '../features/leave-year/leave-year.db.j
 import type { OrganisationRepository } from '../features/organisation/organisation.db.js';
 import type { RoleRepository } from '../features/role/role.db.js';
 import type { SignInAccountRepository } from '../features/sign-in/sign-in-account.db.js';
+import type { AttachmentRepository } from '../features/leave-request/attachment.db.js';
+import { AttachmentService } from '../features/leave-request/attachment.service.js';
+import { attachmentRoutes } from '../features/leave-request/attachment.routes.js';
+import type { Scanner } from '../scanning/index.js';
+import type { Storage } from '../storage/index.js';
 import { balanceRoutes } from '../features/balance/routes.js';
 import { identify } from './identify.js';
 import { answerProblems, type FailureLog } from './problems.js';
@@ -57,6 +62,12 @@ export interface Application {
   withdrawals: WithdrawalRepository;
   /** FR 19. Requests started and not finished. LMS 302. */
   drafts: LeaveRequestDraftRepository;
+  /** FR 12. Certificates and supporting documents. LMS 310. */
+  attachments: AttachmentRepository;
+  /** NFR SEC 04. Where attachment bytes live, behind one interface. */
+  storage: Storage;
+  /** NFR SEC 07. */
+  scanner: Scanner;
   accounts: SignInAccountRepository;
   roles: RoleRepository;
   /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
@@ -153,6 +164,24 @@ export function buildApp(parts: Application): Express {
         parts.drafts,
         parts.employees,
         parts.leaveRequests,
+      ),
+    }),
+  );
+
+  /* FR 12, LMS 310. Its own router because the upload takes a raw body, which is
+     route-level middleware rather than anything the JSON routes above want. */
+  app.use(
+    '/api',
+    attachmentRoutes({
+      attachments: new AttachmentService(
+        parts.guard,
+        parts.attachments,
+        parts.requests,
+        parts.employees,
+        parts.types,
+        parts.organisation,
+        parts.storage,
+        parts.scanner,
       ),
     }),
   );

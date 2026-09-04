@@ -326,6 +326,31 @@ export interface LeaveRequestDraftTable {
   updated_at: Timestamp;
 }
 
+/** A certificate or supporting document on a request. FR 12, NFR SEC 07, LMS 310. */
+export interface LeaveRequestAttachmentTable {
+  id: Generated<string>;
+  leave_request_id: ColumnType<string, string, never>;
+  /** One of five, and never moved. */
+  slot: ColumnType<number, number, never>;
+  /** A label for a screen. Never a path. */
+  filename: ColumnType<string, string, never>;
+  /** Sniffed server side. NFR SEC 07. */
+  content_type: ColumnType<string, string, never>;
+  size_bytes: ColumnType<number, number, never>;
+  checksum_sha256: ColumnType<string, string, never>;
+  /** The handle storage issued. NFR SEC 04. */
+  storage_key: ColumnType<string, string, never>;
+  /** PENDING | CLEAN | INFECTED. The one group of columns an update may move. */
+  scan_status: string;
+  scan_signature: string | null;
+  scanned_by: string | null;
+  scanned_at: Date | null;
+  /** Stamped by the trigger, never written by the application. */
+  uploaded_by: ColumnType<string, never, never>;
+  uploaded_by_employee_id: ColumnType<string | null, never, never>;
+  uploaded_at: Timestamp;
+}
+
 /** What one approver said at one stage, and when. FR 39, FR 52, LMS 315, LMS 314. */
 export interface LeaveRequestDecisionTable {
   id: Generated<string>;
@@ -409,6 +434,7 @@ export interface Database {
   leave_entitlement_rule: LeaveEntitlementRuleTable;
   leave_ledger_entry: LeaveLedgerEntryTable;
   leave_request: LeaveRequestTable;
+  leave_request_attachment: LeaveRequestAttachmentTable;
   leave_request_decision: LeaveRequestDecisionTable;
   leave_request_draft: LeaveRequestDraftTable;
   leave_request_routing: LeaveRequestRoutingTable;

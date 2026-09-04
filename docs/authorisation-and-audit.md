@@ -72,6 +72,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Lapsing an unused event grant | | `HR_ADMIN` only |
 | A leave request | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | yourself, `HR_OFFICER`, `HR_ADMIN` — and only the person who asked may reword one |
 | A draft of one. FR 19 | the person planning it, and nobody else at all | the person planning it, and nobody else at all |
+| A certificate attached to one. FR 12 | whoever may read the request, plus the desk it is sitting on | yourself, `HR_OFFICER`, `HR_ADMIN` — never the line manager |
 | Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
 | Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` — never yourself |
 | Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
@@ -82,7 +83,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
 
-Ten of those lines are decisions rather than defaults, and each is argued in the
+Eleven of those lines are decisions rather than defaults, and each is argued in the
 policy file that holds it.
 
 **Withdrawing agreed leave is the one pair of rows where the ask is narrower than
@@ -102,6 +103,17 @@ manager of and nothing for a reader to read. Refused silently, so the refusal do
 not disclose that a draft exists. HR may still submit leave on somebody's behalf,
 which is FR 18, and may not draft on their behalf — there is no "finish it later"
 in that act, and a draft HR left behind would be planning the person never did.
+
+**An attachment is the one row where reading is wider than the request it hangs
+on.** FR 12, LMS 310. Every other read here widens outwards from the person by
+relationship or by role, and neither reaches FR 04's seat: the Chief Executive is
+nobody's line manager and holds no role, so `read` refuses them the unpaid leave
+§4.3.1 sends them to decide. That was tolerable while the desk only needed the
+dates, which the approver queue supplies by being the desk. It is not tolerable
+for the certificate the decision turns on, so `readAttachment` is `read` widened
+by `isAt` — the same question the queue asks, asked about one request. Writing
+stays exactly as wide as asking for the leave: an approver who wants a document
+asks the person for it rather than supplying one on their behalf.
 
 **A line manager sees their reports because of the record, never because of a
 role.** `employee.managerId` is read off the record in hand, so moving a

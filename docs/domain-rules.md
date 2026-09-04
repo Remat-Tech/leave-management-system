@@ -1893,7 +1893,10 @@ arithmetic. What the refusal says is [below](#dates-that-are-obviously-wrong).
 **Notice and documentation warn; they do not refuse.** FR 17 is advisory by design —
 leave is sometimes needed at short notice, and a system that refused it is a system people
 work around — so a short-notice request is submitted and the quote says by how much. FR
-13's documentation is an attachment and there is nowhere to attach one until Phase 4.
+13's documentation is an attachment, and since LMS 310 there is somewhere to put one — see
+[evidence attached to a request](#evidence-attached-to-a-request). It still warns rather
+than refuses: what a certificate settles is whether the requirement is *met*, not whether
+the leave may be asked for.
 
 Since LMS 307 the warning is also *answered*. It still refuses no leave and moves no
 dates; what it refuses is submitting through the warning without saying it was read. See
@@ -3148,6 +3151,65 @@ another person's page with no policy asked.
 
 ---
 
+### Evidence attached to a request
+
+**A certificate goes on the request it evidences, once.** FR 12, NFR SEC 07, LMS 310. FR 13
+has been a rule the form explains and a document nobody could upload since LMS 201:
+`storage/` existed and nothing on the request path wrote to it. This is the table the bytes
+hang off, `leave_request_attachment`.
+
+**The bytes are not in the database and not under the web root.** `storage_key` is the
+opaque handle `Storage.put` issued, and nothing above that interface knows what it names.
+NFR SEC 04. A key is 32 random bytes, so a file cannot be found by guessing, and the key is
+never sent to a client at all — a download is asked for by attachment id, against a request
+the policy has already been asked about.
+
+**What a file is, is read from the file.** NFR SEC 07, and it is the story's third
+criterion. Neither the extension nor the `Content-Type` a client sent is consulted:
+`sniffContentType` reads the first bytes, and DOCX — which is a zip like XLSX and PPTX — is
+told apart by reading the archive's own central directory for a `word/` entry. A shell
+script named `certificate.pdf` is refused; a JPEG named `certificate.pdf` is stored as
+`image/jpeg` under the name its owner gave it.
+
+**Five per request is a seat, not a count.** `slot` is unique per request and between 1 and
+5, so the sixth file is refused by an index rather than by a count somebody remembered to
+take — two uploads racing for the last place are settled in the database. A file removed
+frees its seat.
+
+**Unscanned is a state, and it satisfies nothing.** NFR SEC 07, and the criterion the whole
+arrangement turns on.
+
+| The scanner said | The file | The row | It evidences |
+|---|---|---|---|
+| clean | stored | `CLEAN` | FR 13's rule, where the type has one |
+| infected | not stored | never written | — |
+| nothing at all | stored | `PENDING` | nothing, and it cannot be downloaded |
+
+There is deliberately no fourth row where a file nothing looked at is treated as fine. A
+scanner that cannot be reached is not a scanner that said yes, so the upload is kept and
+`attachmentSatisfiesADocumentationRule` answers false for it until a rescan settles it.
+`refuse_rewriting_an_attachment` lets the verdict move out of `PENDING` exactly once and
+freezes everything else, so an infected file cannot quietly become a clean one.
+
+**Evidence goes on while the leave is open and comes off while it is undecided.** Attaching
+is refused once the request has ended; removing is refused the moment it has moved past
+`SUBMITTED`, because a file a desk could already have read is part of why the leave was
+decided that way.
+
+**Who may attach is who may ask.** `leaveRequestPolicy.attach` carries `submit`'s standings
+— the person whose leave it is, or HR entering the record on their behalf — and not the
+line manager's: an approver who wants a certificate asks for one. Who may *read* one is
+`leaveRequestPolicy.readAttachment`, which is `read` widened by the desk the request is
+sitting on, for the seam the approver queue already argues: FR 32h sends unpaid leave to a
+Chief Executive who is nobody's line manager and holds no role, and an approver who cannot
+open the evidence cannot decide on it.
+
+**And it is not audited.** The row is frozen by its own trigger, so it is already its own
+history — and `before`/`after` snapshots are jsonb in a table HR reads, which would copy the
+filename of every medical certificate somewhere nobody asked to put it. NFR AUD 01.
+
+---
+
 ### My balances
 
 **Every leave type, with what was granted, carried over, taken and spoken for, and what is
@@ -3474,9 +3536,11 @@ entered up to seven days after the fact and the server would accept it from a mo
 gap predates this story and closing it changes what `submit` accepts, which is LMS 301's rule
 rather than this screen's. What this story does is stop the window being invisible.
 
-**No attachment.** FR 13 is a rule the form explains and a document nobody can upload yet:
-`storage/` exists and nothing on this path writes to it. "Have it ready — whoever approves this
-will ask for it" is the honest sentence until the story that adds the upload.
+**No attachment on the form itself.** LMS 310 added the upload and it hangs off a request
+rather than off a quote — there is nothing to attach a certificate to until the leave has
+been asked for. So this screen still says "have it ready — whoever approves this will ask
+for it", and the file goes on afterwards. See
+[evidence attached to a request](#evidence-attached-to-a-request).
 
 ---
 
