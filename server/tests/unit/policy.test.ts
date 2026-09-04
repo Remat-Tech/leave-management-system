@@ -1286,6 +1286,40 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       }
     });
 
+    /**
+     * FR 18, LMS 308. And entering leave past its backdating window is HR's alone.
+     *
+     * Their own included, which is the reading FR 18 supports: what is reserved to HR is
+     * *entering the record*, and the leave still goes to somebody else's desk to be decided.
+     * The line manager is refused, unlike every other thing that can be done to a report's
+     * request — recording an exception to a policy is not a supervision job.
+     */
+    it('and leave past its backdating window is entered by HR, their own included', () => {
+      expect(leaveRequestPolicy.recordLate(employee('ama'), hers).allowed).toBe(false);
+      expect(leaveRequestPolicy.recordLate(manager('akosua'), hers).allowed).toBe(false);
+
+      for (const [code, roles] of EACH_ROLE) {
+        expect(
+          leaveRequestPolicy.recordLate(employee('adwoa', roles), hers).allowed,
+          `${code} entering leave past the window`,
+        ).toBe(MAINTAINS_EMPLOYEE_RECORDS.includes(code));
+      }
+
+      const ownedByAnOfficer = { employeeId: 'efua', managerId: 'akosua' };
+      const efua = employee('efua', ['EMPLOYEE', 'HR_OFFICER']);
+
+      expect(leaveRequestPolicy.recordLate(efua, ownedByAnOfficer).allowed).toBe(true);
+    });
+
+    /* Openly, and naming HR: the person it refuses is being told where to go rather than
+       that they may not. `TooLateToRecord` is what they actually read. */
+    it('and says so openly, because the way past it is a person rather than a permission', () => {
+      const refusal = leaveRequestPolicy.recordLate(employee('ama'), hers);
+
+      expect(refusal.told).toContain('HR');
+      expect(refusal.because).not.toBeNull();
+    });
+
     /* Silently, so the refusal does not disclose that a draft exists — the same rule
        `read` is held to, applied to a row that is even less anybody else's business. */
     it('and says nothing when it refuses one', () => {
@@ -1316,7 +1350,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        which is what stops it being "a way to reach the transition without passing the check
        that knows which desk FR 38a's chain has the request sitting on" — the sentence this
        file refused it with for two stories. */
-    it('and the decisions it holds are these fifteen', () => {
+    it('and the decisions it holds are these sixteen', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
         /** FR 47, LMS 324. HR's three answers, decided by one rule. */
         'answerAWithdrawal',
@@ -1334,6 +1368,9 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         'override',
         'queue',
         'read',
+        /* FR 18, LMS 308. The one decision here that is asked rather than enforced: what it
+           refuses is answered by `TooLateToRecord`, which names HR. */
+        'recordLate',
         'refuse',
         'resource',
         'reword',

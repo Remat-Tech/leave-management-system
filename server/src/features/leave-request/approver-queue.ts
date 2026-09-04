@@ -184,6 +184,8 @@ export interface QueueItem {
   to: CalendarDate;
   /** What the person said when they asked, where the type asked. FR 10. */
   reason: string | null;
+  /** FR 18. Why HR entered it past the backdating window, where they did. LMS 308. */
+  lateEntryReason: string | null;
   /** FR 11. Read off the request, never off the type. */
   countingBasis: CountingBasis;
   countingBasisLabel: string;
@@ -476,6 +478,8 @@ function itemFor(input: {
     from: request.from,
     to: request.to,
     reason: request.reason,
+    /** FR 18, LMS 308. */
+    lateEntryReason: request.lateEntryReason,
     countingBasis: request.countingBasis,
     countingBasisLabel: countingBasisLabel(request.countingBasis),
     days: request.days,
@@ -495,7 +499,15 @@ function itemFor(input: {
     shortNoticeBy,
     backdatedBy,
     startsInDays: noticeGiven(today, request.from),
-    warnings: flagsFor({ typeName, shortNoticeBy, backdatedBy, noticeGivenDays, type }),
+    warnings: flagsFor({
+      typeName,
+      shortNoticeBy,
+      backdatedBy,
+      noticeGivenDays,
+      type,
+      /** FR 18, LMS 308. */
+      lateEntryReason: request.lateEntryReason,
+    }),
 
     balance,
     team,
@@ -543,8 +555,11 @@ export function flagsFor(input: {
   backdatedBy: number;
   noticeGivenDays: number;
   type: LeaveType | undefined;
+  /** FR 18. HR's account of the lateness, where the window was exceeded. LMS 308. */
+  lateEntryReason?: string | null;
 }): QueueWarning[] {
   const { typeName, shortNoticeBy, backdatedBy, noticeGivenDays, type } = input;
+  const lateEntryReason = input.lateEntryReason ?? null;
   const warnings: QueueWarning[] = [];
 
   /* FR 18 first, because it is the stronger news. A backdated request is short of notice by
@@ -555,9 +570,15 @@ export function flagsFor(input: {
       code: 'BACKDATED',
       inWords:
         `This leave had already started when it was asked for — it began ${days(backdatedBy)} ` +
-        `before the request was made. Recording leave after the fact is allowed within the ` +
-        `window ${typeName} sets, and what it means here is that the days have been taken ` +
-        `whatever is decided. FR 18.`,
+        `before the request was made. ` +
+        /* LMS 308. Two different pieces of news, and the second is the one an approver has to
+           weigh: inside the window this is the ordinary way an absence gets recorded, and past
+           it somebody made an exception and said why. */
+        (lateEntryReason === null
+          ? `Recording leave after the fact is allowed within the window ${typeName} sets, and `
+          : `That is further back than ${typeName} allows, so HR put it on the record as an ` +
+            `exception: “${lateEntryReason}”. What it means here is that `) +
+        `the days have been taken whatever is decided. FR 18.`,
     });
   }
 

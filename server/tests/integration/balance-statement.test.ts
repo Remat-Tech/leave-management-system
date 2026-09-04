@@ -481,6 +481,8 @@ async function askFor(employeeId: string, leaveTypeId: string, days: number) {
       from: rows[0].start_date,
       to: rows[0].end_date,
       reason: 'Some days off',
+      /** FR 18, LMS 308. */
+      lateEntryReason: null,
       countingBasis: 'CALENDAR_DAYS' as const,
       days,
       calendarDays: days,

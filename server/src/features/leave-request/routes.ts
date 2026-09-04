@@ -291,6 +291,8 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
         asString(request.params.id),
         /** FR 17, LMS 307. Answered when the draft is finished, never saved on it. */
         asAcknowledgement(bodyOf(request).acknowledgesShortNotice),
+        /** FR 18, LMS 308. Same argument: it is an answer given at the door, not a field. */
+        asString(bodyOf(request).lateEntryReason),
       )
       .then((submitted) => {
         response.status(201).json(submittedAsJson(submitted));
@@ -376,6 +378,7 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
    *
    * `acknowledgesShortNotice` is the fifth and is not one of them. FR 17, LMS 307: it answers
    * a warning, and whether one was owed is the domain's to say rather than the caller's.
+   * `lateEntryReason` is the sixth and is the same shape. FR 18, LMS 308.
    */
   routes.post('/me/requests', (request: Request, response: Response, next) => {
     const sent = bodyOf(request);
@@ -389,6 +392,41 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
         reason: asString(sent.reason),
         /** FR 17, LMS 307. */
         acknowledgesShortNotice: asAcknowledgement(sent.acknowledgesShortNotice),
+        /** FR 18, LMS 308. Refused unless the person holds an HR role. */
+        lateEntryReason: asString(sent.lateEntryReason),
+      })
+      .then((submitted) => {
+        response.status(201).json(submittedAsJson(submitted));
+      })
+      .catch(next);
+  });
+
+  /**
+   * Puts somebody else's leave on the record. FR 18, LMS 308.
+   *
+   * The one door that names an employee, and the reason it exists is the third criterion:
+   * past its type's backdating window "only HR may enter the record, with a reason", and
+   * `/me/requests` has no way to say whose leave it is. `leaveRequestPolicy.submit` has
+   * admitted HR on somebody's behalf since LMS 301; this is where they can reach it.
+   *
+   * Not restricted to late leave, and not a second submission path: it is the same call with
+   * the id supplied, and every refusal `/me/requests` can meet, this can meet. Somebody
+   * entering their own here is doing what `/me/requests` does.
+   */
+  routes.post('/requests', (request: Request, response: Response, next) => {
+    const sent = bodyOf(request);
+
+    void requests
+      .submit(actorOf(response), {
+        employeeId: asString(sent.employeeId),
+        leaveTypeId: asString(sent.leaveTypeId),
+        from: asString(sent.from),
+        to: asString(sent.to),
+        reason: asString(sent.reason),
+        /** FR 17, LMS 307. */
+        acknowledgesShortNotice: asAcknowledgement(sent.acknowledgesShortNotice),
+        /** FR 18, LMS 308. */
+        lateEntryReason: asString(sent.lateEntryReason),
       })
       .then((submitted) => {
         response.status(201).json(submittedAsJson(submitted));
@@ -548,6 +586,8 @@ function queueItemAsJson(item: QueueItem): unknown {
     from: item.from,
     to: item.to,
     reason: item.reason,
+    /** FR 18, LMS 308. */
+    lateEntryReason: item.lateEntryReason,
     /** FR 11. Read off the request, never off the type. */
     countingBasis: item.countingBasis,
     countingBasisLabel: item.countingBasisLabel,
@@ -663,6 +703,8 @@ function entryAsJson(entry: RequestHistoryEntry): unknown {
     from: entry.from,
     to: entry.to,
     reason: entry.reason,
+    /** FR 18, LMS 308. */
+    lateEntryReason: entry.lateEntryReason,
     countingBasis: entry.countingBasis,
     countingBasisLabel: entry.countingBasisLabel,
     days: entry.days,

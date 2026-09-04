@@ -503,6 +503,13 @@ goes through unchanged the moment somebody ticks the box, where the backdating w
 sends them to HR. See [warned when notice is
 short](#warned-when-notice-is-short).
 
+Since LMS 308 the backdating half is enforced too, and "only HR" is a policy rather
+than a sentence in a message. Past the window the question stops being about the type
+and becomes about who is entering it — the employee meets `TooLateToRecord`, HR meets
+`LateEntryNeedsAReason` until they have written one, and what they write is a column
+of its own that nothing afterwards may rewrite. See [recorded after it was
+taken](#recorded-after-it-was-taken).
+
 **A documentation threshold is not a balance threshold.** `AFTER_DAYS` asks for a
 document when *this request* is longer than n days. `exceedable_with_document`
 asks for one when the request would take the *yearly balance* past its allowance.
@@ -1892,6 +1899,11 @@ Since LMS 307 the warning is also *answered*. It still refuses no leave and move
 dates; what it refuses is submitting through the warning without saying it was read. See
 [warned when notice is short](#warned-when-notice-is-short).
 
+**Backdating does refuse, and since LMS 308 it does so here.** The submission path judges
+both windows before it counts anything, in that order: the acknowledgement first, then how
+far back the leave started. Past the window the request is HR's to enter, with a reason on
+a column of its own. See [recorded after it was taken](#recorded-after-it-was-taken).
+
 **And the reason is asked for only where the approvers decide on it.** FR 10.
 `leave_request.reason` was mandatory for every type on the argument that a manager looking
 at five days in March with nothing against them is being asked to agree blind. That is
@@ -2297,12 +2309,103 @@ drafts hold four fields and this is not a fifth: how short the notice is depends
 the draft is *submitted*, so a tick saved a fortnight ago answers a question this afternoon
 asks differently. `LeaveRequestDraftService.submit` takes it as an argument beside the id.
 
-**What is deliberately not here.** FR 18's backdating window still refuses nothing —
-`assertWithinBackdatingWindow` and `TooLateToRecord` are written and unused, and the story
-that calls them is the one that also gives HR the way in the message names. Until then a
-backdated request is short of the whole notice window, which is `noticeShortfall`'s own
-rule, and the acknowledgement is what it asks for. See [notice warns; backdating
-refuses](#things-that-will-bite-you-if-you-do-not-know-them).
+**What was deliberately not here, and is since LMS 308.** FR 18's backdating window
+refused nothing when this story shipped: `assertWithinBackdatingWindow` and
+`TooLateToRecord` were written and unused, and this section named the story that would call
+them as the one that also gives HR the way in the message names. That story is [recorded
+after it was taken](#recorded-after-it-was-taken). A backdated request is still short of the
+whole notice window — `noticeShortfall`'s own rule — so inside the window the two refusals
+are met in order, and the acknowledgement is still what the second asks for. See [notice
+warns; backdating refuses](#things-that-will-bite-you-if-you-do-not-know-them).
+
+---
+
+### Recorded after it was taken
+
+**Seven calendar days, on every type, and it is a column.** FR 18, LMS 308.
+`leave_type.max_backdate_calendar_days` is 7 on all seven rows — the one window the seven
+agree about, where [notice](#warned-when-notice-is-short) divides them 14-and-nothing-else.
+Nothing above the database reads a type code to reach it, so HR closing the window on one
+type or widening it on another is a row and not a deployment. FR 31.
+
+**The two windows look symmetrical and are not.** This is the pair most likely to be got
+backwards, and the difference is what happens past each of them:
+
+| | Past it | Who may still |
+|---|---|---|
+| notice, FR 17 | warned, acknowledged, allowed through | the person whose leave it is |
+| backdating, FR 18 | refused | HR, with a reason |
+
+**Past the window it stops being a rule about the type and becomes a rule about who is
+entering it**, which is why `isBeyondTheBackdatingWindow` exists beside
+`assertWithinBackdatingWindow`. That pair is the arrangement `isEligible` and
+`assertEligible` already make, and it is wanted here for a reason FR 05 does not have: the
+answer past the window is not *no*, it is *not by this person*. `lateEntryFor` is where the
+three outcomes are decided, and it takes the standing as a boolean the caller brings — the
+same way `reasonRequired` arrives — because `/domain` names a standing and never the roles
+that satisfy it.
+
+| Notice given | Who is entering it | What happens |
+|---|---|---|
+| inside the window | anybody | written, with nothing asked and nothing stored |
+| past it | the person whose leave it is | `TooLateToRecord`, naming HR |
+| past it | HR, with nothing written | `LateEntryNeedsAReason` |
+| past it | HR, with a reason | written, with the reason on the row |
+
+**`leaveRequestPolicy.recordLate` is asked rather than enforced**, and it is the only
+decision in that file that is. `Guard.enforce` would answer the employee with
+`NotAuthorised`, and the sentence they need is `TooLateToRecord`'s — which names the window,
+says how far back this is, and points at the desk that can. A permission refusal would tell
+them they may not do a thing nobody has explained.
+
+**HR's own late leave is admitted**, which reads like a gap and is not. What FR 18 reserves
+to HR is *entering the record*; the request then starts at the first desk of its type's chain
+and is decided by somebody else exactly like any other. Refusing it would leave an HR officer
+who was in hospital for a fortnight with no way to record it at all.
+
+**The reason is its own column, not `reason`.** `leave_request.reason` is the requester's
+account of the leave and is theirs to reword — FR 10, and the one field
+`leave_request_says_what_it_said` leaves editable. `late_entry_reason` is the entering desk's
+account of the lateness, and the two are different sentences by different people about
+different things: one is why the leave was needed, the other is why nobody heard about it
+until now. A request for annual leave carries the second and not the first, because annual
+leave asks for no reason at all.
+
+**And it is written once.** The migration adds it to `refuse_rewriting_what_a_request_cost`
+beside the dates and the day count, so no writer moves it — not the application, which has no
+path to it, and not the owner connection either. An exception whose justification can be
+rewritten afterwards is not one, and the same argument makes `leave_request_decision` and
+`leave_request_withdrawal` append-only.
+
+**The approver sees which of the two it was.** FR 18's second criterion is that backdating is
+flagged visibly, and [the approver queue](#the-approver-queue) has raised `BACKDATED` since
+LMS 404 on any request whose leave had begun before it was asked for. Since this story the
+flag carries the difference: inside the window it says recording after the fact is allowed,
+and past it that HR entered it as an exception, quoting what they wrote. Those are not the
+same news — the second is a judgement somebody made, and whether it was a good one is what
+the approver is being shown.
+
+**`POST /requests` is the door this story needed**, and it is the only route in the file that
+names an employee. `leaveRequestPolicy.submit` has admitted HR on somebody's behalf since LMS
+301 and nothing could reach it: `/me/requests` takes its id off the cookie, so there was no
+way to say whose leave it is. It is not a second submission path — the same call with the id
+supplied, and every refusal `/me/requests` can meet it can meet.
+
+**Two statuses, and the split is the same one `NotEnoughDays` and
+`ShortNoticeNotAcknowledged` make.** `TooLateToRecord` is a 409: nothing the person retypes
+fixes it, because what stands in the way is that the days are further back than the type
+allows and the fix is a different person. `LateEntryNeedsAReason` is a 400: the world is
+fine, and what is missing is part of what HR sent.
+
+**The suites that are not about this widen the column.** Almost every integration fixture is
+dated to a fixed week in March 2026 — chosen because Independence Day falls in it — so once
+the window was enforced, seven files could not submit anything at all. Each sets
+`max_backdate_calendar_days` high in its own `beforeEach` rather than moving its dates, which
+is the honest version of the same statement those files already make about `is_active` and
+`counting_basis`: this suite is not about that rule. `integration/leave-request.test.ts` puts
+it back to seven for the tests that are, and every date in those is measured off the clock —
+the window is judged against today, and a written-down date stops being backdated the day
+after it is typed.
 
 ---
 
@@ -3321,6 +3424,13 @@ Since LMS 307 that type omits a second field for a related reason.
 that took one would be asking to be told the answer to the question it is about to ask. See
 [warned when notice is short](#warned-when-notice-is-short).
 
+Since LMS 308 it omits a third, `lateEntryReason`, on the same argument and one narrower
+still: it is an answer only HR can give, to a question about a period nobody has committed
+to yet. What the form does with the window instead is set the earliest date its picker will
+accept, off `maxBackdateCalendarDays` — which is why that column is carried beside the
+sentence rather than only inside it. See [recorded after it was
+taken](#recorded-after-it-was-taken).
+
 The browser debounces and drops stale answers, and neither is about the server. A native date
 input fires a change for every part of a date somebody types, and two dates typed quickly are
 two requests that can land in either order — a screen without the sequence counter shows the
@@ -3453,6 +3563,14 @@ Since LMS 307 that is a stronger claim than a matching sentence. A short notice 
 reaching this queue is one the requester *acknowledged* — it could not have been submitted
 otherwise — so the flag is not news the approver is breaking to somebody. See [warned when
 notice is short](#warned-when-notice-is-short).
+
+Since LMS 308 `BACKDATED` carries a difference it could not carry before, because before that
+story there was only one kind of backdated request. Inside the window it is the ordinary way an
+absence gets recorded and the sentence says so; past it, HR entered it as an exception, and the
+flag quotes what they wrote — `lateEntryReason` is beside it on the item so a screen can label
+the two differently, and the approvals page does. Whether the exception was a good one is the
+judgement the approver is being handed, exactly as short notice is. See [recorded after it was
+taken](#recorded-after-it-was-taken).
 
 **`DOCUMENTATION_REQUIRED` is the obvious third and is not here.** LMS 404 asks for two. The
 condition is `documentationRequired` and `quoteFor` has already written the sentence, so the

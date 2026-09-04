@@ -296,6 +296,8 @@ export interface LeaveRequestTable {
   end_date: ColumnType<string, string, never>;
   /** FR 10. Where the type asks for one. Never `''`; nothing to say is NULL. */
   reason: string | null;
+  /** FR 18. Why HR entered it past the type's backdating window. Written once. LMS 308. */
+  late_entry_reason: ColumnType<string | null, string | null, never>;
   /** FR 11, the story's third criterion. */
   counting_basis: ColumnType<string, string, never>;
   /** What it cost, and what the RESERVATION took. FR 24. */

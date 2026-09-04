@@ -46,6 +46,8 @@ function aRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     from: MARCH.from,
     to: MARCH.to,
     reason: 'My sister is getting married',
+    /** FR 18, LMS 308. */
+    lateEntryReason: null,
     countingBasis: 'WORKING_DAYS',
     days: 6,
     calendarDays: 9,

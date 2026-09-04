@@ -69,6 +69,8 @@ export interface RequestHistoryEntry {
   to: CalendarDate;
   /** What the person said when they asked, where the type asked. FR 10. */
   reason: string | null;
+  /** FR 18. Why HR entered it late, where they did. LMS 308. */
+  lateEntryReason: string | null;
   /** FR 11. */
   countingBasis: CountingBasis;
   countingBasisLabel: string;
@@ -327,6 +329,8 @@ export function entryFor(input: {
     from: request.from,
     to: request.to,
     reason: request.reason,
+    /** FR 18, LMS 308. */
+    lateEntryReason: request.lateEntryReason,
     countingBasis: request.countingBasis,
     countingBasisLabel: countingBasisLabel(request.countingBasis),
     days: request.days,

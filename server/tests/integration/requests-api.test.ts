@@ -172,6 +172,12 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  /* FR 18, LMS 308. The fixture days are months behind today, so annual leave's seven day
+     backdating window would refuse almost every request in this file. Widened rather than
+     dated forward: the window is a column HR sets, and the rule it states is
+     ./leave-request.test.ts's to prove. */
+  await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
+
   await emptyTheLeaveTables();
   await restoreYears();
 
@@ -340,6 +346,8 @@ describe('every request I have made', () => {
       'countingBasisLabel',
       'days',
       'from',
+      /** FR 18, LMS 308. Why HR entered it late, where they did. */
+      'lateEntryReason',
       'leaveTypeId',
       'leaveYearId',
       'progressInWords',

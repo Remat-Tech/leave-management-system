@@ -27,8 +27,10 @@ import {
   type CountingBasis,
   countingBasisInWords,
   documentationRequired,
+  isBeyondTheBackdatingWindow,
   type LeaveType,
   noticeShortfall,
+  TooLateToRecord,
 } from '../leave-type/leave-type.js';
 import type { LeaveYear } from '../leave-year/leave-year.js';
 import {
@@ -1065,6 +1067,13 @@ export interface NewLeaveRequest {
    * Not stored: `submittedAt` against `from` already says how short the notice was.
    */
   acknowledgesShortNotice?: boolean;
+  /**
+   * FR 18. Why this is going on the record past the type's backdating window. LMS 308.
+   *
+   * Ignored on a request inside the window, which needs no exception and so has none to
+   * explain. Only HR may enter one at all — see {@link lateEntryFor}.
+   */
+  lateEntryReason?: string;
 }
 
 /**
@@ -1083,6 +1092,8 @@ export interface ValidatedLeaveRequest {
   to: CalendarDate;
   /** FR 10. Null where the type asks for none; never `''`. */
   reason: string | null;
+  /** FR 18. Null on everything inside the window, which is almost everything. LMS 308. */
+  lateEntryReason: string | null;
   countingBasis: CountingBasis;
   days: number;
   calendarDays: number;
@@ -1124,6 +1135,14 @@ export interface LeaveRequest {
   to: CalendarDate;
   /** FR 10. Null where the type asks for none; never `''`. */
   reason: string | null;
+  /**
+   * FR 18. HR's account of why this went on the record late, or null. LMS 308.
+   *
+   * Present exactly on the requests that were past their type's backdating window when they
+   * were made, which is what makes it worth showing an approver beside the `BACKDATED` flag:
+   * the days were taken, and somebody has said why nobody heard about them until now.
+   */
+  lateEntryReason: string | null;
   /**
    * FR 11. The basis this was priced under, as it stood at submission.
    *
@@ -1493,6 +1512,37 @@ export class ShortNoticeNotAcknowledged extends Error {
   }
 }
 
+/**
+ * Leave entered past the backdating window with nothing said about why. FR 18, LMS 308.
+ *
+ * The other half of {@link TooLateToRecord}, and the one only HR can meet: that refusal says
+ * "ask HR, they can record it with a reason", and this is HR having done the first part.
+ */
+export class LateEntryNeedsAReason extends Error {
+  /** FR 18. What a client branches on, so a form can show the box rather than the sentence. */
+  readonly code = 'LATE_ENTRY_NEEDS_A_REASON';
+  readonly leaveTypeId: string;
+  readonly period: LeavePeriod;
+  /** What the type permits, in calendar days. */
+  readonly permitted: number;
+  /** How far back this one starts. Positive. */
+  readonly daysAgo: number;
+
+  constructor(type: LeaveType, period: LeavePeriod, daysAgo: number) {
+    super(
+      `${type.name} can be entered up to ${inDays(type.maxBackdateCalendarDays)} after the ` +
+        `fact and this one began ${inDays(daysAgo)} ago, so it goes on the record as an ` +
+        `exception. Say why it is being entered now — that sentence is what the approvers ` +
+        `and any later audit have to go on. FR 18.`,
+    );
+    this.name = 'LateEntryNeedsAReason';
+    this.leaveTypeId = type.id;
+    this.period = period;
+    this.permitted = type.maxBackdateCalendarDays;
+    this.daysAgo = daysAgo;
+  }
+}
+
 /* ------------------------------------------------------- refusing the dates */
 
 /**
@@ -1604,6 +1654,48 @@ export function assertShortNoticeIsAcknowledged(
   if (shortBy > 0 && !acknowledged) {
     throw new ShortNoticeNotAcknowledged(type, period, daysOfNotice, shortBy);
   }
+}
+
+/**
+ * FR 18. Whether leave already begun may be entered this late, and what goes on the record.
+ *
+ * The story's three criteria in one function. Inside the window it answers null and nobody is
+ * asked anything: recording an absence on the Monday you come back is the ordinary case.
+ * Past it the window stops being a rule about the type and becomes a rule about who is
+ * entering it — {@link isBeyondTheBackdatingWindow} is the plain question for exactly that
+ * reason — so the employee meets {@link TooLateToRecord}, which names HR, and HR meets
+ * {@link LateEntryNeedsAReason} until they have written one.
+ *
+ * The reason is returned rather than merely required, so that the sentence stored is the one
+ * this checked. `mayRecordLate` is the policy's answer brought in, as `reasonRequired` is the
+ * type's: `/domain` names the standing and never the roles that satisfy it.
+ */
+export function lateEntryFor(input: {
+  type: LeaveType;
+  period: LeavePeriod;
+  daysOfNotice: number;
+  mayRecordLate: boolean;
+  reason?: string;
+}): string | null {
+  const { type, period, daysOfNotice, mayRecordLate } = input;
+
+  if (!isBeyondTheBackdatingWindow(type, daysOfNotice)) {
+    return null;
+  }
+
+  const daysAgo = -daysOfNotice;
+
+  if (!mayRecordLate) {
+    throw new TooLateToRecord(type, daysAgo);
+  }
+
+  const said = typeof input.reason === 'string' ? input.reason.trim() : '';
+
+  if (said === '') {
+    throw new LateEntryNeedsAReason(type, period, daysAgo);
+  }
+
+  return said;
 }
 
 /**
@@ -2019,6 +2111,14 @@ export function validateNewLeaveRequest(input: {
   reason?: string;
   /** FR 10. `leave_type.reason_required`, brought by the caller as `countingBasis` is. */
   reasonRequired: boolean;
+  /**
+   * FR 18. {@link lateEntryFor}'s answer, which has already refused the ones it refuses.
+   *
+   * Optional, unlike `reasonRequired` beside it, because absent and null are the same state
+   * here and null is what almost every request has: a request inside its window is not an
+   * exception and has nothing to explain.
+   */
+  lateEntryReason?: string | null;
   countingBasis: CountingBasis;
   days: number;
   calendarDays: number;
@@ -2042,6 +2142,8 @@ export function validateNewLeaveRequest(input: {
     from: requireDay('from', input.from),
     to: requireDay('to', input.to),
     reason: readReason(input.reason, input.reasonRequired),
+    /** FR 18. Already decided and already trimmed; see {@link lateEntryFor}. */
+    lateEntryReason: input.lateEntryReason ?? null,
     countingBasis: input.countingBasis,
     days: requireWholeDays('days', input.days),
     calendarDays: requireWholeDays('calendarDays', input.calendarDays),

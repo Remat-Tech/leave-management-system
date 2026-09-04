@@ -45,6 +45,7 @@ import {
   decisionTo,
   grantingAction,
   InvalidLeaveRequest,
+  lateEntryFor,
   LeaveCrossesAYearEnd,
   type LeaveRequest,
   type LeaveRequestQuote,
@@ -105,7 +106,10 @@ import type { LeaveCalculatorService } from '../leave-calculator/leave-calculato
 import type { NotificationService } from '../notification/notification.service.js';
 
 /** What a period is priced from: a request without the two fields pricing does not read. */
-export type QuotableLeave = Omit<NewLeaveRequest, 'reason' | 'acknowledgesShortNotice'>;
+export type QuotableLeave = Omit<
+  NewLeaveRequest,
+  'reason' | 'acknowledgesShortNotice' | 'lateEntryReason'
+>;
 
 /** Leave asked for in a year that has been settled. §8.9.. */
 export class LeaveYearIsClosed extends Error {
@@ -263,7 +267,9 @@ export class LeaveRequestService {
    * {@link NotEligibleForTheType} for a type that may not be asked for,
    * {@link LeaveCrossesAYearEnd} for a period spanning a year end,
    * {@link LeaveOverlapsAnother} for leave over leave already booked,
-   * {@link LeaveYearIsClosed} for a settled year, and {@link NotEnoughDays} where the
+   * {@link LeaveYearIsClosed} for a settled year, {@link TooLateToRecord} and
+   * {@link LateEntryNeedsAReason} for leave dated further back than the type's window,
+   * and {@link NotEnoughDays} where the
    * balance does not hold what is being asked for — or {@link BalanceOverdrawn} from the
    * door instead, in the one case this method's check cannot cover: a balance spent
    * between the read here and the lock there. Same refusal, and the difference is only
@@ -283,14 +289,27 @@ export class LeaveRequestService {
       throw new LeaveYearIsClosed(year);
     }
 
-    /* FR 17, LMS 307. Warned at the quote and answered here, before anything is counted:
-       the one refusal on this path that needs no read at all. */
+    /* FR 17, FR 18. The two windows, answered before anything is counted: the only refusals
+       on this path that need no read at all. Notice is measured once and both read it. */
+    const daysOfNotice = noticeGiven(this.today(), period.from);
+
+    /* FR 17, LMS 307. Warned at the quote and answered here. */
     assertShortNoticeIsAcknowledged(
       type,
       period,
-      noticeGiven(this.today(), period.from),
+      daysOfNotice,
       input.acknowledgesShortNotice === true,
     );
+
+    /* FR 18, LMS 308. Recording an absence on the way back in is ordinary and answers null;
+       past the window it is HR's to enter, with a reason. */
+    const lateEntryReason = lateEntryFor({
+      type,
+      period,
+      daysOfNotice,
+      mayRecordLate: this.guard.permits(leaveRequestPolicy.recordLate(actor, ownerOf(employee))),
+      reason: input.lateEntryReason,
+    });
 
     /* Counted again, inside no transaction yet but from the same facts, and it is this
        answer that is stored. See the module note for why it is not the caller's. */
@@ -319,6 +338,8 @@ export class LeaveRequestService {
       reason: input.reason,
       /** FR 10. The type's rule, brought here as `countingBasis` is. */
       reasonRequired: type.reasonRequired,
+      /** FR 18, LMS 308. Decided above; null on everything inside the window. */
+      lateEntryReason,
       /* The story's third criterion, taken here and never read off the type again. */
       countingBasis: type.countingBasis,
       days: count.days,

@@ -42,6 +42,7 @@ const OVERLAPS_ANOTHER = 'leave_request_never_overlaps';
 const CHECKED_FIELDS: Record<string, string> = {
   leave_request_ends_after_it_starts: 'to',
   leave_request_reason_not_blank: 'reason',
+  leave_request_late_entry_reason_not_blank: 'lateEntryReason',
   leave_request_counting_basis_known: 'countingBasis',
   leave_request_status_known: 'status',
   leave_request_costs_at_least_a_day: 'days',
@@ -364,6 +365,8 @@ function messageFor(constraint: string): string {
       return 'Leave that ends before it starts is two dates entered the wrong way round.';
     case 'leave_request_reason_not_blank':
       return 'A leave request says why.';
+    case 'leave_request_late_entry_reason_not_blank':
+      return 'Leave entered past its backdating window says why it is being entered now.';
     case 'leave_request_costs_at_least_a_day':
       return 'Leave that costs nothing is leave nobody needs to ask for.';
     case 'leave_request_costs_no_more_than_it_spans':
@@ -397,6 +400,8 @@ function rowFor(request: ValidatedLeaveRequest): Insertable<LeaveRequestTable> {
     start_date: request.from,
     end_date: request.to,
     reason: request.reason,
+    /** FR 18. Null on everything inside the window. LMS 308. */
+    late_entry_reason: request.lateEntryReason,
     counting_basis: request.countingBasis,
     days: request.days,
     calendar_days: request.calendarDays,
@@ -417,6 +422,7 @@ function toRequest(row: LeaveRequestRow): LeaveRequest {
     from: row.start_date,
     to: row.end_date,
     reason: row.reason,
+    lateEntryReason: row.late_entry_reason,
     countingBasis: row.counting_basis as CountingBasis,
     days: row.days,
     calendarDays: row.calendar_days,

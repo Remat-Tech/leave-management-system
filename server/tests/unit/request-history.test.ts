@@ -486,6 +486,8 @@ function request(changes: Partial<LeaveRequest>): LeaveRequest {
     from: '2026-03-02',
     to: '2026-03-13',
     reason: 'Two weeks with family.',
+    /** FR 18, LMS 308. */
+    lateEntryReason: null,
     countingBasis: 'WORKING_DAYS',
     days: 10,
     calendarDays: 12,

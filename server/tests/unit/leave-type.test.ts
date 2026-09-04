@@ -11,6 +11,7 @@ import {
   grantExpires,
   hasRunningBalance,
   InvalidLeaveType,
+  isBeyondTheBackdatingWindow,
   type LeaveType,
   LeaveTypeMayNotBeSplit,
   LeaveTypeRetired,
@@ -78,6 +79,16 @@ function refusedField(build: () => unknown): string {
   }
 
   throw new Error('That was accepted, and should not have been.');
+}
+
+/** Whether an assert refused, for the pairs where a predicate says the same thing. LMS 308. */
+function threw(assert: () => void): boolean {
+  try {
+    assert();
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 describe('a new type', () => {
@@ -337,6 +348,16 @@ describe('the two windows', () => {
 
   it('treat a request made on the day as notice of none, not as backdating', () => {
     expect(() => assertWithinBackdatingWindow(stored(), 0)).not.toThrow();
+  });
+
+  /* LMS 308. The plain question the request path asks, because past the window the answer is
+     not no but *not by this person*. One rule, two shapes, so they are walked together. */
+  it('answer the same question plainly, for the path that decides who may', () => {
+    for (const notice of [30, 0, -1, -7, -8, -30]) {
+      expect(isBeyondTheBackdatingWindow(annual, notice), `${notice} days`).toBe(
+        threw(() => assertWithinBackdatingWindow(annual, notice)),
+      );
+    }
   });
 
   /* The person who hits this cannot use the exemption themselves, so the message

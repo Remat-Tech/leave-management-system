@@ -366,6 +366,8 @@ async function askFor(
       from: rows[0].start_date,
       to: rows[0].end_date,
       reason: 'Five days in December',
+      /** FR 18, LMS 308. */
+      lateEntryReason: null,
       countingBasis: 'CALENDAR_DAYS' as const,
       days,
       calendarDays: span,

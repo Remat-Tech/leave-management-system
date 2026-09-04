@@ -11,6 +11,8 @@ import {
   blocksTheCalendar,
   InvalidLeaveRequest,
   isSettled,
+  LateEntryNeedsAReason,
+  lateEntryFor,
   LeaveAlreadySettled,
   type LeaveRequest,
   LeaveCountsNoDays,
@@ -35,6 +37,7 @@ import {
   COUNTING_BASES,
   countingBasisInWords,
   type LeaveType,
+  TooLateToRecord,
   validateNewLeaveType,
 } from '../../src/features/leave-type/leave-type.js';
 import type { DesksAvailable } from '../../src/features/leave-request/routing.js';
@@ -127,6 +130,8 @@ function aStoredRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     from: BOOKED.from,
     to: BOOKED.to,
     reason: 'My sister is getting married',
+    /** FR 18, LMS 308. */
+    lateEntryReason: null,
     countingBasis: 'WORKING_DAYS',
     days: 6,
     calendarDays: 9,
@@ -426,6 +431,108 @@ describe('short notice is acknowledged rather than refused', () => {
   });
 });
 
+/* ---------------------------------------------- recording it afterwards. FR 18, LMS 308 */
+
+/**
+ * FR 18, and the half of it that is about who is asking rather than about the dates.
+ *
+ * The window and the notice period look symmetrical and are not: short notice is warned about
+ * and let through, and this one refuses — but only the person whose leave it is. Past it the
+ * same request goes on the record as an exception, entered by HR, with a sentence saying why.
+ */
+describe('leave recorded after the fact', () => {
+  const SICK = { from: '2026-03-02', to: '2026-03-04' };
+
+  /** Two days ago, which is somebody entering Monday's absence on Wednesday. */
+  function entry(overrides: Partial<Parameters<typeof lateEntryFor>[0]> = {}) {
+    return lateEntryFor({
+      type: ANNUAL,
+      period: SICK,
+      daysOfNotice: -2,
+      mayRecordLate: false,
+      ...overrides,
+    });
+  }
+
+  /* The story's first criterion. Nobody is asked anything and nothing is stored. */
+  it('is nobody’s business inside the window, whoever is entering it', () => {
+    expect(entry()).toBeNull();
+    expect(entry({ daysOfNotice: -7 })).toBeNull();
+    expect(entry({ daysOfNotice: 0 })).toBeNull();
+    expect(entry({ daysOfNotice: 30 })).toBeNull();
+  });
+
+  /* And a reason offered where none was wanted is dropped rather than stored. */
+  it('and a reason given inside it is not kept', () => {
+    expect(entry({ reason: 'I was off sick' })).toBeNull();
+  });
+
+  /* The story's third criterion, from the side of the person who cannot use the exception. */
+  it('refuses the person whose leave it is once it is past the window, and names HR', () => {
+    expect(() => entry({ daysOfNotice: -8 })).toThrow(TooLateToRecord);
+
+    try {
+      entry({ daysOfNotice: -21 });
+      expect.unreachable();
+    } catch (error) {
+      const refusal = error as TooLateToRecord;
+
+      expect(refusal.permitted).toBe(7);
+      expect(refusal.daysAgo).toBe(21);
+      expect(refusal.message).toMatch(/Ask HR/);
+    }
+  });
+
+  /* And from the other side: HR may, and the reason is the price of it. */
+  it('lets HR enter it, and asks them why', () => {
+    expect(() => entry({ daysOfNotice: -21, mayRecordLate: true })).toThrow(LateEntryNeedsAReason);
+
+    expect(
+      entry({ daysOfNotice: -21, mayRecordLate: true, reason: '  Hospitalised, no phone  ' }),
+    ).toBe('Hospitalised, no phone');
+  });
+
+  /* Blank is nothing, so `''` never reaches the column. The same rule the reason box has. */
+  it('and a blank reason is no reason', () => {
+    expect(() => entry({ daysOfNotice: -21, mayRecordLate: true, reason: '   ' })).toThrow(
+      LateEntryNeedsAReason,
+    );
+  });
+
+  /* The refusal says what the window is and what it is being asked to hold, from both sides. */
+  it('and the refusal names the window as well as how far back this is', () => {
+    const refusal = new LateEntryNeedsAReason(ANNUAL, SICK, 21);
+
+    expect(refusal.permitted).toBe(7);
+    expect(refusal.daysAgo).toBe(21);
+    expect(refusal.code).toBe('LATE_ENTRY_NEEDS_A_REASON');
+    expect(refusal.message).toContain('7 days');
+    expect(refusal.message).toContain('21 days');
+  });
+
+  /**
+   * The window is a column, read off the type and never off its code.
+   *
+   * A type HR sets to nought cannot be entered late at all, and one they widen can be entered
+   * from as far back as they said. Neither is a code change. FR 31, design principle 5.
+   */
+  it('and reads the window off the type rather than off anything here', () => {
+    const never = leaveType({
+      code: 'STRICT_TEST',
+      name: 'Strict Leave',
+      maxBackdateCalendarDays: 0,
+    });
+    const ever = leaveType({
+      code: 'LOOSE_TEST',
+      name: 'Loose Leave',
+      maxBackdateCalendarDays: 90,
+    });
+
+    expect(() => entry({ type: never, daysOfNotice: -1 })).toThrow(TooLateToRecord);
+    expect(entry({ type: ever, daysOfNotice: -60 })).toBeNull();
+  });
+});
+
 /* ------------------------------------------------------------- what is stored */
 
 describe('what a request has to say', () => {
@@ -475,6 +582,8 @@ describe('what a request has to say', () => {
 
     expect(validateNewLeaveRequest(SOUND)).toEqual({
       ...stored,
+      /** FR 18, LMS 308. Nothing to explain: this one is not a late entry. */
+      lateEntryReason: null,
       status: 'SUBMITTED',
       awaitingApprovalFrom: 'MANAGER',
       /** FR 48b. Nothing was skipped: every desk can be asked. LMS 320. */

@@ -107,7 +107,13 @@ function QueueCard({ item }: { item: QueueItem }) {
           {/* FR 17, FR 18. The story's third criterion, and the first thing read on the card. */}
           {item.warnings.map((warning) => (
             <span key={warning.code} className={`tag flag is-${warning.code.toLowerCase()}`}>
-              {warning.code === 'BACKDATED' ? 'Back dated' : 'Short notice'}
+              {warning.code !== 'BACKDATED'
+                ? 'Short notice'
+                : /* FR 18, LMS 308. Two different pieces of news under one flag: recorded on
+                     the way back in, or entered past the window as HR's exception. */
+                  item.lateEntryReason === null
+                  ? 'Back dated'
+                  : 'Entered by HR'}
             </span>
           ))}
           <span className="tag desk">{deskLabel(item.desk)}</span>
