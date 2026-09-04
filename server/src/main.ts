@@ -8,6 +8,7 @@ import { BalanceRepository } from './features/balance/balance.db.js';
 import { EmployeeRepository } from './features/employee/employee.db.js';
 import { HolidayRepository } from './features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from './features/leave-request/leave-decision.db.js';
+import { LeaveRequestDraftRepository } from './features/leave-request/draft.db.js';
 import { LeaveRoutingRepository } from './features/leave-request/routing.db.js';
 import { WithdrawalRepository } from './features/leave-request/withdrawal.db.js';
 import { LeaveRequestRepository } from './features/leave-request/leave-request.db.js';
@@ -57,6 +58,8 @@ const decisions = new LeaveDecisionRepository(db);
 const routing = new LeaveRoutingRepository(db);
 /** FR 47, LMS 324. */
 const withdrawals = new WithdrawalRepository(db);
+/** FR 19, LMS 302. Requests started and not finished. */
+const drafts = new LeaveRequestDraftRepository(db);
 const balances = new BalanceRepository(db);
 /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
 const organisation = new OrganisationRepository(db);
@@ -100,6 +103,7 @@ const app = buildApp({
   decisions,
   routing,
   withdrawals,
+  drafts,
   accounts,
   roles,
   organisation,

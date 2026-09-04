@@ -352,6 +352,46 @@ export interface ApproverQueue {
   items: QueueItem[];
 }
 
+/** ---------------------------------------- requests I have not finished. FR 19, LMS 302. */
+
+/** A field a draft may still be missing, in the order the form asks for them. */
+export type DraftField = 'leaveTypeId' | 'from' | 'to' | 'reason';
+
+/** What a draft still needs before it can be asked for. */
+export interface DraftProgress {
+  finished: boolean;
+  missing: DraftField[];
+  /** What is left, and that nothing is held yet, in one sentence. */
+  inWords: string;
+}
+
+/**
+ * A leave request started and not finished. FR 19.
+ *
+ * Every field is nullable, which is the story: somebody plans before the dates are settled.
+ * Nothing is held and nobody has been asked until it is submitted.
+ */
+export interface Draft {
+  draftId: string;
+  leaveTypeId: string | null;
+  /** Ten characters, or null. */
+  from: string | null;
+  to: string | null;
+  reason: string | null;
+  progress: DraftProgress;
+  createdAt: string;
+  /** What the list is ordered by. */
+  updatedAt: string;
+}
+
+/** What a draft form sends. Any of them may be left out or cleared. */
+export interface DraftFields {
+  leaveTypeId?: string | null;
+  from?: string | null;
+  to?: string | null;
+  reason?: string | null;
+}
+
 /** Who the session belongs to. */
 export interface Me {
   employeeId: string;
@@ -500,6 +540,47 @@ export async function askForLeave(input: {
   reason: string;
 }): Promise<Submitted> {
   return request<Submitted>('POST', '/api/me/requests', input);
+}
+
+/* ------------------------------------------------------- drafts. FR 19, LMS 302 */
+
+/** Everything I have started and not finished, the one I last worked on first. */
+export async function myDrafts(): Promise<{ drafts: Draft[] }> {
+  return request<{ drafts: Draft[] }>('GET', '/api/me/request-drafts');
+}
+
+/**
+ * Saves what I have filled in so far. FR 19.
+ *
+ * Every field is optional and nothing is held, so this is safe to call with a form that is
+ * barely started. What comes back says what is still to fill in rather than refusing it.
+ */
+export async function saveDraft(fields: DraftFields): Promise<Draft> {
+  return request<Draft>('POST', '/api/me/request-drafts', fields);
+}
+
+/**
+ * Replaces what a draft holds. FR 19.
+ *
+ * A PUT, and the whole form is sent: a field somebody cleared has to arrive as cleared, and
+ * leaving it out would mean "unchanged".
+ */
+export async function editDraft(draftId: string, fields: DraftFields): Promise<Draft> {
+  return request<Draft>('PUT', `/api/me/request-drafts/${encodeURIComponent(draftId)}`, fields);
+}
+
+export async function discardDraft(draftId: string): Promise<void> {
+  await request<void>('DELETE', `/api/me/request-drafts/${encodeURIComponent(draftId)}`);
+}
+
+/**
+ * Finishes it: asks for the leave, and the draft goes away. FR 19, FR 10.
+ *
+ * The same answer {@link askForLeave} gives, and every refusal it can meet. A refused
+ * submission leaves the draft exactly where it was.
+ */
+export async function submitDraft(draftId: string): Promise<Submitted> {
+  return request<Submitted>('POST', `/api/me/request-drafts/${encodeURIComponent(draftId)}/submit`);
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {

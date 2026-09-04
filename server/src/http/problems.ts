@@ -163,6 +163,13 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
    * plain verb that is wrong for a request the line manager already decided the other way.
    */
   OverrulingNeedsAnOverride: 400,
+  /**
+   * FR 19. The empty fields are the fix, and the message names them. LMS 302.
+   *
+   * A 400 rather than a 409: nothing about the world refuses this, and the draft is
+   * exactly where it was. What is missing is what was sent.
+   */
+  DraftIsNotFinished: 400,
 
   /** FR 44. There is nothing on this request to reverse. LMS 318. */
   NothingToOverturn: 409,

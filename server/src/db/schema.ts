@@ -307,6 +307,21 @@ export interface LeaveRequestTable {
   updated_at: Timestamp;
 }
 
+/** A leave request somebody has started and not finished. FR 19, LMS 302. */
+export interface LeaveRequestDraftTable {
+  id: Generated<string>;
+  /** Never moved, by `leave_request_draft_stays_with_whose_it_is`. */
+  employee_id: ColumnType<string, string, never>;
+  /** All four of FR 10's fields are optional while it is a draft. */
+  leave_type_id: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  reason: string | null;
+  created_at: Timestamp;
+  /** What the draft list is ordered by. */
+  updated_at: Timestamp;
+}
+
 /** What one approver said at one stage, and when. FR 39, FR 52, LMS 315, LMS 314. */
 export interface LeaveRequestDecisionTable {
   id: Generated<string>;
@@ -391,6 +406,7 @@ export interface Database {
   leave_ledger_entry: LeaveLedgerEntryTable;
   leave_request: LeaveRequestTable;
   leave_request_decision: LeaveRequestDecisionTable;
+  leave_request_draft: LeaveRequestDraftTable;
   leave_request_routing: LeaveRequestRoutingTable;
   leave_request_withdrawal: LeaveRequestWithdrawalTable;
   leave_type: LeaveTypeTable;

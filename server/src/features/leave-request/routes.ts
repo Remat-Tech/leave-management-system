@@ -1,4 +1,4 @@
-/** The request screens, over HTTP. FR 54, LMS 402, LMS 403, LMS 404, FR 10, FR 11, FR 13, FR 20, FR 55, FR 56, LMS 405. */
+/** The request screens, over HTTP. FR 54, LMS 402, LMS 403, LMS 404, FR 10, FR 11, FR 13, FR 20, FR 55, FR 56, LMS 405, FR 19, LMS 302. */
 
 import { type Request, type Response, Router } from 'express';
 import type { LeaveYear } from '../leave-year/leave-year.js';
@@ -27,6 +27,9 @@ import type {
 } from '../balance/balance.service.js';
 import type { RequestHistory, RequestHistoryEntry, TrailStep } from './request-history.js';
 import type { ApproverQueueService } from './approver-queue.service.js';
+import type { DraftAsSent, DraftProgress, LeaveRequestDraft } from './draft.js';
+import { progressOfDraft } from './draft.js';
+import type { LeaveRequestDraftService } from './draft.service.js';
 import type { LeaveRequestService } from './leave-request.service.js';
 import type { RequestFormService } from './request-form.service.js';
 import type { RequestHistoryService } from './request-history.service.js';
@@ -40,9 +43,11 @@ export interface RequestRoutes {
   requests: LeaveRequestService;
   /** LMS 404. Everything waiting on me. */
   queue: ApproverQueueService;
+  /** FR 19, LMS 302. Requests started and not finished. */
+  drafts: LeaveRequestDraftService;
 }
 
-export function requestRoutes({ history, form, requests, queue }: RequestRoutes): Router {
+export function requestRoutes({ history, form, requests, queue, drafts }: RequestRoutes): Router {
   const routes = Router();
 
   /**
@@ -205,6 +210,85 @@ export function requestRoutes({ history, form, requests, queue }: RequestRoutes)
       )
       .then((answered) => {
         response.json(withdrawalAsJson(answered));
+      })
+      .catch(next);
+  });
+
+  /* ------------------------------------------------- drafts. FR 19, LMS 302 */
+
+  /** Everything I have started and not finished, the one I last worked on first. FR 19. */
+  routes.get('/me/request-drafts', (_request: Request, response: Response, next) => {
+    void drafts
+      .forEmployee(actorOf(response), employeeIdOf(response))
+      .then((found) => {
+        response.json({ drafts: found.map(draftAsJson) });
+      })
+      .catch(next);
+  });
+
+  /**
+   * Saves what I have filled in so far. FR 19, the story's first criterion.
+   *
+   * 201, and nothing else happens: no days are held, nobody is asked and nobody is told.
+   * Every field is optional — that is the whole story — and the response says which are
+   * still to fill in rather than refusing them.
+   */
+  routes.post('/me/request-drafts', (request: Request, response: Response, next) => {
+    void drafts
+      .save(actorOf(response), employeeIdOf(response), contentsOf(request))
+      .then((saved) => {
+        response.status(201).json(draftAsJson(saved));
+      })
+      .catch(next);
+  });
+
+  routes.get('/me/request-drafts/:id', (request: Request, response: Response, next) => {
+    void drafts
+      .byId(actorOf(response), asString(request.params.id))
+      .then((found) => {
+        response.json(draftAsJson(found));
+      })
+      .catch(next);
+  });
+
+  /**
+   * Edits it. FR 19, the story's second criterion.
+   *
+   * A PUT rather than a PATCH because what is sent is the form as it now stands: a field
+   * somebody cleared has to arrive as cleared, and absent-means-unchanged cannot say that
+   * without a sentinel.
+   */
+  routes.put('/me/request-drafts/:id', (request: Request, response: Response, next) => {
+    void drafts
+      .replace(actorOf(response), asString(request.params.id), contentsOf(request))
+      .then((written) => {
+        response.json(draftAsJson(written));
+      })
+      .catch(next);
+  });
+
+  /** Throws it away. FR 19. Nothing was held, so 204 and there is nothing to report. */
+  routes.delete('/me/request-drafts/:id', (request: Request, response: Response, next) => {
+    void drafts
+      .discard(actorOf(response), asString(request.params.id))
+      .then(() => {
+        response.status(204).end();
+      })
+      .catch(next);
+  });
+
+  /**
+   * Finishes it: asks for the leave, and the draft goes away. FR 19, FR 10.
+   *
+   * 201 with the same body `POST /me/requests` answers, because that is what happened —
+   * the draft is priced and written by the one door, and every refusal a typed-in request
+   * can meet, this can meet.
+   */
+  routes.post('/me/request-drafts/:id/submit', (request: Request, response: Response, next) => {
+    void drafts
+      .submit(actorOf(response), asString(request.params.id))
+      .then((submitted) => {
+        response.status(201).json(submittedAsJson(submitted));
       })
       .catch(next);
   });
@@ -375,6 +459,51 @@ function bodyOf(request: Request): Record<string, unknown> {
   const body: unknown = request.body;
 
   return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+}
+
+/**
+ * What a draft form sent, untouched. FR 19, LMS 302.
+ *
+ * The four values are passed through rather than coerced, unlike {@link asString} above,
+ * because absent and empty are the same state here and `validateDraftContents` is the one
+ * place that decides so. Coercing an absent field to `''` first would throw that away.
+ */
+function contentsOf(request: Request): DraftAsSent {
+  const sent = bodyOf(request);
+
+  return { leaveTypeId: sent.leaveTypeId, from: sent.from, to: sent.to, reason: sent.reason };
+}
+
+/* ---------------------------------------------------------------- a draft, as JSON */
+
+/**
+ * One unfinished request. FR 19, LMS 302.
+ *
+ * Every field may be null, which is the story. `progress` is what turns that into
+ * something a screen can act on: what is still to fill in, and the sentence saying so.
+ */
+function draftAsJson(draft: LeaveRequestDraft): unknown {
+  return {
+    draftId: draft.id,
+    leaveTypeId: draft.leaveTypeId,
+    /** Ten characters, each way, or null. NFR DAT 03. */
+    from: draft.from,
+    to: draft.to,
+    reason: draft.reason,
+    progress: progressAsJson(progressOfDraft(draft)),
+    createdAt: draft.createdAt.toISOString(),
+    /** What the list is ordered by. */
+    updatedAt: draft.updatedAt.toISOString(),
+  };
+}
+
+function progressAsJson(progress: DraftProgress): unknown {
+  return {
+    /** Whether submitting it would get past `DraftIsNotFinished`. */
+    finished: progress.finished,
+    missing: [...progress.missing],
+    inWords: progress.inWords,
+  };
 }
 
 /* ---------------------------------------------------------------- the queue, as JSON */

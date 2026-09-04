@@ -2004,9 +2004,12 @@ described the shape of it two migrations before the table existed: equality on a
 column beside overlap on a range.
 
 **A request blocks the days only while it is still live**, and `LIVE_STATUSES` is the
-list of what live means — drafted, waiting to be decided, or agreed. Withdrawn, cancelled
+list of what live means — waiting to be decided, or agreed. Withdrawn, cancelled
 and refused leave has given its days back, and days that came back are days somebody may
-book again, which is the ordinary thing to do after a request is turned down.
+book again, which is the ordinary thing to do after a request is turned down. A
+[draft](#a-request-saved-and-finished-later) is not on this list and cannot be: it is not a
+row in this table, and blocking a calendar with leave nobody has asked for is the thing it
+exists not to do.
 
 Today that list holds `SUBMITTED` and nothing else, because [the state
 machine](#asking-for-leave) is still the approval story's and `SUBMITTED` is the pending
@@ -2861,12 +2864,80 @@ withdraw on it is told, in words that do not claim the days came back. That is F
 life and is a story of its own; what this one guarantees is that there is something true to
 tell.
 
-**And there is no draft.** The backlog's "while draft or pending" describes a state this system
-does not have: a request exists because somebody submitted it, and `REQUEST_STATUSES` holds no
-`DRAFT` because [LMS 209's rule](#the-state-machine) is that a status arrives in the
-same story as the transition that reaches it — a state nothing can create is a promise the
-schema cannot keep. Adding one would be a lifecycle rather than a cancellation, and nothing in
-the backlog asks for it.
+**And there is no draft *status*.** The backlog's "while draft or pending" describes two
+things and only one of them is a state of a request: a request exists because somebody
+submitted it, and `REQUEST_STATUSES` holds no `DRAFT` because [LMS 209's
+rule](#the-state-machine) is that a status arrives in the same story as the transition that
+reaches it. [LMS 302](#a-request-saved-and-finished-later) is the story that brought drafts,
+and it kept that rule rather than breaking it: a draft is a row in another table, and the
+transition it brings is into `SUBMITTED` from outside `leave_request` altogether.
+
+---
+
+### A request saved and finished later
+
+**Saved without entering the workflow, and editable while in draft only.** FR 19, LMS 302.
+The story is somebody planning leave before the dates are settled — a fortnight that depends
+on a wedding nobody has fixed, a week off once a project lands.
+
+**A draft is a table, `leave_request_draft`, and not a `DRAFT` status.** Every rule on
+`leave_request` is a rule about a request that has been *made*, and a draft is exempt from
+all of them at once:
+
+| The rule on `leave_request` | What a draft needs |
+|---|---|
+| `leave_request_holds_its_days` | to hold nothing; the whole of the first criterion |
+| `leave_request_costs_at_least_a_day`, `leave_request_spans_its_own_dates` | no price, because there are no dates yet |
+| `start_date`, `end_date`, `counting_basis`, `reason` NOT NULL | every one of them nullable |
+| `submitted_at` NOT NULL, stamped on INSERT | nothing to stamp; it was never submitted |
+| `leave_request_says_what_it_said` | free editing; the whole of the second criterion |
+| `leave_request_never_overlaps` | two tentative Marches, which is what planning is |
+| `leave_request_waits_at_a_desk` | to sit nowhere and not be being decided |
+| `leave_request_is_never_deleted` | to be thrown away, holding nothing |
+
+A `DRAFT` status would mean "unless it is a draft" written into every one of those, turning
+a table of guarantees into a table of exceptions where the exception is the thing every
+future writer has to remember. It is the argument `leave_request_withdrawal` made about a
+fact with nowhere to live on the row.
+
+It also makes the second criterion **structural rather than enforced**: a draft is editable
+because it is a draft and a request is not because it is a request, and there is no state to
+check because the row moves table. There is no path back the other way.
+
+**Nothing about the leave is checked while it is a draft.** Not counted, not priced, not
+held to a leave year, not compared with leave already booked, not weighed against a balance.
+Every one of those is a real rule and every one belongs to submission, which is the moment
+the days are actually asked for — refusing a draft on any of them would be the workflow the
+first criterion says it does not enter, and it would refuse somebody for dates they had
+already said were not the dates. What *is* checked is shape: a date is ten characters, a
+draft with nothing in it is a form that was opened rather than leave being planned, and two
+dates the wrong way round is a mistake rather than an unfinished thought.
+
+**Finishing one is an ordinary submission.** `LeaveRequestDraftService.submit` reads the
+draft, narrows it through `readyToSubmit` — which defaults nothing, so a draft cannot become
+leave nobody asked for — and hands the four fields to `LeaveRequestService.submit`. Every
+refusal a typed-in request can meet, this meets, and meeting one costs the draft nothing: it
+is discarded only once the request is written. A crash between the two leaves a draft for
+leave that was asked for, which is recoverable; the other order would lose somebody's work,
+which is the thing a draft exists to prevent.
+
+**A draft is nobody else's, and that is narrower than every other rule in the file.**
+`leaveRequestPolicy.draft` admits the person planning the leave and nobody else — not their
+line manager, not HR, not a role that reads every record, all of whom `read` admits. There is
+no request for a manager to be the manager of, and "your manager can see you are thinking
+about two weeks in March" is a different system from the one FR 19 asks for. Refused
+silently, so a draft's existence is not disclosed by the refusal. HR may still enter leave on
+somebody's behalf — FR 18 — and may not draft on their behalf, because there is no "finish it
+later" in that act.
+
+**And it is not audited.** The first table since `leave_request` to leave the trigger out on
+purpose, and the reason is the opposite of `leave_request_decision`'s: a decision is append
+only and so is already its own history, where a draft is rewritten as often as somebody
+changes their mind and thrown away when they do. An audited draft would be a log of the
+contents of everything anybody discarded, which is precisely what a draft exists not to be —
+on the record. `leave_request_draft_stays_with_whose_it_is` is the one thing the row is held
+to, on every connection: a draft that changed hands would put somebody's private planning on
+another person's page with no policy asked.
 
 ---
 

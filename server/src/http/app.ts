@@ -10,6 +10,8 @@ import { RequestHistoryService } from '../features/leave-request/request-history
 import type { SignInService } from '../features/sign-in/sign-in.service.js';
 import type { BalanceRepository } from '../features/balance/balance.db.js';
 import type { EmployeeRepository } from '../features/employee/employee.db.js';
+import { LeaveRequestDraftService } from '../features/leave-request/draft.service.js';
+import type { LeaveRequestDraftRepository } from '../features/leave-request/draft.db.js';
 import type { LeaveDecisionRepository } from '../features/leave-request/leave-decision.db.js';
 import type { LeaveRoutingRepository } from '../features/leave-request/routing.db.js';
 import type { WithdrawalRepository } from '../features/leave-request/withdrawal.db.js';
@@ -53,6 +55,8 @@ export interface Application {
   routing: LeaveRoutingRepository;
   /** FR 47. The asks to take agreed leave off the books. LMS 324. */
   withdrawals: WithdrawalRepository;
+  /** FR 19. Requests started and not finished. LMS 302. */
+  drafts: LeaveRequestDraftRepository;
   accounts: SignInAccountRepository;
   roles: RoleRepository;
   /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
@@ -140,6 +144,15 @@ export function buildApp(parts: Application): Express {
         parts.balances,
         parts.types,
         parts.years,
+      ),
+      /* FR 19, LMS 302. A draft holds nothing, so this needs no transaction and no
+         balance — but finishing one is an ordinary submission, so it is handed the same
+         write door rather than a second way into `leave_request`. */
+      drafts: new LeaveRequestDraftService(
+        parts.guard,
+        parts.drafts,
+        parts.employees,
+        parts.leaveRequests,
       ),
     }),
   );
