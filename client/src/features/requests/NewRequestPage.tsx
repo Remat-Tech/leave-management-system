@@ -145,9 +145,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
     setAsking(true);
     setRefusal(undefined);
 
-    /* FR 17, LMS 307. Sent as it stands, warned about or not: whether an acknowledgement was
-       owed is the server's answer, and a browser deciding it would be a second copy of the
-       notice window — which is a column HR can change. */
+    /* FR 17, LMS 307. Sent as it stands: whether one was owed is the server's answer. */
     askForLeave({ leaveTypeId, from, to, reason, acknowledgesShortNotice: acknowledged })
       .then((next) => {
         setSubmitted(next);
@@ -282,13 +280,15 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
               </label>
             </div>
 
+            {/* FR 10. Required only where the type says so, off `reasonRequired` rather
+                than off anything decided here. */}
             <label>
-              Why
+              {chosen?.reasonRequired === false ? 'Why (optional)' : 'Why'}
               <textarea
                 value={reason}
                 rows={3}
                 disabled={asking}
-                required
+                required={chosen === undefined || chosen.reasonRequired}
                 placeholder={placeholderFor(chosen)}
                 onChange={(event) => {
                   setReason(event.target.value);
@@ -296,8 +296,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
               />
             </label>
 
-            {/* FR 39's cousin: whoever approves this is being asked to agree to something,
-                and the note says who will read it rather than repeating that it is needed. */}
+            {/* Who will read it, rather than repeating whether it is needed. */}
             <p className="muted">
               {chosen === undefined
                 ? 'Whoever approves this will read what you write here.'
@@ -305,9 +304,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
             </p>
 
             {/* FR 17, LMS 307. On the left, because it is something to decide rather than
-                something the system is saying — the sentence explaining it is the warning
-                beside the cost. Shown exactly when the server warns, so a notice window HR
-                changes changes this with it. */}
+                something the system is saying. Shown exactly when the server warns. */}
             {quote?.warnings.some((warning) => warning.code === 'SHORT_NOTICE') !== true ? null : (
               <label className="acknowledge">
                 <input
@@ -512,9 +509,8 @@ function Cost({
  * stays enabled and the server answers, with a sentence.
  *
  * `SHORT_NOTICE` is the one that also asks something back — the tick above the button, FR 17
- * and LMS 307 — and that is not this rule being broken. The tick is rendered off the presence
- * of this warning rather than off a notice window read here, and the server refuses an
- * unacknowledged submission whatever the browser did.
+ * and LMS 307. It is rendered off the presence of this warning rather than off a notice
+ * window read here, and the server refuses an unacknowledged submission either way.
  */
 function Warning({ warning }: { warning: QuoteWarning }) {
   return (
@@ -608,7 +604,12 @@ function Skeleton() {
  * this is the same instruction where somebody is about to type.
  */
 function placeholderFor(type: RequestableLeaveType | undefined): string {
-  return type === undefined
-    ? 'What this leave is for'
-    : `What this leave is for — enough that ${type.approvedBy} can decide on it`;
+  if (type === undefined) {
+    return 'What this leave is for';
+  }
+
+  /** FR 10. An optional box asks for something rather than demanding it. */
+  return type.reasonRequired
+    ? `What this leave is for — enough that ${type.approvedBy} can decide on it`
+    : `Anything ${type.approvedBy} should know. Leave it blank if there is nothing`;
 }

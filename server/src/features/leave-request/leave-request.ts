@@ -1053,18 +1053,16 @@ export interface NewLeaveRequest {
   from: CalendarDate;
   to: CalendarDate;
   /**
-   * Why. Mandatory, unlike an entitlement event's note, and the difference is who
-   * reads it: an event is a fact HR recorded, and a request is somebody asking a
-   * manager for something. A manager looking at five days in March with nothing
-   * against them is being asked to approve something they know nothing about.
+   * Why, where the type asks for one — `leave_type.reason_required`. FR 10.
+   *
+   * The unpaid types, where there is no entitlement behind the request and the sentence is
+   * what HR and the CEO are deciding on.
    */
-  reason: string;
+  reason?: string;
   /**
    * FR 17. That the short notice warning was seen and answered. LMS 307.
    *
-   * Optional because almost no request is short of notice, and read only where one is —
-   * {@link assertShortNoticeIsAcknowledged}. Not a stored field: it says somebody was told
-   * before they committed, and `submittedAt` against `from` says how short it was.
+   * Not stored: `submittedAt` against `from` already says how short the notice was.
    */
   acknowledgesShortNotice?: boolean;
 }
@@ -1083,7 +1081,8 @@ export interface ValidatedLeaveRequest {
   leaveYearId: string;
   from: CalendarDate;
   to: CalendarDate;
-  reason: string;
+  /** FR 10. Null where the type asks for none; never `''`. */
+  reason: string | null;
   countingBasis: CountingBasis;
   days: number;
   calendarDays: number;
@@ -1123,7 +1122,8 @@ export interface LeaveRequest {
   leaveYearId: string;
   from: CalendarDate;
   to: CalendarDate;
-  reason: string;
+  /** FR 10. Null where the type asks for none; never `''`. */
+  reason: string | null;
   /**
    * FR 11. The basis this was priced under, as it stood at submission.
    *
@@ -1462,11 +1462,9 @@ export class NotEnoughDays extends Error {
 }
 
 /**
- * Short notice submitted without the acknowledgement FR 17 asks for. FR 17, LMS 307.
+ * Short notice submitted without the acknowledgement. FR 17, LMS 307.
  *
- * The one refusal here that is not about the leave. The days are fine, the dates are fine and
- * the request goes through the moment it is acknowledged — what is missing is the person
- * having said they know the approvers may push back.
+ * Not about the leave: the same request goes through once it is acknowledged.
  */
 export class ShortNoticeNotAcknowledged extends Error {
   /** FR 17. What a client branches on, so a form can show the tick rather than the sentence. */
@@ -1592,12 +1590,8 @@ export function assertTheDaysAreThere(
 /**
  * Refuses short notice nobody has acknowledged. FR 17, LMS 307.
  *
- * The acknowledgement, and never the leave: a type with no notice window asks nothing, and a
- * request inside the window asks nothing either. What is refused is submitting through a
- * warning without answering it — see {@link ShortNoticeNotAcknowledged}.
- *
- * The shortfall is {@link noticeShortfall}'s, so the condition this refuses on is exactly the
- * condition the quote warned about; the two cannot come to disagree about what is short.
+ * The shortfall is {@link noticeShortfall}'s, so this refuses on exactly the condition the
+ * quote warned about.
  */
 export function assertShortNoticeIsAcknowledged(
   type: LeaveType,
@@ -1615,12 +1609,8 @@ export function assertShortNoticeIsAcknowledged(
 /**
  * The notice given against what the type expects, in the one clause both say. FR 17.
  *
- * The same arrangement {@link daysAgainstTheBalance} makes: the quote's `SHORT_NOTICE` warning
- * and {@link ShortNoticeNotAcknowledged} are one condition told at two moments, and what
- * differs is what follows.
- *
- * Notice below nought is said in words rather than as a figure — "gives −21 days" is
- * arithmetic where "the leave has already started" is the news. FR 18.
+ * The arrangement {@link daysAgainstTheBalance} makes: one condition told at two moments.
+ * Notice below nought is said in words rather than as a negative figure.
  */
 function noticeAgainstWhatIsExpected(
   type: LeaveType,
@@ -1710,9 +1700,8 @@ export const QUOTE_WARNINGS = [
   /**
    * FR 17. Less notice than the type asks for. Never a bar; the approver decides.
    *
-   * The one warning submission asks something back about: {@link assertShortNoticeIsAcknowledged}
-   * refuses the same condition unacknowledged, so this sentence is where somebody first
-   * meets it. LMS 307.
+   * The one warning submission asks something back about — {@link assertShortNoticeIsAcknowledged}.
+   * LMS 307.
    */
   'SHORT_NOTICE',
   /** FR 13. This length of this type needs something attached to it. */
@@ -2027,7 +2016,9 @@ export function validateNewLeaveRequest(input: {
   leaveYearId: string;
   from: CalendarDate;
   to: CalendarDate;
-  reason: string;
+  reason?: string;
+  /** FR 10. `leave_type.reason_required`, brought by the caller as `countingBasis` is. */
+  reasonRequired: boolean;
   countingBasis: CountingBasis;
   days: number;
   calendarDays: number;
@@ -2050,7 +2041,7 @@ export function validateNewLeaveRequest(input: {
     leaveYearId: requireId('leaveYearId', input.leaveYearId),
     from: requireDay('from', input.from),
     to: requireDay('to', input.to),
-    reason: requireReason(input.reason),
+    reason: readReason(input.reason, input.reasonRequired),
     countingBasis: input.countingBasis,
     days: requireWholeDays('days', input.days),
     calendarDays: requireWholeDays('calendarDays', input.calendarDays),
@@ -2107,11 +2098,14 @@ function theFirstDesk(chain: readonly ApproverRole[], available: DesksAvailable)
 /**
  * A changed reason, or nothing.
  *
- * Deliberately not a general update. The one editable field is checked the same way
- * it was on the way in, so a reason cannot be blanked afterwards by a path the create
- * would have refused.
+ * Deliberately not a general update. The one editable field is checked the same way it was
+ * on the way in — same `reasonRequired` — so a reason cannot be blanked afterwards by a
+ * path the create would have refused, and can be where the create would have allowed it.
  */
-export function validateLeaveRequestChanges(changes: LeaveRequestChanges): { reason: string } {
+export function validateLeaveRequestChanges(
+  changes: LeaveRequestChanges,
+  reasonRequired: boolean,
+): { reason: string | null } {
   if (changes.reason === undefined) {
     throw new InvalidLeaveRequest(
       'reason',
@@ -2120,7 +2114,7 @@ export function validateLeaveRequestChanges(changes: LeaveRequestChanges): { rea
     );
   }
 
-  return { reason: requireReason(changes.reason) };
+  return { reason: readReason(changes.reason, reasonRequired) };
 }
 
 function requireId(field: string, value: unknown): string {
@@ -2144,22 +2138,24 @@ function requireDay(field: string, value: unknown): CalendarDate {
 }
 
 /**
- * FR 10, and the argument for it being mandatory is in {@link NewLeaveRequest}.
+ * The reason, where the type asks for one. FR 10.
  *
- * Trimmed, never defaulted, and unconstrained beyond being something — the same rule a
- * ledger entry's reason is held to, and for the same reason: a reason nobody can write
- * freely is a reason everybody writes 'leave' in.
+ * Trimmed, and blank is nothing rather than a value, so `''` never reaches the column.
+ * Whether nothing is allowed is `leave_type.reason_required`, brought by the caller.
  */
-function requireReason(value: unknown): string {
-  if (typeof value !== 'string' || value.trim() === '') {
+function readReason(value: unknown, required: boolean): string | null {
+  const said = typeof value === 'string' ? value.trim() : '';
+
+  if (said === '' && required) {
     throw new InvalidLeaveRequest(
       'reason',
-      'A leave request says why. Whoever approves it is being asked to agree to ' +
-        'something, and a request with nothing against it asks them to agree to it blind.',
+      'This kind of leave says why. Whoever decides it is being asked to agree to ' +
+        'something they have no entitlement to weigh it against, and a request with ' +
+        'nothing against it asks them to agree to it blind.',
     );
   }
 
-  return value.trim();
+  return said === '' ? null : said;
 }
 
 /** FR 24. Leave is requested in whole days; the ledger's fractions are entitlement. */

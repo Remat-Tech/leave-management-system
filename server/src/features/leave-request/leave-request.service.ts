@@ -104,12 +104,7 @@ import type {
 import type { LeaveCalculatorService } from '../leave-calculator/leave-calculator.service.js';
 import type { NotificationService } from '../notification/notification.service.js';
 
-/**
- * What a period is priced from: a request without the two fields pricing does not read.
- *
- * The reason explains rather than decides, and the acknowledgement answers a warning a quote
- * has not made yet. FR 17, LMS 307.
- */
+/** What a period is priced from: a request without the two fields pricing does not read. */
 export type QuotableLeave = Omit<NewLeaveRequest, 'reason' | 'acknowledgesShortNotice'>;
 
 /** Leave asked for in a year that has been settled. §8.9.. */
@@ -236,8 +231,7 @@ export class LeaveRequestService {
    * it counted for something. `submit` takes the whole of {@link NewLeaveRequest}, which
    * still satisfies this.
    *
-   * **Nor is the acknowledgement**, for the same reason and since LMS 307. FR 17's warning is
-   * what a quote is *for*; answering it is an act of submitting.
+   * Nor is the acknowledgement. FR 17, LMS 307: the warning is what a quote is for.
    */
   async quote(actor: Actor, input: QuotableLeave): Promise<LeaveRequestQuote> {
     const { employee, type, year, period } = await this.resolve(actor, input);
@@ -289,9 +283,8 @@ export class LeaveRequestService {
       throw new LeaveYearIsClosed(year);
     }
 
-    /* FR 17, LMS 307. Warned at the quote and answered here. Asked before anything is
-       counted, because it is the one refusal on this path that needs no read at all — and
-       what it asks for is the acknowledgement rather than different dates. */
+    /* FR 17, LMS 307. Warned at the quote and answered here, before anything is counted:
+       the one refusal on this path that needs no read at all. */
     assertShortNoticeIsAcknowledged(
       type,
       period,
@@ -324,6 +317,8 @@ export class LeaveRequestService {
       from: period.from,
       to: period.to,
       reason: input.reason,
+      /** FR 10. The type's rule, brought here as `countingBasis` is. */
+      reasonRequired: type.reasonRequired,
       /* The story's third criterion, taken here and never read off the type again. */
       countingBasis: type.countingBasis,
       days: count.days,
@@ -1304,7 +1299,11 @@ export class LeaveRequestService {
 
     this.guard.enforce(leaveRequestPolicy.reword(actor, ownerOf(employee)));
 
-    const changes = validateLeaveRequestChanges({ reason });
+    /** FR 10. Judged by the same rule the submission was, so a reason cannot be blanked
+        on a type that asks for one. */
+    const type = await this.typeFor(existing.leaveTypeId);
+
+    const changes = validateLeaveRequestChanges({ reason }, type.reasonRequired);
     const written = await this.requests.reword(actor, id, changes.reason);
 
     /* Unreachable: the row was read a statement ago and nothing deletes one. Answered

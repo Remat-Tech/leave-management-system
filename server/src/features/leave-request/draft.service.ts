@@ -117,10 +117,8 @@ export class LeaveRequestDraftService {
    * asked for rather than losing somebody's work — and submitting it again meets
    * {@link LeaveOverlapsAnother}, which names the request that is already there.
    *
-   * **The acknowledgement is not one of the draft's fields**, and that is FR 17 rather than an
-   * omission. LMS 307: how short the notice is depends on the day it is submitted, so a tick
-   * saved in October answers a question November asks differently. It arrives with the
-   * finishing.
+   * The acknowledgement is not one of the draft's fields. FR 17, LMS 307: how short the
+   * notice is depends on the day it is submitted, so it arrives with the finishing.
    *
    * Throws {@link DraftIsNotFinished} for one with a field still to fill in,
    * {@link ShortNoticeNotAcknowledged} for short notice nobody has answered, and every other

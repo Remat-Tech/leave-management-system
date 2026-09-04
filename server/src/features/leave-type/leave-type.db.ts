@@ -329,6 +329,7 @@ function rowFor(record: ValidatedLeaveType): Insertable<LeaveTypeTable> {
     min_notice_calendar_days: record.minNoticeCalendarDays,
     max_backdate_calendar_days: record.maxBackdateCalendarDays,
     gender_restriction: record.genderRestriction,
+    reason_required: record.reasonRequired,
     display_order: record.displayOrder,
   };
 }
@@ -368,6 +369,7 @@ function changedColumnsOf(changes: Partial<ValidatedLeaveType>): Updateable<Leav
   if ('maxBackdateCalendarDays' in changes) {
     values.max_backdate_calendar_days = changes.maxBackdateCalendarDays;
   }
+  if ('reasonRequired' in changes) values.reason_required = changes.reasonRequired;
   if ('genderRestriction' in changes) values.gender_restriction = changes.genderRestriction;
   if ('displayOrder' in changes) values.display_order = changes.displayOrder;
 
@@ -448,6 +450,7 @@ function toLeaveType(row: LeaveTypeRow): Omit<LeaveType, 'approvalChain'> {
     minNoticeCalendarDays: row.min_notice_calendar_days,
     maxBackdateCalendarDays: row.max_backdate_calendar_days,
     genderRestriction: row.gender_restriction as Gender | null,
+    reasonRequired: row.reason_required,
     deductsFromAnnual: row.deducts_from_annual,
     displayOrder: row.display_order,
     isActive: row.is_active,

@@ -128,8 +128,9 @@ function RequestCard({ entry }: { entry: RequestEntry }) {
       </p>
 
       {/* What they said when they asked. Quoted, because it is somebody's own words and an
-          approver decided on them — the same reason the comments below are quoted. */}
-      <blockquote className="said">{entry.reason}</blockquote>
+          approver decided on them — the same reason the comments below are quoted. Nothing
+          at all where the type asked for none. FR 10. */}
+      {entry.reason === null ? null : <blockquote className="said">{entry.reason}</blockquote>}
 
       {/* FR 41. The one sentence a person acts on, and it says what has happened before it
           says what has not. Server-composed; see the module note. */}

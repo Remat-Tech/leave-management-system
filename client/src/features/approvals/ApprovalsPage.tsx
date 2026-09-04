@@ -127,8 +127,14 @@ function QueueCard({ item }: { item: QueueItem }) {
         {item.asker.jobTitle === null ? '' : ` · ${item.asker.jobTitle}`}
       </p>
 
-      {/* What they said when they asked. FR 10 — quoted, because an approver decides on it. */}
-      <blockquote className="said">{item.reason}</blockquote>
+      {/* What they said when they asked. FR 10 — quoted, because an approver decides on it.
+          Absent where the type asks for none, and said rather than left blank: an empty
+          quotation reads as somebody having written nothing when they were asked to. */}
+      {item.reason === null ? (
+        <p className="muted">This kind of leave does not ask for a reason.</p>
+      ) : (
+        <blockquote className="said">{item.reason}</blockquote>
+      )}
 
       {/* FR 48, §8.6a. The story's second criterion, in the policy's own words. */}
       {item.notActionableBecause === null ? null : (

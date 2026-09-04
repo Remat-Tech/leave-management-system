@@ -486,9 +486,11 @@ describe('submitting a draft', () => {
   it('names what is left on that refusal', async () => {
     const draft = await drafts.save(asTheEmployee(), people.officer, { leaveTypeId: annualId });
 
+    /* FR 10. The reason is not among them: whether one is needed is the leave type's rule,
+       and a draft is checked for its fields. */
     await expect(drafts.submit(asTheEmployee(), draft.id, true)).rejects.toMatchObject({
       code: 'DRAFT_NOT_FINISHED',
-      missing: ['from', 'to', 'reason'],
+      missing: ['from', 'to'],
     });
   });
 

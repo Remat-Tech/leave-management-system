@@ -474,6 +474,7 @@ future leave type becomes a code change."
 | `min_notice_calendar_days` | how much notice is *expected* | FR 17; fourteen for annual leave, nothing elsewhere |
 | `max_backdate_calendar_days` | how late it may still be entered | FR 18; seven everywhere |
 | `gender_restriction` | who is eligible | FR 05, and the reason `employee.gender` is nullable rather than required |
+| `reason_required` | whether a request has to say why | FR 10; the two unpaid types, and nothing else |
 | `deducts_from_annual` | nothing, ever | FR 33, as a CHECK rather than the TDD's "must stay FALSE" comment |
 
 **`code` is a handle, never a branch.** It is what a report from last year and a
@@ -1890,6 +1891,34 @@ work around — so a short-notice request is submitted and the quote says by how
 Since LMS 307 the warning is also *answered*. It still refuses no leave and moves no
 dates; what it refuses is submitting through the warning without saying it was read. See
 [warned when notice is short](#warned-when-notice-is-short).
+
+**And the reason is asked for only where the approvers decide on it.** FR 10.
+`leave_request.reason` was mandatory for every type on the argument that a manager looking
+at five days in March with nothing against them is being asked to agree blind. That is
+right about leave somebody is asking a favour for and wrong about most leave: drawing down
+an allowance you are owed is not a favour, and a required box on the ordinary case is one
+everybody fills with the word "leave".
+
+So it is `leave_type.reason_required`, TRUE on the two unpaid types and FALSE on the five
+paid ones. Unpaid leave has no allowance behind it — §4.3.1 sends both unpaid types to HR
+and the Chief Executive — so the sentence is the whole of what is being decided.
+
+It is a column rather than a read of `is_paid`, which is the same argument every other
+rule here makes: FR 63 already owns that one, and design principle 5 wants a rule HR can
+move without a deployment. The two agree today because the migration seeded them to, not
+because anything reads one for the other. A type HR adds asks for a reason until they say
+otherwise — a type that quietly stopped asking is an approver deciding blind, which is the
+failure the original rule was written against.
+
+**Blank is nothing, and nothing is `NULL`.** The domain trims what arrives and stores null
+for nothing, and `leave_request_reason_not_blank` refuses `''` from every writer — so "did
+they explain themselves" has two answers rather than three. The reword is judged by the
+same `reasonRequired`, so a reason can be cleared exactly where it could have been omitted.
+
+**A draft does not hold the rule.** `reason` left `DRAFT_FIELDS_TO_SUBMIT` with this: a
+draft is checked for its fields, and whether the leave needs a reason is the leave type's —
+which is submission's question, as `LeaveRequestDraftService.save` already said of
+everything else about the leave.
 
 **The balance is the one that both warns and refuses**, and which it does depends on when
 it is asked: the quote reports the shortfall so somebody can decide what to ask for, and

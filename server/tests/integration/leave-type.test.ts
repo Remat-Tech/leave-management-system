@@ -299,6 +299,17 @@ describe('the seven types of FR 32', () => {
     expect(unpaid).toEqual(['UNPAID', 'MAT_EXT_UNPAID']);
   });
 
+  /* FR 10. The same two, and a separate column saying so: there is no allowance behind
+     unpaid leave, so the reason is what HR and the CEO are deciding on. Every paid type
+     asks for none — drawing down days you are owed is not asking for a favour. */
+  it('ask for a reason on the two unpaid types and on no other', async () => {
+    const asking = (await types.list(system))
+      .filter((type) => type.reasonRequired)
+      .map((type) => type.code);
+
+    expect(asking).toEqual(['UNPAID', 'MAT_EXT_UNPAID']);
+  });
+
   /* FR 05. Three restricted types, and the column that exists for them. */
   it('restrict only the three types that are restricted', async () => {
     const restricted = (await types.list(system))

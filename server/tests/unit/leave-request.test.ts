@@ -436,6 +436,8 @@ describe('what a request has to say', () => {
     from: '2026-03-02',
     to: '2026-03-10',
     reason: 'My sister is getting married',
+    /** FR 10. The type's rule, brought by the caller as the basis is. */
+    reasonRequired: true,
     countingBasis: 'WORKING_DAYS' as const,
     days: 7,
     calendarDays: 9,
@@ -468,6 +470,8 @@ describe('what a request has to say', () => {
     const stored: Record<string, unknown> = { ...SOUND };
     delete stored.approvalChain;
     delete stored.available;
+    /** FR 10. A rule the caller brings, not a field the request stores. */
+    delete stored.reasonRequired;
 
     expect(validateNewLeaveRequest(SOUND)).toEqual({
       ...stored,
@@ -547,12 +551,39 @@ describe('what a request has to say', () => {
     );
   });
 
-  /* FR 10, and the argument is who reads it: a manager looking at five days in March
-     with nothing against them is being asked to agree to something blind. */
-  it('needs a reason, and trims it rather than storing the spaces', () => {
+  /* FR 10. Where the type asks for one, which is the two unpaid types: there is no
+     entitlement behind the request, so the sentence is what is being decided. */
+  it('needs a reason where the type asks for one, and trims it', () => {
     expect(refusedField(() => validateNewLeaveRequest({ ...SOUND, reason: '' }))).toBe('reason');
     expect(refusedField(() => validateNewLeaveRequest({ ...SOUND, reason: '   ' }))).toBe('reason');
+    expect(refusedField(() => validateNewLeaveRequest({ ...SOUND, reason: undefined }))).toBe(
+      'reason',
+    );
     expect(validateNewLeaveRequest({ ...SOUND, reason: '  a wedding  ' }).reason).toBe('a wedding');
+  });
+
+  /**
+   * FR 10. And asks for none where the type does not, storing null rather than `''`.
+   *
+   * The rule arrives as `reasonRequired` and nothing here reads a type code to reach it, so
+   * a type HR changes changes this the moment the row does. Design principle 5.
+   *
+   * Null rather than the empty string is what keeps "did they explain themselves" two
+   * answers rather than three — the same line every nullable text column here is held to.
+   */
+  it('and takes none at all where the type does not ask, storing nothing rather than blank', () => {
+    const optional = { ...SOUND, reasonRequired: false };
+
+    expect(validateNewLeaveRequest({ ...optional, reason: undefined }).reason).toBeNull();
+    expect(validateNewLeaveRequest({ ...optional, reason: '' }).reason).toBeNull();
+    expect(validateNewLeaveRequest({ ...optional, reason: '   ' }).reason).toBeNull();
+  });
+
+  /* And one given anyway is kept. Optional is not ignored. */
+  it('and keeps one given anyway', () => {
+    expect(
+      validateNewLeaveRequest({ ...SOUND, reasonRequired: false, reason: '  a wedding  ' }).reason,
+    ).toBe('a wedding');
   });
 
   /* FR 24. Leave is requested in whole days; the ledger's fractions are entitlement,
@@ -581,18 +612,24 @@ describe('what a request has to say', () => {
 
 describe('what may be changed afterwards', () => {
   it('is the reason, and only the reason', () => {
-    expect(validateLeaveRequestChanges({ reason: '  a wedding  ' })).toEqual({
+    expect(validateLeaveRequestChanges({ reason: '  a wedding  ' }, true)).toEqual({
       reason: 'a wedding',
     });
   });
 
   it('and a change that names nothing is refused rather than doing nothing', () => {
-    expect(() => validateLeaveRequestChanges({})).toThrow(InvalidLeaveRequest);
-    expect(() => validateLeaveRequestChanges({})).toThrow(/cannot be edited/);
+    expect(() => validateLeaveRequestChanges({}, true)).toThrow(InvalidLeaveRequest);
+    expect(() => validateLeaveRequestChanges({}, true)).toThrow(/cannot be edited/);
   });
 
   it('and a reason cannot be blanked by a path the create would have refused', () => {
-    expect(() => validateLeaveRequestChanges({ reason: '   ' })).toThrow(InvalidLeaveRequest);
+    expect(() => validateLeaveRequestChanges({ reason: '   ' }, true)).toThrow(InvalidLeaveRequest);
+  });
+
+  /* FR 10. And can be, where the create would have allowed it: the reword is judged by the
+     same `reasonRequired` the submission was, so the two cannot disagree. */
+  it('and can be cleared where the type asks for none', () => {
+    expect(validateLeaveRequestChanges({ reason: '   ' }, false)).toEqual({ reason: null });
   });
 });
 

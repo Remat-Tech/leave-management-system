@@ -374,9 +374,8 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
    * reason this route takes only the four fields somebody actually filled in: a caller that
    * can supply a figure can supply a smaller one.
    *
-   * `acknowledgesShortNotice` is the fifth and is not one of them. FR 17, LMS 307: it says
-   * nothing about the leave and decides nothing about it — it answers a warning, and whether
-   * one was owed is `assertShortNoticeIsAcknowledged`'s to say rather than the caller's.
+   * `acknowledgesShortNotice` is the fifth and is not one of them. FR 17, LMS 307: it answers
+   * a warning, and whether one was owed is the domain's to say rather than the caller's.
    */
   routes.post('/me/requests', (request: Request, response: Response, next) => {
     const sent = bodyOf(request);
@@ -444,13 +443,7 @@ function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-/**
- * An acknowledgement, and only `true` is one. FR 17, LMS 307.
- *
- * Narrower than {@link asString}'s coercion because there is no domain function further down
- * that takes a string here: the refusal turns on a boolean, and `"false"`, `0` and `null` are
- * all things a client sends that are not somebody saying yes.
- */
+/** An acknowledgement, and only `true` is one. FR 17, LMS 307. */
 function asAcknowledgement(value: unknown): boolean {
   return value === true;
 }
@@ -727,6 +720,8 @@ function leaveTypeAsJson(type: RequestableLeaveType): unknown {
     documentation: type.documentation,
     documentationAfterDays: type.documentationAfterDays,
     exceedableWithDocument: type.exceedableWithDocument,
+    /** FR 10. Whether the form's reason box is required. */
+    reasonRequired: type.reasonRequired,
     /** FR 38a. */
     approvedBy: type.approvedBy,
     rules: type.rules.map(ruleAsJson),

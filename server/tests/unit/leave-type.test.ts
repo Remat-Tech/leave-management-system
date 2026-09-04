@@ -100,6 +100,9 @@ describe('a new type', () => {
          late, because every type can be overtaken by events. */
       maxBackdateCalendarDays: 7,
       genderRestriction: null,
+      /* FR 10. A new type asks for a reason until HR says otherwise: one that quietly
+         stopped asking is an approver deciding blind. */
+      reasonRequired: true,
       displayOrder: 0,
       /* FR 38a and LMS 204's second criterion. Manager then HR, applied here
          rather than left to the writer, so that a type created through a form

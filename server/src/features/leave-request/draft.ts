@@ -14,6 +14,14 @@ export const DRAFT_FIELDS = ['leaveTypeId', 'from', 'to', 'reason'] as const;
 
 export type DraftField = (typeof DRAFT_FIELDS)[number];
 
+/**
+ * The ones a draft cannot be submitted without. FR 10, FR 19.
+ *
+ * `reason` is not among them: whether one is needed is `leave_type.reason_required`, which
+ * is submission's question.
+ */
+export const DRAFT_FIELDS_TO_SUBMIT: readonly DraftField[] = ['leaveTypeId', 'from', 'to'];
+
 /** A field as a person says it, for the sentence that names what is left. NFR USA 03. */
 export function fieldInWords(field: DraftField): string {
   switch (field) {
@@ -90,8 +98,8 @@ export class DraftIsNotFinished extends Error {
   constructor(draft: LeaveRequestDraft, missing: readonly DraftField[]) {
     super(
       `This draft still needs ${listOf(missing.map(fieldInWords))}. A draft is saved with ` +
-        `as little as one field filled in, and asked for once it says what leave it is, ` +
-        `when it runs and why. Nothing is held until then.`,
+        `as little as one field filled in, and asked for once it says what leave it is ` +
+        `and when it runs. Nothing is held until then.`,
     );
     this.name = 'DraftIsNotFinished';
     this.draftId = draft.id;
@@ -106,7 +114,7 @@ export class DraftIsNotFinished extends Error {
  * screen lists it, so a form and a refusal cannot disagree about what is left.
  */
 export function whatIsMissing(draft: DraftContents): readonly DraftField[] {
-  return DRAFT_FIELDS.filter((field) => draft[field] === null);
+  return DRAFT_FIELDS_TO_SUBMIT.filter((field) => draft[field] === null);
 }
 
 /** Whether it holds everything a request is made of. FR 19. */
@@ -121,7 +129,7 @@ export function isFinished(draft: DraftContents): boolean {
  * {@link validateDraftContents} rather than stored.
  */
 export function isEmpty(draft: DraftContents): boolean {
-  return whatIsMissing(draft).length === DRAFT_FIELDS.length;
+  return DRAFT_FIELDS.every((field) => draft[field] === null);
 }
 
 /**
@@ -133,7 +141,7 @@ export function isEmpty(draft: DraftContents): boolean {
 export function readyToSubmit(draft: LeaveRequestDraft): Omit<NewLeaveRequest, 'employeeId'> {
   const missing = whatIsMissing(draft);
 
-  if (missing.length > 0 || draft.leaveTypeId === null || draft.reason === null) {
+  if (missing.length > 0 || draft.leaveTypeId === null) {
     throw new DraftIsNotFinished(draft, missing);
   }
 
@@ -147,7 +155,8 @@ export function readyToSubmit(draft: LeaveRequestDraft): Omit<NewLeaveRequest, '
     leaveTypeId: draft.leaveTypeId,
     from: draft.from,
     to: draft.to,
-    reason: draft.reason,
+    /** FR 10. Whether nothing is allowed is the leave type's, asked at submission. */
+    reason: draft.reason ?? undefined,
   };
 }
 

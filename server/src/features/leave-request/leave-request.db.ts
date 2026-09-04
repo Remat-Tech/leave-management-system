@@ -233,7 +233,11 @@ export class LeaveRequestRepository {
   }
 
   /** Improves the reason, which is the only field of substance that may change. */
-  async reword(by: Attribution, id: string, reason: string): Promise<LeaveRequest | undefined> {
+  async reword(
+    by: Attribution,
+    id: string,
+    reason: string | null,
+  ): Promise<LeaveRequest | undefined> {
     return this.catchRefusals(async () => {
       const row = await recording(this.db, by, (on) =>
         on
