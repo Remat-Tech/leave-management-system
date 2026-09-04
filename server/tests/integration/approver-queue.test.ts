@@ -623,12 +623,22 @@ function aBackdatedRequest(): Promise<string> {
   });
 }
 
-/** FR 17. Annual leave expects seven days' notice; this gives one. */
+/**
+ * FR 17. Annual leave expects seven days' notice; this gives one.
+ *
+ * Five days rather than two, and the width is the fix rather than the point. Annual leave
+ * counts working days, so a two day period is a Saturday and a Sunday once a week: run on a
+ * Friday, this cost nothing at all and `LeaveCountsNoDays` refused it before the flag under
+ * test could be raised. Five consecutive days hold at least three working ones in every
+ * alignment, which no run of gazetted holidays can empty.
+ *
+ * What makes it short notice is the *start*, which is still tomorrow.
+ */
 function aRequestStartingTomorrow(): Promise<string> {
   return aRequest({
     employeeId: people.officer,
     from: daysFromToday(1),
-    to: daysFromToday(2),
+    to: daysFromToday(5),
   });
 }
 
