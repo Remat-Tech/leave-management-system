@@ -164,8 +164,9 @@ export function rulesFor(type: LeaveType): FormRule[] {
       kind: 'EVIDENCE_IF_EXCEEDED',
       inWords:
         `Going past your ${type.name.toLowerCase()} allowance is not refused — it asks for ` +
-        `documentation instead, and the leave is still granted. The balance goes below ` +
-        `nought and that is correct.`,
+        `documentation instead, and the leave is still granted with it. The balance goes ` +
+        `below nought and that is correct. Without the documentation the request is ` +
+        `refused, so upload it before you ask.`,
       asks: true,
     });
   }
@@ -287,13 +288,14 @@ function documentationInWords(type: LeaveType): string | null {
     case 'ALWAYS':
       return (
         `Every request of this kind needs supporting documentation, whatever its length. ` +
-        `Have it ready before you submit — whoever approves it will ask for it.`
+        `Upload it before you ask — a request without it is refused rather than chased.`
       );
     case 'AFTER_DAYS':
       return type.documentationAfterDays === null
         ? null
-        : `More than ${days(type.documentationAfterDays)} needs supporting documentation. ` +
-            `${sentenceCase(days(type.documentationAfterDays))} or fewer needs none.`;
+        : `More than ${days(type.documentationAfterDays)} needs supporting documentation, ` +
+            `and is refused without it. ${sentenceCase(days(type.documentationAfterDays))} ` +
+            `or fewer needs none.`;
     default:
       return null;
   }

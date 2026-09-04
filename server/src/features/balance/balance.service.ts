@@ -115,6 +115,13 @@ export interface RequestToSubmit {
   request: ValidatedLeaveRequest;
   /** FR 27. */
   reason: string;
+  /**
+   * FR 13, FR 32a. Ids of evidence waiting to go on this request. LMS 311.
+   *
+   * Put on the request inside the transaction that holds its days, so a request that needed
+   * documentation and the certificate answering it commit together or not at all.
+   */
+  evidence?: readonly string[];
 }
 
 /** What `LeaveRequestService` supplies to end one outright. FR 26, §8.2., LMS 306, LMS 318. */
@@ -288,6 +295,17 @@ export class BalanceService {
       /* FR 48b. The stages the routing skipped to reach the desk this was written at, in
          the same transaction as the row they explain. LMS 320. */
       await repositories.routing.record(actor, written.id, request.skips);
+
+      /* FR 13, FR 32a. The evidence, onto the request it was uploaded for. LMS 311.
+         `leave_request_that_needed_evidence_has_it` is deferred to the end of this
+         transaction and refuses it outright where `evidence_required` is left standing with
+         nothing clean under it — so a race that spent the certificate between the service's
+         check and this line rolls the whole submission back rather than booking the leave. */
+      await repositories.attachments.putOnRequest(
+        written.id,
+        written.employeeId,
+        submission.evidence ?? [],
+      );
 
       const entry = await repositories.entries.post(
         actor,

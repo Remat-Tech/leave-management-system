@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { DayCount } from '../../src/features/leave-calculator/leave-calculator.js';
 import {
   decisionTo,
+  assertDocumentationIsAttached,
   assertItCostsSomething,
   assertShortNoticeIsAcknowledged,
+  type DocumentationGround,
+  documentationGroundsFor,
+  DocumentationNotAttached,
   settlementTo,
   transitionFor,
   transitionsFrom,
@@ -132,6 +136,7 @@ function aStoredRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     reason: 'My sister is getting married',
     /** FR 18, LMS 308. */
     lateEntryReason: null,
+    evidenceRequired: false,
     countingBasis: 'WORKING_DAYS',
     days: 6,
     calendarDays: 9,
@@ -306,6 +311,193 @@ describe('what is worth saying without refusing', () => {
       'NOT_ENOUGH_DAYS',
       'SHORT_NOTICE',
     ]);
+  });
+});
+
+/* ------------------------------------------------- documentation, FR 13, FR 32a */
+
+/** FR 13. Its rule is the request's length; the three days are not its threshold. */
+const SICK_BY_LENGTH = leaveType({
+  code: 'SICK_TEST',
+  name: 'Sick Leave',
+  documentation: 'AFTER_DAYS',
+  documentationAfterDays: 3,
+});
+
+/** FR 32a, and the row the database actually ships: the *balance* is the threshold. */
+const SICK_BY_BALANCE = leaveType({
+  code: 'SICK_TEST',
+  name: 'Sick Leave',
+  exceedableWithDocument: true,
+});
+
+describe('when a document is asked for, and on which of the two grounds', () => {
+  /**
+   * The distinction the whole story turns on, and the one most likely to be collapsed.
+   *
+   * FR 13 asks about *this request*: seven days of a type whose rule is "after three".
+   * FR 32a asks about the *yearly balance*: sick leave's three days are the point at which
+   * a certificate is demanded rather than a cap — §8.6b. A four day absence by somebody who
+   * has taken none all year is past neither threshold under the first rule and past the
+   * second under nothing, and the two are constantly read as one number.
+   */
+  it('tells the length of the request from the state of the balance', () => {
+    expect(documentationGroundsFor({ type: SICK_BY_LENGTH, days: 7, availableNow: 20 })).toEqual([
+      'THE_LENGTH_OF_THE_REQUEST',
+    ]);
+
+    expect(documentationGroundsFor({ type: SICK_BY_BALANCE, days: 7, availableNow: 20 })).toEqual(
+      [],
+    );
+
+    expect(documentationGroundsFor({ type: SICK_BY_BALANCE, days: 7, availableNow: 3 })).toEqual([
+      'PAST_THE_ALLOWANCE',
+    ]);
+  });
+
+  /* FR 13's comparison is `>`: three days is fine and the fourth is not. */
+  it('asks for nothing at the threshold and something past it', () => {
+    expect(documentationGroundsFor({ type: SICK_BY_LENGTH, days: 3, availableNow: 20 })).toEqual(
+      [],
+    );
+    expect(documentationGroundsFor({ type: SICK_BY_LENGTH, days: 4, availableNow: 20 })).toEqual([
+      'THE_LENGTH_OF_THE_REQUEST',
+    ]);
+  });
+
+  /* FR 32a's is the same shape against the balance: what is left is askable without one. */
+  it('and the allowance is the threshold rather than the cap', () => {
+    expect(documentationGroundsFor({ type: SICK_BY_BALANCE, days: 3, availableNow: 3 })).toEqual(
+      [],
+    );
+    expect(documentationGroundsFor({ type: SICK_BY_BALANCE, days: 4, availableNow: 3 })).toEqual([
+      'PAST_THE_ALLOWANCE',
+    ]);
+  });
+
+  /* Both can bite at once, and one certificate answers either — so both are named. */
+  it('names both where both apply', () => {
+    const both = leaveType({
+      code: 'SICK_TEST',
+      name: 'Sick Leave',
+      documentation: 'AFTER_DAYS',
+      documentationAfterDays: 3,
+      exceedableWithDocument: true,
+    });
+
+    expect(documentationGroundsFor({ type: both, days: 7, availableNow: 3 })).toEqual([
+      'THE_LENGTH_OF_THE_REQUEST',
+      'PAST_THE_ALLOWANCE',
+    ]);
+  });
+
+  /* And a type that may not be exceeded is refused rather than evidenced. FR 14. */
+  it('asks for nothing of a type whose allowance is a cap', () => {
+    expect(documentationGroundsFor({ type: ANNUAL, days: 7, availableNow: 3 })).toEqual([]);
+  });
+});
+
+describe('a request that policy asks for documentation on', () => {
+  function submitting(grounds: DocumentationGround[], usable: number, waiting = 0) {
+    return () =>
+      assertDocumentationIsAttached({
+        type: SICK_BY_BALANCE,
+        period: PERIOD,
+        days: 7,
+        availableNow: 3,
+        grounds,
+        usable,
+        waiting,
+      });
+  }
+
+  /* The story's first criterion: it blocks submission rather than warning about it. */
+  it('is refused where nothing usable is attached', () => {
+    expect(submitting(['PAST_THE_ALLOWANCE'], 0)).toThrow(DocumentationNotAttached);
+  });
+
+  it('and goes through with one file behind it', () => {
+    expect(submitting(['PAST_THE_ALLOWANCE'], 1)).not.toThrow();
+  });
+
+  it('and asks nothing of a request no rule applies to', () => {
+    expect(submitting([], 0)).not.toThrow();
+  });
+
+  /**
+   * NFR SEC 07, and the sentence matters because of who reads it.
+   *
+   * Somebody whose scanner was down has a file on the screen and no leave, and "nothing is
+   * attached" would be a refusal they can see is false. So the count that could not be used
+   * is named separately from the count that is missing.
+   */
+  it('says so when what is attached is only waiting to be scanned', () => {
+    let refusal: DocumentationNotAttached | undefined;
+
+    try {
+      submitting(['PAST_THE_ALLOWANCE'], 0, 1)();
+    } catch (error) {
+      refusal = error as DocumentationNotAttached;
+    }
+
+    expect(refusal?.waiting).toBe(1);
+    expect(refusal?.message).toContain('still being checked');
+  });
+
+  /** NFR USA 03. The refusal says which threshold it is about, and what to do. */
+  it('names the ground it is refusing on, and the two differ', () => {
+    const past = refusalFor(['PAST_THE_ALLOWANCE']);
+    const long = refusalFor(['THE_LENGTH_OF_THE_REQUEST']);
+
+    expect(past?.message).toContain('past its allowance');
+    expect(past?.grounds).toEqual(['PAST_THE_ALLOWANCE']);
+
+    expect(long?.message).toContain('7 days of Sick Leave needs supporting documentation');
+    expect(long?.message).not.toContain('past its allowance');
+  });
+
+  function refusalFor(grounds: DocumentationGround[]): DocumentationNotAttached | undefined {
+    try {
+      submitting(grounds, 0)();
+    } catch (error) {
+      return error as DocumentationNotAttached;
+    }
+
+    return undefined;
+  }
+});
+
+describe('the quote warns on exactly what the submission refuses on', () => {
+  /**
+   * One condition told at two moments, under one code — the arrangement `NOT_ENOUGH_DAYS`
+   * already makes. A form that highlights the upload box on the warning highlights it on the
+   * refusal with the same branch.
+   */
+  it('carries the same clause into the warning and the refusal', () => {
+    const quote = quoteFor({
+      type: SICK_BY_BALANCE,
+      period: PERIOD,
+      count: SEVEN_OF_NINE,
+      availableNow: 3,
+      daysOfNotice: 30,
+    });
+
+    const warning = quote.warnings.find((each) => each.code === 'DOCUMENTATION_REQUIRED');
+
+    expect(warning?.message).toContain('past its allowance');
+    expect(warning?.message).toContain('a request without it is refused');
+  });
+
+  it('and says nothing where no rule applies', () => {
+    const quote = quoteFor({
+      type: SICK_BY_BALANCE,
+      period: PERIOD,
+      count: SEVEN_OF_NINE,
+      availableNow: 20,
+      daysOfNotice: 30,
+    });
+
+    expect(quote.warnings.map((warning) => warning.code)).not.toContain('DOCUMENTATION_REQUIRED');
   });
 });
 
@@ -584,6 +776,7 @@ describe('what a request has to say', () => {
       ...stored,
       /** FR 18, LMS 308. Nothing to explain: this one is not a late entry. */
       lateEntryReason: null,
+      evidenceRequired: false,
       status: 'SUBMITTED',
       awaitingApprovalFrom: 'MANAGER',
       /** FR 48b. Nothing was skipped: every desk can be asked. LMS 320. */

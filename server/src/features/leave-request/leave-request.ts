@@ -1074,6 +1074,14 @@ export interface NewLeaveRequest {
    * explain. Only HR may enter one at all — see {@link lateEntryFor}.
    */
   lateEntryReason?: string;
+  /**
+   * FR 13, FR 32a. The files this leave is being asked for with. LMS 311.
+   *
+   * Ids of evidence already uploaded and waiting under this person's name, which go onto the
+   * request in the same transaction as the row itself — the story's "arrives with the request
+   * rather than being chased afterwards", read literally.
+   */
+  evidence?: readonly string[];
 }
 
 /**
@@ -1094,6 +1102,14 @@ export interface ValidatedLeaveRequest {
   reason: string | null;
   /** FR 18. Null on everything inside the window, which is almost everything. LMS 308. */
   lateEntryReason: string | null;
+  /**
+   * FR 13, FR 32a. Whether this had to arrive with documentation. LMS 311.
+   *
+   * Copied onto the row for the reason `countingBasis` is: the balance FR 32a judged it
+   * against has moved by the time anybody reads it, and HR may reword the type's rule
+   * tomorrow. Not supplied by the caller — {@link documentationGroundsFor} decides it.
+   */
+  evidenceRequired: boolean;
   countingBasis: CountingBasis;
   days: number;
   calendarDays: number;
@@ -1143,6 +1159,19 @@ export interface LeaveRequest {
    * the days were taken, and somebody has said why nobody heard about them until now.
    */
   lateEntryReason: string | null;
+  /**
+   * FR 13, FR 32a. Whether policy asked this request for documentation. LMS 311.
+   *
+   * True exactly where {@link documentationGroundsFor} found a ground when the days were
+   * held, and the reason it is a column rather than a question asked afresh: FR 32a's
+   * threshold is the *balance*, which moves, and FR 13's is the *type's rule*, which HR may
+   * reword. A request whose evidence rule was recomputed a month later would say something
+   * about today rather than about what it was allowed on.
+   *
+   * `leave_request_that_needed_evidence_has_it` holds the consequence on every connection: a
+   * request that says this has a `CLEAN` file on it, and one that has none cannot commit.
+   */
+  evidenceRequired: boolean;
   /**
    * FR 11. The basis this was priced under, as it stood at submission.
    *
@@ -1510,6 +1539,145 @@ export class ShortNoticeNotAcknowledged extends Error {
     this.given = daysOfNotice;
     this.shortBy = shortBy;
   }
+}
+
+/* ------------------------------------------------------- documentation, FR 13, FR 32a */
+
+/**
+ * Why a request is asked for a document, where it is. FR 13, FR 32a, §8.6b. LMS 311.
+ *
+ * Two thresholds that are constantly mistaken for one, and naming them apart is the whole
+ * reason this is a list rather than a boolean. `THE_LENGTH_OF_THE_REQUEST` is FR 13:
+ * `documentation` and `documentation_after_days`, a question about *this request*.
+ * `PAST_THE_ALLOWANCE` is FR 32a: `exceedable_with_document`, a question about the *yearly
+ * balance* — sick leave's three days, which §8.6b is explicit is "a documentation threshold,
+ * not a hard cap".
+ *
+ * They can both bite at once, and one certificate answers either, so the refusal names
+ * whichever apply rather than picking one.
+ */
+export const DOCUMENTATION_GROUNDS = ['THE_LENGTH_OF_THE_REQUEST', 'PAST_THE_ALLOWANCE'] as const;
+
+export type DocumentationGround = (typeof DOCUMENTATION_GROUNDS)[number];
+
+/**
+ * What this request has to arrive with a document for, if anything. FR 13, FR 32a. LMS 311.
+ *
+ * Takes the count and the balance rather than fetching either, for the reason
+ * {@link assertTheDaysAreThere} does: the quote's warning and the submission's refusal are
+ * made from one reading, so a person cannot be warned about one condition and refused on
+ * another.
+ */
+export function documentationGroundsFor(input: {
+  type: LeaveType;
+  days: number;
+  availableNow: number;
+}): readonly DocumentationGround[] {
+  const { type, days, availableNow } = input;
+  const grounds: DocumentationGround[] = [];
+
+  if (documentationRequired(type, days)) {
+    grounds.push('THE_LENGTH_OF_THE_REQUEST');
+  }
+
+  /** FR 32a. Going past the allowance is not refused for these types; it is evidenced. */
+  if (balanceMayBeExceededWithDocument(type) && days > availableNow) {
+    grounds.push('PAST_THE_ALLOWANCE');
+  }
+
+  return grounds;
+}
+
+/**
+ * Leave that policy asks for documentation on, submitted without any. FR 13, FR 32a. LMS 311.
+ *
+ * The story's whole point: the evidence arrives with the request rather than being chased
+ * afterwards. What counts is a file the scanner has called clean — NFR SEC 07 — so a request
+ * carrying only an unscanned upload meets this and is told why.
+ */
+export class DocumentationNotAttached extends Error {
+  /**
+   * FR 13. What a client branches on, and deliberately the same token as the
+   * {@link QuoteWarning} of that name — the arrangement `NOT_ENOUGH_DAYS` makes. The warning
+   * and the refusal are one condition seen at two moments, so a form highlights the upload
+   * on both with one branch.
+   */
+  readonly code = 'DOCUMENTATION_REQUIRED';
+  readonly leaveTypeId: string;
+  readonly period: LeavePeriod;
+  /** Whichever of the two apply. Never empty. */
+  readonly grounds: readonly DocumentationGround[];
+  /** Files that were named and could not stand as evidence, because nothing had cleared them. */
+  readonly waiting: number;
+
+  constructor(input: {
+    type: LeaveType;
+    period: LeavePeriod;
+    days: number;
+    availableNow: number;
+    grounds: readonly DocumentationGround[];
+    waiting: number;
+  }) {
+    const { type, period, days, availableNow, grounds, waiting } = input;
+
+    super(
+      `${documentationAgainstWhatIsAsked(type, grounds, days, availableNow)}, and nothing ` +
+        `usable is attached.${
+          waiting === 0
+            ? ''
+            : ` ${waiting === 1 ? 'One file is' : `${waiting} files are`} still being checked` +
+              ` for viruses and cannot count until that is done.`
+        } Upload it first — a file waits under your name until you ask for the leave — and ` +
+        `ask again with it. FR 13.`,
+    );
+    this.name = 'DocumentationNotAttached';
+    this.leaveTypeId = type.id;
+    this.period = period;
+    this.grounds = [...grounds];
+    this.waiting = waiting;
+  }
+}
+
+/**
+ * Refuses a request that policy asks for evidence on and has none. FR 13, FR 32a. LMS 311.
+ *
+ * `usable` is a count of files the scanner has cleared, taken rather than recounted, so this
+ * refuses on exactly what `attachmentSatisfiesADocumentationRule` admits.
+ */
+export function assertDocumentationIsAttached(input: {
+  type: LeaveType;
+  period: LeavePeriod;
+  days: number;
+  availableNow: number;
+  grounds: readonly DocumentationGround[];
+  usable: number;
+  waiting: number;
+}): void {
+  if (input.grounds.length > 0 && input.usable === 0) {
+    throw new DocumentationNotAttached(input);
+  }
+}
+
+/**
+ * Why a document is being asked for, in the one clause the warning and the refusal share.
+ *
+ * The arrangement {@link daysAgainstTheBalance} and {@link noticeAgainstWhatIsExpected} make:
+ * one condition told at two moments, described once so the two cannot drift.
+ */
+function documentationAgainstWhatIsAsked(
+  type: LeaveType,
+  grounds: readonly DocumentationGround[],
+  days: number,
+  availableNow: number,
+): string {
+  const said = grounds.map((ground) =>
+    ground === 'THE_LENGTH_OF_THE_REQUEST'
+      ? `${inDays(days)} of ${type.name} needs supporting documentation`
+      : `this is ${inDays(days)} against ${availableNow} left, and ${type.name} past its ` +
+        `allowance asks for documentation rather than being refused`,
+  );
+
+  return said.length <= 1 ? (said[0] ?? '') : said.join(', and ');
 }
 
 /**
@@ -1888,12 +2056,15 @@ export function quoteFor(input: {
     });
   }
 
-  if (documentationRequired(type, count.days)) {
+  /** FR 13, FR 32a, LMS 311. The same grounds submission refuses on, said as a warning. */
+  const grounds = documentationGroundsFor({ type, days: count.days, availableNow });
+
+  if (grounds.length > 0) {
     warnings.push({
       code: 'DOCUMENTATION_REQUIRED',
       message:
-        `${count.days} days of ${type.name} needs supporting documentation. Have it ready ` +
-        `— whoever approves this will ask for it.`,
+        `${documentationAgainstWhatIsAsked(type, grounds, count.days, availableNow)}. ` +
+        `Attach it before you ask — a request without it is refused.`,
     });
   }
 
@@ -1902,7 +2073,8 @@ export function quoteFor(input: {
       code: 'NOT_ENOUGH_DAYS',
       message: balanceMayBeExceededWithDocument(type)
         ? `${daysAgainstTheBalance(type, count.days, availableNow)}. ${type.name} may go ` +
-          `past its allowance with documentation, so this can still be submitted.`
+          `past its allowance with documentation, so this can still be submitted with a ` +
+          `certificate on it.`
         : `${daysAgainstTheBalance(type, count.days, availableNow)}, so it cannot be ` +
           `submitted as it stands.`,
     });
@@ -2119,6 +2291,17 @@ export function validateNewLeaveRequest(input: {
    * exception and has nothing to explain.
    */
   lateEntryReason?: string | null;
+  /**
+   * FR 13, FR 32a. Whether documentation was asked of this one. LMS 311.
+   *
+   * {@link documentationGroundsFor}'s answer brought here, as `reasonRequired` is the type's
+   * and `lateEntryReason` is the policy's: `/domain` states the rule and the caller does the
+   * reading. {@link assertDocumentationIsAttached} has already refused the ones it refuses.
+   *
+   * Optional, like `lateEntryReason` beside it and for the same reason: absent and false are
+   * the same state, and false is what almost every request is.
+   */
+  evidenceRequired?: boolean;
   countingBasis: CountingBasis;
   days: number;
   calendarDays: number;
@@ -2144,6 +2327,8 @@ export function validateNewLeaveRequest(input: {
     reason: readReason(input.reason, input.reasonRequired),
     /** FR 18. Already decided and already trimmed; see {@link lateEntryFor}. */
     lateEntryReason: input.lateEntryReason ?? null,
+    /** FR 13, FR 32a. Already decided; see {@link documentationGroundsFor}. LMS 311. */
+    evidenceRequired: input.evidenceRequired ?? false,
     countingBasis: input.countingBasis,
     days: requireWholeDays('days', input.days),
     calendarDays: requireWholeDays('calendarDays', input.calendarDays),

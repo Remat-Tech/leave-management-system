@@ -2,6 +2,7 @@
 
 import type { Kysely } from 'kysely';
 import type { Database } from './index.js';
+import { AttachmentRepository } from '../features/leave-request/attachment.db.js';
 import { BalanceRepository } from '../features/balance/balance.db.js';
 import { DepartmentRepository } from '../features/department/department.db.js';
 import { EmployeeRepository } from '../features/employee/employee.db.js';
@@ -34,6 +35,8 @@ export interface Repositories {
   routing: LeaveRoutingRepository;
   /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
   withdrawals: WithdrawalRepository;
+  /** FR 13. The evidence a request has to arrive with, put on it here. LMS 311. */
+  attachments: AttachmentRepository;
 }
 
 export class Transactions {
@@ -55,6 +58,7 @@ export class Transactions {
         decisions: new LeaveDecisionRepository(trx),
         routing: new LeaveRoutingRepository(trx),
         withdrawals: new WithdrawalRepository(trx),
+        attachments: new AttachmentRepository(trx),
       }),
     );
   }

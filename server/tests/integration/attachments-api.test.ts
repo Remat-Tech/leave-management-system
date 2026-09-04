@@ -93,6 +93,8 @@ beforeAll(async () => {
     decisions,
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
+    /** FR 13, LMS 311. */
+    new AttachmentRepository(db),
     roles,
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),

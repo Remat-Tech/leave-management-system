@@ -514,6 +514,7 @@ function request(changes: Partial<LeaveRequest>): LeaveRequest {
     reason: 'My sister is getting married.',
     /** FR 18, LMS 308. */
     lateEntryReason: null,
+    evidenceRequired: false,
     countingBasis: 'WORKING_DAYS',
     days: 5,
     calendarDays: 5,

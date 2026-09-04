@@ -109,6 +109,8 @@ beforeAll(async () => {
     new LeaveDecisionRepository(db),
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
+    /** FR 13, LMS 311. */
+    new AttachmentRepository(db),
     new RoleRepository(db),
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -211,7 +213,7 @@ function asAnHrOfficer() {
 }
 
 /** A submitted request of the employee's, sitting with their line manager. */
-async function aRequest(leaveTypeId = annualId) {
+async function aRequest(leaveTypeId = annualId, evidence: string[] = []) {
   const submitted = await requests.submit(asTheEmployee(), {
     employeeId: people.officer,
     leaveTypeId,
@@ -219,9 +221,23 @@ async function aRequest(leaveTypeId = annualId) {
     to: daysFromToday(25),
     reason: 'My sister is getting married',
     acknowledgesShortNotice: true,
+    /** FR 13, FR 32a, LMS 311. Five days of sick leave is past the allowance. */
+    evidence,
   });
 
   return submitted.request;
+}
+
+/**
+ * A sick request, which since LMS 311 cannot be made without a certificate on it.
+ *
+ * Five working days against a three day allowance is FR 32a's threshold, so the file is
+ * uploaded first and named at submission — which is the whole of the new path.
+ */
+async function aSickRequest() {
+  const certificate = await attachments.hold(asTheEmployee(), people.officer, aFile());
+
+  return aRequest(sickId, [certificate.id]);
 }
 
 const A_PDF = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.from('a certificate')]);
@@ -321,10 +337,10 @@ describe('attaching a file to a request', () => {
     await expect(
       admin.query(
         `INSERT INTO leave_request_attachment
-           (leave_request_id, slot, filename, content_type, size_bytes, checksum_sha256,
-            storage_key, scan_status)
-         VALUES ($1, 1, 'another.pdf', 'application/pdf', 10, $2, $3, 'PENDING')`,
-        [request.id, 'c'.repeat(64), 'd'.repeat(64)],
+           (leave_request_id, held_for_employee_id, slot, filename, content_type, size_bytes,
+            checksum_sha256, storage_key, scan_status)
+         VALUES ($1, $4, 1, 'another.pdf', 'application/pdf', 10, $2, $3, 'PENDING')`,
+        [request.id, 'c'.repeat(64), 'd'.repeat(64), request.employeeId],
       ),
     ).rejects.toThrow(/leave_request_attachment_five_per_request/);
   });
@@ -470,27 +486,27 @@ describe('the scan', () => {
 
 describe('whether a request has the documentation it needs', () => {
   it('says a clean file satisfies the rule', async () => {
-    const request = await aRequest(sickId);
-
-    await attachments.attach(asTheEmployee(), request.id, aFile());
+    const request = await aSickRequest();
 
     const held = await attachments.forRequest(asTheEmployee(), request.id);
 
+    expect(held.evidence.required).toBe(true);
     expect(held.evidence.usable).toBe(1);
     expect(held.evidence.satisfied).toBe(true);
   });
 
-  /* The story's fourth criterion, straight through: attached, unusable, unsatisfied. */
+  /* The story's fourth criterion, straight through: attached, and counting for nothing. */
   it('and that an unscanned one does not', async () => {
-    const request = await aRequest(sickId);
+    const request = await aSickRequest();
 
-    await unscanned.attach(asTheEmployee(), request.id, aFile());
+    await unscanned.attach(asTheEmployee(), request.id, aFile(A_PDF, 'a-second-note.pdf'));
 
     const held = await attachments.forRequest(asTheEmployee(), request.id);
 
-    expect(held.evidence.attached).toBe(1);
-    expect(held.evidence.usable).toBe(0);
-    expect(held.attachments[0].scanStatus).toBe('PENDING');
+    expect(held.evidence.attached).toBe(2);
+    expect(held.evidence.usable).toBe(1);
+    expect(held.attachments[1].scanStatus).toBe('PENDING');
+    expect(held.evidence.inWords).toContain('still being checked');
   });
 });
 
@@ -606,10 +622,10 @@ describe('the table itself', () => {
     await expect(
       admin.query(
         `INSERT INTO leave_request_attachment
-           (leave_request_id, slot, filename, content_type, size_bytes, checksum_sha256,
-            storage_key, scan_status)
-         VALUES ($1, 1, '../../etc/passwd', 'application/pdf', 10, $2, $3, 'PENDING')`,
-        [request.id, 'c'.repeat(64), 'd'.repeat(64)],
+           (leave_request_id, held_for_employee_id, slot, filename, content_type, size_bytes,
+            checksum_sha256, storage_key, scan_status)
+         VALUES ($1, $4, 1, '../../etc/passwd', 'application/pdf', 10, $2, $3, 'PENDING')`,
+        [request.id, 'c'.repeat(64), 'd'.repeat(64), request.employeeId],
       ),
     ).rejects.toThrow(/filename_is_a_name/);
   });
@@ -620,10 +636,10 @@ describe('the table itself', () => {
     await expect(
       admin.query(
         `INSERT INTO leave_request_attachment
-           (leave_request_id, slot, filename, content_type, size_bytes, checksum_sha256,
-            storage_key, scan_status)
-         VALUES ($1, 1, 'huge.pdf', 'application/pdf', $2, $3, $4, 'PENDING')`,
-        [request.id, 10 * 1024 * 1024 + 1, 'c'.repeat(64), 'd'.repeat(64)],
+           (leave_request_id, held_for_employee_id, slot, filename, content_type, size_bytes,
+            checksum_sha256, storage_key, scan_status)
+         VALUES ($1, $5, 1, 'huge.pdf', 'application/pdf', $2, $3, $4, 'PENDING')`,
+        [request.id, 10 * 1024 * 1024 + 1, 'c'.repeat(64), 'd'.repeat(64), request.employeeId],
       ),
     ).rejects.toThrow(/size_within_the_cap/);
   });
@@ -634,10 +650,10 @@ describe('the table itself', () => {
     await expect(
       admin.query(
         `INSERT INTO leave_request_attachment
-           (leave_request_id, slot, filename, content_type, size_bytes, checksum_sha256,
-            storage_key, scan_status)
-         VALUES ($1, 1, 'note.pdf', 'application/pdf', 10, $2, $3, 'CLEAN')`,
-        [request.id, 'c'.repeat(64), 'd'.repeat(64)],
+           (leave_request_id, held_for_employee_id, slot, filename, content_type, size_bytes,
+            checksum_sha256, storage_key, scan_status)
+         VALUES ($1, $4, 1, 'note.pdf', 'application/pdf', 10, $2, $3, 'CLEAN')`,
+        [request.id, 'c'.repeat(64), 'd'.repeat(64), request.employeeId],
       ),
     ).rejects.toThrow(/verdict_is_stamped/);
   });

@@ -293,6 +293,8 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
         asAcknowledgement(bodyOf(request).acknowledgesShortNotice),
         /** FR 18, LMS 308. Same argument: it is an answer given at the door, not a field. */
         asString(bodyOf(request).lateEntryReason),
+        /** FR 13, FR 32a, LMS 311. And the third: a draft holds no files either. */
+        asIds(bodyOf(request).evidence),
       )
       .then((submitted) => {
         response.status(201).json(submittedAsJson(submitted));
@@ -394,6 +396,8 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
         acknowledgesShortNotice: asAcknowledgement(sent.acknowledgesShortNotice),
         /** FR 18, LMS 308. Refused unless the person holds an HR role. */
         lateEntryReason: asString(sent.lateEntryReason),
+        /** FR 13, FR 32a, LMS 311. Ids from `POST /me/evidence`, not files. */
+        evidence: asIds(sent.evidence),
       })
       .then((submitted) => {
         response.status(201).json(submittedAsJson(submitted));
@@ -427,6 +431,8 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
         acknowledgesShortNotice: asAcknowledgement(sent.acknowledgesShortNotice),
         /** FR 18, LMS 308. */
         lateEntryReason: asString(sent.lateEntryReason),
+        /** FR 13, FR 32a, LMS 311. */
+        evidence: asIds(sent.evidence),
       })
       .then((submitted) => {
         response.status(201).json(submittedAsJson(submitted));
@@ -484,6 +490,17 @@ function asString(value: unknown): string {
 /** An acknowledgement, and only `true` is one. FR 17, LMS 307. */
 function asAcknowledgement(value: unknown): boolean {
   return value === true;
+}
+
+/**
+ * The evidence ids a submission names. FR 13, LMS 311.
+ *
+ * Coerced rather than validated, like every other field here: an id that is nobody's reaches
+ * nothing in this person's waiting pile and is dropped, and what FR 13 refuses on is whether
+ * anything usable arrived. See `LeaveRequestService.evidenceWaitingFor`.
+ */
+function asIds(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((one): one is string => typeof one === 'string') : [];
 }
 
 /**
@@ -891,6 +908,8 @@ function submittedAsJson(submitted: LeaveRequested): unknown {
     days: submitted.request.days,
     calendarDays: submitted.request.calendarDays,
     status: submitted.request.status,
+    /** FR 13, FR 32a. Whether documentation was asked of it, and so is on it. LMS 311. */
+    evidenceRequired: submitted.request.evidenceRequired,
     /** FR 38a. The desk it is now sitting on. */
     awaitingApprovalFrom: submitted.request.awaitingApprovalFrom,
     submittedAt: submitted.request.submittedAt.toISOString(),

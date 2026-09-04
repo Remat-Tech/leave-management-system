@@ -5,7 +5,7 @@
 import type { Actor } from '../../auth/actor.js';
 import type { Attribution } from '../audit/audit.js';
 import type { BalanceOwner } from '../balance/policy.js';
-import type { Employee } from '../employee/employee.js';
+import { type Employee, EmployeeNotFound } from '../employee/employee.js';
 import type { EmployeeRepository } from '../employee/employee.db.js';
 import type { Guard } from '../../auth/policy.js';
 import type { LeaveRequest } from './leave-request.js';
@@ -28,6 +28,8 @@ import {
   type ScanStatus,
   TooManyAttachments,
   assertAttachmentsAreOpen,
+  assertItIsNotTheLastEvidence,
+  countUsable,
   evidenceOn,
   nextFreeSlot,
   sniffContentType,
@@ -40,6 +42,15 @@ export interface AttachmentsOnARequest {
   leaveRequestId: string;
   attachments: LeaveRequestAttachment[];
   evidence: EvidenceOnARequest;
+}
+
+/** What one person has uploaded and not yet asked for leave with. FR 13, LMS 311. */
+export interface AttachmentsWaiting {
+  employeeId: string;
+  attachments: LeaveRequestAttachment[];
+  /** How many of them could stand as documentation today. NFR SEC 07. */
+  usable: number;
+  inWords: string;
 }
 
 /** One file, with its bytes, for a download. */
@@ -95,6 +106,66 @@ export class AttachmentService {
 
     assertAttachmentsAreOpen(request, 'attach to');
 
+    const taken = (await this.attachments.forRequest(request.id)).map((held) => held.slot);
+
+    return this.store(actor, upload, {
+      leaveRequestId: request.id,
+      heldForEmployeeId: employee.id,
+      seat: nextFreeSlot(taken),
+      full: request,
+    });
+  }
+
+  /**
+   * Takes evidence ahead of the request it will go on. FR 13, LMS 311.
+   *
+   * The half of the story that makes "block submission without an attachment" possible at
+   * all: FR 13 is answered while the form is still open, which is before there is a request
+   * for anything to hang off. So the file is uploaded, scanned and stored now, and waits
+   * under the person's own name until they ask for the leave — see
+   * {@link LeaveRequestService.submit}, which puts it on the request in the same transaction
+   * as the row itself.
+   *
+   * Everything else is `attach`'s: the same caps, the same sniffing, the same scanner, and
+   * an infected file refused before anything is written.
+   */
+  async hold(
+    actor: Actor,
+    employeeId: string,
+    upload: UploadedFile,
+  ): Promise<LeaveRequestAttachment> {
+    const employee = await this.theEmployee(employeeId);
+
+    this.guard.enforce(leaveRequestPolicy.attach(actor, ownerOf(employee)));
+
+    const taken = (await this.attachments.waitingFor(employee.id)).map((held) => held.slot);
+
+    return this.store(actor, upload, {
+      leaveRequestId: null,
+      heldForEmployeeId: employee.id,
+      seat: nextFreeSlot(taken),
+      full: null,
+    });
+  }
+
+  /**
+   * Everything an upload is, wherever it is going. FR 12, NFR SEC 07.
+   *
+   * In this order, and each step is refused before the next costs anything: the size, what
+   * the bytes actually are, whether there is a seat, then the scan. Nothing is written and
+   * nothing is stored until all of those pass.
+   */
+  private async store(
+    actor: Actor,
+    upload: UploadedFile,
+    onto: {
+      leaveRequestId: string | null;
+      heldForEmployeeId: string;
+      seat: number | undefined;
+      /** The request whose seats are full, for the refusal's sentence. Null for the pile. */
+      full: LeaveRequest | null;
+    },
+  ): Promise<LeaveRequestAttachment> {
     const filename = validateFilename(upload.filename);
     const content = validateContent(upload.content);
 
@@ -105,12 +176,8 @@ export class AttachmentService {
       throw new AttachmentTypeNotAccepted(null, upload.claimedContentType ?? '');
     }
 
-    const slot = nextFreeSlot(
-      (await this.attachments.forRequest(request.id)).map((held) => held.slot),
-    );
-
-    if (slot === undefined) {
-      throw new TooManyAttachments(request);
+    if (onto.seat === undefined) {
+      throw new TooManyAttachments(onto.full);
     }
 
     const scan = await this.scan(content);
@@ -123,8 +190,9 @@ export class AttachmentService {
 
     try {
       return await this.attachments.add(attributionOf(actor), {
-        leaveRequestId: request.id,
-        slot,
+        leaveRequestId: onto.leaveRequestId,
+        heldForEmployeeId: onto.heldForEmployeeId,
+        slot: onto.seat,
         filename,
         contentType,
         sizeBytes: stored.size,
@@ -164,6 +232,54 @@ export class AttachmentService {
     };
   }
 
+  /** What is waiting to go on a request, and how much of it counts. FR 13, LMS 311. */
+  async waitingFor(actor: Actor, employeeId: string): Promise<AttachmentsWaiting> {
+    const employee = await this.theEmployee(employeeId);
+
+    this.guard.enforce(leaveRequestPolicy.attach(actor, ownerOf(employee)));
+
+    const attachments = await this.attachments.waitingFor(employee.id);
+    const usable = countUsable(attachments);
+
+    return {
+      employeeId: employee.id,
+      attachments,
+      usable,
+      inWords: waitingInWords(attachments.length, usable),
+    };
+  }
+
+  /**
+   * Throws away a file that never went on a request. FR 12, LMS 311.
+   *
+   * Addressed by its own id and by nothing else, because there is no request to address it
+   * through. Whose it is, is the row's own answer — `held_for_employee_id` — and the policy
+   * is asked about that person before the file is admitted to exist.
+   */
+  async discard(actor: Actor, attachmentId: string): Promise<void> {
+    const { attachment } = await this.theWaitingFile(actor, attachmentId);
+
+    if (!(await this.attachments.remove(attachment.id))) {
+      /* Two tabs removing the same file. The second is told what the first did. */
+      throw new AttachmentNotFound(attachmentId);
+    }
+
+    await this.storage.delete(attachment.storageKey);
+  }
+
+  /**
+   * Asks the scanner again about a waiting file it never answered for. NFR SEC 07, LMS 311.
+   *
+   * The counterpart of {@link AttachmentService.rescan}, and it matters more here: a
+   * `PENDING` file satisfies no documentation rule, so somebody whose scanner was down when
+   * they uploaded has evidence that cannot be asked for leave with until this settles it.
+   */
+  async rescanWaiting(actor: Actor, attachmentId: string): Promise<LeaveRequestAttachment> {
+    const { attachment } = await this.theWaitingFile(actor, attachmentId);
+
+    return this.scanAgain(attachment);
+  }
+
   /**
    * The bytes, for somebody who may read the request. NFR SEC 04, NFR SEC 07.
    *
@@ -186,10 +302,14 @@ export class AttachmentService {
   }
 
   /**
-   * Takes a file back off. FR 12.
+   * Takes a file back off. FR 12, FR 13.
    *
    * The uploader's standing, and only while the request is still `SUBMITTED` — see
    * {@link assertAttachmentsAreOpen}. The row goes and the bytes go with it.
+   *
+   * Since LMS 311 there is a second refusal: the last file standing as a required request's
+   * documentation stays. `leave_request_attachment_is_what_it_was_allowed_on` holds the same
+   * rule behind this one.
    */
   async remove(actor: Actor, leaveRequestId: string, attachmentId: string): Promise<void> {
     const { request, employee } = await this.theRequest(leaveRequestId);
@@ -199,6 +319,13 @@ export class AttachmentService {
     const attachment = await this.onThisRequest(request, attachmentId);
 
     assertAttachmentsAreOpen(request, 'remove from');
+
+    /** FR 13, LMS 311. */
+    assertItIsNotTheLastEvidence(
+      request,
+      attachment,
+      await this.attachments.forRequest(request.id),
+    );
 
     if (!(await this.attachments.remove(attachment.id))) {
       /* Two tabs removing the same file. The second is told what the first did. */
@@ -223,8 +350,11 @@ export class AttachmentService {
 
     this.guard.enforce(leaveRequestPolicy.attach(actor, ownerOf(employee)));
 
-    const attachment = await this.onThisRequest(request, attachmentId);
+    return this.scanAgain(await this.onThisRequest(request, attachmentId));
+  }
 
+  /** One more look at a `PENDING` file, wherever it is sitting. NFR SEC 07. */
+  private async scanAgain(attachment: LeaveRequestAttachment): Promise<LeaveRequestAttachment> {
     if (attachment.scanStatus !== 'PENDING') {
       return attachment;
     }
@@ -261,6 +391,44 @@ export class AttachmentService {
 
       throw error;
     }
+  }
+
+  /**
+   * A file that is waiting for a request, for somebody who may attach it. FR 13, LMS 311.
+   *
+   * Standing before existence, as everywhere else here: the row says whose it is, the policy
+   * is asked about that person, and a refusal is silent. A file already on a request is *not
+   * found* rather than refused — it is addressed through the request it is on, and this
+   * address does not reach it.
+   */
+  private async theWaitingFile(
+    actor: Actor,
+    attachmentId: string,
+  ): Promise<{ attachment: LeaveRequestAttachment; employee: Employee }> {
+    const id = requireId(attachmentId, 'attachmentId');
+    const attachment = await this.attachments.findById(id);
+
+    if (attachment === undefined || attachment.leaveRequestId !== null) {
+      throw new AttachmentNotFound(id);
+    }
+
+    const employee = await this.theEmployee(attachment.heldForEmployeeId);
+
+    this.guard.enforce(leaveRequestPolicy.attach(actor, ownerOf(employee)));
+
+    return { attachment, employee };
+  }
+
+  /** Whose evidence this is, before anything is asked about standing. */
+  private async theEmployee(employeeId: string): Promise<Employee> {
+    const id = requireId(employeeId, 'employeeId');
+    const employee = await this.employees.findById(id);
+
+    if (employee === undefined) {
+      throw new EmployeeNotFound(id);
+    }
+
+    return employee;
   }
 
   /** The request and whose it is, with nothing asked about standing yet. */
@@ -321,6 +489,34 @@ export class AttachmentService {
 
     return attachment;
   }
+}
+
+/**
+ * What is waiting, as a person reads it. FR 13, NFR USA 03. LMS 311.
+ *
+ * The distinction it exists to make is `PENDING` against `CLEAN`: somebody with a file
+ * uploaded and unscanned has *something* on the screen and nothing that will get their leave
+ * through, and finding that out at the moment they submit is the failure this story is about.
+ */
+function waitingInWords(attached: number, usable: number): string {
+  if (attached === 0) {
+    return (
+      'Nothing is waiting. Upload a certificate here before you ask for leave that needs ' +
+      'one, and it goes on the request as you submit it.'
+    );
+  }
+
+  const waiting = attached - usable;
+
+  return (
+    `${usable} of ${attached} ${attached === 1 ? 'file' : 'files'} can stand as ` +
+    `documentation.${
+      waiting === 0
+        ? ''
+        : ` The other ${waiting === 1 ? 'one is' : `${waiting} are`} still being checked for` +
+          ` viruses and cannot count until that is done.`
+    }`
+  );
 }
 
 function requireId(id: unknown, field: string): string {

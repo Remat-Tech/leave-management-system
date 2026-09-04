@@ -178,6 +178,14 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   AttachmentTypeNotAccepted: 400,
   /** FR 12. A smaller file is the fix. LMS 310. */
   AttachmentTooLarge: 400,
+  /**
+   * FR 13, FR 32a. The upload is the fix, and the message names why one is wanted. LMS 311.
+   *
+   * A 400 rather than a 409 for the reason `ShortNoticeNotAcknowledged` is one: the dates are
+   * fine and the balance is what it is — what is missing is something that was sent with the
+   * request, and the same request goes through the moment the certificate is on it.
+   */
+  DocumentationNotAttached: 400,
 
   /** FR 44. There is nothing on this request to reverse. LMS 318. */
   NothingToOverturn: 409,
@@ -205,6 +213,8 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   AttachmentNotScanned: 409,
   /** FR 12. The request has moved past the point evidence goes on or comes off. LMS 310. */
   AttachmentsAreClosed: 409,
+  /** FR 13. The leave was allowed through on this file; a replacement is the fix. LMS 311. */
+  DocumentationCannotBeRemoved: 409,
   /** §8.9. */
   LeaveYearIsClosed: 409,
 };

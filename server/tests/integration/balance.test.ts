@@ -368,6 +368,7 @@ async function askFor(
       reason: 'Five days in December',
       /** FR 18, LMS 308. */
       lateEntryReason: null,
+      evidenceRequired: false,
       countingBasis: 'CALENDAR_DAYS' as const,
       days,
       calendarDays: span,

@@ -130,6 +130,7 @@ export class LeaveRequestDraftService {
     id: string,
     acknowledgesShortNotice = false,
     lateEntryReason = '',
+    evidence: readonly string[] = [],
   ): Promise<LeaveRequested> {
     const draft = await this.mine(actor, id, 'submit');
 
@@ -140,6 +141,8 @@ export class LeaveRequestDraftService {
       acknowledgesShortNotice,
       /** FR 18, LMS 308. */
       lateEntryReason,
+      /** FR 13, FR 32a, LMS 311. Named when the draft is finished; a draft holds no files. */
+      evidence,
     });
 
     await this.drafts.discard(draft.id);

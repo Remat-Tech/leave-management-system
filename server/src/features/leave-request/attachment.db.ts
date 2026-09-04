@@ -26,6 +26,8 @@ const CHECKED_FIELDS: Record<string, string> = {
   leave_request_attachment_size_within_the_cap: 'file',
   leave_request_attachment_slot_is_one_of_five: 'file',
   leave_request_attachment_five_per_request: 'file',
+  /** LMS 311. The same five seats, in the pile waiting for a request. */
+  leave_request_attachment_five_waiting_per_person: 'file',
 };
 
 type AttachmentRow = Selectable<LeaveRequestAttachmentTable>;
@@ -41,6 +43,7 @@ export class AttachmentRepository {
           .insertInto('leave_request_attachment')
           .values({
             leave_request_id: attachment.leaveRequestId,
+            held_for_employee_id: attachment.heldForEmployeeId,
             slot: attachment.slot,
             filename: attachment.filename,
             content_type: attachment.contentType,
@@ -70,6 +73,56 @@ export class AttachmentRepository {
       .execute();
 
     return rows.map(toAttachment);
+  }
+
+  /** What one person has uploaded and not yet put on a request. FR 13, LMS 311. */
+  async waitingFor(employeeId: string): Promise<LeaveRequestAttachment[]> {
+    const rows = await this.db
+      .selectFrom('leave_request_attachment')
+      .selectAll()
+      .where('held_for_employee_id', '=', employeeId)
+      .where('leave_request_id', 'is', null)
+      .orderBy('id', 'asc')
+      .execute();
+
+    return rows.map(toAttachment);
+  }
+
+  /**
+   * Puts waiting files onto the request they were uploaded for. FR 13, LMS 311.
+   *
+   * Called inside the transaction that writes the request, so the evidence and the leave
+   * land together or neither does. Every clause of the `WHERE` is a guarantee rather than a
+   * filter: a file already on a request, or held for somebody else, is not moved and is not
+   * counted — the caller compares what came back against what it asked for.
+   *
+   * Seats are handed out in upload order from a request that has none taken yet, which is
+   * every request this is called for. `refuse_rewriting_an_attachment` lets `slot` move
+   * exactly here and nowhere else.
+   */
+  async putOnRequest(
+    leaveRequestId: string,
+    employeeId: string,
+    ids: readonly string[],
+  ): Promise<LeaveRequestAttachment[]> {
+    const bound: LeaveRequestAttachment[] = [];
+
+    for (const [at, id] of ids.entries()) {
+      const row = await this.db
+        .updateTable('leave_request_attachment')
+        .set({ leave_request_id: leaveRequestId, slot: at + 1 })
+        .where('id', '=', id)
+        .where('held_for_employee_id', '=', employeeId)
+        .where('leave_request_id', 'is', null)
+        .returningAll()
+        .executeTakeFirst();
+
+      if (row !== undefined) {
+        bound.push(toAttachment(row));
+      }
+    }
+
+    return bound;
   }
 
   async findById(id: string): Promise<LeaveRequestAttachment | undefined> {
@@ -148,6 +201,8 @@ function messageFor(constraint: string): string {
       return 'That is not a kind of file this system accepts. FR 12.';
     case 'leave_request_attachment_size_within_the_cap':
       return 'That file is larger than the limit, or empty. FR 12.';
+    case 'leave_request_attachment_five_waiting_per_person':
+      return 'You already have as many files waiting as you may. FR 12.';
     default:
       return 'This request already holds as many files as it may. FR 12.';
   }
@@ -157,6 +212,7 @@ function toAttachment(row: AttachmentRow): LeaveRequestAttachment {
   return {
     id: row.id,
     leaveRequestId: row.leave_request_id,
+    heldForEmployeeId: row.held_for_employee_id,
     slot: row.slot,
     filename: row.filename,
     contentType: row.content_type as AcceptedContentType,
