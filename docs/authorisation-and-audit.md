@@ -71,6 +71,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Recording an event and granting what it brings | | `HR_OFFICER`, `HR_ADMIN` |
 | Lapsing an unused event grant | | `HR_ADMIN` only |
 | A leave request | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | yourself, `HR_OFFICER`, `HR_ADMIN` — and only the person who asked may reword one |
+| A draft of one. FR 19 | the person planning it, and nobody else at all | the person planning it, and nobody else at all |
 | Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
 | Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` — never yourself |
 | Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
@@ -91,6 +92,16 @@ person alone and answered by HR alone, because HR asking and then agreeing would
 put one desk on both sides of a conversation that exists to have two. The line
 manager is on neither row: the days have already left the balance, and putting
 them back is a correction rather than a decision at a desk.
+
+**A draft is the one row the line manager and HR are both kept out of.** FR 19,
+LMS 302. Every other read in the table above widens from the person outwards —
+their manager, then a role that reads every record — because a request is a thing
+that happened and the people around it have standing towards it. A draft is not:
+it is leave nobody has asked for, so there is no request for a manager to be the
+manager of and nothing for a reader to read. Refused silently, so the refusal does
+not disclose that a draft exists. HR may still submit leave on somebody's behalf,
+which is FR 18, and may not draft on their behalf — there is no "finish it later"
+in that act, and a draft HR left behind would be planning the person never did.
 
 **A line manager sees their reports because of the record, never because of a
 role.** `employee.managerId` is read off the record in hand, so moving a
@@ -327,6 +338,16 @@ description of the row.
 
 The table types in `server/src/db/schema.ts` make every column unwritable, so
 this is a rule the compiler holds as well as the prose.
+
+**`AUDITED_ENTITIES` is the list, and what is off it is off it on purpose.** An
+integration test reads the tables carrying the trigger straight out of the
+catalogue and asserts they are exactly that list, so neither can drift. Three
+tables are deliberately absent for two different reasons. `leave_request_decision`
+and `leave_request_withdrawal` are append only, so each row is already its own
+history and an audit of it would be a second copy. `leave_request_draft` is the
+opposite case: a draft is rewritten as often as somebody changes their mind and
+thrown away when they do, so auditing it would keep the contents of everything
+anybody discarded — which is precisely what a draft exists not to be. FR 19.
 
 ### The application supplies the one thing the database cannot know
 

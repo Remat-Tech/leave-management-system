@@ -14,6 +14,7 @@ import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
 import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
 import { LeaveRoutingRepository } from '../../src/features/leave-request/routing.db.js';
+import { LeaveRequestDraftRepository } from '../../src/features/leave-request/draft.db.js';
 import { WithdrawalRepository } from '../../src/features/leave-request/withdrawal.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
@@ -116,6 +117,8 @@ beforeAll(async () => {
     routing: new LeaveRoutingRepository(db),
     /** FR 47, LMS 324. */
     withdrawals: new WithdrawalRepository(db),
+    /** FR 19, LMS 302. */
+    drafts: new LeaveRequestDraftRepository(db),
     accounts,
     roles,
     organisation: new OrganisationRepository(db),

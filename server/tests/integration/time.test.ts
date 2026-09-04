@@ -170,8 +170,14 @@ describe('the columns', () => {
      deadline one day early for the person it belongs to, and they would find out by
      being told their fourteen days had run out. `expires_on` is nullable, which is
      the only one of the nine that carries a real absence: most event types never run
-     out at all. */
-  it('the eleven dates there are today are the ones expected', async () => {
+     out at all.
+
+     The two from LMS 302 are the ends of a draft, and they are the first pair here that
+     are nullable because the *day is not settled yet* rather than because it may never
+     arrive — FR 19's whole sentence. They are days for the reason the request's own two
+     are: a draft becomes a request by handing these across unchanged, so a zone creeping
+     in here would move the leave by a day at the moment somebody committed to it. */
+  it('the thirteen dates there are today are the ones expected', async () => {
     const dates = (await temporalColumns())
       .filter((column) => column.data_type === 'date')
       .map((column) => `${column.table_name}.${column.column_name}`);
@@ -186,6 +192,9 @@ describe('the columns', () => {
       'leave_entitlement_rule.effective_to',
       'leave_request.end_date',
       'leave_request.start_date',
+      /** FR 19, LMS 302. */
+      'leave_request_draft.end_date',
+      'leave_request_draft.start_date',
       'leave_year.end_date',
       'leave_year.start_date',
     ]);

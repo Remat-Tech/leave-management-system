@@ -1264,6 +1264,35 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       }
     });
 
+    /**
+     * And a draft is narrower still: the person planning it, and nobody at all besides.
+     * FR 19, LMS 302.
+     *
+     * The one rule here that does not widen outwards from the person. `read` above admits
+     * the line manager and every role that reads every record, because a request is a thing
+     * that happened and they have standing towards it; a draft is leave nobody has asked
+     * for, so there is no request for a manager to be the manager of.
+     */
+    it('and a draft is the person’s alone, refused to their manager and to every role', () => {
+      expect(leaveRequestPolicy.draft(employee('ama'), hers, 'read').allowed).toBe(true);
+
+      expect(leaveRequestPolicy.read(manager('akosua'), hers).allowed).toBe(true);
+      expect(leaveRequestPolicy.draft(manager('akosua'), hers, 'read').allowed).toBe(false);
+
+      for (const [, roles] of EACH_ROLE) {
+        expect(leaveRequestPolicy.draft(employee('adwoa', roles), hers, 'read').allowed).toBe(
+          false,
+        );
+      }
+    });
+
+    /* Silently, so the refusal does not disclose that a draft exists — the same rule
+       `read` is held to, applied to a row that is even less anybody else's business. */
+    it('and says nothing when it refuses one', () => {
+      expect(leaveRequestPolicy.draft(manager('akosua'), hers, 'discard').told).toBeNull();
+      expect(leaveRequestPolicy.draft(manager('akosua'), hers, 'discard').because).not.toBeNull();
+    });
+
     /* A refused read says nothing, because somebody asking after leave that is not
        theirs has not been shown that the person exists. The other two say which desk,
        because anybody reaching them can already read the balance. */
@@ -1287,7 +1316,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        which is what stops it being "a way to reach the transition without passing the check
        that knows which desk FR 38a's chain has the request sitting on" — the sentence this
        file refused it with for two stories. */
-    it('and the decisions it holds are these fourteen', () => {
+    it('and the decisions it holds are these fifteen', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
         /** FR 47, LMS 324. HR's three answers, decided by one rule. */
         'answerAWithdrawal',
@@ -1298,6 +1327,9 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         /* FR 44, LMS 318. `decide` dispatches on the verb, and `override` is the two verbs
            that disagree with a line manager. */
         'decide',
+        /* FR 19, LMS 302. The narrowest rule here: the person planning the leave and nobody
+           else, where every other read widens outwards to the manager and to HR. */
+        'draft',
         'notTheirOwn',
         'override',
         'queue',

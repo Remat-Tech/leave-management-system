@@ -1,5 +1,5 @@
 /**
- * Who may ask for leave, who may see what somebody asked for, and who may end it. FR 10, FR 26, NFR SEC 02, §6, §10., LMS 301, LMS 306, LMS 313, FR 18, LMS 314, FR 38a, FR 04, FR 48, §8.6, LMS 319, FR 48b, FR 39, LMS 315.
+ * Who may ask for leave, who may see what somebody asked for, and who may end it. FR 10, FR 26, NFR SEC 02, §6, §10., LMS 301, LMS 306, LMS 313, FR 18, LMS 314, FR 38a, FR 04, FR 48, §8.6, LMS 319, FR 48b, FR 39, LMS 315, FR 19, LMS 302.
  */
 
 import { type ApproverRole, APPROVER_ROLES } from '../leave-type/approval-chain.js';
@@ -339,6 +339,28 @@ export const leaveRequestPolicy = {
         'rather than held, so putting them back is a correction to a balance rather than a ' +
         'decision at a desk — a line manager approves leave and does not unspend it. FR 47.',
     });
+  },
+
+  /**
+   * Reading, editing, discarding or submitting a draft. FR 19, §10., LMS 302.
+   *
+   * The narrowest rule in this file: the person planning the leave and nobody else. Not
+   * their line manager and not a role that reads every record, which `read` above admits —
+   * a draft is leave nobody has asked for, so there is no request for a manager to be the
+   * manager of and no record for a reader to read.
+   *
+   * Refused silently, as `read` is: somebody asking after a draft that is not theirs has
+   * not been shown that one exists.
+   */
+  draft(actor: Actor, owner: BalanceOwner, action: string): Decision {
+    return isSelf(actor, owner.employeeId)
+      ? about.allow(actor, `draft.${action}`, owner.employeeId)
+      : about.refuse(
+          actor,
+          `draft.${action}`,
+          owner.employeeId,
+          'is not the person whose draft it is, and a draft is nobody else’s to see',
+        );
   },
 
   /** Improving the reason on a request already submitted. FR 18. */
