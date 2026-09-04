@@ -1287,9 +1287,13 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        which is what stops it being "a way to reach the transition without passing the check
        that knows which desk FR 38a's chain has the request sitting on" — the sentence this
        file refused it with for two stories. */
-    it('and the decisions it holds are these twelve', () => {
+    it('and the decisions it holds are these fourteen', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
+        /** FR 47, LMS 324. HR's three answers, decided by one rule. */
+        'answerAWithdrawal',
         'approve',
+        /** FR 47, LMS 324. Asking for agreed leave to be taken off the books. */
+        'askToWithdraw',
         'cancel',
         /* FR 44, LMS 318. `decide` dispatches on the verb, and `override` is the two verbs
            that disagree with a line manager. */

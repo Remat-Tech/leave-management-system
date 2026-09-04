@@ -6,6 +6,7 @@ import { type ApproverRole, APPROVER_ROLES } from '../leave-type/approval-chain.
 import { type DesksStaffed, staffsAnyDesk } from './approver-queue.js';
 import { type DecidingAction, isADecision, type OverridingAction } from './leave-decision.js';
 import { type RequestAction, type Standing, standingsFor } from './leave-request.js';
+import { isAnAnswer, type WithdrawalAnswer } from './withdrawal.js';
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import type { BalanceOwner } from '../balance/policy.js';
 import { type Decision, policyFor } from '../../auth/policy.js';
@@ -39,8 +40,13 @@ function hasStanding(actor: Actor, subject: StandingFacts, standing: Standing): 
   }
 }
 
-/** Nobody decides their own request, whatever they hold. FR 48, §8.6, §10., LMS 319. */
-function notTheirOwn(actor: Actor, owner: BalanceOwner, action: DecidingAction): Decision {
+/**
+ * Nobody decides their own request, whatever they hold. FR 48, §8.6, §10., LMS 319, LMS 324.
+ *
+ * Widened past the four deciding verbs by LMS 324: HR answering their own ask would be
+ * putting their own days back on their own say-so.
+ */
+function notTheirOwn(actor: Actor, owner: BalanceOwner, action: RequestAction): Decision {
   const said = action.toLowerCase();
 
   return isSelf(actor, owner.employeeId)
@@ -49,7 +55,7 @@ function notTheirOwn(actor: Actor, owner: BalanceOwner, action: DecidingAction):
         said,
         owner.employeeId,
         'is the person who asked for the leave, and nobody decides their own request',
-        DECIDING_IS_SOMEBODY_ELSE,
+        isAnAnswer(action) ? ANSWERING_IS_SOMEBODY_ELSE : DECIDING_IS_SOMEBODY_ELSE,
       )
     : about.allow(actor, said, owner.employeeId);
 }
@@ -112,8 +118,8 @@ function mayMove(
 ): Decision {
   const said = action.toLowerCase();
 
-  /** FR 48, §8.6a. */
-  if (isADecision(action)) {
+  /** FR 48, §8.6a, FR 47. And an answer to a withdrawal is a decision too, since LMS 324. */
+  if (isADecision(action) || isAnAnswer(action)) {
     const theirs = notTheirOwn(actor, subject, action);
 
     if (!theirs.allowed) {
@@ -137,6 +143,13 @@ const DECIDING_IS_SOMEBODY_ELSE =
   'Leave is decided by somebody other than the person taking it, whatever roles they hold ' +
   'and wherever the request is sitting. If you no longer want this leave, withdraw it; if ' +
   'it should not be on the books at all, HR cancels it. FR 48.';
+
+/** The same rule at the other end of a request's life. FR 47, FR 48, LMS 324. */
+const ANSWERING_IS_SOMEBODY_ELSE =
+  'An ask to take agreed leave off the books is answered by somebody other than the person ' +
+  'whose leave it is, whatever roles they hold. Your own ask is on the record and another ' +
+  'HR desk will answer it — agreeing to it yourself would be putting your own days back on ' +
+  'your own say-so. FR 47, FR 48.';
 
 export const leaveRequestPolicy = {
   resource: about.resource,
@@ -292,6 +305,39 @@ export const leaveRequestPolicy = {
       told:
         'A request nobody could decide is put back into its chain by HR, once somebody is ' +
         'at the desk it stopped at. If you no longer want the leave, withdraw it. FR 48b.',
+    });
+  },
+
+  /**
+   * Asking for leave every desk has agreed to be taken off the books. FR 47, §6, LMS 324.
+   *
+   * `THE_REQUESTER` alone — the one place a withdrawal is narrower than the `WITHDRAW` above
+   * rather than wider, because HR asking and then answering would be one desk on both sides.
+   */
+  askToWithdraw(actor: Actor, owner: BalanceOwner): Decision {
+    return mayMove(actor, owner, 'ASK_TO_WITHDRAW', {
+      because: 'is not the person whose leave this is',
+      told:
+        'Leave that has been agreed comes off the books because the person taking it asks ' +
+        'for that and HR agrees. Nobody asks on somebody else’s behalf: the ask is the ' +
+        'account HR decides on, and it has to be the account of the person who no longer ' +
+        'needs the time off. FR 47.',
+    });
+  },
+
+  /**
+   * Answering one of those asks, whichever way it goes. FR 47, §6, §10, LMS 324.
+   *
+   * One rule for all three, because which of them applies is `grantingAction`'s answer rather
+   * than the desk's. HR's, and never the line manager's.
+   */
+  answerAWithdrawal(actor: Actor, action: WithdrawalAnswer, owner: BalanceOwner): Decision {
+    return mayMove(actor, owner, action, {
+      because: 'holds no role that maintains leave for the company',
+      told:
+        'An ask to take agreed leave off the books is answered by HR. The days are spent ' +
+        'rather than held, so putting them back is a correction to a balance rather than a ' +
+        'decision at a desk — a line manager approves leave and does not unspend it. FR 47.',
     });
   },
 

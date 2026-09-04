@@ -75,12 +75,22 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` — never yourself |
 | Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
 | Sending a request nobody could decide back to an approver. FR 48b | | `HR_OFFICER`, `HR_ADMIN` — never the person who asked |
+| Asking for agreed leave to be taken off the books. FR 47 | | the person whose leave it is, and nobody else |
+| Answering that ask, and putting the taken days back. FR 47 | | `HR_OFFICER`, `HR_ADMIN` — never the person who asked |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
 
 Ten of those lines are decisions rather than defaults, and each is argued in the
 policy file that holds it.
+
+**Withdrawing agreed leave is the one pair of rows where the ask is narrower than
+the act it undoes.** FR 47. A request nobody has approved is taken back by the
+person or by HR on their behalf; one every desk has agreed to is asked for by the
+person alone and answered by HR alone, because HR asking and then agreeing would
+put one desk on both sides of a conversation that exists to have two. The line
+manager is on neither row: the days have already left the balance, and putting
+them back is a correction rather than a decision at a desk.
 
 **A line manager sees their reports because of the record, never because of a
 role.** `employee.managerId` is read off the record in hand, so moving a

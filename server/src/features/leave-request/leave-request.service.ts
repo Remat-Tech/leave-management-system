@@ -36,11 +36,13 @@ import {
 import { APPROVES_AS_HR } from '../role/roles.js';
 import type { RoleRepository } from '../role/role.db.js';
 import type { LeaveRoutingRepository } from './routing.db.js';
+import type { WithdrawalRepository } from './withdrawal.db.js';
 import {
   type ApprovalProgress,
   assertItCostsSomething,
   assertTheDaysAreThere,
   decisionTo,
+  grantingAction,
   InvalidLeaveRequest,
   LeaveCrossesAYearEnd,
   type LeaveRequest,
@@ -48,6 +50,7 @@ import {
   LeaveRequestNotFound,
   LeaveOverlapsAnother,
   type NewLeaveRequest,
+  NothingLeftToGiveBack,
   noticeGiven,
   NothingToOverturn,
   OverrulingNeedsAnOverride,
@@ -55,13 +58,23 @@ import {
   quoteFor,
   reachesPastTheEndOf,
   reasonForApproval,
+  reasonForGivingBackTakenDays,
   reasonForRelease,
   reasonForReservation,
   type ReleasingAction,
   settlementTo,
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
+  whatIsLeftOf,
+  withdrawalTo,
 } from './leave-request.js';
+import {
+  NothingToAnswer,
+  readReason,
+  saysWhy,
+  theOpenAsk,
+  WithdrawalNeedsAReason,
+} from './withdrawal.js';
 import { decisionNews, endingNews } from '../notification/notification.js';
 import {
   assertEligible,
@@ -84,6 +97,8 @@ import type {
   LeaveReleased,
   LeaveRequested,
   LeaveRerouted,
+  WithdrawalAnswered,
+  WithdrawalAsked,
 } from '../balance/balance.service.js';
 import type { LeaveCalculatorService } from '../leave-calculator/leave-calculator.service.js';
 import type { NotificationService } from '../notification/notification.service.js';
@@ -138,6 +153,13 @@ export class LeaveRequestService {
      * in the same transaction as the desk it explains, so the writing is `BalanceService`'s.
      */
     private readonly routing: LeaveRoutingRepository,
+    /**
+     * The asks to take agreed leave off the books, and HR's answers, for the reads. FR 47, LMS 324.
+     *
+     * The same division `decisions` is held to: an answer lands in the same transaction as
+     * the days it moves, so the writing is `BalanceService`'s.
+     */
+    private readonly withdrawals: WithdrawalRepository,
     /**
      * Who holds an HR role, so that the HR desk's occupants are never a copy. FR 48b, LMS 320.
      *
@@ -563,6 +585,223 @@ export class LeaveRequestService {
     }
 
     return decided;
+  }
+
+  /**
+   * Asks for leave every desk has agreed to be taken off the books. FR 47, §8.2. LMS 324.
+   *
+   * The person's own act, and only theirs. It writes one row and moves nothing; what changes
+   * is that HR has something to answer, and they are told so.
+   *
+   * Throws {@link LeaveCannotBeMoved} for leave that is not agreed — a request still being
+   * decided is withdrawn — and {@link AlreadyAskedToWithdraw} for a second ask while the
+   * first is unanswered.
+   */
+  async askToWithdraw(actor: Actor, id: string, reason: string): Promise<WithdrawalAsked> {
+    const request = await this.requests.findById(id);
+
+    if (request === undefined) {
+      throw new LeaveRequestNotFound(id);
+    }
+
+    const employee = await this.employeeFor(request.employeeId);
+
+    this.guard.enforce(leaveRequestPolicy.askToWithdraw(actor, ownerOf(employee)));
+
+    /** FR 47. Refused before anything else is read, while the box is still open. */
+    const said = readReason(reason);
+
+    if (said === null) {
+      throw new WithdrawalNeedsAReason('ASK_TO_WITHDRAW');
+    }
+
+    /* Read off `TRANSITIONS` for its refusal, and asked again inside the lock. */
+    withdrawalTo(request, 'ASK_TO_WITHDRAW');
+
+    const type = await this.types.findById(request.leaveTypeId);
+    const typeName = type?.name ?? 'leave';
+
+    const asked = await this.balances.askToWithdraw(actor, { request, reason: said });
+
+    /* FR 59, FR 47. HR hears, because HR is who answers it. */
+    for (const recipient of await this.employees.findAllById(await this.employeesInHr())) {
+      if (recipient.id === employee.id) {
+        continue;
+      }
+
+      await this.notifications.tell({
+        event: 'WITHDRAWAL_ASKED',
+        employee,
+        recipient,
+        request: asked.request,
+        typeName,
+        /** FR 52. An ask is not a decision at a desk. */
+        decidedBy: null,
+        comment: said,
+        availableAfter: asked.balance.available,
+      });
+    }
+
+    return asked;
+  }
+
+  /**
+   * Agrees to it, putting back the days that were not taken. FR 47, §8.2. LMS 324.
+   *
+   * One method for both of the story's grants, because which applies is the calendar's
+   * answer rather than HR's — {@link grantingAction}. What comes back is counted rather than
+   * supplied: the whole request before it starts, {@link whatIsLeftOf} it once it has.
+   *
+   * Throws {@link NothingToAnswer} where nobody has asked, {@link WithdrawalNeedsAReason} for
+   * an amendment with nothing said, and {@link NothingLeftToGiveBack} for leave that is over.
+   */
+  async grantWithdrawal(actor: Actor, id: string, reason?: string): Promise<WithdrawalAnswered> {
+    const { request, employee, type, typeName } = await this.aWithdrawalToAnswer(actor, id);
+
+    const action = grantingAction(request, this.today());
+    const said = readReason(reason);
+
+    /** FR 47. Refused here as well as by the column, so the message names the field. */
+    if (saysWhy(action) && said === null) {
+      throw new WithdrawalNeedsAReason(action);
+    }
+
+    const days =
+      action === 'WITHDRAW_APPROVED'
+        ? request.days
+        : await this.daysNotYetTaken(actor, employee, type, request, typeName);
+
+    const answered = await this.balances.answerAWithdrawal(actor, {
+      request,
+      action,
+      reason: said,
+      days,
+      reasonForGivingBack: reasonForGivingBackTakenDays(typeName, request, days, action),
+    });
+
+    /** FR 59. */
+    await this.notifications.tell({
+      event: action === 'WITHDRAW_APPROVED' ? 'WITHDRAWAL_GRANTED' : 'LEAVE_AMENDED',
+      employee,
+      request: answered.request,
+      typeName,
+      /** FR 52. Answering an ask is not a decision at a desk. */
+      decidedBy: null,
+      comment: said,
+      availableAfter: answered.balance.available,
+      /** FR 47. What came back, off the entry that was written. */
+      daysBack: answered.entry?.days ?? days,
+    });
+
+    return answered;
+  }
+
+  /**
+   * Turns it down, and says why. FR 47, FR 39. LMS 324.
+   *
+   * Moves nothing and is written down anyway. Asking again once circumstances change is a
+   * new ask; what is refused is two open at once.
+   */
+  async refuseWithdrawal(actor: Actor, id: string, reason: string): Promise<WithdrawalAnswered> {
+    const { request, employee, typeName } = await this.aWithdrawalToAnswer(actor, id);
+
+    const said = readReason(reason);
+
+    if (said === null) {
+      throw new WithdrawalNeedsAReason('REFUSE_WITHDRAWAL');
+    }
+
+    const answered = await this.balances.answerAWithdrawal(actor, {
+      request,
+      action: 'REFUSE_WITHDRAWAL',
+      reason: said,
+      /* Ignored on this branch: no days move. */
+      days: request.days,
+      reasonForGivingBack: reasonForGivingBackTakenDays(
+        typeName,
+        request,
+        request.days,
+        'WITHDRAW_APPROVED',
+      ),
+    });
+
+    /** FR 59. */
+    await this.notifications.tell({
+      event: 'WITHDRAWAL_REFUSED',
+      employee,
+      request: answered.request,
+      typeName,
+      decidedBy: null,
+      comment: said,
+      availableAfter: answered.balance.available,
+    });
+
+    return answered;
+  }
+
+  /**
+   * The reads and the questions both answers share. FR 47, FR 48. LMS 324.
+   *
+   * Standing before state, the disclosure rule the settlement path keeps. {@link NothingToAnswer}
+   * is asked here for the sentence and again inside the lock, where it binds.
+   */
+  private async aWithdrawalToAnswer(
+    actor: Actor,
+    id: string,
+  ): Promise<{ request: LeaveRequest; employee: Employee; type: LeaveType; typeName: string }> {
+    const request = await this.requests.findById(id);
+
+    if (request === undefined) {
+      throw new LeaveRequestNotFound(id);
+    }
+
+    const employee = await this.employeeFor(request.employeeId);
+    const owner = ownerOf(employee);
+
+    /** FR 48, §8.6a. Nobody answers their own ask. LMS 319. */
+    this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, 'WITHDRAW_APPROVED'));
+    this.guard.enforce(leaveRequestPolicy.answerAWithdrawal(actor, 'WITHDRAW_APPROVED', owner));
+
+    if (theOpenAsk(await this.withdrawals.forRequest(request.id)) === undefined) {
+      throw new NothingToAnswer(request.id);
+    }
+
+    const type = await this.typeFor(request.leaveTypeId);
+
+    return { request, employee, type, typeName: type.name };
+  }
+
+  /**
+   * What is left of an approved period, in days. FR 11, FR 47. LMS 324.
+   *
+   * Counted rather than subtracted, on the basis the request was priced under.
+   */
+  private async daysNotYetTaken(
+    actor: Actor,
+    employee: Employee,
+    type: LeaveType,
+    request: LeaveRequest,
+    typeName: string,
+  ): Promise<number> {
+    const left = whatIsLeftOf(request, this.today());
+
+    if (left === null) {
+      throw new NothingLeftToGiveBack(request, typeName);
+    }
+
+    /** FR 11, LMS 303. The request's basis, not the type's as it now stands. */
+    const count = await this.calculator.count(
+      actor,
+      employee,
+      { ...type, countingBasis: request.countingBasis },
+      left,
+    );
+
+    if (count.days <= 0) {
+      throw new NothingLeftToGiveBack(request, typeName);
+    }
+
+    return count.days;
   }
 
   /**

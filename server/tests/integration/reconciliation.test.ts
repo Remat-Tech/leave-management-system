@@ -80,7 +80,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request',
   );
   currentRequest = undefined;
 
@@ -98,7 +98,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request',
   );
 
   await db?.destroy();
@@ -379,7 +379,7 @@ describe('when a cached balance has nothing behind it', () => {
   it('finds it, and says the ledger holds nothing', async () => {
     await post('GRANT', 20);
     await admin.query(
-      'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
+      'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request',
     );
 
     const found = await job.run(nightly);

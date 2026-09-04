@@ -248,6 +248,18 @@ async function aRequestHoldingDays(key: Record<string, unknown>): Promise<string
       [key.employee_id, key.leave_type_id, key.leave_year_id, id],
     );
 
+    /* FR 47, LMS 324. A RECALCULATION gives back days that were taken, and
+       `leave_request_gives_back_no_more_than_it_took` refuses one against a request that
+       never spent any — so the hold is drawn down first, as approving it would. */
+    if (key.entry_type === 'RECALCULATION') {
+      await admin.query(
+        `INSERT INTO leave_ledger_entry (
+            employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+         VALUES ($1, $2, $3, 'DEDUCTION', '-1.00', 'taken for the suite', $4)`,
+        [key.employee_id, key.leave_type_id, key.leave_year_id, id],
+      );
+    }
+
     await admin.query('COMMIT');
     return id;
   } catch (error) {

@@ -35,6 +35,8 @@ export interface Telling {
   availableAfter: number;
   /** FR 44. */
   overturned?: { desk: ApproverRole; said: 'APPROVE' | 'REFUSE' } | null;
+  /** FR 47. How many days came back, where that is not all of them. LMS 324. */
+  daysBack?: number | null;
 }
 
 /** What became of one telling. */
@@ -113,6 +115,8 @@ export class NotificationService {
       comment: telling.comment,
       availableAfter: telling.availableAfter,
       overturned: telling.overturned ?? null,
+      /** FR 47, LMS 324. */
+      daysBack: telling.daysBack ?? null,
     });
 
     const notice = await this.write(composed);

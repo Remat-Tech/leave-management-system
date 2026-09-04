@@ -63,7 +63,15 @@ export type RequestStatus =
   | 'REFUSED';
 
 /** What kind of thing one step of a trail is. */
-export type TrailStepKind = 'ASKED' | 'DECIDED' | 'ENDED' | 'STILL_TO_ASK';
+export type TrailStepKind =
+  | 'ASKED'
+  | 'DECIDED'
+  /** A decision that reversed the line manager's. FR 44, LMS 318. */
+  | 'OVERTURNED'
+  | 'ENDED'
+  /** An ask for agreed leave to come off the books, or HR's answer. FR 47, LMS 324. */
+  | 'WITHDRAWAL'
+  | 'STILL_TO_ASK';
 
 /** One thing that happened to a request, or one thing that has not happened yet. */
 export interface TrailStep {

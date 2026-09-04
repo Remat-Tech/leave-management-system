@@ -23,6 +23,7 @@ import {
   type LeaveType,
 } from '../leave-type/leave-type.js';
 import type { SkippedStage } from './routing.js';
+import { type Withdrawal, wasWithdrawn, withdrawalInWords } from './withdrawal.js';
 import type { RecordedSkip } from './routing.db.js';
 import { byStartDate, type LeaveYear } from '../leave-year/leave-year.js';
 import type { CalendarDate } from '../../shared/time.js';
@@ -34,6 +35,8 @@ export const TRAIL_STEPS = [
   /** A decision that reversed the line manager's. FR 44, §7.2, LMS 318. */
   'OVERTURNED',
   'ENDED',
+  /** An ask for agreed leave to come off the books, or HR's answer. FR 47, LMS 324. */
+  'WITHDRAWAL',
   'STILL_TO_ASK',
 ] as const;
 
@@ -111,6 +114,8 @@ export interface RequestHistoryFacts {
   deciders: readonly Employee[];
   /** FR 48b. The stages those requests' routing skipped. LMS 320. */
   skipped?: readonly RecordedSkip[];
+  /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
+  withdrawals?: readonly Withdrawal[];
 }
 
 /** Who decided a request, by employee id. */
@@ -186,6 +191,8 @@ export function trailFor(
   progress: ApprovalProgress,
   decisions: readonly LeaveDecision[],
   deciders: Deciders,
+  /** FR 47, LMS 324. */
+  withdrawals: readonly Withdrawal[] = [],
 ): TrailStep[] {
   const steps: TrailStep[] = [
     {
@@ -211,9 +218,29 @@ export function trailFor(
     });
   }
 
+  /* FR 47, LMS 324. The conversation about agreed leave, each turn with its own time and
+     its own writer — which is what the two endings below have none of. */
+  for (const withdrawal of withdrawals) {
+    steps.push({
+      kind: 'WITHDRAWAL',
+      desk: null,
+      comment: withdrawal.reason,
+      by: whoWroteIt(withdrawal, deciders),
+      at: withdrawal.recordedAt,
+      inWords: withdrawalInWords(withdrawal),
+    });
+  }
+
   /* The two endings with nothing behind them but the status. `at` is null rather than
      `updatedAt`, and the module note gives the whole argument: a reworded reason moves that
-     column, so it is when the row last changed and not when the request ended. */
+     column, so it is when the row last changed and not when the request ended.
+
+     FR 47. Leave taken off the books after it was agreed has its own step above, so this
+     says nothing about it — "taken back before it was decided" is false of exactly those. */
+  if (wasWithdrawn(withdrawals)) {
+    return [...steps, ...stillToAsk(progress)];
+  }
+
   if (request.status === 'WITHDRAWN' || request.status === 'CANCELLED') {
     steps.push({
       kind: 'ENDED',
@@ -229,21 +256,32 @@ export function trailFor(
     });
   }
 
-  for (const desk of progress.stillToApprove) {
-    steps.push({
-      kind: 'STILL_TO_ASK',
-      desk,
-      comment: null,
-      by: null,
-      at: null,
-      inWords:
-        desk === progress.awaiting
-          ? `Waiting with ${deskInWords(desk)} now.`
-          : `Then ${deskInWords(desk)}, who has not been asked yet.`,
-    });
-  }
+  return [...steps, ...stillToAsk(progress)];
+}
 
-  return steps;
+/** The stages nobody has been asked yet. FR 41. */
+function stillToAsk(progress: ApprovalProgress): TrailStep[] {
+  return progress.stillToApprove.map((desk) => ({
+    kind: 'STILL_TO_ASK' as const,
+    desk,
+    comment: null,
+    by: null,
+    at: null,
+    inWords:
+      desk === progress.awaiting
+        ? `Waiting with ${deskInWords(desk)} now.`
+        : `Then ${deskInWords(desk)}, who has not been asked yet.`,
+  }));
+}
+
+/** Who asked or answered, by name. FR 52, FR 47. */
+function whoWroteIt(withdrawal: Withdrawal, deciders: Deciders): string {
+  const named =
+    withdrawal.recordedByEmployeeId === null
+      ? undefined
+      : deciders.get(withdrawal.recordedByEmployeeId);
+
+  return named ?? withdrawal.recordedBy;
 }
 
 /* --------------------------------------------------------------------- the history */
@@ -266,6 +304,8 @@ export function entryFor(input: {
   deciders: Deciders;
   /** FR 48b. The stages this request's routing skipped. LMS 320. */
   skipped?: readonly SkippedStage[];
+  /** FR 47, LMS 324. */
+  withdrawals?: readonly Withdrawal[];
 }): RequestHistoryEntry {
   const { request, type, decisions, deciders } = input;
 
@@ -295,7 +335,7 @@ export function entryFor(input: {
     statusInWords: statusInWords(request.status),
     submittedAt: request.submittedAt,
     progress,
-    trail: trailFor(request, progress, decisions, deciders),
+    trail: trailFor(request, progress, decisions, deciders, input.withdrawals ?? []),
   };
 }
 
@@ -324,6 +364,8 @@ export function historyFor(facts: RequestHistoryFacts): RequestHistory {
   const decisionsByRequest = byRequest(facts.decisions);
   /** FR 48b, LMS 320. */
   const skipsByRequest = byRequest(facts.skipped ?? []);
+  /** FR 47, LMS 324. */
+  const withdrawalsByRequest = byRequest(facts.withdrawals ?? []);
 
   return {
     employeeId: facts.employeeId,
@@ -336,6 +378,7 @@ export function historyFor(facts: RequestHistoryFacts): RequestHistory {
         decisions: decisionsByRequest.get(request.id) ?? [],
         deciders,
         skipped: skipsByRequest.get(request.id) ?? [],
+        withdrawals: withdrawalsByRequest.get(request.id) ?? [],
       }),
     ),
   };

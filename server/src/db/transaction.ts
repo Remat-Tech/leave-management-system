@@ -12,6 +12,7 @@ import { LeaveRoutingRepository } from '../features/leave-request/routing.db.js'
 import { LeaveTypeRepository } from '../features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../features/leave-year/leave-year.db.js';
 import { LedgerRepository } from '../features/balance/ledger.db.js';
+import { WithdrawalRepository } from '../features/leave-request/withdrawal.db.js';
 import { WorkPatternRepository } from '../features/work-pattern/work-pattern.db.js';
 
 /** The repositories a service is handed, all of them on the same connection. */
@@ -31,6 +32,8 @@ export interface Repositories {
   decisions: LeaveDecisionRepository;
   /** FR 48b. The stages a request's routing skipped. LMS 320. */
   routing: LeaveRoutingRepository;
+  /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
+  withdrawals: WithdrawalRepository;
 }
 
 export class Transactions {
@@ -51,6 +54,7 @@ export class Transactions {
         requests: new LeaveRequestRepository(trx),
         decisions: new LeaveDecisionRepository(trx),
         routing: new LeaveRoutingRepository(trx),
+        withdrawals: new WithdrawalRepository(trx),
       }),
     );
   }

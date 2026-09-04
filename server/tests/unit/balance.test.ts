@@ -385,10 +385,14 @@ describe('the five columns, as the ledger names them', () => {
       'BalanceOverdrawn',
       'InvalidBalanceMovement',
       'NotEnoughHeld',
+      /** FR 47, LMS 324. */
+      'NotEnoughTaken',
       'available',
       'committed',
       'daysToCarry',
       'daysToCommit',
+      /** FR 47, LMS 324. */
+      'daysToGiveBackFromTaken',
       'daysToGrant',
       'daysToLapse',
       'daysToRelease',

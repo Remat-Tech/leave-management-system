@@ -12,6 +12,7 @@ import type { BalanceRepository } from '../features/balance/balance.db.js';
 import type { EmployeeRepository } from '../features/employee/employee.db.js';
 import type { LeaveDecisionRepository } from '../features/leave-request/leave-decision.db.js';
 import type { LeaveRoutingRepository } from '../features/leave-request/routing.db.js';
+import type { WithdrawalRepository } from '../features/leave-request/withdrawal.db.js';
 import type { LeaveRequestRepository } from '../features/leave-request/leave-request.db.js';
 import type { LeaveRequestService } from '../features/leave-request/leave-request.service.js';
 import type { LeaveTypeRepository } from '../features/leave-type/leave-type.db.js';
@@ -50,6 +51,8 @@ export interface Application {
   decisions: LeaveDecisionRepository;
   /** FR 48b. The stages a request's routing skipped. LMS 320. */
   routing: LeaveRoutingRepository;
+  /** FR 47. The asks to take agreed leave off the books. LMS 324. */
+  withdrawals: WithdrawalRepository;
   accounts: SignInAccountRepository;
   roles: RoleRepository;
   /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
@@ -113,6 +116,7 @@ export function buildApp(parts: Application): Express {
         parts.types,
         parts.years,
         parts.routing,
+        parts.withdrawals,
       ),
       /** LMS 403. What each kind of leave asks of somebody, before any dates. */
       form: new RequestFormService(

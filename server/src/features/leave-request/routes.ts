@@ -19,7 +19,12 @@ import {
   type LeaveRequestQuote,
   type RequestWarning,
 } from './leave-request.js';
-import type { LeaveApproved, LeaveRequested } from '../balance/balance.service.js';
+import type {
+  LeaveApproved,
+  LeaveRequested,
+  WithdrawalAnswered,
+  WithdrawalAsked,
+} from '../balance/balance.service.js';
 import type { RequestHistory, RequestHistoryEntry, TrailStep } from './request-history.js';
 import type { ApproverQueueService } from './approver-queue.service.js';
 import type { LeaveRequestService } from './leave-request.service.js';
@@ -147,6 +152,59 @@ export function requestRoutes({ history, form, requests, queue }: RequestRoutes)
           awaitingApprovalFrom: rerouted.request.awaitingApprovalFrom,
           balance: rerouted.balance,
         });
+      })
+      .catch(next);
+  });
+
+  /**
+   * Asks for leave every desk has agreed to be taken off the books. FR 47. LMS 324.
+   *
+   * The person's own, and the reason is mandatory — it is what HR answers.
+   */
+  routes.post('/requests/:id/withdrawal', (request: Request, response: Response, next) => {
+    void requests
+      .askToWithdraw(
+        actorOf(response),
+        asString(request.params.id),
+        asString(bodyOf(request).reason),
+      )
+      .then((asked) => {
+        response.status(201).json(withdrawalAsJson(asked));
+      })
+      .catch(next);
+  });
+
+  /**
+   * HR agreeing to it. FR 47. LMS 324.
+   *
+   * One address for both of the story's grants: whether this restores the whole request or
+   * amends it to the days actually taken is the calendar's answer, not the caller's, so
+   * there is no verb to pass. A reason is required only once the leave has started, which
+   * `WithdrawalNeedsAReason` says with the field on it.
+   */
+  routes.post('/requests/:id/withdrawal/grant', (request: Request, response: Response, next) => {
+    void requests
+      .grantWithdrawal(
+        actorOf(response),
+        asString(request.params.id),
+        asString(bodyOf(request).reason),
+      )
+      .then((answered) => {
+        response.json(withdrawalAsJson(answered));
+      })
+      .catch(next);
+  });
+
+  /** HR turning it down, with the reason. FR 47, FR 39. LMS 324. */
+  routes.post('/requests/:id/withdrawal/refuse', (request: Request, response: Response, next) => {
+    void requests
+      .refuseWithdrawal(
+        actorOf(response),
+        asString(request.params.id),
+        asString(bodyOf(request).reason),
+      )
+      .then((answered) => {
+        response.json(withdrawalAsJson(answered));
       })
       .catch(next);
   });
@@ -606,6 +664,28 @@ function decidedAsJson(decided: LeaveApproved): unknown {
     /** Null where this decision was not the last word and no days moved. */
     entryId: decided.entry?.id ?? null,
     availableAfter: decided.balance.available,
+  };
+}
+
+/** An ask to take agreed leave off the books, or the answer to one. FR 47. LMS 324. */
+function withdrawalAsJson(answered: WithdrawalAsked | WithdrawalAnswered): unknown {
+  return {
+    requestId: answered.request.id,
+    status: answered.request.status,
+    withdrawal: {
+      id: answered.withdrawal.id,
+      action: answered.withdrawal.action,
+      /** FR 47. */
+      reason: answered.withdrawal.reason,
+      /** The ask this answers, and null on an ask. */
+      answersId: answered.withdrawal.answersId,
+      recordedBy: answered.withdrawal.recordedBy,
+      recordedAt: answered.withdrawal.recordedAt.toISOString(),
+    },
+    /** The RECALCULATION, where days came back. */
+    entryId: 'entry' in answered ? (answered.entry?.id ?? null) : null,
+    daysBack: 'entry' in answered ? (answered.entry?.days ?? 0) : 0,
+    availableAfter: answered.balance.available,
   };
 }
 

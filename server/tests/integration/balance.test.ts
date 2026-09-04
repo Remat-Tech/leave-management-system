@@ -106,7 +106,7 @@ beforeEach(async () => {
      which is the door both migrations leave open for exactly this. */
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request',
   );
   await restoreYears();
 
@@ -129,7 +129,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request',
   );
   await restoreYears();
 
@@ -491,6 +491,13 @@ describe('every kind of movement lands where the domain says it does', () => {
        request, which is why it is not in this list: it is the hold. */
     if (movesForARequest(entryType) && entryType !== 'RESERVATION') {
       await post('RESERVATION', -5);
+
+      /* FR 47, LMS 324. A RECALCULATION gives back days that were taken, and
+         `leave_request_gives_back_no_more_than_it_took` refuses one against a request that
+         never spent any — so the hold is drawn down before the reading is taken. */
+      if (entryType === 'RECALCULATION') {
+        await post('DEDUCTION', -5);
+      }
     }
 
     const before = await repository.forOne(theBalance());
@@ -910,9 +917,10 @@ describe('every figure can be thrown away and comes back the same', () => {
     await post('ADJUSTMENT', 2);
     await post('RESERVATION', -4);
     await post('DEDUCTION', -4);
+    /* FR 47, LMS 324. Against the request that spent the days, which is this one. */
+    await post('RECALCULATION', 1);
     await post('RESERVATION', -3);
     await post('RELEASE', 1);
-    await post('RECALCULATION', 1);
 
     const before = await repository.forOne(theBalance());
 

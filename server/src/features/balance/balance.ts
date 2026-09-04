@@ -124,6 +124,29 @@ export class NotEnoughHeld extends Error {
 }
 
 /**
+ * Days asked back out of days that were never spent. FR 47, LMS 324.
+ *
+ * The sibling of {@link NotEnoughHeld} for the other bucket, and its own class because that
+ * one's message says the days "are being held", which is the fact that is false here.
+ */
+export class NotEnoughTaken extends Error {
+  readonly requested: number;
+  readonly taken: number;
+
+  constructor(requested: number, taken: number) {
+    super(
+      `That is ${requested} days to give back, and only ${taken} have been taken against ` +
+        `this balance. Days come back out of days that were spent — so this is either a ` +
+        `second answer to something that has already been put right or a figure that does ` +
+        `not match the leave it is about. FR 47.`,
+    );
+    this.name = 'NotEnoughTaken';
+    this.requested = requested;
+    this.taken = taken;
+  }
+}
+
+/**
  * How many days a reserve may hold. FR 26.
  *
  * The first of the three rules that make this the only place a balance moves, and the
@@ -295,6 +318,23 @@ export function daysToCommit(balance: LeaveBalance, days: number): number {
  */
 export function daysToRelease(balance: LeaveBalance, days: number): number {
   return daysAlreadyHeld('give back', balance, days);
+}
+
+/**
+ * How many days a withdrawal of *agreed* leave may put back. FR 47, LMS 324.
+ *
+ * The third of the family, drawing on `taken` rather than `pending` — approval spent the
+ * hold, so {@link daysToRelease} would find nothing. A rule about the balance;
+ * `leave_request_gives_back_no_more_than_it_took` holds the per-request half in the schema.
+ */
+export function daysToGiveBackFromTaken(balance: LeaveBalance, days: number): number {
+  const wanted = wholeDaysToMove('give back', days);
+
+  if (wanted > balance.taken) {
+    throw new NotEnoughTaken(wanted, balance.taken);
+  }
+
+  return wanted;
 }
 
 function daysAlreadyHeld(what: string, balance: LeaveBalance, days: number): number {

@@ -20,16 +20,42 @@ export const NOTICE_EVENTS = [
   'DECISION_OVERTURNED',
   /** Nobody can decide it, told to the requester and to whoever can fix that. FR 48b, LMS 320. */
   'UNROUTABLE',
+  /**
+   * The four turns of FR 47's conversation about agreed leave. LMS 324.
+   *
+   * `WITHDRAWAL_ASKED` goes to HR, who has to answer it — the second event written to
+   * somebody other than the person taking the leave. The other three go back to them, and
+   * none of the three could be carried by an event that already existed: `WITHDRAWN` says
+   * "nobody has to approve anything for that to take effect", which is true of a request in
+   * a queue and is the opposite of this.
+   */
+  'WITHDRAWAL_ASKED',
+  'WITHDRAWAL_GRANTED',
+  'LEAVE_AMENDED',
+  'WITHDRAWAL_REFUSED',
 ] as const;
 
 export type NoticeEvent = (typeof NOTICE_EVENTS)[number];
 
-/** The events after which the leave is not going to happen, and the days are back. */
-const ENDED_AND_GAVE_THE_DAYS_BACK: readonly NoticeEvent[] = ['REFUSED', 'WITHDRAWN', 'CANCELLED'];
+/**
+ * The events after which a balance has days it did not have before. FR 47, LMS 324.
+ *
+ * Three of them end the leave. `LEAVE_AMENDED` does not and is on the list anyway, which is
+ * the reason it is named for what the balance did rather than for what the request did: the
+ * question a reader has is whether days came back, and an amendment is the one piece of news
+ * where some did and the leave went ahead.
+ */
+const GAVE_THE_DAYS_BACK: readonly NoticeEvent[] = [
+  'REFUSED',
+  'WITHDRAWN',
+  'CANCELLED',
+  'WITHDRAWAL_GRANTED',
+  'LEAVE_AMENDED',
+];
 
-/** Whether this is news that the leave is off and the balance has the days again. */
+/** Whether this is news that the balance has days again. */
 export function givesTheDaysBack(event: NoticeEvent): boolean {
-  return ENDED_AND_GAVE_THE_DAYS_BACK.includes(event);
+  return GAVE_THE_DAYS_BACK.includes(event);
 }
 
 /** What is written down, and what is sent. FR 59. */
@@ -122,6 +148,19 @@ export interface WhatHappened {
   availableAfter: number;
   /** FR 44. Which decision was overturned, on the one event that is about that. LMS 318. */
   overturned?: { desk: ApproverRole; said: 'APPROVE' | 'REFUSE' } | null;
+  /**
+   * FR 47. How many days actually came back, on the events where that is not all of them. LMS 324.
+   *
+   * Every other message says `request.days`, because every other movement in a request's
+   * life is the whole of what it was priced at. An amendment is the first that is not:
+   * agreed leave that has started gives back what was left and keeps what was taken, so a
+   * message composed from the request would tell somebody a fortnight had come back when
+   * four days had.
+   *
+   * Taken from the entry that was written rather than worked out here, for the reason every
+   * field on this interface is: it describes what committed.
+   */
+  daysBack?: number | null;
 }
 
 /**
@@ -285,6 +324,56 @@ export function noticeOf(happened: WhatHappened): NewNotice {
               ],
         };
       }
+
+      /* FR 47, LMS 324. HR's copy, and the only message in this file that asks somebody to
+         do something. It carries the employee's own account whole, in their words, because
+         that is what HR is being asked to decide on. */
+      case 'WITHDRAWAL_ASKED':
+        return {
+          subject: `${possessively(employee.name)} ${typeName} for ${period} — they have asked for it to be taken off the books`,
+          paragraphs: [
+            `${employee.name} has asked for their agreed leave — ${cost} — to be taken off the books. It was approved, so the ${held} are already out of their balance.`,
+            ...said,
+            `If the leave has not started, agreeing puts all ${held} back. If it has, what is left of it comes back and the days already taken stay taken — which needs a reason in writing, because they are being told some of their leave is spent.`,
+            'Nobody answers their own ask, whatever roles they hold.',
+          ],
+        };
+
+      /* The leave had not started, so all of it comes off the books. Told apart from
+         `WITHDRAWN` because somebody *did* have to agree to this one. */
+      case 'WITHDRAWAL_GRANTED':
+        return {
+          subject: `Your ${typeName} for ${period} has been taken off the books`,
+          paragraphs: [
+            `HR has agreed to take your request for ${cost} off the books. It had not started, so all of it comes back.`,
+            ...said,
+            `The ${held} are back in your balance. ${left}`,
+            'Nothing is blocking those dates now, so you can ask for them again — or for different ones — if you change your mind.',
+          ],
+        };
+
+      /* FR 47's third criterion. The half nobody expects: some of the days are spent. */
+      case 'LEAVE_AMENDED':
+        return {
+          subject: `Your ${typeName} for ${period} has been amended`,
+          paragraphs: [
+            `HR has agreed to take back what was left of your leave. It had already started, so it stays on the record as ${cost} — the days you were away for are days you took.`,
+            ...said,
+            `Of that, ${inDays(happened.daysBack ?? request.days)} had not been taken, and ${happened.daysBack === 1 ? 'that day is' : 'those days are'} back in your balance. ${left}`,
+            'If you think the split is wrong, speak to HR — the dates and the reason above are both on the request for good.',
+          ],
+        };
+
+      case 'WITHDRAWAL_REFUSED':
+        return {
+          subject: `Your ${typeName} for ${period} still stands`,
+          paragraphs: [
+            `You asked for your request for ${cost} to be taken off the books, and HR has not agreed.`,
+            ...said,
+            `Your balance has not moved — the ${held} stay taken and this leave is still yours. ${left}`,
+            'If circumstances change again, ask again: the ask above and this answer are both on the record.',
+          ],
+        };
 
       case 'WITHDRAWN':
         return {

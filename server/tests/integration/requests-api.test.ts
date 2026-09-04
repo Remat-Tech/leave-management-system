@@ -14,6 +14,7 @@ import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
 import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
 import { LeaveRoutingRepository } from '../../src/features/leave-request/routing.db.js';
+import { WithdrawalRepository } from '../../src/features/leave-request/withdrawal.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
 import { NotificationRepository } from '../../src/features/notification/notification.db.js';
@@ -123,6 +124,8 @@ beforeAll(async () => {
     decisions,
     /** FR 48b, LMS 320. */
     new LeaveRoutingRepository(db),
+    /** FR 47, LMS 324. */
+    new WithdrawalRepository(db),
     new RoleRepository(db),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -145,6 +148,8 @@ beforeAll(async () => {
     decisions,
     /** FR 48b, LMS 320. */
     routing: new LeaveRoutingRepository(db),
+    /** FR 47, LMS 324. */
+    withdrawals: new WithdrawalRepository(db),
     accounts,
     roles,
     organisation: new OrganisationRepository(db),
@@ -779,7 +784,7 @@ async function yearIdOf(label: string): Promise<string> {
 function emptyTheLeaveTables(): Promise<unknown> {
   return admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'leave_request_decision, leave_request_routing, leave_request, leave_balance',
+      'leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request, leave_balance',
   );
 }
 

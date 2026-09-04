@@ -28,6 +28,7 @@ import {
   transitionFor,
   transitionsFrom,
 } from '../../src/features/leave-request/leave-request.js';
+import { isAboutAWithdrawal } from '../../src/features/leave-request/withdrawal.js';
 
 /**
  * A request moves through defined states and no others. §6. LMS 313.
@@ -197,9 +198,13 @@ describe('the transitions a request may make', () => {
    */
   it('and everything can be done to a request that is waiting to be decided', () => {
     for (const action of REQUEST_ACTIONS) {
-      /* FR 48b, LMS 320. `ROUTE` is the one verb this state has no row for, and the
-         absence is the rule: a request that is being decided is already with somebody. */
-      if (action === 'ROUTE') {
+      /* FR 48b, LMS 320. `ROUTE` is the verb this state has no row for, and the absence is
+         the rule: a request that is being decided is already with somebody.
+
+         FR 47, LMS 324. The four withdrawal verbs are absent for the mirror reason — they
+         are about leave every desk has agreed to, and a request still being decided is taken
+         back by `WITHDRAW` without anybody's permission. */
+      if (action === 'ROUTE' || isAboutAWithdrawal(action)) {
         expect(transitionFor('SUBMITTED', action)).toBeUndefined();
         continue;
       }
@@ -312,11 +317,17 @@ describe('the transitions a request may make', () => {
   it('and the verbs that say yes are the only rows whose destination keeps the request alive', () => {
     const live = TRANSITIONS.filter((transition) => !isSettled(transition.to));
 
-    /** `ROUTE` joined them with LMS 320, and it is the one that decides nothing. FR 48b. */
+    /* `ROUTE` joined them with LMS 320, and it is the one that decides nothing. FR 48b.
+       Three of FR 47's four joined with LMS 324, and they are the rows whose destination is
+       the state they started in: asking, amending and turning an ask down all leave agreed
+       leave agreed. LMS 324. */
     expect(live.map((transition) => transition.action)).toEqual([
       'APPROVE',
       'OVERTURN_REJECTION',
       'ROUTE',
+      'ASK_TO_WITHDRAW',
+      'AMEND',
+      'REFUSE_WITHDRAWAL',
     ]);
     expect([...new Set(live.map((transition) => transition.to))]).toEqual([
       'APPROVED',
@@ -886,13 +897,41 @@ describe('the table, written out', () => {
         to: 'SUBMITTED',
         by: ['LEAVE_ADMINISTRATION'],
       },
+      /* FR 47, LMS 324. Leave every desk has agreed to: the person asks and HR answers.
+         `THE_REQUESTER` alone on the ask, where the `WITHDRAW` rows above admit HR beside
+         them — HR asking on somebody's behalf and then agreeing to it would put one desk on
+         both sides of the conversation. */
+      {
+        from: 'APPROVED',
+        action: 'ASK_TO_WITHDRAW',
+        to: 'APPROVED',
+        by: ['THE_REQUESTER'],
+      },
+      {
+        from: 'APPROVED',
+        action: 'WITHDRAW_APPROVED',
+        to: 'WITHDRAWN',
+        by: ['LEAVE_ADMINISTRATION'],
+      },
+      {
+        from: 'APPROVED',
+        action: 'AMEND',
+        to: 'APPROVED',
+        by: ['LEAVE_ADMINISTRATION'],
+      },
+      {
+        from: 'APPROVED',
+        action: 'REFUSE_WITHDRAWAL',
+        to: 'APPROVED',
+        by: ['LEAVE_ADMINISTRATION'],
+      },
     ]);
   });
 
   /* And the vocabulary it is keyed by, for the same reason. A standing added here
      without a branch in `hasStanding` does not compile; one added and left out of every
      row is a concept nothing uses. */
-  it('and is keyed by the seven actions and the four standings there are', () => {
+  it('and is keyed by the eleven actions and the four standings there are', () => {
     expect([...REQUEST_ACTIONS]).toEqual([
       'WITHDRAW',
       'REFUSE',
@@ -902,6 +941,11 @@ describe('the table, written out', () => {
       'OVERTURN_APPROVAL',
       /** FR 48b, LMS 320. */
       'ROUTE',
+      /** FR 47, LMS 324. */
+      'ASK_TO_WITHDRAW',
+      'WITHDRAW_APPROVED',
+      'AMEND',
+      'REFUSE_WITHDRAWAL',
     ]);
     expect([...STANDINGS]).toEqual([
       'THE_REQUESTER',
@@ -916,9 +960,9 @@ describe('the table, written out', () => {
    *
    * `RELEASING_ACTIONS` is written out rather than derived, for the reason
    * `RELEASING_STATUSES` is: "every action but the approving one" is a definition that
-   * absorbs whatever verb arrives next, and the next one — FR 26's cancelling of leave
-   * already agreed — would land in it by subtraction and post a `RELEASE` against days that
-   * have already been taken. This is what holds the two lists together in the meantime.
+   * absorbs whatever verb arrives next. LMS 324 is the story that collected on it —
+   * `WITHDRAW_APPROVED` ends a request and is emphatically not here, because it gives back
+   * days that have already been taken and a `RELEASE` against them would find no hold.
    */
   /**
    * And the two that end a request outright are written out rather than subtracted. LMS 318.
