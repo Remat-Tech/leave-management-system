@@ -117,14 +117,20 @@ export class LeaveRequestDraftService {
    * asked for rather than losing somebody's work — and submitting it again meets
    * {@link LeaveOverlapsAnother}, which names the request that is already there.
    *
-   * The acknowledgement is not one of the draft's fields. FR 17, LMS 307: how short the
-   * notice is depends on the day it is submitted, so it arrives with the finishing.
+   * Neither the acknowledgement nor the late entry reason is one of the draft's fields.
+   * FR 17, FR 18, LMS 307, LMS 308: both depend on the day it is submitted rather than on
+   * anything planned, so they arrive with the finishing.
    *
    * Throws {@link DraftIsNotFinished} for one with a field still to fill in,
    * {@link ShortNoticeNotAcknowledged} for short notice nobody has answered, and every other
    * refusal `submit` throws.
    */
-  async submit(actor: Actor, id: string, acknowledgesShortNotice = false): Promise<LeaveRequested> {
+  async submit(
+    actor: Actor,
+    id: string,
+    acknowledgesShortNotice = false,
+    lateEntryReason = '',
+  ): Promise<LeaveRequested> {
     const draft = await this.mine(actor, id, 'submit');
 
     const submitted = await this.requests.submit(actor, {
@@ -132,6 +138,8 @@ export class LeaveRequestDraftService {
       ...readyToSubmit(draft),
       /** FR 17, LMS 307. */
       acknowledgesShortNotice,
+      /** FR 18, LMS 308. */
+      lateEntryReason,
     });
 
     await this.drafts.discard(draft.id);

@@ -161,6 +161,12 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  /* FR 18, LMS 308. The fixture days are months behind today, so annual leave's seven day
+     backdating window would refuse almost every request in this file. Widened rather than
+     dated forward: the window is a column HR sets, and the rule it states is
+     ./leave-request.test.ts's to prove. */
+  await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
+
   await emptyTheLeaveTables();
   await restoreYears();
 
@@ -605,6 +611,52 @@ describe('when a rule says no', () => {
     expect(asked.status).toBe(201);
   });
 
+  /**
+   * FR 18, LMS 308. And the other window, which refuses rather than asking.
+   *
+   * A 409 for the person whose leave it is, because nothing they retype fixes it — the state
+   * of the world is that the days are further back than the type allows, and the fix is a
+   * different person. A 400 for HR, because what is missing is part of what they sent.
+   */
+  it('refuses leave from further back than the window, and answers HR differently', async () => {
+    await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 7 WHERE id = $1', [
+      annualId,
+    ]);
+
+    const body = {
+      employeeId: people.officer,
+      leaveTypeId: annualId,
+      from: daysFromToday(-24),
+      to: daysFromToday(-20),
+      reason: 'My sister is getting married',
+      acknowledgesShortNotice: true,
+    };
+
+    const refused = await post('/api/me/requests', people.officer, body);
+
+    expect(refused.status).toBe(409);
+
+    const problem = (await refused.json()) as { error: string; message: string };
+
+    expect(problem.error).toBe('TooLateToRecord');
+    expect(problem.message).toMatch(/Ask HR/);
+
+    /* FR 18. HR's door, which is the only one that can name somebody else. */
+    const asked = await post('/api/requests', people.hrOfficer, body);
+
+    expect(asked.status).toBe(400);
+    expect((await asked.json()) as { error: string }).toMatchObject({
+      error: 'LateEntryNeedsAReason',
+    });
+
+    const entered = await post('/api/requests', people.hrOfficer, {
+      ...body,
+      lateEntryReason: 'She was in hospital that week and is only back today',
+    });
+
+    expect(entered.status).toBe(201);
+  });
+
   /* Only `true` is somebody saying yes. A client sending the string, or the box's own
      `"on"`, has not acknowledged anything. */
   it('and takes nothing but true for one', async () => {
@@ -768,6 +820,15 @@ interface JsonSubmitted {
   status: string;
   awaitingApprovalFrom: string | null;
   availableAfter: number;
+}
+
+/** A calendar date this many days either side of today, in UTC. FR 18, LMS 308. */
+function daysFromToday(offset: number): string {
+  const day = new Date();
+
+  day.setUTCDate(day.getUTCDate() + offset);
+
+  return day.toISOString().slice(0, 10);
 }
 
 function get(path: string, employeeId: string): Promise<Response> {

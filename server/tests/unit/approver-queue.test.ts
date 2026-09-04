@@ -302,6 +302,34 @@ describe('what is flagged', () => {
     expect(item.backdatedBy).toBe(3);
     expect(item.warnings.map((one) => one.code)).toEqual(['BACKDATED', 'SHORT_NOTICE']);
     expect(item.warnings[0].inWords).toContain('already started');
+    /* Inside the window, so it is the ordinary way an absence gets recorded rather than an
+       exception, and the flag says so. FR 18, LMS 308. */
+    expect(item.lateEntryReason).toBeNull();
+    expect(item.warnings[0].inWords).toContain('allowed within the window');
+  });
+
+  /**
+   * FR 18, LMS 308. The story's second criterion, on the request only HR could have entered.
+   *
+   * Two different pieces of news under one flag, and the second is the one an approver weighs:
+   * somebody made an exception, and the sentence they wrote is what says whether it was a good
+   * one. So it is in the flag rather than only on the record.
+   */
+  it('and says why, on one HR entered past the window', () => {
+    const [item] = queueOf({
+      requests: [
+        request({
+          from: '2026-03-02',
+          to: '2026-03-06',
+          submittedAt: at('03-30'),
+          lateEntryReason: 'Hospitalised the whole of that week and only back on Monday',
+        }),
+      ],
+    }).items;
+
+    expect(item.warnings[0].code).toBe('BACKDATED');
+    expect(item.warnings[0].inWords).toContain('further back than');
+    expect(item.warnings[0].inWords).toContain('Hospitalised the whole of that week');
   });
 
   it('flags nothing on a type that asks for no notice', () => {
@@ -484,6 +512,8 @@ function request(changes: Partial<LeaveRequest>): LeaveRequest {
     from: '2026-03-02',
     to: '2026-03-06',
     reason: 'My sister is getting married.',
+    /** FR 18, LMS 308. */
+    lateEntryReason: null,
     countingBasis: 'WORKING_DAYS',
     days: 5,
     calendarDays: 5,

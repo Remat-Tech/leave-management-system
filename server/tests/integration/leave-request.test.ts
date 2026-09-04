@@ -197,6 +197,11 @@ beforeEach(async () => {
     "UPDATE leave_type SET is_active = true, counting_basis = 'WORKING_DAYS' WHERE code = 'ANNUAL'",
   );
 
+  /* FR 18, LMS 308. {@link FROM} is months behind today, so the seven day backdating window
+     would refuse almost every request in this file. Widened rather than dated forward — the
+     window is a column HR sets — and put back to seven by the tests that are about it. */
+  await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
+
   /* And the approval chains, for the same reason and since LMS 314: several tests below
      change annual leave's to show that routing reads the rows rather than anything in the
      code, and `leave_type_approval_step` is the migration's rather than the seed's. Put back
@@ -341,6 +346,15 @@ function aRequest(overrides: Partial<NewLeaveRequest> = {}): NewLeaveRequest {
     acknowledgesShortNotice: true,
     ...overrides,
   };
+}
+
+/** A calendar date this many days either side of today, in UTC. FR 18, LMS 308. */
+function daysFromToday(offset: number): string {
+  const day = new Date();
+
+  day.setUTCDate(day.getUTCDate() + offset);
+
+  return day.toISOString().slice(0, 10);
 }
 
 /* -------------------------------------------- what it costs, before it costs it */
@@ -668,6 +682,166 @@ describe('short notice is acknowledged rather than refused', () => {
 
     expect(warning?.message).toContain(clause);
     expect(refusal.message).toContain(clause);
+  });
+});
+
+/* ------------------------------------- recording it afterwards. FR 18, LMS 308 */
+
+/**
+ * Leave put on the record after it was taken. FR 18, LMS 308.
+ *
+ * ../unit/leave-request.test.ts proves the rule and the sentences. What needs a server is the
+ * three things the story is actually about:
+ *
+ *   **The window is the one in the table.** Seven days because `max_backdate_calendar_days`
+ *   says seven, and a different number the moment HR says a different number. FR 31.
+ *
+ *   **Who is entering it decides what happens past it.** The same period, the same days and
+ *   the same desk: refused to the person whose leave it is, and written for HR with a reason
+ *   on it. Only a real policy over a real actor can show that.
+ *
+ *   **The reason is on the row, and stays there.** Not the application's word for it — the
+ *   column, which the owner connection cannot rewrite either.
+ *
+ * Every date here is measured off the clock rather than written down, because the window is
+ * measured against today and a fixed date would leave the window the day after it was typed.
+ */
+describe('leave recorded after it was taken', () => {
+  /** Inside annual leave's seven days: entered on the way back in. */
+  const JUST_BACK = { from: daysFromToday(-7), to: daysFromToday(-3) };
+
+  /** And well past it, which is the exception only HR can make. */
+  const LONG_AGO = { from: daysFromToday(-24), to: daysFromToday(-20) };
+
+  const WHY_SO_LATE = 'She was in hospital the whole of that week and is only back today';
+
+  beforeEach(async () => {
+    /* Back to the figure the migration ships, which the file's own `beforeEach` widens so
+       that its fixture week can be asked for at all. */
+    await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 7 WHERE id = $1', [
+      annualId,
+    ]);
+  });
+
+  /* The story's first criterion: calling in sick on Monday, entered properly on the way back. */
+  it('is the person’s own to enter inside the window', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest(JUST_BACK));
+
+    expect(request.status).toBe('SUBMITTED');
+    expect(request.lateEntryReason).toBeNull();
+  });
+
+  /* The story's third criterion, from the side of the person who cannot use the exception. */
+  it('and is refused past it, with HR named as the way through', async () => {
+    const refusal = await requests.submit(asThemselves(), aRequest(LONG_AGO)).then(
+      () => expect.unreachable('leave from three weeks ago was entered by the employee'),
+      (error: unknown) => error as { name: string; permitted: number; message: string },
+    );
+
+    expect(refusal.name).toBe('TooLateToRecord');
+    expect(refusal.permitted).toBe(7);
+    expect(refusal.message).toMatch(/Ask HR/);
+  });
+
+  it('and writes nothing at all when it refuses', async () => {
+    await expect(requests.submit(asThemselves(), aRequest(LONG_AGO))).rejects.toMatchObject({
+      name: 'TooLateToRecord',
+    });
+
+    expect((await admin.query('SELECT count(*) FROM leave_request')).rows[0].count).toBe('0');
+  });
+
+  /* And the other half of the same criterion: HR may, and the reason is the price of it. */
+  it('and HR is asked why before it goes on the record', async () => {
+    await expect(requests.submit(asOfficer(), aRequest(LONG_AGO))).rejects.toMatchObject({
+      name: 'LateEntryNeedsAReason',
+      code: 'LATE_ENTRY_NEEDS_A_REASON',
+    });
+
+    expect((await admin.query('SELECT count(*) FROM leave_request')).rows[0].count).toBe('0');
+  });
+
+  it('and goes on it once they have said', async () => {
+    const { request } = await requests.submit(
+      asOfficer(),
+      aRequest({ ...LONG_AGO, lateEntryReason: WHY_SO_LATE }),
+    );
+
+    expect(request.lateEntryReason).toBe(WHY_SO_LATE);
+
+    const { rows } = await admin.query<{ late_entry_reason: string }>(
+      'SELECT late_entry_reason FROM leave_request WHERE id = $1',
+      [request.id],
+    );
+
+    expect(rows[0].late_entry_reason).toBe(WHY_SO_LATE);
+  });
+
+  /**
+   * And it is ordinary leave from there on, which is the part the exception does not touch.
+   *
+   * FR 18 reserves *entering the record* to HR and says nothing about deciding it. So the
+   * request starts at the first desk of its type's chain like any other, holds its days like
+   * any other, and Adwoa's line manager answers it — HR entering it is not HR approving it.
+   */
+  it('and is decided at the ordinary desk, holding its days like anything else', async () => {
+    const submitted = await requests.submit(
+      asOfficer(),
+      aRequest({ ...LONG_AGO, lateEntryReason: WHY_SO_LATE }),
+    );
+
+    expect(submitted.request.status).toBe('SUBMITTED');
+    expect(submitted.request.awaitingApprovalFrom).toBe('MANAGER');
+    expect(submitted.balance.pending).toBe(submitted.request.days);
+
+    const { request } = await requests.approve(asTheirManager(), submitted.request.id);
+
+    expect(request.awaitingApprovalFrom).toBe('HR');
+  });
+
+  /* FR 31, and the reason the window is a column. HR widening it lets the person enter their
+     own leave from further back, with no deployment and nothing here knowing which type. */
+  it('and moves the moment HR moves the column', async () => {
+    await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 60 WHERE id = $1', [
+      annualId,
+    ]);
+
+    const { request } = await requests.submit(asThemselves(), aRequest(LONG_AGO));
+
+    expect(request.status).toBe('SUBMITTED');
+    expect(request.lateEntryReason).toBeNull();
+  });
+
+  /* And nought means nought: a type HR closes cannot be entered a day late by anybody but HR. */
+  it('and a window of nothing refuses leave that started yesterday', async () => {
+    await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 0 WHERE id = $1', [
+      annualId,
+    ]);
+
+    await expect(
+      requests.submit(asThemselves(), aRequest({ from: daysFromToday(-1), to: daysFromToday(3) })),
+    ).rejects.toMatchObject({ name: 'TooLateToRecord' });
+  });
+
+  /**
+   * And the justification is written once, unlike the reason beside it.
+   *
+   * `reason` explains the leave and its author may improve it; this justifies an exception
+   * that was made, and an exception whose justification can be rewritten afterwards is not
+   * one. Held by `leave_request_says_what_it_said`, so the owner connection cannot either.
+   */
+  it('and the reason for the lateness cannot be rewritten afterwards', async () => {
+    const { request } = await requests.submit(
+      asOfficer(),
+      aRequest({ ...LONG_AGO, lateEntryReason: WHY_SO_LATE }),
+    );
+
+    await expect(
+      admin.query('UPDATE leave_request SET late_entry_reason = $2 WHERE id = $1', [
+        request.id,
+        'She forgot',
+      ]),
+    ).rejects.toMatchObject({ constraint: 'leave_request_says_what_it_said' });
   });
 });
 

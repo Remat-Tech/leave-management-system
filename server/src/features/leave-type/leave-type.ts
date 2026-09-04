@@ -672,21 +672,34 @@ export function noticeShortfall(type: LeaveType, daysOfNotice: number): number {
  * "only HR may enter the record, with a reason".
  *
  * That HR exemption is not applied here, deliberately. It is a question about who
- * is asking rather than about the type, so it belongs to the request workflow;
- * this answers only what the type permits. {@link TooLateToRecord} names the
- * exemption in its message, because the person who hits it cannot use it
- * themselves and has to know who can.
+ * is asking rather than about the type, so it belongs to the request workflow —
+ * `lateEntryFor` in ../leave-request/leave-request.ts, since LMS 308. This answers
+ * only what the type permits. {@link TooLateToRecord} names the exemption in its
+ * message, because the person who hits it cannot use it themselves and has to know
+ * who can.
  *
  * `daysOfNotice` uses the same sign convention as {@link noticeShortfall}:
  * positive is ahead of the leave, negative is behind it. A request made on the
  * day or ahead of it is not backdated at all.
  */
 export function assertWithinBackdatingWindow(type: LeaveType, daysOfNotice: number): void {
-  requireWholeDays('daysOfNotice', 'Notice', daysOfNotice);
-
-  if (daysOfNotice < 0 && -daysOfNotice > type.maxBackdateCalendarDays) {
+  if (isBeyondTheBackdatingWindow(type, daysOfNotice)) {
     throw new TooLateToRecord(type, -daysOfNotice);
   }
+}
+
+/**
+ * The same question, answered rather than thrown. FR 18. LMS 308.
+ *
+ * The pair {@link isEligible} and {@link assertEligible} make, and here for the reason
+ * FR 18's own exemption gives: past the window the answer is not simply no, it is *not by
+ * this person* — so the request path asks the plain question and decides who is entering it.
+ * One rule, two shapes, and the assert is written in terms of this so they cannot drift.
+ */
+export function isBeyondTheBackdatingWindow(type: LeaveType, daysOfNotice: number): boolean {
+  requireWholeDays('daysOfNotice', 'Notice', daysOfNotice);
+
+  return daysOfNotice < 0 && -daysOfNotice > type.maxBackdateCalendarDays;
 }
 
 /**

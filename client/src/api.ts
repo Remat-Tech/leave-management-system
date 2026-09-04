@@ -99,6 +99,8 @@ export interface RequestEntry {
   to: string;
   /** FR 10. Null where the type asks for none. */
   reason: string | null;
+  /** FR 18. Why HR put it on the record past the backdating window. Null on everything else. */
+  lateEntryReason: string | null;
   countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
   countingBasisLabel: string;
   /** FR 11, FR 24. */
@@ -318,6 +320,8 @@ export interface QueueItem {
   to: string;
   /** FR 10. Null where the type asks for none. */
   reason: string | null;
+  /** FR 18. Why HR put it on the record past the backdating window. Null on everything else. */
+  lateEntryReason: string | null;
   countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
   countingBasisLabel: string;
   /** FR 24. */

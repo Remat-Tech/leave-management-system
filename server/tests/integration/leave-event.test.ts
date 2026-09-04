@@ -228,6 +228,8 @@ async function holdDays(movement: {
       from: rows[0].start_date,
       to: rows[0].end_date,
       reason: movement.reason,
+      /** FR 18, LMS 308. */
+      lateEntryReason: null,
       countingBasis: 'CALENDAR_DAYS' as const,
       days: movement.days,
       calendarDays: movement.days,

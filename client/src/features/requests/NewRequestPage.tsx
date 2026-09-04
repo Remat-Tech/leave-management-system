@@ -246,6 +246,11 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
                 <input
                   type="date"
                   value={from}
+                  /* FR 18, LMS 308. The earliest day this kind of leave may still be entered,
+                     off `maxBackdateCalendarDays` rather than off anything decided here. It
+                     narrows the picker and refuses nothing — the server answers a date typed
+                     past it with the sentence naming HR. */
+                  min={earliestEntry(chosen)}
                   disabled={asking}
                   required
                   onChange={(event) => {
@@ -594,6 +599,24 @@ function Skeleton() {
       </div>
     </>
   );
+}
+
+/**
+ * The earliest day this kind of leave may still be entered. FR 18, LMS 308.
+ *
+ * Ten characters, built by walking a UTC date back rather than by arithmetic on a string, and
+ * undefined before a type is chosen — a bound invented here would be a bound nothing enforces.
+ */
+function earliestEntry(type: RequestableLeaveType | undefined): string | undefined {
+  if (type === undefined) {
+    return undefined;
+  }
+
+  const day = new Date();
+
+  day.setUTCDate(day.getUTCDate() - type.maxBackdateCalendarDays);
+
+  return day.toISOString().slice(0, 10);
 }
 
 /**

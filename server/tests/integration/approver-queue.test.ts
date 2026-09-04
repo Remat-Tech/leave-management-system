@@ -137,6 +137,12 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  /* FR 18, LMS 308. The fixture days are months behind today, so annual leave's seven day
+     backdating window would refuse almost every request in this file. Widened rather than
+     dated forward: the window is a column HR sets, and the rule it states is
+     ./leave-request.test.ts's to prove. */
+  await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
+
   await emptyTheLeaveTables();
   await restoreYears();
 
@@ -395,6 +401,26 @@ describe('what is flagged', () => {
 
     expect(item.backdatedBy).toBeGreaterThan(0);
     expect(item.warnings.map((one) => one.code)).toContain('BACKDATED');
+    /* Inside the window, so nobody made an exception and there is nothing to explain. */
+    expect(item.lateEntryReason).toBeNull();
+  });
+
+  /**
+   * FR 18, LMS 308. The story's second criterion, on the one HR had to enter.
+   *
+   * Two requests carry the same `BACKDATED` flag and they are not the same news: one was
+   * recorded on the way back in, and one is past the window and rests on somebody's written
+   * justification. The approver is the person that difference is for, so the sentence they
+   * read carries it.
+   */
+  it('and names why, on one HR entered past the window', async () => {
+    const id = await aLateEntry();
+
+    const item = itemOf(await queueFor(people.teamLead), id);
+
+    expect(item.lateEntryReason).toBe(WHY_SO_LATE);
+    expect(item.warnings[0].code).toBe('BACKDATED');
+    expect(item.warnings[0].inWords).toContain(WHY_SO_LATE);
   });
 
   /* FR 17. Annual leave expects seven days and this gives one. */
@@ -487,6 +513,8 @@ describe('the wire', () => {
       'days',
       'desk',
       'from',
+      /** FR 18, LMS 308. HR's account of the lateness, beside the `BACKDATED` flag. */
+      'lateEntryReason',
       'leaveTypeId',
       'leaveYearId',
       /** FR 44. What the line manager said, and why, where they have decided. */
@@ -542,6 +570,8 @@ interface JsonItem {
   typeName: string;
   from: string;
   to: string;
+  /** FR 18, LMS 308. */
+  lateEntryReason: string | null;
   days: number;
   calendarDays: number;
   submittedAt: string;
@@ -628,6 +658,34 @@ function aBackdatedRequest(): Promise<string> {
     from: daysFromToday(-3),
     to: daysFromToday(-1),
   });
+}
+
+/** FR 18. What HR writes when they put an absence on the record weeks late. LMS 308. */
+const WHY_SO_LATE = 'She was in hospital the whole of that week and is only back today';
+
+/**
+ * FR 18. The same leave, entered past the window by HR. LMS 308.
+ *
+ * The window is put back to the seven days the migration ships, because this file's own
+ * `beforeEach` widens it so that the fixture week can be asked for at all — and a request
+ * inside the window is not an exception and carries no reason.
+ */
+async function aLateEntry(): Promise<string> {
+  await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 7 WHERE id = $1', [
+    annualId,
+  ]);
+
+  const { request } = await requests.submit(asHrOfficer(), {
+    employeeId: people.officer,
+    leaveTypeId: annualId,
+    from: daysFromToday(-24),
+    to: daysFromToday(-20),
+    reason: 'My sister is getting married',
+    acknowledgesShortNotice: true,
+    lateEntryReason: WHY_SO_LATE,
+  });
+
+  return request.id;
 }
 
 /**

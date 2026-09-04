@@ -172,6 +172,31 @@ export const leaveRequestPolicy = {
     );
   },
 
+  /**
+   * Entering leave further back than its type's window allows. FR 18, LMS 308.
+   *
+   * Asked rather than enforced — `Guard.permits`, not `Guard.enforce` — because the person it
+   * says no to is not being refused anything: their request is refused by `TooLateToRecord`,
+   * which names HR and reads as advice rather than as a locked door.
+   *
+   * HR's own late leave is admitted, and that is the reading FR 18 supports: what is reserved
+   * to HR is *entering the record*, and the leave still goes to somebody else's desk to be
+   * decided. Refusing it would leave an HR officer off sick for a fortnight with no way to
+   * record it at all.
+   */
+  recordLate(actor: Actor, owner: BalanceOwner): Decision {
+    return holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)
+      ? about.allow(actor, 'recordLate', owner.employeeId)
+      : about.refuseOpenly(
+          actor,
+          'recordLate',
+          owner.employeeId,
+          'holds no role that enters leave past its backdating window',
+          'Leave further back than its window allows is put on the record by HR, with a ' +
+            'reason. FR 18.',
+        );
+  },
+
   /** Reading one person's requests, or one of them. */
   read(actor: Actor, owner: BalanceOwner): Decision {
     if (
