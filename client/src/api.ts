@@ -97,7 +97,8 @@ export interface RequestEntry {
   /** Ten characters. */
   from: string;
   to: string;
-  reason: string;
+  /** FR 10. Null where the type asks for none. */
+  reason: string | null;
   countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
   countingBasisLabel: string;
   /** FR 11, FR 24. */
@@ -149,6 +150,7 @@ export type FormRuleKind =
   | 'EVIDENCE_IF_EXCEEDED'
   | 'NOTICE'
   | 'BACKDATING'
+  | 'REASON'
   | 'ENTITLEMENT'
   | 'COUNTING'
   | 'APPROVAL';
@@ -176,6 +178,8 @@ export interface RequestableLeaveType {
   documentation: 'NOT_REQUIRED' | 'ALWAYS' | 'AFTER_DAYS';
   documentationAfterDays: number | null;
   exceedableWithDocument: boolean;
+  /** FR 10. Whether the reason box is required for this kind of leave. */
+  reasonRequired: boolean;
   /** FR 38a. "your line manager, then HR". */
   approvedBy: string;
   rules: FormRule[];
@@ -239,7 +243,8 @@ export interface Submitted {
   leaveYearId: string;
   from: string;
   to: string;
-  reason: string;
+  /** FR 10. Null where the type asks for none. */
+  reason: string | null;
   countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
   days: number;
   calendarDays: number;
@@ -311,7 +316,8 @@ export interface QueueItem {
   /** Ten characters. */
   from: string;
   to: string;
-  reason: string;
+  /** FR 10. Null where the type asks for none. */
+  reason: string | null;
   countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
   countingBasisLabel: string;
   /** FR 24. */
@@ -532,12 +538,17 @@ export async function myApprovals(): Promise<ApproverQueue> {
  * again inside the transaction that holds the days, and what it counts is what is charged
  * — a quote is not a promise, and a caller that could hand over a figure could hand over a
  * smaller one.
+ *
+ * `acknowledgesShortNotice` answers the quote's `SHORT_NOTICE` warning. FR 17, LMS 307. Sent
+ * either way; whether one was owed is the server's to decide.
  */
 export async function askForLeave(input: {
   leaveTypeId: string;
   from: string;
   to: string;
+  /** FR 10. Sent as typed; whether nothing is allowed is the leave type's rule. */
   reason: string;
+  acknowledgesShortNotice?: boolean;
 }): Promise<Submitted> {
   return request<Submitted>('POST', '/api/me/requests', input);
 }
@@ -578,9 +589,19 @@ export async function discardDraft(draftId: string): Promise<void> {
  *
  * The same answer {@link askForLeave} gives, and every refusal it can meet. A refused
  * submission leaves the draft exactly where it was.
+ *
+ * The acknowledgement is given here rather than saved on the draft: how short the notice is
+ * depends on the day it is finished. FR 17, LMS 307.
  */
-export async function submitDraft(draftId: string): Promise<Submitted> {
-  return request<Submitted>('POST', `/api/me/request-drafts/${encodeURIComponent(draftId)}/submit`);
+export async function submitDraft(
+  draftId: string,
+  acknowledgesShortNotice = false,
+): Promise<Submitted> {
+  return request<Submitted>(
+    'POST',
+    `/api/me/request-drafts/${encodeURIComponent(draftId)}/submit`,
+    { acknowledgesShortNotice },
+  );
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {

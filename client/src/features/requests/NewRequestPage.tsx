@@ -14,7 +14,7 @@ import {
 import { days, inDays, sentenceCase } from '../../format';
 
 /**
- * Asking for leave, told the rules while you fill it in. FR 10, FR 11, FR 13, FR 17, FR 32f, LMS 403.
+ * Asking for leave, told the rules while you fill it in. FR 10, FR 11, FR 13, FR 17, FR 32f, LMS 403, LMS 307.
  *
  * The story's failure is finding out *after* — a fortnight submitted and then a message
  * saying it needed a certificate, or that compassionate leave was never anybody's to promise.
@@ -40,6 +40,8 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [reason, setReason] = useState('');
+  /** FR 17, LMS 307. Answered about one period, so it is cleared whenever the period moves. */
+  const [acknowledged, setAcknowledged] = useState(false);
 
   const [quote, setQuote] = useState<Quote | undefined>(undefined);
   const [quoteProblem, setQuoteProblem] = useState<string | undefined>(undefined);
@@ -84,6 +86,10 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
    * figures for half-written dates on the way to the one they meant.
    */
   useEffect(() => {
+    /* FR 17, LMS 307. The tick answered the period that has just changed, so it goes with it —
+       an acknowledgement carried onto different dates is one nobody made. */
+    setAcknowledged(false);
+
     if (leaveTypeId === '' || from === '' || to === '') {
       setQuote(undefined);
       setQuoteProblem(undefined);
@@ -139,7 +145,8 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
     setAsking(true);
     setRefusal(undefined);
 
-    askForLeave({ leaveTypeId, from, to, reason })
+    /* FR 17, LMS 307. Sent as it stands: whether one was owed is the server's answer. */
+    askForLeave({ leaveTypeId, from, to, reason, acknowledgesShortNotice: acknowledged })
       .then((next) => {
         setSubmitted(next);
       })
@@ -154,13 +161,14 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
       .finally(() => {
         setAsking(false);
       });
-  }, [leaveTypeId, from, to, reason, onSignedOut]);
+  }, [leaveTypeId, from, to, reason, acknowledged, onSignedOut]);
 
   const startAgain = useCallback(() => {
     setSubmitted(undefined);
     setFrom('');
     setTo('');
     setReason('');
+    setAcknowledged(false);
     setQuote(undefined);
     setQuoteProblem(undefined);
     setRefusal(undefined);
@@ -272,13 +280,15 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
               </label>
             </div>
 
+            {/* FR 10. Required only where the type says so, off `reasonRequired` rather
+                than off anything decided here. */}
             <label>
-              Why
+              {chosen?.reasonRequired === false ? 'Why (optional)' : 'Why'}
               <textarea
                 value={reason}
                 rows={3}
                 disabled={asking}
-                required
+                required={chosen === undefined || chosen.reasonRequired}
                 placeholder={placeholderFor(chosen)}
                 onChange={(event) => {
                   setReason(event.target.value);
@@ -286,13 +296,32 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
               />
             </label>
 
-            {/* FR 39's cousin: whoever approves this is being asked to agree to something,
-                and the note says who will read it rather than repeating that it is needed. */}
+            {/* Who will read it, rather than repeating whether it is needed. */}
             <p className="muted">
               {chosen === undefined
                 ? 'Whoever approves this will read what you write here.'
                 : `${sentenceCase(chosen.approvedBy)} will read what you write here.`}
             </p>
+
+            {/* FR 17, LMS 307. On the left, because it is something to decide rather than
+                something the system is saying. Shown exactly when the server warns. */}
+            {quote?.warnings.some((warning) => warning.code === 'SHORT_NOTICE') !== true ? null : (
+              <label className="acknowledge">
+                <input
+                  type="checkbox"
+                  checked={acknowledged}
+                  disabled={asking}
+                  required
+                  onChange={(event) => {
+                    setAcknowledged(event.target.checked);
+                  }}
+                />
+                <span>
+                  This is short notice. I understand the approvers may push back, and I have not
+                  planned around it being agreed.
+                </span>
+              </label>
+            )}
 
             {refusal === undefined ? null : <p className="notice">{refusal}</p>}
 
@@ -478,6 +507,10 @@ function Cost({
  * depends on `exceedable_with_document`, a column, and a browser that read it would be a
  * second copy of the rule that eventually disagrees with the one that counts. So the button
  * stays enabled and the server answers, with a sentence.
+ *
+ * `SHORT_NOTICE` is the one that also asks something back — the tick above the button, FR 17
+ * and LMS 307. It is rendered off the presence of this warning rather than off a notice
+ * window read here, and the server refuses an unacknowledged submission either way.
  */
 function Warning({ warning }: { warning: QuoteWarning }) {
   return (
@@ -571,7 +604,12 @@ function Skeleton() {
  * this is the same instruction where somebody is about to type.
  */
 function placeholderFor(type: RequestableLeaveType | undefined): string {
-  return type === undefined
-    ? 'What this leave is for'
-    : `What this leave is for — enough that ${type.approvedBy} can decide on it`;
+  if (type === undefined) {
+    return 'What this leave is for';
+  }
+
+  /** FR 10. An optional box asks for something rather than demanding it. */
+  return type.reasonRequired
+    ? `What this leave is for — enough that ${type.approvedBy} can decide on it`
+    : `Anything ${type.approvedBy} should know. Leave it blank if there is nothing`;
 }

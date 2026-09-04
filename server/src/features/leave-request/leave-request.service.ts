@@ -40,6 +40,7 @@ import type { WithdrawalRepository } from './withdrawal.db.js';
 import {
   type ApprovalProgress,
   assertItCostsSomething,
+  assertShortNoticeIsAcknowledged,
   assertTheDaysAreThere,
   decisionTo,
   grantingAction,
@@ -102,6 +103,9 @@ import type {
 } from '../balance/balance.service.js';
 import type { LeaveCalculatorService } from '../leave-calculator/leave-calculator.service.js';
 import type { NotificationService } from '../notification/notification.service.js';
+
+/** What a period is priced from: a request without the two fields pricing does not read. */
+export type QuotableLeave = Omit<NewLeaveRequest, 'reason' | 'acknowledgesShortNotice'>;
 
 /** Leave asked for in a year that has been settled. §8.9.. */
 export class LeaveYearIsClosed extends Error {
@@ -226,8 +230,10 @@ export class LeaveRequestService {
    * sentence was in the box, and a reader of this method would be entitled to wonder whether
    * it counted for something. `submit` takes the whole of {@link NewLeaveRequest}, which
    * still satisfies this.
+   *
+   * Nor is the acknowledgement. FR 17, LMS 307: the warning is what a quote is for.
    */
-  async quote(actor: Actor, input: Omit<NewLeaveRequest, 'reason'>): Promise<LeaveRequestQuote> {
+  async quote(actor: Actor, input: QuotableLeave): Promise<LeaveRequestQuote> {
     const { employee, type, year, period } = await this.resolve(actor, input);
 
     const count = await this.countFor(actor, employee, type, period);
@@ -277,6 +283,15 @@ export class LeaveRequestService {
       throw new LeaveYearIsClosed(year);
     }
 
+    /* FR 17, LMS 307. Warned at the quote and answered here, before anything is counted:
+       the one refusal on this path that needs no read at all. */
+    assertShortNoticeIsAcknowledged(
+      type,
+      period,
+      noticeGiven(this.today(), period.from),
+      input.acknowledgesShortNotice === true,
+    );
+
     /* Counted again, inside no transaction yet but from the same facts, and it is this
        answer that is stored. See the module note for why it is not the caller's. */
     const count = await this.countFor(actor, employee, type, period);
@@ -302,6 +317,8 @@ export class LeaveRequestService {
       from: period.from,
       to: period.to,
       reason: input.reason,
+      /** FR 10. The type's rule, brought here as `countingBasis` is. */
+      reasonRequired: type.reasonRequired,
       /* The story's third criterion, taken here and never read off the type again. */
       countingBasis: type.countingBasis,
       days: count.days,
@@ -1282,7 +1299,11 @@ export class LeaveRequestService {
 
     this.guard.enforce(leaveRequestPolicy.reword(actor, ownerOf(employee)));
 
-    const changes = validateLeaveRequestChanges({ reason });
+    /** FR 10. Judged by the same rule the submission was, so a reason cannot be blanked
+        on a type that asks for one. */
+    const type = await this.typeFor(existing.leaveTypeId);
+
+    const changes = validateLeaveRequestChanges({ reason }, type.reasonRequired);
     const written = await this.requests.reword(actor, id, changes.reason);
 
     /* Unreachable: the row was read a statement ago and nothing deletes one. Answered
@@ -1310,8 +1331,9 @@ export class LeaveRequestService {
   private async resolve(
     actor: Actor,
     /* Without the reason, which nothing here reads and which `validateNewLeaveRequest`
-       checks on the submission path where it is actually going to be stored. */
-    input: Omit<NewLeaveRequest, 'reason'>,
+       checks on the submission path where it is actually going to be stored — and without
+       the acknowledgement, which is `submit`'s alone. FR 17, LMS 307. */
+    input: QuotableLeave,
   ): Promise<{ employee: Employee; type: LeaveType; year: LeaveYear; period: LeavePeriod }> {
     const employee = await this.employeeFor(input.employeeId);
     const type = await this.typeFor(input.leaveTypeId);

@@ -182,8 +182,8 @@ export interface QueueItem {
   /** Ten characters. NFR DAT 03. */
   from: CalendarDate;
   to: CalendarDate;
-  /** What the person said when they asked. FR 10. */
-  reason: string;
+  /** What the person said when they asked, where the type asked. FR 10. */
+  reason: string | null;
   /** FR 11. Read off the request, never off the type. */
   countingBasis: CountingBasis;
   countingBasisLabel: string;

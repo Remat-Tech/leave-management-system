@@ -79,6 +79,8 @@ export interface LeaveTypeTable {
   max_backdate_calendar_days: Generated<number>;
   /** FR 05. */
   gender_restriction: string | null;
+  /** FR 10. Whether a request for this type has to say why. */
+  reason_required: Generated<boolean>;
   /** FR 33. */
   deducts_from_annual: ColumnType<boolean, never, never>;
   /**
@@ -292,8 +294,8 @@ export interface LeaveRequestTable {
    */
   start_date: ColumnType<string, string, never>;
   end_date: ColumnType<string, string, never>;
-  /** FR 10. */
-  reason: string;
+  /** FR 10. Where the type asks for one. Never `''`; nothing to say is NULL. */
+  reason: string | null;
   /** FR 11, the story's third criterion. */
   counting_basis: ColumnType<string, string, never>;
   /** What it cost, and what the RESERVATION took. FR 24. */

@@ -124,11 +124,20 @@ describe('what is still to fill in', () => {
   /* NFR USA 03. The sentence says what to do, and says that nothing has happened yet —
      which is the first criterion, told to the person it is about. */
   it('says what is left and that nothing is held', () => {
-    const progress = progressOfDraft(aDraft({ reason: null }));
+    const progress = progressOfDraft(aDraft({ to: null }));
 
     expect(progress.finished).toBe(false);
-    expect(progress.inWords).toContain('the reason');
+    expect(progress.inWords).toContain('the last day');
     expect(progress.inWords).toContain('Nothing is held');
+  });
+
+  /* FR 10, LMS 302. The reason is not among them since it became the leave type's rule:
+     a draft is checked for its fields, and whether one is needed is asked at submission. */
+  it('and a missing reason is not something a draft is unfinished for', () => {
+    const progress = progressOfDraft(aDraft({ reason: null }));
+
+    expect(progress.finished).toBe(true);
+    expect(progress.missing).toEqual([]);
   });
 
   it('says a finished draft is ready to ask for', () => {
@@ -149,7 +158,14 @@ describe('turning a draft into a request', () => {
   /* Nothing here defaults a missing field, so a draft cannot become leave nobody asked
      for. */
   it('refuses one with a field still to fill in', () => {
-    expect(() => readyToSubmit(aDraft({ reason: null }))).toThrow(DraftIsNotFinished);
+    expect(() => readyToSubmit(aDraft({ to: null }))).toThrow(DraftIsNotFinished);
+    expect(() => readyToSubmit(aDraft({ leaveTypeId: null }))).toThrow(DraftIsNotFinished);
+  });
+
+  /* FR 10. And hands a missing reason over rather than refusing it: whether the type asks
+     for one is the submission's question, and it says so naming the field. */
+  it('and hands one over with no reason on it, for submission to judge', () => {
+    expect(readyToSubmit(aDraft({ reason: null })).reason).toBeUndefined();
   });
 
   it('carries the empty fields on the refusal, for a form to go back to', () => {

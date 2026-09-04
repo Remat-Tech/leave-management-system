@@ -29,6 +29,8 @@ export const FORM_RULE_KINDS = [
   'NOTICE',
   /** FR 18. How late leave that has already started may still be entered. */
   'BACKDATING',
+  /** FR 10. Whether the request has to say why. */
+  'REASON',
   /** FR 32g. A yearly allowance, or days that arrive with an occasion. */
   'ENTITLEMENT',
   /** FR 11, FR 22. Which days inside a period cost anything. */
@@ -79,6 +81,8 @@ export interface RequestableLeaveType {
   documentation: LeaveType['documentation'];
   documentationAfterDays: number | null;
   exceedableWithDocument: boolean;
+  /** FR 10. Whether the form's reason box is required, as well as what the rule says. */
+  reasonRequired: boolean;
   /** FR 38a. "your line manager, then HR". */
   approvedBy: string;
   rules: FormRule[];
@@ -190,6 +194,18 @@ export function rulesFor(type: LeaveType): FormRule[] {
     asks: true,
   });
 
+  /* FR 10. Only where it asks, by the same argument documentation makes: a list saying a
+     field is optional is a line nobody needed to read. */
+  if (type.reasonRequired) {
+    rules.push({
+      kind: 'REASON',
+      inWords:
+        `Say why. There is no allowance behind this kind of leave, so the reason is what ` +
+        `${approvalChainInWords(type)} will be deciding on.`,
+      asks: true,
+    });
+  }
+
   /* FR 32g. What a nought means, before there is a nought on screen to misread — the same
      sentence `allowanceInWords` makes on the balance screen, and the same argument: an event
      type's nought before the occasion and a quota type's nought after a year of leave are
@@ -234,6 +250,7 @@ export function requestableLeaveTypeFor(type: LeaveType): RequestableLeaveType {
     documentation: type.documentation,
     documentationAfterDays: type.documentationAfterDays,
     exceedableWithDocument: type.exceedableWithDocument,
+    reasonRequired: type.reasonRequired,
     approvedBy: approvalChainInWords(type),
     rules: rulesFor(type),
   };

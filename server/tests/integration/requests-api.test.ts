@@ -732,6 +732,8 @@ async function aRequest(period: { from?: string; to?: string } = {}): Promise<st
     from: period.from ?? '2026-03-02',
     to: period.to ?? '2026-03-06',
     reason: 'My sister is getting married',
+    /** FR 17, LMS 307. The fixture week is behind today, so annual leave is short of notice. */
+    acknowledgesShortNotice: true,
   });
 
   return request.id;

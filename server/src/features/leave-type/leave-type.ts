@@ -57,6 +57,8 @@ export interface NewLeaveType {
   maxBackdateCalendarDays?: number;
   /** FR 05. */
   genderRestriction?: Gender | null;
+  /** FR 10. Whether a request for this type has to say why. */
+  reasonRequired?: boolean;
   displayOrder?: number;
   /** FR 38a. */
   approvalChain?: readonly string[];
@@ -83,6 +85,8 @@ export interface LeaveType {
   minNoticeCalendarDays: number;
   maxBackdateCalendarDays: number;
   genderRestriction: Gender | null;
+  /** FR 10. */
+  reasonRequired: boolean;
   /** FR 33. */
   deductsFromAnnual: boolean;
   /** FR 38a. */
@@ -111,6 +115,8 @@ export interface ValidatedLeaveType {
   minNoticeCalendarDays: number;
   maxBackdateCalendarDays: number;
   genderRestriction: Gender | null;
+  /** FR 10. */
+  reasonRequired: boolean;
   displayOrder: number;
   /** FR 38a. */
   approvalChain: ApproverRole[];
@@ -313,6 +319,9 @@ export function validateNewLeaveType(input: NewLeaveType): ValidatedLeaveType {
       input.genderRestriction == null
         ? null
         : requireOneOf('genderRestriction', input.genderRestriction, GENDERS),
+    /* FR 10. True unless said otherwise, as the column defaults: a type that quietly
+       stopped asking is an approver deciding blind. */
+    reasonRequired: input.reasonRequired ?? true,
     displayOrder: requireOrder(input.displayOrder ?? 0),
     /* FR 38a. Manager then HR unless the caller said otherwise, applied here
        rather than left to the writer for the reason every other default is: the
@@ -416,6 +425,9 @@ export function validateLeaveTypeChanges(
       changes.genderRestriction == null
         ? null
         : requireOneOf('genderRestriction', changes.genderRestriction, GENDERS);
+  }
+  if ('reasonRequired' in changes) {
+    validated.reasonRequired = requireBoolean('reasonRequired', changes.reasonRequired);
   }
   if ('displayOrder' in changes) {
     validated.displayOrder = requireOrder(changes.displayOrder);
@@ -960,6 +972,7 @@ function asValidated(type: LeaveType): ValidatedLeaveType {
     minNoticeCalendarDays: type.minNoticeCalendarDays,
     maxBackdateCalendarDays: type.maxBackdateCalendarDays,
     genderRestriction: type.genderRestriction,
+    reasonRequired: type.reasonRequired,
     displayOrder: type.displayOrder,
     approvalChain: type.approvalChain,
   };

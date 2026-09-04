@@ -183,6 +183,8 @@ function aRequest(employeeId: string): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
+    /** FR 17, LMS 307. The fixture week is behind today, so annual leave is short of notice. */
+    acknowledgesShortNotice: true,
   };
 }
 

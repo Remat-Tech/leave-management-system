@@ -286,7 +286,12 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
    */
   routes.post('/me/request-drafts/:id/submit', (request: Request, response: Response, next) => {
     void drafts
-      .submit(actorOf(response), asString(request.params.id))
+      .submit(
+        actorOf(response),
+        asString(request.params.id),
+        /** FR 17, LMS 307. Answered when the draft is finished, never saved on it. */
+        asAcknowledgement(bodyOf(request).acknowledgesShortNotice),
+      )
       .then((submitted) => {
         response.status(201).json(submittedAsJson(submitted));
       })
@@ -368,6 +373,9 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
    * period again inside the transaction that holds the days, and the reason it does is the
    * reason this route takes only the four fields somebody actually filled in: a caller that
    * can supply a figure can supply a smaller one.
+   *
+   * `acknowledgesShortNotice` is the fifth and is not one of them. FR 17, LMS 307: it answers
+   * a warning, and whether one was owed is the domain's to say rather than the caller's.
    */
   routes.post('/me/requests', (request: Request, response: Response, next) => {
     const sent = bodyOf(request);
@@ -379,6 +387,8 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
         from: asString(sent.from),
         to: asString(sent.to),
         reason: asString(sent.reason),
+        /** FR 17, LMS 307. */
+        acknowledgesShortNotice: asAcknowledgement(sent.acknowledgesShortNotice),
       })
       .then((submitted) => {
         response.status(201).json(submittedAsJson(submitted));
@@ -431,6 +441,11 @@ function oneYearIn(request: Request): string | undefined {
  */
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+/** An acknowledgement, and only `true` is one. FR 17, LMS 307. */
+function asAcknowledgement(value: unknown): boolean {
+  return value === true;
 }
 
 /**
@@ -705,6 +720,8 @@ function leaveTypeAsJson(type: RequestableLeaveType): unknown {
     documentation: type.documentation,
     documentationAfterDays: type.documentationAfterDays,
     exceedableWithDocument: type.exceedableWithDocument,
+    /** FR 10. Whether the form's reason box is required. */
+    reasonRequired: type.reasonRequired,
     /** FR 38a. */
     approvedBy: type.approvedBy,
     rules: type.rules.map(ruleAsJson),

@@ -108,6 +108,8 @@ let annualId: string;
 let maternityId: string;
 /** FR 32a's one exceedable type today, read off the column rather than the code. */
 let sickId: string;
+/** FR 10. One of the two types that asks for a reason. */
+let unpaidId = '';
 
 /**
  * A Monday to a Tuesday of the week after, in the seeded 2026 year.
@@ -211,13 +213,14 @@ beforeEach(async () => {
      actually rewrite, and committing the pair as one act, closes it: another session sees
      the chains before or after and never in between. */
   const codes = await admin.query(
-    "SELECT code, id FROM leave_type WHERE code IN ('ANNUAL','MATERNITY','SICK')",
+    "SELECT code, id FROM leave_type WHERE code IN ('ANNUAL','MATERNITY','SICK','UNPAID')",
   );
   const byCode = Object.fromEntries(codes.rows.map((row) => [row.code, row.id as string]));
 
   annualId = byCode.ANNUAL;
   maternityId = byCode.MATERNITY;
   sickId = byCode.SICK;
+  unpaidId = byCode.UNPAID;
 
   /* The ids are read before the restore below rather than after it, because the restore now
      names the type it is putting back and `annualId` is undefined on the first pass. */
@@ -234,6 +237,16 @@ beforeEach(async () => {
     leaveYearId: y2026.id,
     days: 20,
     reason: 'Annual entitlement for 2026',
+  });
+
+  /* FR 10. Unpaid leave is the type that asks for a reason and is a QUOTA type, so it
+     needs an allowance behind it for the reason to be what a request fails on. */
+  await balances.grantTheYear(system, {
+    employeeId: people.officer,
+    leaveTypeId: unpaidId,
+    leaveYearId: y2026.id,
+    days: 10,
+    reason: 'Unpaid allowance for 2026',
   });
 });
 
@@ -307,6 +320,16 @@ async function refusedOutright(actor: Actor, id: string) {
   return first.request.status === 'REFUSED' ? first : requests.refuse(asOfficer(), id, WHY_NOT);
 }
 
+/**
+ * A request for the fixture week, acknowledged.
+ *
+ * FR 17, LMS 307. {@link FROM} is a fixed day in the seeded 2026 year and is behind whatever
+ * today is, so every annual leave request in this file is short of the fourteen days annual
+ * leave wants — and short notice is submitted rather than refused only once somebody has said
+ * they know it is short. The acknowledgement is here rather than at each call so that the
+ * tests below stay about what they are about; the ones that are about the acknowledgement
+ * itself override it.
+ */
 function aRequest(overrides: Partial<NewLeaveRequest> = {}): NewLeaveRequest {
   return {
     employeeId: people.officer,
@@ -314,6 +337,8 @@ function aRequest(overrides: Partial<NewLeaveRequest> = {}): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
+    /** FR 17, LMS 307. */
+    acknowledgesShortNotice: true,
     ...overrides,
   };
 }
@@ -530,6 +555,122 @@ describe('submitting a request', () => {
   });
 });
 
+/* ---------------------------------------------- short notice. FR 17, LMS 307 */
+
+/**
+ * Warned, acknowledged, and never blocked. FR 17, LMS 307.
+ *
+ * ../unit/leave-request.test.ts proves the rule and the sentences. What needs a server is the
+ * part the story is actually about:
+ *
+ *   **The notice window is the one in the table.** Fourteen days for annual leave because the
+ *   row says fourteen, and nothing for sick leave because that row says nothing — read off
+ *   `min_notice_calendar_days` rather than off a code, so HR moving it moves this. FR 31.
+ *
+ *   **The same request goes through once it is acknowledged.** Nothing about it changes: same
+ *   dates, same days, same desk. That is what "never blocks" means, and a pure function cannot
+ *   show it because what it has to show is a row being written.
+ *
+ *   **The quote warned about exactly what the submission refused.** One condition, told at the
+ *   two moments a person meets it, over one real leave type.
+ */
+describe('short notice is acknowledged rather than refused', () => {
+  it('refuses a submission nobody has acknowledged, and says how short it is', async () => {
+    const refusal = await requests
+      .submit(asThemselves(), aRequest({ acknowledgesShortNotice: false }))
+      .then(
+        () => expect.unreachable('short notice was submitted without an acknowledgement'),
+        (error: unknown) => error as { code: string; expected: number; shortBy: number },
+      );
+
+    expect(refusal.code).toBe('SHORT_NOTICE_NOT_ACKNOWLEDGED');
+    /** The figure off the row, which is FR 17's first criterion. */
+    expect(refusal.expected).toBe(14);
+    expect(refusal.shortBy).toBe(14);
+  });
+
+  /* The story's own words. Nothing about the request moves — it is the same fortnight, and it
+     lands at the same desk holding the same days. */
+  it('and takes exactly the same request once it has been', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    expect(request.status).toBe('SUBMITTED');
+    expect(request.awaitingApprovalFrom).toBe('MANAGER');
+    expect(request).toMatchObject({ from: FROM, to: TO, days: 6 });
+  });
+
+  it('and writes nothing at all when it refuses', async () => {
+    await expect(
+      requests.submit(asThemselves(), aRequest({ acknowledgesShortNotice: false })),
+    ).rejects.toMatchObject({ code: 'SHORT_NOTICE_NOT_ACKNOWLEDGED' });
+
+    expect((await admin.query('SELECT count(*) FROM leave_request')).rows[0].count).toBe('0');
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'RESERVATION'",
+        )
+      ).rows[0].count,
+    ).toBe('0');
+  });
+
+  /**
+   * FR 17's third criterion, over a real type rather than a fabricated one.
+   *
+   * Sick leave carries no notice window — `min_notice_calendar_days` is nought on that row —
+   * so exactly the same days asked for as sick leave are submitted with nothing to answer.
+   * Nothing in the service reads either type's code to reach those two different answers.
+   */
+  it('and asks nothing of a type that carries no notice requirement', async () => {
+    const { request } = await requests.submit(
+      asThemselves(),
+      aRequest({ leaveTypeId: sickId, acknowledgesShortNotice: false }),
+    );
+
+    expect(request.status).toBe('SUBMITTED');
+  });
+
+  /* FR 31, and the reason the window is a column. HR clearing it stops the acknowledgement
+     being asked for, with no deployment and nothing here knowing which type it was. */
+  it('and stops asking the moment HR clears the window', async () => {
+    await admin.query('UPDATE leave_type SET min_notice_calendar_days = 0 WHERE id = $1', [
+      annualId,
+    ]);
+
+    try {
+      const { request } = await requests.submit(
+        asThemselves(),
+        aRequest({ acknowledgesShortNotice: false }),
+      );
+
+      expect(request.status).toBe('SUBMITTED');
+    } finally {
+      await admin.query('UPDATE leave_type SET min_notice_calendar_days = 14 WHERE id = $1', [
+        annualId,
+      ]);
+    }
+  });
+
+  /* One condition, two moments. The quote is where somebody meets it while they can still
+     move the dates, and both sentences are made from the same clause. */
+  it('and warns about the same thing the quote warned about', async () => {
+    const quote = await requests.quote(asThemselves(), aRequest());
+    const warning = quote.warnings.find((one) => one.code === 'SHORT_NOTICE');
+
+    const refusal = await requests
+      .submit(asThemselves(), aRequest({ acknowledgesShortNotice: false }))
+      .then(
+        () => expect.unreachable('short notice was submitted without an acknowledgement'),
+        (error: unknown) => error as Error,
+      );
+
+    const clause = 'Annual Leave normally wants 14 days’ notice';
+
+    expect(warning?.message).toContain(clause);
+    expect(refusal.message).toContain(clause);
+  });
+});
+
 /* ------------------------------------------------------ days that are not there */
 
 /**
@@ -667,6 +808,7 @@ describe('a request the balance does not hold', () => {
           from: TOO_LONG.from,
           to: TOO_LONG.to,
           reason: 'past the service check',
+          reasonRequired: false,
           countingBasis: quote.countingBasis,
           days: quote.days,
           calendarDays: quote.calendarDays,
@@ -1160,10 +1302,98 @@ describe('what leave may be asked for', () => {
     ).rejects.toBeInstanceOf(EmployeeNotFound);
   });
 
-  it('nor with no reason at all', async () => {
+  /* FR 10. On a type that asks for one, which annual leave is not. */
+  it('nor unpaid leave with no reason at all', async () => {
     await expect(
-      requests.submit(asThemselves(), aRequest({ reason: '  ' })),
+      requests.submit(asThemselves(), aRequest({ leaveTypeId: unpaidId, reason: '  ' })),
     ).rejects.toBeInstanceOf(InvalidLeaveRequest);
+  });
+});
+
+/* ------------------------------------------------ saying why. FR 10 */
+
+/**
+ * A reason where the approvers are deciding on it, and not otherwise. FR 10, FR 31.
+ *
+ * ../unit/leave-request.test.ts proves the rule. What needs a database is that the two
+ * answers come from two real rows and from nothing else: `reason_required` is a column, so
+ * a type HR edits changes this the moment the row does.
+ */
+describe('a reason is asked for where the type asks for one', () => {
+  it('is not asked for on annual leave, and null is stored rather than blank', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest({ reason: '   ' }));
+
+    expect(request.reason).toBeNull();
+
+    const { rows } = await admin.query<{ reason: string | null }>(
+      'SELECT reason FROM leave_request WHERE id = $1',
+      [request.id],
+    );
+
+    expect(rows[0].reason).toBeNull();
+  });
+
+  it('and one given anyway is kept', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    expect(request.reason).toBe('My sister is getting married');
+  });
+
+  /* Unpaid leave, which has no allowance behind it, so the sentence is the decision. */
+  it('and is asked for on unpaid leave, against the field', async () => {
+    await expect(
+      requests.submit(asThemselves(), aRequest({ leaveTypeId: unpaidId, reason: '' })),
+    ).rejects.toMatchObject({ name: 'InvalidLeaveRequest', field: 'reason' });
+  });
+
+  /* FR 31, and the reason it is a column. HR clearing it stops the reason being asked
+     for, with no deployment and nothing here knowing which type it was. */
+  it('and stops asking the moment HR clears the rule', async () => {
+    await admin.query('UPDATE leave_type SET reason_required = false WHERE id = $1', [unpaidId]);
+
+    try {
+      const { request } = await requests.submit(
+        asThemselves(),
+        aRequest({ leaveTypeId: unpaidId, reason: '' }),
+      );
+
+      expect(request.reason).toBeNull();
+    } finally {
+      await admin.query('UPDATE leave_type SET reason_required = true WHERE id = $1', [unpaidId]);
+    }
+  });
+
+  /* The reword is judged by the same rule, so the two cannot disagree about a blank. */
+  it('and a reason can be cleared afterwards where the type asks for none', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    expect((await requests.reword(asThemselves(), request.id, '   ')).reason).toBeNull();
+  });
+
+  it('but not where it asks for one', async () => {
+    const { request } = await requests.submit(
+      asThemselves(),
+      aRequest({ leaveTypeId: unpaidId, reason: 'A month at home' }),
+    );
+
+    await expect(requests.reword(asThemselves(), request.id, '   ')).rejects.toMatchObject({
+      name: 'InvalidLeaveRequest',
+      field: 'reason',
+    });
+  });
+
+  /* And the column refuses the empty string on every connection, so "did they explain
+     themselves" has two answers rather than three. */
+  it('and the database refuses a blank reason, by anybody', async () => {
+    await expect(
+      admin.query(
+        `INSERT INTO leave_request (
+            employee_id, leave_type_id, leave_year_id, start_date, end_date,
+            reason, counting_basis, days, calendar_days, status, awaiting_approval_from)
+         VALUES ($1, $2, $3, $4, $5, '   ', 'WORKING_DAYS', 6, 9, 'SUBMITTED', 'MANAGER')`,
+        [people.officer, annualId, y2026.id, FROM, TO],
+      ),
+    ).rejects.toMatchObject({ constraint: 'leave_request_reason_not_blank' });
   });
 });
 

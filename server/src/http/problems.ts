@@ -170,6 +170,8 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
    * exactly where it was. What is missing is what was sent.
    */
   DraftIsNotFinished: 400,
+  /** FR 17. The tick is the fix and the dates are fine. LMS 307. */
+  ShortNoticeNotAcknowledged: 400,
 
   /** FR 44. There is nothing on this request to reverse. LMS 318. */
   NothingToOverturn: 409,

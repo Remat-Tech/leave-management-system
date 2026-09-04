@@ -906,6 +906,30 @@ textarea:disabled {
   border-left-color: var(--accent);
 }
 
+/* FR 17, LMS 307. An answer rather than an entry, so it reads as a sentence beside a box
+   rather than as a labelled field. */
+.acknowledge {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.75rem var(--gap);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--accent) 5%, var(--card));
+  font-size: 0.9375rem;
+  color: var(--ink);
+}
+
+.acknowledge input {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 .asked .progress {
   font-size: 1.0625rem;
 }
