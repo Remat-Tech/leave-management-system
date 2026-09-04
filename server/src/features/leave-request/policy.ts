@@ -388,6 +388,42 @@ export const leaveRequestPolicy = {
         );
   },
 
+  /**
+   * Attaching evidence to a request, or taking it back off. FR 12, LMS 310.
+   *
+   * The standings `submit` carries: the person whose leave it is, or HR entering the
+   * record for somebody who could not. Not the line manager — an approver asks for a
+   * certificate rather than supplying one.
+   */
+  attach(actor: Actor, owner: BalanceOwner): Decision {
+    if (isSelf(actor, owner.employeeId) || holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)) {
+      return about.allow(actor, 'attach', owner.employeeId);
+    }
+
+    return about.refuseOpenly(
+      actor,
+      'attach',
+      owner.employeeId,
+      'not their own leave, and holds no role that keeps records for somebody else',
+      'A certificate is attached by the person whose leave it evidences, or by HR on ' +
+        'their behalf. An approver who needs to see one asks for it. FR 12.',
+    );
+  },
+
+  /**
+   * Reading what is attached, and downloading it. FR 12, NFR SEC 04, LMS 310.
+   *
+   * {@link read} widened by the desk the request is sitting on, which is the seam
+   * {@link queue} already argues: FR 32h sends unpaid leave to the Chief Executive, who
+   * is nobody's line manager and holds no role, and an approver who cannot open the
+   * certificate cannot decide on it.
+   */
+  readAttachment(actor: Actor, subject: RequestAtADesk): Decision {
+    return isAt(actor, subject)
+      ? about.allow(actor, 'readAttachment', subject.employeeId)
+      : this.read(actor, subject);
+  },
+
   /** Improving the reason on a request already submitted. FR 18. */
   reword(actor: Actor, owner: BalanceOwner): Decision {
     return isSelf(actor, owner.employeeId)

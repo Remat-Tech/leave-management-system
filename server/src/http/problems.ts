@@ -174,6 +174,10 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   ShortNoticeNotAcknowledged: 400,
   /** FR 18. The reason box is the fix, and only HR ever sees this one. LMS 308. */
   LateEntryNeedsAReason: 400,
+  /** FR 12. A different file is the fix, and renaming this one is not. LMS 310. */
+  AttachmentTypeNotAccepted: 400,
+  /** FR 12. A smaller file is the fix. LMS 310. */
+  AttachmentTooLarge: 400,
 
   /** FR 44. There is nothing on this request to reverse. LMS 318. */
   NothingToOverturn: 409,
@@ -192,6 +196,15 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   NobodyApprovesLeaveType: 409,
   /** FR 18. Only HR can enter it now, which the message says. */
   TooLateToRecord: 409,
+
+  /** FR 12. Five is five; removing one is the fix. LMS 310. */
+  TooManyAttachments: 409,
+  /** NFR SEC 07. The file is real and was refused by the scanner. LMS 310. */
+  AttachmentIsInfected: 409,
+  /** NFR SEC 07. Nothing about the file changes this; the scan has to run. LMS 310. */
+  AttachmentNotScanned: 409,
+  /** FR 12. The request has moved past the point evidence goes on or comes off. LMS 310. */
+  AttachmentsAreClosed: 409,
   /** §8.9. */
   LeaveYearIsClosed: 409,
 };

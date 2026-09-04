@@ -608,6 +608,106 @@ export async function submitDraft(
   );
 }
 
+/* ---------------------------------------------- attachments. FR 12, LMS 310 */
+
+/** NFR SEC 07. `PENDING` is a file nothing has checked; it counts as no evidence. */
+export type ScanStatus = 'PENDING' | 'CLEAN' | 'INFECTED';
+
+/** FR 12. What the server accepts, as the bytes say it rather than as the name claims. */
+export type AttachmentContentType =
+  | 'application/pdf'
+  | 'image/jpeg'
+  | 'image/png'
+  | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+export interface Attachment {
+  attachmentId: string;
+  leaveRequestId: string;
+  slot: number;
+  filename: string;
+  /** Sniffed server side. What this says may differ from what the file was called. */
+  contentType: AttachmentContentType;
+  sizeBytes: number;
+  checksumSha256: string;
+  scanStatus: ScanStatus;
+  scanSignature: string | null;
+  scannedBy: string | null;
+  scannedAt: string | null;
+  /** What to grey the download out on. */
+  downloadable: boolean;
+  uploadedBy: string | null;
+  uploadedAt: string;
+}
+
+/** FR 13. Whether this leave's documentation rule is met by what is attached. */
+export interface Evidence {
+  required: boolean;
+  satisfied: boolean;
+  usable: number;
+  attached: number;
+  inWords: string;
+}
+
+export interface Attachments {
+  leaveRequestId: string;
+  attachments: Attachment[];
+  evidence: Evidence;
+}
+
+/** FR 12. Ten megabytes, five files. Shown on the form, enforced on the server. */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_ATTACHMENTS_PER_REQUEST = 5;
+
+export async function attachmentsOn(requestId: string): Promise<Attachments> {
+  return request<Attachments>('GET', `/api/requests/${encodeURIComponent(requestId)}/attachments`);
+}
+
+/**
+ * Attaches one file. FR 12.
+ *
+ * The body is the bytes and the name goes in a header, so a filename never reaches a
+ * query string or an access log. The content type is sent for the record and is not what
+ * the server decides on — it sniffs the bytes. NFR SEC 07.
+ */
+export async function attachToRequest(requestId: string, file: File): Promise<Attachment> {
+  const response = await fetch(`/api/requests/${encodeURIComponent(requestId)}/attachments`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'content-type': file.type === '' ? 'application/octet-stream' : file.type,
+      'x-filename': encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+
+  const payload: unknown = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    throw errorFrom(response.status, payload);
+  }
+
+  return payload as Attachment;
+}
+
+/** Where the browser fetches the bytes from. Refused unless the scan came back clean. */
+export function attachmentHref(requestId: string, attachmentId: string): string {
+  return (
+    `/api/requests/${encodeURIComponent(requestId)}/attachments/` + encodeURIComponent(attachmentId)
+  );
+}
+
+export async function removeAttachment(requestId: string, attachmentId: string): Promise<void> {
+  await request<void>('DELETE', attachmentHref(requestId, attachmentId));
+}
+
+/** Asks the scanner again about a file it never answered for. NFR SEC 07. */
+export async function rescanAttachment(
+  requestId: string,
+  attachmentId: string,
+): Promise<Attachment> {
+  return request<Attachment>('POST', `${attachmentHref(requestId, attachmentId)}/scan`);
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method,

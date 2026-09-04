@@ -7,6 +7,7 @@ import { createMailer } from './mail/mailer.js';
 import { BalanceRepository } from './features/balance/balance.db.js';
 import { EmployeeRepository } from './features/employee/employee.db.js';
 import { HolidayRepository } from './features/holiday/holiday.db.js';
+import { AttachmentRepository } from './features/leave-request/attachment.db.js';
 import { LeaveDecisionRepository } from './features/leave-request/leave-decision.db.js';
 import { LeaveRequestDraftRepository } from './features/leave-request/draft.db.js';
 import { LeaveRoutingRepository } from './features/leave-request/routing.db.js';
@@ -21,6 +22,8 @@ import { SignInAccountRepository } from './features/sign-in/sign-in-account.db.j
 import { Transactions } from './db/transaction.js';
 import { WorkPatternRepository } from './features/work-pattern/work-pattern.db.js';
 import { buildApp } from './http/app.js';
+import { createScanner } from './scanning/index.js';
+import { createStorage } from './storage/index.js';
 import { sessionSecretFrom } from './features/sign-in/session-cookie.routes.js';
 import { BalanceService } from './features/balance/balance.service.js';
 import { LeaveCalculatorService } from './features/leave-calculator/leave-calculator.service.js';
@@ -60,6 +63,8 @@ const routing = new LeaveRoutingRepository(db);
 const withdrawals = new WithdrawalRepository(db);
 /** FR 19, LMS 302. Requests started and not finished. */
 const drafts = new LeaveRequestDraftRepository(db);
+/** FR 12, LMS 310. */
+const attachments = new AttachmentRepository(db);
 const balances = new BalanceRepository(db);
 /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
 const organisation = new OrganisationRepository(db);
@@ -104,6 +109,11 @@ const app = buildApp({
   routing,
   withdrawals,
   drafts,
+  attachments,
+  /* Both built once here, as the mailer is: the driver each resolves to is a deployment's
+     decision, and nothing above them may know which one it got. NFR SEC 04, NFR SEC 07. */
+  storage: createStorage(),
+  scanner: createScanner(),
   accounts,
   roles,
   organisation,

@@ -15,6 +15,9 @@ import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-
 import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
 import { LeaveRoutingRepository } from '../../src/features/leave-request/routing.db.js';
 import { LeaveRequestDraftRepository } from '../../src/features/leave-request/draft.db.js';
+import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
+import { SignatureScanner } from '../../src/scanning/signature-scanner.js';
+import { InMemoryStorage } from '../support/in-memory-storage.js';
 import { WithdrawalRepository } from '../../src/features/leave-request/withdrawal.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
@@ -142,6 +145,9 @@ beforeAll(async () => {
     withdrawals: new WithdrawalRepository(db),
     /** FR 19, LMS 302. */
     drafts: new LeaveRequestDraftRepository(db),
+    attachments: new AttachmentRepository(db),
+    storage: new InMemoryStorage(),
+    scanner: new SignatureScanner(),
     accounts,
     roles,
     organisation: new OrganisationRepository(db),
@@ -923,7 +929,7 @@ async function yearIdOf(label: string): Promise<string> {
 function emptyTheLeaveTables(): Promise<unknown> {
   return admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request, leave_balance',
+      'leave_request_attachment, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request, leave_balance',
   );
 }
 

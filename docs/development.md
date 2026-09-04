@@ -99,6 +99,7 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 | `DISPLAY_TIMEZONE` | The zone instants are *shown* in. NFR DAT 03. Display only: everything is stored in UTC and every leave date has no zone at all, so changing it moves nothing in the database. Defaults to `Africa/Accra`; a name this Node does not know is refused rather than quietly falling back |
 | `SMTP_*` | Mail settings. Points at Mailpit in development |
 | `STORAGE_*` | Object storage for attachments. Local directory in development |
+| `SCANNER_DRIVER` | Which virus scanner attachments go through. NFR SEC 07. `signature` in development flags the EICAR test file and calls everything else clean; `off` answers nothing, so every upload stays unscanned. **Production must set neither of those** |
 
 **Never commit a real `.env`.** A credential committed once stays in git history after it is deleted.
 
@@ -367,6 +368,41 @@ resolved. NFR SEC 04.
 These files are medical certificates. A directory reachable by URL makes every
 one of them public.
 
+### Virus scanning
+
+Every attachment goes through the `Scanner` interface in `server/src/scanning`
+before it can be downloaded or stand as evidence. NFR SEC 07.
+
+```ts
+const scanner = createScanner(); // the only place that knows which driver runs
+
+const { verdict, signature, scannedBy } = await scanner.scan(bytes);
+```
+
+**Three outcomes, and the third is the one that matters.** `CLEAN` stores the
+file. `INFECTED` refuses the upload outright — no row, no bytes. A scanner that
+cannot be reached throws `ScannerUnavailable`, and the file is kept `PENDING`:
+downloadable by nobody, and satisfying no FR 13 documentation rule until a
+rescan settles it. **Nothing is ever assumed clean because nothing looked at
+it.**
+
+`SCANNER_DRIVER=signature` is development's. It flags the EICAR test string and
+calls everything else clean, which is enough to exercise the path and is not
+antivirus. Production sets a real driver and changes nothing else.
+
+### What a file is
+
+`sniffContentType` reads the first bytes. The extension is never consulted at
+any point, and neither is the `Content-Type` a client sent — a JPEG named
+`.pdf` is stored as `image/jpeg`, and a shell script named `.pdf` is refused.
+DOCX is a zip, so it is told from XLSX and from a plain archive by reading the
+archive's own central directory for a `word/` entry rather than by trusting the
+name. NFR SEC 07.
+
+**An upload is one file per request, as a raw body.** The bytes are the body and
+the name travels in `X-Filename`, percent encoded — not a query parameter, so
+that `biopsy-result.pdf` never reaches an access log.
+
 ---
 
 ## Project structure
@@ -384,6 +420,7 @@ one of them public.
     /http            the Express app, identify, and the error handler
     /mail            outbound notification transport
     /storage         attachment bytes, behind one interface
+    /scanning        the virus scanner, behind another
   /tests
     /unit            no database, no network. 1,598 tests in about 4 seconds
     /integration     one disposable database per file, run in parallel

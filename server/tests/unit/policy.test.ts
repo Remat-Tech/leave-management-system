@@ -1247,6 +1247,49 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       expect(leaveRequestPolicy.submit(manager('akosua'), hers).told).toMatch(/FR 18/);
     });
 
+    /* FR 12, LMS 310. The standings `submit` carries, and the manager is not among them:
+       an approver who wants a certificate asks the person for it. */
+    it('is evidenced by the person whose leave it is, and by HR on their behalf', () => {
+      expect(leaveRequestPolicy.attach(employee('ama'), hers).allowed).toBe(true);
+      expect(leaveRequestPolicy.attach(manager('akosua'), hers).allowed).toBe(false);
+
+      for (const [code, roles] of EACH_ROLE) {
+        expect(leaveRequestPolicy.attach(employee('adwoa', roles), hers).allowed).toBe(
+          MAINTAINS_EMPLOYEE_RECORDS.includes(code),
+        );
+      }
+    });
+
+    /* And attaching is exactly as wide as asking, which is what makes them one rule to
+       widen rather than two that can drift apart. */
+    it('and by exactly the people who may ask for it', () => {
+      for (const [, roles] of EACH_ROLE) {
+        const them = employee('adwoa', roles);
+
+        expect(leaveRequestPolicy.attach(them, hers).allowed).toBe(
+          leaveRequestPolicy.submit(them, hers).allowed,
+        );
+      }
+    });
+
+    /* FR 12, LMS 310. Reading a certificate is reading the request, widened by the desk —
+       FR 32h sends unpaid leave to a Chief Executive who is nobody's manager and holds no
+       role, and an approver who cannot open the evidence cannot decide on it. */
+    it('and what is attached is read by whoever may read the request', () => {
+      const nowhere = { ...hers, awaiting: null, chiefExecutiveId: 'yaw' };
+
+      expect(leaveRequestPolicy.readAttachment(employee('ama'), nowhere).allowed).toBe(true);
+      expect(leaveRequestPolicy.readAttachment(manager('akosua'), nowhere).allowed).toBe(true);
+      expect(leaveRequestPolicy.readAttachment(employee('adwoa'), nowhere).allowed).toBe(false);
+    });
+
+    it('and by the desk it is sitting on, which the plain read refuses', () => {
+      const atTheCeo = { ...hers, awaiting: 'CEO' as const, chiefExecutiveId: 'yaw' };
+
+      expect(leaveRequestPolicy.read(employee('yaw'), atTheCeo).allowed).toBe(false);
+      expect(leaveRequestPolicy.readAttachment(employee('yaw'), atTheCeo).allowed).toBe(true);
+    });
+
     /**
      * And the reason is the author's alone, which is narrower than submitting.
      *
@@ -1350,13 +1393,16 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        which is what stops it being "a way to reach the transition without passing the check
        that knows which desk FR 38a's chain has the request sitting on" — the sentence this
        file refused it with for two stories. */
-    it('and the decisions it holds are these sixteen', () => {
+    it('and the decisions it holds are these eighteen', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
         /** FR 47, LMS 324. HR's three answers, decided by one rule. */
         'answerAWithdrawal',
         'approve',
         /** FR 47, LMS 324. Asking for agreed leave to be taken off the books. */
         'askToWithdraw',
+        /* FR 12, LMS 310. Evidence goes on by the person whose leave it is, or by HR. An
+           approver who wants a certificate asks for one rather than supplying it. */
+        'attach',
         'cancel',
         /* FR 44, LMS 318. `decide` dispatches on the verb, and `override` is the two verbs
            that disagree with a line manager. */
@@ -1368,6 +1414,9 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         'override',
         'queue',
         'read',
+        /* FR 12, LMS 310. `read` widened by the desk, so FR 04's seat can open the
+           certificate on the leave only it decides. */
+        'readAttachment',
         /* FR 18, LMS 308. The one decision here that is asked rather than enforced: what it
            refuses is answered by `TooLateToRecord`, which names HR. */
         'recordLate',

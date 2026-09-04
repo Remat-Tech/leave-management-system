@@ -85,7 +85,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_attachment, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request',
   );
   await restoreYears();
   await restoreTypes();
@@ -102,7 +102,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_attachment, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request',
   );
   await restoreYears();
   await restoreTypes();
