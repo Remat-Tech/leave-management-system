@@ -278,6 +278,8 @@ describe('saving a draft', () => {
       leaveTypeId: annualId,
       ...period,
       reason: 'The same week, asked for properly',
+      /** FR 17, LMS 307. {@link nextWeek} is seven days out and annual leave wants fourteen. */
+      acknowledgesShortNotice: true,
     });
 
     expect(request.status).toBe('SUBMITTED');
@@ -387,7 +389,7 @@ describe('editing a draft', () => {
   it('and once it has been submitted there is nothing left to edit', async () => {
     const draft = await aFinishedDraft();
 
-    await drafts.submit(asTheEmployee(), draft.id);
+    await drafts.submit(asTheEmployee(), draft.id, true);
 
     await expect(
       drafts.replace(asTheEmployee(), draft.id, { reason: 'Second thoughts' }),
@@ -416,7 +418,7 @@ describe('submitting a draft', () => {
     const before = (await balances.forOne(system, theBalance())).available;
     const draft = await aFinishedDraft();
 
-    const submitted = await drafts.submit(asTheEmployee(), draft.id);
+    const submitted = await drafts.submit(asTheEmployee(), draft.id, true);
 
     expect(submitted.request.status).toBe('SUBMITTED');
     /** FR 38a. It starts at the first desk of annual leave's chain, like anything else. */
@@ -436,9 +438,33 @@ describe('submitting a draft', () => {
   it('and the request it made is one an approver sees', async () => {
     const draft = await aFinishedDraft();
 
-    await drafts.submit(asTheEmployee(), draft.id);
+    await drafts.submit(asTheEmployee(), draft.id, true);
 
     expect((await queue.forApprover(asTheirManager())).items).toHaveLength(1);
+  });
+
+  /**
+   * FR 17, LMS 307. The acknowledgement is asked for when the draft is finished.
+   *
+   * It is not one of the draft's four fields and deliberately cannot be: how short the notice
+   * is depends on the day it is submitted, so a tick saved a fortnight ago would answer a
+   * question this afternoon asks differently. A finished draft is otherwise perfectly good,
+   * so the refusal leaves it exactly where it was and asking again with the tick works.
+   */
+  it('asks for the short notice acknowledgement at the finishing, not at the saving', async () => {
+    const draft = await aFinishedDraft();
+
+    await expect(drafts.submit(asTheEmployee(), draft.id)).rejects.toMatchObject({
+      code: 'SHORT_NOTICE_NOT_ACKNOWLEDGED',
+    });
+
+    expect(await draftCount()).toBe(1);
+    expect(await requestCount()).toBe(0);
+
+    const submitted = await drafts.submit(asTheEmployee(), draft.id, true);
+
+    expect(submitted.request.status).toBe('SUBMITTED');
+    expect(await draftCount()).toBe(0);
   });
 
   /* Nothing here defaults a missing field, so a draft cannot become leave nobody asked
@@ -449,7 +475,7 @@ describe('submitting a draft', () => {
       from: daysFromToday(7),
     });
 
-    await expect(drafts.submit(asTheEmployee(), draft.id)).rejects.toBeInstanceOf(
+    await expect(drafts.submit(asTheEmployee(), draft.id, true)).rejects.toBeInstanceOf(
       DraftIsNotFinished,
     );
 
@@ -460,7 +486,7 @@ describe('submitting a draft', () => {
   it('names what is left on that refusal', async () => {
     const draft = await drafts.save(asTheEmployee(), people.officer, { leaveTypeId: annualId });
 
-    await expect(drafts.submit(asTheEmployee(), draft.id)).rejects.toMatchObject({
+    await expect(drafts.submit(asTheEmployee(), draft.id, true)).rejects.toMatchObject({
       code: 'DRAFT_NOT_FINISHED',
       missing: ['from', 'to', 'reason'],
     });
@@ -476,7 +502,7 @@ describe('submitting a draft', () => {
       reason: 'Over the new year',
     });
 
-    await expect(drafts.submit(asTheEmployee(), draft.id)).rejects.toMatchObject({
+    await expect(drafts.submit(asTheEmployee(), draft.id, true)).rejects.toMatchObject({
       code: 'CROSS_LEAVE_YEAR',
     });
 
@@ -492,11 +518,13 @@ describe('submitting a draft', () => {
       leaveTypeId: annualId,
       ...period,
       reason: 'Already asked for',
+      /** FR 17, LMS 307. */
+      acknowledgesShortNotice: true,
     });
 
     const draft = await aFinishedDraft(period);
 
-    await expect(drafts.submit(asTheEmployee(), draft.id)).rejects.toMatchObject({
+    await expect(drafts.submit(asTheEmployee(), draft.id, true)).rejects.toMatchObject({
       code: 'OVERLAPPING_REQUEST',
     });
 
@@ -526,7 +554,7 @@ describe('who may see a draft', () => {
         NotAuthorised,
       );
       await expect(drafts.discard(actor, draft.id)).rejects.toThrow(NotAuthorised);
-      await expect(drafts.submit(actor, draft.id)).rejects.toThrow(NotAuthorised);
+      await expect(drafts.submit(actor, draft.id, true)).rejects.toThrow(NotAuthorised);
     }
 
     expect(await draftCount()).toBe(1);

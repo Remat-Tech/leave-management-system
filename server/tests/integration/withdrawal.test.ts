@@ -206,6 +206,8 @@ async function anApprovedRequest(from: string, to: string): Promise<string> {
     from,
     to,
     reason: 'My sister is getting married',
+    /** FR 17, LMS 307. Every period here is inside annual leave's fourteen day window. */
+    acknowledgesShortNotice: true,
   });
 
   await requests.approve(asTheirManager(), request.id);
@@ -382,6 +384,7 @@ describe('HR agreeing before the leave has started', () => {
       from,
       to,
       reason: 'It is back on',
+      acknowledgesShortNotice: true,
     });
 
     expect(again.request.status).toBe('SUBMITTED');
@@ -428,6 +431,7 @@ describe('HR agreeing before the leave has started', () => {
       from: daysFromToday(7),
       to: daysFromToday(20),
       reason: 'A holiday',
+      acknowledgesShortNotice: true,
     });
 
     await requests.approve(asTheHeadOfHr(), request.id);

@@ -1059,6 +1059,14 @@ export interface NewLeaveRequest {
    * against them is being asked to approve something they know nothing about.
    */
   reason: string;
+  /**
+   * FR 17. That the short notice warning was seen and answered. LMS 307.
+   *
+   * Optional because almost no request is short of notice, and read only where one is —
+   * {@link assertShortNoticeIsAcknowledged}. Not a stored field: it says somebody was told
+   * before they committed, and `submittedAt` against `from` says how short it was.
+   */
+  acknowledgesShortNotice?: boolean;
 }
 
 /**
@@ -1453,6 +1461,40 @@ export class NotEnoughDays extends Error {
   }
 }
 
+/**
+ * Short notice submitted without the acknowledgement FR 17 asks for. FR 17, LMS 307.
+ *
+ * The one refusal here that is not about the leave. The days are fine, the dates are fine and
+ * the request goes through the moment it is acknowledged — what is missing is the person
+ * having said they know the approvers may push back.
+ */
+export class ShortNoticeNotAcknowledged extends Error {
+  /** FR 17. What a client branches on, so a form can show the tick rather than the sentence. */
+  readonly code = 'SHORT_NOTICE_NOT_ACKNOWLEDGED';
+  readonly leaveTypeId: string;
+  readonly period: LeavePeriod;
+  /** What the type expects, in calendar days. */
+  readonly expected: number;
+  /** What this request gives. Negative where the leave has already started. */
+  readonly given: number;
+  /** Positive. How many days short of the window it is. */
+  readonly shortBy: number;
+
+  constructor(type: LeaveType, period: LeavePeriod, daysOfNotice: number, shortBy: number) {
+    super(
+      `${noticeAgainstWhatIsExpected(type, daysOfNotice, shortBy)}. Short notice is not ` +
+        `refused and these dates do not have to move — say you understand that the approvers ` +
+        `may push back, and this goes through as it stands. FR 17.`,
+    );
+    this.name = 'ShortNoticeNotAcknowledged';
+    this.leaveTypeId = type.id;
+    this.period = period;
+    this.expected = type.minNoticeCalendarDays;
+    this.given = daysOfNotice;
+    this.shortBy = shortBy;
+  }
+}
+
 /* ------------------------------------------------------- refusing the dates */
 
 /**
@@ -1548,6 +1590,53 @@ export function assertTheDaysAreThere(
 }
 
 /**
+ * Refuses short notice nobody has acknowledged. FR 17, LMS 307.
+ *
+ * The acknowledgement, and never the leave: a type with no notice window asks nothing, and a
+ * request inside the window asks nothing either. What is refused is submitting through a
+ * warning without answering it — see {@link ShortNoticeNotAcknowledged}.
+ *
+ * The shortfall is {@link noticeShortfall}'s, so the condition this refuses on is exactly the
+ * condition the quote warned about; the two cannot come to disagree about what is short.
+ */
+export function assertShortNoticeIsAcknowledged(
+  type: LeaveType,
+  period: LeavePeriod,
+  daysOfNotice: number,
+  acknowledged: boolean,
+): void {
+  const shortBy = noticeShortfall(type, daysOfNotice);
+
+  if (shortBy > 0 && !acknowledged) {
+    throw new ShortNoticeNotAcknowledged(type, period, daysOfNotice, shortBy);
+  }
+}
+
+/**
+ * The notice given against what the type expects, in the one clause both say. FR 17.
+ *
+ * The same arrangement {@link daysAgainstTheBalance} makes: the quote's `SHORT_NOTICE` warning
+ * and {@link ShortNoticeNotAcknowledged} are one condition told at two moments, and what
+ * differs is what follows.
+ *
+ * Notice below nought is said in words rather than as a figure — "gives −21 days" is
+ * arithmetic where "the leave has already started" is the news. FR 18.
+ */
+function noticeAgainstWhatIsExpected(
+  type: LeaveType,
+  daysOfNotice: number,
+  shortBy: number,
+): string {
+  const gives =
+    daysOfNotice < 0 ? 'none — the leave has already started' : `${inDays(daysOfNotice)}`;
+
+  return (
+    `${type.name} normally wants ${inDays(type.minNoticeCalendarDays)}’ notice and this ` +
+    `gives ${gives}, ${inDays(shortBy)} short`
+  );
+}
+
+/**
  * What is being asked for against what is there, in the one clause both say.
  *
  * The quote's `NOT_ENOUGH_DAYS` warning and {@link NotEnoughDays} open with this and
@@ -1618,7 +1707,13 @@ function inWords(free: readonly FreeDay[]): string {
  * make sure nobody is surprised, not to make it impossible.
  */
 export const QUOTE_WARNINGS = [
-  /** FR 17. Less notice than the type asks for. Advisory; the approver decides. */
+  /**
+   * FR 17. Less notice than the type asks for. Never a bar; the approver decides.
+   *
+   * The one warning submission asks something back about: {@link assertShortNoticeIsAcknowledged}
+   * refuses the same condition unacknowledged, so this sentence is where somebody first
+   * meets it. LMS 307.
+   */
   'SHORT_NOTICE',
   /** FR 13. This length of this type needs something attached to it. */
   'DOCUMENTATION_REQUIRED',
@@ -1706,9 +1801,9 @@ export function quoteFor(input: {
     warnings.push({
       code: 'SHORT_NOTICE',
       message:
-        `${type.name} normally wants ${type.minNoticeCalendarDays} days' notice and this ` +
-        `gives ${daysOfNotice}. It can still be submitted — whoever approves it will see ` +
-        `that it was short by ${shortfall}.`,
+        `${noticeAgainstWhatIsExpected(type, daysOfNotice, shortfall)}. It can still be ` +
+        `submitted — you will be asked to say you know it is short, and whoever approves it ` +
+        `will see that it was.`,
     });
   }
 

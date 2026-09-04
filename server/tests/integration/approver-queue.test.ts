@@ -607,6 +607,10 @@ async function aRequest(input: {
     from: input.from ?? '2026-03-02',
     to: input.to ?? '2026-03-06',
     reason: 'My sister is getting married',
+    /* FR 17, LMS 307. The fixture days are behind today, so every annual leave request here
+       is short of notice — which is the point of the flag tests below, and has to be got past
+       for all the others. */
+    acknowledgesShortNotice: true,
   });
 
   return request.id;

@@ -3,6 +3,7 @@ import type { DayCount } from '../../src/features/leave-calculator/leave-calcula
 import {
   decisionTo,
   assertItCostsSomething,
+  assertShortNoticeIsAcknowledged,
   settlementTo,
   transitionFor,
   transitionsFrom,
@@ -26,6 +27,7 @@ import {
   reasonForReservation,
   RELEASING_STATUSES,
   REQUEST_STATUSES,
+  ShortNoticeNotAcknowledged,
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
 } from '../../src/features/leave-request/leave-request.js';
@@ -326,6 +328,101 @@ describe('how much notice a request gives', () => {
      shorter because the person asking does not work Wednesdays. */
   it('and counts every day, whoever is asking', () => {
     expect(noticeGiven('2026-03-06', '2026-03-09')).toBe(3);
+  });
+});
+
+/* ------------------------------------------------ acknowledging it. FR 17, LMS 307 */
+
+/**
+ * FR 17's second criterion: warned, acknowledged, and never blocked.
+ *
+ * The pair the story turns on is a warning and a refusal *about the same condition*, which is
+ * the arrangement `NotEnoughDays` and the quote already make. What is refused is submitting
+ * through the warning without answering it — never the leave, and never the dates.
+ */
+describe('short notice is acknowledged rather than refused', () => {
+  const SHORT = { from: '2026-03-09', to: '2026-03-13' };
+
+  /* Nine days short of fourteen, and the message says so from both sides so that somebody
+     can tell whether to move the dates or tick the box. */
+  it('refuses a submission that has not answered the warning, and says by how much', () => {
+    expect(() => assertShortNoticeIsAcknowledged(ANNUAL, SHORT, 5, false)).toThrow(
+      ShortNoticeNotAcknowledged,
+    );
+
+    try {
+      assertShortNoticeIsAcknowledged(ANNUAL, SHORT, 5, false);
+      expect.unreachable();
+    } catch (error) {
+      const refusal = error as ShortNoticeNotAcknowledged;
+
+      expect(refusal.expected).toBe(14);
+      expect(refusal.given).toBe(5);
+      expect(refusal.shortBy).toBe(9);
+      expect(refusal.code).toBe('SHORT_NOTICE_NOT_ACKNOWLEDGED');
+    }
+  });
+
+  /* The story's own words: never blocks. The dates do not move and nothing else changes. */
+  it('and lets exactly the same request through once it has been', () => {
+    expect(() => assertShortNoticeIsAcknowledged(ANNUAL, SHORT, 5, true)).not.toThrow();
+  });
+
+  /* The refusal names what to do instead, which is the tick — not different dates. NFR USA 03. */
+  it('and the refusal asks for the acknowledgement rather than for more notice', () => {
+    const refusal = new ShortNoticeNotAcknowledged(ANNUAL, SHORT, 5, 9);
+
+    expect(refusal.message).toContain('not');
+    expect(refusal.message).toMatch(/dates do not have to move/);
+    expect(refusal.message).toMatch(/push back/);
+  });
+
+  it('and asks nothing at all of a request with the notice the type wants', () => {
+    expect(() => assertShortNoticeIsAcknowledged(ANNUAL, SHORT, 14, false)).not.toThrow();
+    expect(() => assertShortNoticeIsAcknowledged(ANNUAL, SHORT, 30, false)).not.toThrow();
+  });
+
+  /**
+   * The story's third criterion, read off the column and not off a code.
+   *
+   * A type with no notice window never asks for an acknowledgement, however late the request
+   * is — which is what "no other type carries a notice requirement" means where it is
+   * enforced. The type here is named `Sick Leave` and nothing in the assertion reads that.
+   */
+  it('and never asks it of a type that carries no notice requirement', () => {
+    const sick = leaveType({ code: 'SICK_TEST', name: 'Sick Leave' });
+
+    expect(sick.minNoticeCalendarDays).toBe(0);
+    expect(() => assertShortNoticeIsAcknowledged(sick, SHORT, 0, false)).not.toThrow();
+    expect(() => assertShortNoticeIsAcknowledged(sick, SHORT, -21, false)).not.toThrow();
+  });
+
+  /* FR 18. Leave already begun is short by the whole window — `noticeShortfall`'s rule — and
+     the sentence says so in words rather than as a negative figure. */
+  it('and treats leave that has already started as the whole window short', () => {
+    const refusal = new ShortNoticeNotAcknowledged(ANNUAL, SHORT, -21, 14);
+
+    expect(() => assertShortNoticeIsAcknowledged(ANNUAL, SHORT, -21, false)).toThrow(
+      ShortNoticeNotAcknowledged,
+    );
+    expect(refusal.message).toContain('already started');
+    expect(refusal.message).not.toContain('-21');
+  });
+
+  /**
+   * One condition, two moments, one clause. The same arrangement `NotEnoughDays` makes with
+   * the quote's `NOT_ENOUGH_DAYS`: a person who meets both is not shown two descriptions of it.
+   */
+  it('and says the same thing the quote warned about', () => {
+    const warned = aQuote({ daysOfNotice: 5 }).warnings.find(
+      (warning) => warning.code === 'SHORT_NOTICE',
+    );
+    const refused = new ShortNoticeNotAcknowledged(ANNUAL, PERIOD, 5, 9);
+    const clause =
+      'Annual Leave normally wants 14 days’ notice and this gives 5 days, 9 days short';
+
+    expect(warned?.message).toContain(clause);
+    expect(refused.message).toContain(clause);
   });
 });
 

@@ -532,12 +532,17 @@ export async function myApprovals(): Promise<ApproverQueue> {
  * again inside the transaction that holds the days, and what it counts is what is charged
  * — a quote is not a promise, and a caller that could hand over a figure could hand over a
  * smaller one.
+ *
+ * `acknowledgesShortNotice` answers the quote's `SHORT_NOTICE` warning. FR 17, LMS 307: it is
+ * sent whether or not one was warned about, and whether one was owed is the server's to
+ * decide — a client that worked that out for itself would be a second copy of the rule.
  */
 export async function askForLeave(input: {
   leaveTypeId: string;
   from: string;
   to: string;
   reason: string;
+  acknowledgesShortNotice?: boolean;
 }): Promise<Submitted> {
   return request<Submitted>('POST', '/api/me/requests', input);
 }
@@ -578,9 +583,19 @@ export async function discardDraft(draftId: string): Promise<void> {
  *
  * The same answer {@link askForLeave} gives, and every refusal it can meet. A refused
  * submission leaves the draft exactly where it was.
+ *
+ * The acknowledgement is given here rather than saved on the draft. FR 17, LMS 307: how short
+ * the notice is depends on the day it is finished.
  */
-export async function submitDraft(draftId: string): Promise<Submitted> {
-  return request<Submitted>('POST', `/api/me/request-drafts/${encodeURIComponent(draftId)}/submit`);
+export async function submitDraft(
+  draftId: string,
+  acknowledgesShortNotice = false,
+): Promise<Submitted> {
+  return request<Submitted>(
+    'POST',
+    `/api/me/request-drafts/${encodeURIComponent(draftId)}/submit`,
+    { acknowledgesShortNotice },
+  );
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {

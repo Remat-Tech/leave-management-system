@@ -489,6 +489,8 @@ describe('when a rule says no', () => {
       from: '2026-03-02',
       to: '2026-03-06',
       reason: 'My sister is getting married',
+      /** FR 17, LMS 307. Every period in this file is behind today, so all of it is short. */
+      acknowledgesShortNotice: true,
     });
 
     const response = await get(
@@ -509,6 +511,7 @@ describe('when a rule says no', () => {
       from: '2026-06-01',
       to: '2026-08-31',
       reason: 'A long break',
+      acknowledgesShortNotice: true,
     });
 
     expect(response.status).toBe(409);
@@ -526,6 +529,7 @@ describe('when a rule says no', () => {
       from: '2026-03-02',
       to: '2026-03-06',
       reason: '   ',
+      acknowledgesShortNotice: true,
     });
 
     expect(response.status).toBe(400);
@@ -533,6 +537,55 @@ describe('when a rule says no', () => {
       error: 'InvalidLeaveRequest',
       field: 'reason',
     });
+  });
+
+  /**
+   * FR 17, LMS 307. Short notice is answered rather than refused, and the wire says which.
+   *
+   * A 400, because what has to change is part of what was sent rather than the state of the
+   * world — the dates are fine and the days are there. The same body with the flag on it is a
+   * 201, which is the whole of "never blocks" said over HTTP.
+   */
+  it('asks for the short notice acknowledgement, and takes the same request once it has it', async () => {
+    const body = {
+      leaveTypeId: annualId,
+      from: '2026-03-02',
+      to: '2026-03-06',
+      reason: 'My sister is getting married',
+    };
+
+    const refused = await post('/api/me/requests', people.officer, body);
+
+    expect(refused.status).toBe(400);
+
+    const problem = (await refused.json()) as { error: string; message: string };
+
+    expect(problem.error).toBe('ShortNoticeNotAcknowledged');
+    expect(problem.message).toContain('14 days');
+    expect(problem.message).toMatch(/dates do not have to move/);
+
+    const asked = await post('/api/me/requests', people.officer, {
+      ...body,
+      acknowledgesShortNotice: true,
+    });
+
+    expect(asked.status).toBe(201);
+  });
+
+  /* Only `true` is somebody saying yes. A client sending the string, or the box's own
+     `"on"`, has not acknowledged anything. */
+  it('and takes nothing but true for one', async () => {
+    for (const sent of ['true', 'on', 1, {}]) {
+      const response = await post('/api/me/requests', people.officer, {
+        leaveTypeId: annualId,
+        from: '2026-03-02',
+        to: '2026-03-06',
+        reason: 'My sister is getting married',
+        acknowledgesShortNotice: sent,
+      });
+
+      expect(response.status, `${JSON.stringify(sent)} was taken for an acknowledgement`).toBe(400);
+    }
   });
 });
 
@@ -545,6 +598,7 @@ describe('asking for the leave', () => {
       from: '2026-03-02',
       to: '2026-03-10',
       reason: 'My sister is getting married',
+      acknowledgesShortNotice: true,
     });
 
     expect(response.status).toBe(201);
@@ -575,6 +629,7 @@ describe('asking for the leave', () => {
       from: '2026-03-02',
       to: '2026-03-10',
       reason: 'My sister is getting married',
+      acknowledgesShortNotice: true,
       days: 1,
       calendarDays: 1,
       status: 'APPROVED',
@@ -596,6 +651,7 @@ describe('asking for the leave', () => {
       from: '2026-03-02',
       to: '2026-03-06',
       reason: 'My sister is getting married',
+      acknowledgesShortNotice: true,
     });
 
     expect(response.status).toBe(201);
@@ -621,6 +677,7 @@ describe('asking for the leave', () => {
       from: '2026-03-02',
       to: '2026-03-06',
       reason: 'My sister is getting married',
+      acknowledgesShortNotice: true,
     });
 
     const response = await get('/api/me/requests', people.officer);

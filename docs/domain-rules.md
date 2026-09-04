@@ -494,6 +494,14 @@ windows at once — fourteen days of notice and seven of backdating — so any r
 holding them to be mutually exclusive would make the one type everybody uses
 unconfigurable.
 
+Since LMS 307 the "acknowledged" in that sentence is enforced rather than described,
+and it is not the exception to this rule that it looks like.
+`ShortNoticeNotAcknowledged` refuses a *submission that has not answered the
+warning* — never the leave, and never the dates, which do not move. The same request
+goes through unchanged the moment somebody ticks the box, where the backdating window
+sends them to HR. See [warned when notice is
+short](#warned-when-notice-is-short).
+
 **A documentation threshold is not a balance threshold.** `AFTER_DAYS` asks for a
 document when *this request* is longer than n days. `exceedable_with_document`
 asks for one when the request would take the *yearly balance* past its allowance.
@@ -1879,6 +1887,10 @@ leave is sometimes needed at short notice, and a system that refused it is a sys
 work around — so a short-notice request is submitted and the quote says by how much. FR
 13's documentation is an attachment and there is nowhere to attach one until Phase 4.
 
+Since LMS 307 the warning is also *answered*. It still refuses no leave and moves no
+dates; what it refuses is submitting through the warning without saying it was read. See
+[warned when notice is short](#warned-when-notice-is-short).
+
 **The balance is the one that both warns and refuses**, and which it does depends on when
 it is asked: the quote reports the shortfall so somebody can decide what to ask for, and
 the submission refuses it. Same condition, same error code, two moments — see [days that
@@ -2199,6 +2211,69 @@ none of them joined it, and every query written against it — the overlap probe
 exclusion constraint's `WHERE`, `blocksTheCalendar()` — started excluding rows without a
 line of them changing. Somebody whose leave was refused in January can book those days
 again, which is the ordinary thing to do after a refusal.
+
+---
+
+### Warned when notice is short
+
+**Fourteen calendar days for annual leave, nothing for anything else, and both figures are
+a column.** FR 17, LMS 307. `leave_type.min_notice_calendar_days` is 14 on the annual row
+and 0 on the other six, and the seven-leave-types migration says why: annual leave is the
+only type anybody can be expected to plan. Sick leave cannot be given notice at all, and
+the event-based types arrive with an occasion nobody chose the date of. Nothing above the
+database reads a type code to reach either answer, so a type HR adds next year carries
+whatever window HR gives it and `integration/leave-type.test.ts` asserts the seven still
+divide 14-and-nothing-else.
+
+**Short notice warns, asks, and never blocks — and the three verbs are three different
+places.** The distinction the story turns on is that the acknowledgement is a gate on
+*submitting through a warning*, never on the leave:
+
+| | Where | What it does |
+|---|---|---|
+| warns | `quoteFor`'s `SHORT_NOTICE` | says how much notice the type wants and how much this gives, while the dates can still move |
+| asks | `assertShortNoticeIsAcknowledged`, on the submission path | refuses a submission that has not answered the warning |
+| never blocks | the same call, with the acknowledgement | takes the identical request: same dates, same days, same desk |
+
+**The warning and the refusal are one condition seen twice**, which is exactly the
+arrangement [days that are not there](#days-that-are-not-there) makes with the quote's
+`NOT_ENOUGH_DAYS`. Both are composed from one clause, `noticeAgainstWhatIsExpected`, so a
+person who meets both is not shown two descriptions of one fact — and both read their
+shortfall from `noticeShortfall`, so the two cannot come to disagree about what is short.
+What differs is what follows: the warning says what will be asked, and the refusal says
+that the dates do not have to move.
+
+**It is a 400 rather than a 409**, and the pair to compare it with is
+`OverrulingNeedsAnOverride` rather than `NotEnoughDays`. Nothing about the state of the
+world refuses this — the days are there, the year is open, the dates are fine. What is
+missing is part of what was sent.
+
+**Nothing about the acknowledgement is stored, and that is a decision.** A boolean column
+beside `submitted_at` and `start_date` would be a flag derivable from the two columns next
+to it, which is the objection [the approval outcome](#approving-or-rejecting-at-a-stage)
+already makes to an `isFinal` beside `awaiting`. How short the notice was is
+`noticeGiven(submittedAt, from)` against the type's window — the same reading [the approver
+queue](#the-approver-queue) already makes to flag it — and a request that exists at all
+short of notice is one somebody acknowledged, because it could not have been written
+otherwise.
+
+**It is asked before anything is counted**, which is the only refusal on the submission
+path that costs no read at all. That puts it ahead of the balance check and ahead of the
+four-fields validation, so somebody who has neither ticked the box nor written a reason is
+told about the box first. Both are things a form catches before the request is sent, and
+the ordering buys a refusal that never consults a table to say no.
+
+**A draft is finished with the acknowledgement, never saved with one.** FR 19, LMS 302's
+drafts hold four fields and this is not a fifth: how short the notice is depends on the day
+the draft is *submitted*, so a tick saved a fortnight ago answers a question this afternoon
+asks differently. `LeaveRequestDraftService.submit` takes it as an argument beside the id.
+
+**What is deliberately not here.** FR 18's backdating window still refuses nothing —
+`assertWithinBackdatingWindow` and `TooLateToRecord` are written and unused, and the story
+that calls them is the one that also gives HR the way in the message names. Until then a
+backdated request is short of the whole notice window, which is `noticeShortfall`'s own
+rule, and the acknowledgement is what it asks for. See [notice warns; backdating
+refuses](#things-that-will-bite-you-if-you-do-not-know-them).
 
 ---
 
@@ -3207,9 +3282,15 @@ reading the route table — and the first person to see `POST /me/requests/quote
 `POST /me/requests` would reasonably wonder which of them created something.
 
 `reason` is not one of its parameters, and `LeaveRequestService.quote` now says so in its
-signature: it takes `Omit<NewLeaveRequest, 'reason'>`. What a period costs is a question about a
-type, two dates and a working pattern. A form pricing a fortnight on every keystroke would
-otherwise put a half-written explanation into a query string and from there into an access log.
+signature: it takes `QuotableLeave`, which is a new request without it. What a period costs is a
+question about a type, two dates and a working pattern. A form pricing a fortnight on every
+keystroke would otherwise put a half-written explanation into a query string and from there into
+an access log.
+
+Since LMS 307 that type omits a second field for a related reason.
+`acknowledgesShortNotice` answers the `SHORT_NOTICE` warning a quote produces, so a quote
+that took one would be asking to be told the answer to the question it is about to ask. See
+[warned when notice is short](#warned-when-notice-is-short).
 
 The browser debounces and drops stale answers, and neither is about the server. A native date
 input fires a change for every part of a date somebody types, and two dates typed quickly are
@@ -3338,6 +3419,11 @@ judgement is made, so the sentence says so, or it reads as the system having fou
 wrong. `SHORT_NOTICE` is worded close to `quoteFor`'s warning of the same name deliberately:
 the requester was told "whoever approves it will see that it was short", and this is that
 person seeing it.
+
+Since LMS 307 that is a stronger claim than a matching sentence. A short notice request
+reaching this queue is one the requester *acknowledged* — it could not have been submitted
+otherwise — so the flag is not news the approver is breaking to somebody. See [warned when
+notice is short](#warned-when-notice-is-short).
 
 **`DOCUMENTATION_REQUIRED` is the obvious third and is not here.** LMS 404 asks for two. The
 condition is `documentationRequired` and `quoteFor` has already written the sentence, so the

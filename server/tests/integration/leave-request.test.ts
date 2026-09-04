@@ -307,6 +307,16 @@ async function refusedOutright(actor: Actor, id: string) {
   return first.request.status === 'REFUSED' ? first : requests.refuse(asOfficer(), id, WHY_NOT);
 }
 
+/**
+ * A request for the fixture week, acknowledged.
+ *
+ * FR 17, LMS 307. {@link FROM} is a fixed day in the seeded 2026 year and is behind whatever
+ * today is, so every annual leave request in this file is short of the fourteen days annual
+ * leave wants — and short notice is submitted rather than refused only once somebody has said
+ * they know it is short. The acknowledgement is here rather than at each call so that the
+ * tests below stay about what they are about; the ones that are about the acknowledgement
+ * itself override it.
+ */
 function aRequest(overrides: Partial<NewLeaveRequest> = {}): NewLeaveRequest {
   return {
     employeeId: people.officer,
@@ -314,6 +324,8 @@ function aRequest(overrides: Partial<NewLeaveRequest> = {}): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
+    /** FR 17, LMS 307. */
+    acknowledgesShortNotice: true,
     ...overrides,
   };
 }
@@ -527,6 +539,122 @@ describe('submitting a request', () => {
         [people.officer, annualId, y2026.id, request.id],
       ),
     ).rejects.toMatchObject({ constraint: 'leave_request_reserves_once' });
+  });
+});
+
+/* ---------------------------------------------- short notice. FR 17, LMS 307 */
+
+/**
+ * Warned, acknowledged, and never blocked. FR 17, LMS 307.
+ *
+ * ../unit/leave-request.test.ts proves the rule and the sentences. What needs a server is the
+ * part the story is actually about:
+ *
+ *   **The notice window is the one in the table.** Fourteen days for annual leave because the
+ *   row says fourteen, and nothing for sick leave because that row says nothing — read off
+ *   `min_notice_calendar_days` rather than off a code, so HR moving it moves this. FR 31.
+ *
+ *   **The same request goes through once it is acknowledged.** Nothing about it changes: same
+ *   dates, same days, same desk. That is what "never blocks" means, and a pure function cannot
+ *   show it because what it has to show is a row being written.
+ *
+ *   **The quote warned about exactly what the submission refused.** One condition, told at the
+ *   two moments a person meets it, over one real leave type.
+ */
+describe('short notice is acknowledged rather than refused', () => {
+  it('refuses a submission nobody has acknowledged, and says how short it is', async () => {
+    const refusal = await requests
+      .submit(asThemselves(), aRequest({ acknowledgesShortNotice: false }))
+      .then(
+        () => expect.unreachable('short notice was submitted without an acknowledgement'),
+        (error: unknown) => error as { code: string; expected: number; shortBy: number },
+      );
+
+    expect(refusal.code).toBe('SHORT_NOTICE_NOT_ACKNOWLEDGED');
+    /** The figure off the row, which is FR 17's first criterion. */
+    expect(refusal.expected).toBe(14);
+    expect(refusal.shortBy).toBe(14);
+  });
+
+  /* The story's own words. Nothing about the request moves — it is the same fortnight, and it
+     lands at the same desk holding the same days. */
+  it('and takes exactly the same request once it has been', async () => {
+    const { request } = await requests.submit(asThemselves(), aRequest());
+
+    expect(request.status).toBe('SUBMITTED');
+    expect(request.awaitingApprovalFrom).toBe('MANAGER');
+    expect(request).toMatchObject({ from: FROM, to: TO, days: 6 });
+  });
+
+  it('and writes nothing at all when it refuses', async () => {
+    await expect(
+      requests.submit(asThemselves(), aRequest({ acknowledgesShortNotice: false })),
+    ).rejects.toMatchObject({ code: 'SHORT_NOTICE_NOT_ACKNOWLEDGED' });
+
+    expect((await admin.query('SELECT count(*) FROM leave_request')).rows[0].count).toBe('0');
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'RESERVATION'",
+        )
+      ).rows[0].count,
+    ).toBe('0');
+  });
+
+  /**
+   * FR 17's third criterion, over a real type rather than a fabricated one.
+   *
+   * Sick leave carries no notice window — `min_notice_calendar_days` is nought on that row —
+   * so exactly the same days asked for as sick leave are submitted with nothing to answer.
+   * Nothing in the service reads either type's code to reach those two different answers.
+   */
+  it('and asks nothing of a type that carries no notice requirement', async () => {
+    const { request } = await requests.submit(
+      asThemselves(),
+      aRequest({ leaveTypeId: sickId, acknowledgesShortNotice: false }),
+    );
+
+    expect(request.status).toBe('SUBMITTED');
+  });
+
+  /* FR 31, and the reason the window is a column. HR clearing it stops the acknowledgement
+     being asked for, with no deployment and nothing here knowing which type it was. */
+  it('and stops asking the moment HR clears the window', async () => {
+    await admin.query('UPDATE leave_type SET min_notice_calendar_days = 0 WHERE id = $1', [
+      annualId,
+    ]);
+
+    try {
+      const { request } = await requests.submit(
+        asThemselves(),
+        aRequest({ acknowledgesShortNotice: false }),
+      );
+
+      expect(request.status).toBe('SUBMITTED');
+    } finally {
+      await admin.query('UPDATE leave_type SET min_notice_calendar_days = 14 WHERE id = $1', [
+        annualId,
+      ]);
+    }
+  });
+
+  /* One condition, two moments. The quote is where somebody meets it while they can still
+     move the dates, and both sentences are made from the same clause. */
+  it('and warns about the same thing the quote warned about', async () => {
+    const quote = await requests.quote(asThemselves(), aRequest());
+    const warning = quote.warnings.find((one) => one.code === 'SHORT_NOTICE');
+
+    const refusal = await requests
+      .submit(asThemselves(), aRequest({ acknowledgesShortNotice: false }))
+      .then(
+        () => expect.unreachable('short notice was submitted without an acknowledgement'),
+        (error: unknown) => error as Error,
+      );
+
+    const clause = 'Annual Leave normally wants 14 days’ notice';
+
+    expect(warning?.message).toContain(clause);
+    expect(refusal.message).toContain(clause);
   });
 });
 
