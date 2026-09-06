@@ -36,6 +36,7 @@ import { NotificationService } from '../../src/features/notification/notificatio
 import { SignInService } from '../../src/features/sign-in/sign-in.service.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { delegationService } from '../support/delegations.js';
 
 /**
  * The request form over HTTP. FR 10, FR 11, FR 13, FR 32f. LMS 403.
@@ -124,6 +125,8 @@ beforeAll(async () => {
     /** FR 13, LMS 311. */
     new AttachmentRepository(db),
     new RoleRepository(db),
+    /** FR 49, LMS 327. */
+    delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     new NotificationService(new NotificationRepository(db), recordingMailer(), guard),
@@ -152,6 +155,7 @@ beforeAll(async () => {
     scanner: new SignatureScanner(),
     accounts,
     roles,
+    delegations: delegationService(db, guard),
     organisation: new OrganisationRepository(db),
     secret: SECRET,
   });

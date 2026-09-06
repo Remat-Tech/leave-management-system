@@ -15,7 +15,8 @@ import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
 import type { OrganisationRepository } from '../organisation/organisation.db.js';
 import type { Storage } from '../../storage/index.js';
 import { type ScanResult, type Scanner, ScannerUnavailable } from '../../scanning/index.js';
-import { leaveRequestPolicy } from './policy.js';
+import { desksHandedTo, leaveRequestPolicy } from './policy.js';
+import type { ApprovalDelegationService } from './delegation.service.js';
 import type { AttachmentRepository } from './attachment.db.js';
 import {
   AttachmentIsInfected,
@@ -79,6 +80,8 @@ export class AttachmentService {
     private readonly types: LeaveTypeRepository,
     /** FR 48c. Who the `CEO` desk resolves to, for an approver reading a certificate. */
     private readonly organisation: OrganisationRepository,
+    /** FR 49. A delegate is at the desk, and one who cannot open the evidence cannot decide. */
+    private readonly delegations: ApprovalDelegationService,
     /** NFR SEC 04. The only thing that knows where bytes live. */
     private readonly storage: Storage,
     /** NFR SEC 07. */
@@ -459,11 +462,19 @@ export class AttachmentService {
   ): Promise<{ request: LeaveRequest; employee: Employee }> {
     const { request, employee } = await this.theRequest(leaveRequestId);
 
+    const chiefExecutiveId = await this.organisation.chiefExecutiveId();
+
     this.guard.enforce(
       leaveRequestPolicy.readAttachment(actor, {
         ...ownerOf(employee),
         awaiting: request.awaitingApprovalFrom,
-        chiefExecutiveId: await this.organisation.chiefExecutiveId(),
+        chiefExecutiveId,
+        /** FR 49, LMS 327. */
+        standingIn: desksHandedTo(
+          actor,
+          chiefExecutiveId,
+          await this.delegations.standingInFor(actor.employeeId),
+        ),
       }),
     );
 

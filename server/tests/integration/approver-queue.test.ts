@@ -36,6 +36,7 @@ import { NotificationService } from '../../src/features/notification/notificatio
 import { SignInService } from '../../src/features/sign-in/sign-in.service.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { delegationService } from '../support/delegations.js';
 
 /**
  * The approver queue over HTTP. FR 20, FR 40, FR 48, LMS 404.
@@ -101,6 +102,8 @@ beforeAll(async () => {
     /** FR 13, LMS 311. */
     new AttachmentRepository(db),
     new RoleRepository(db),
+    /** FR 49, LMS 327. */
+    delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     new NotificationService(new NotificationRepository(db), recordingMailer(), guard),
@@ -129,6 +132,7 @@ beforeAll(async () => {
     scanner: new SignatureScanner(),
     accounts,
     roles,
+    delegations: delegationService(db, guard),
     organisation: new OrganisationRepository(db),
     secret: SECRET,
   });
@@ -507,6 +511,8 @@ describe('the wire', () => {
 
     expect(Object.keys(itemOf(await queueFor(people.teamLead), id)).sort()).toEqual([
       'actionable',
+      /** FR 49, LMS 327. Whose approvals this row is answered under. */
+      'answeringFor',
       'approvedBy',
       /* FR 44, LMS 318. Which of the two buttons would be overruling the line manager, so a
          screen asks for the justification before the press rather than after the refusal. */

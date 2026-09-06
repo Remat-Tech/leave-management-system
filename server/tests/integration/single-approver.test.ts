@@ -30,6 +30,7 @@ import { LeaveYearService } from '../../src/features/leave-year/leave-year.servi
 import { NotificationService } from '../../src/features/notification/notification.service.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { delegationService } from '../support/delegations.js';
 
 /**
  * A request decided by one person says so. FR 48d, §8.6a. LMS 322.
@@ -93,6 +94,8 @@ beforeAll(async () => {
     new WithdrawalRepository(db),
     new AttachmentRepository(db),
     new RoleRepository(db),
+    /** FR 49, LMS 327. */
+    delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     new NotificationService(new NotificationRepository(db), recordingMailer(), guard),

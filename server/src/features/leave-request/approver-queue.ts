@@ -21,6 +21,7 @@ import {
   type LeaveType,
   noticeShortfall,
 } from '../leave-type/leave-type.js';
+import type { DelegatedDesks } from './delegation.js';
 import type { Employee } from '../employee/employee.js';
 import {
   type DecidingAction,
@@ -56,10 +57,14 @@ import { type CalendarDate, formatDay } from '../../shared/time.js';
  * a report.
  */
 export interface DesksStaffed {
-  /** FR 38a. Every desk this person answers at, in {@link APPROVER_ROLES} order. */
+  /** FR 38a. Every desk this person answers at, their own and their delegators', in order. */
   desks: readonly ApproverRole[];
-  /** Their own id, where `MANAGER` is among the desks. Null where it is not. */
-  managerId: string | null;
+  /** The ones that are theirs rather than handed to them. FR 49, LMS 327. */
+  own: readonly ApproverRole[];
+  /** Whose reports reach the `MANAGER` desk: their own id, and every manager covered for. */
+  managerIds: readonly string[];
+  /** FR 49. What each colleague handed over, so a row can say whose it is. LMS 327. */
+  delegated: readonly DelegatedDesks[];
 }
 
 /** Whether this person answers at any desk at all. FR 40. */
@@ -227,6 +232,9 @@ export interface QueueItem {
   balance: AskerBalance;
   team: TeamContext;
 
+  /** FR 49. Whose approvals this row is answered under, null where the reader's own. LMS 327. */
+  answeringFor: Asker | null;
+
   /** FR 48, §8.6a. False for the approver's own request. The story's second criterion. */
   actionable: boolean;
   /** The policy's own sentence, where it is not. Null where it is. NFR USA 03. */
@@ -275,6 +283,8 @@ export interface QueueFacts {
   requests: readonly LeaveRequest[];
   /** The people who asked, and their teammates. Keyed by id below. */
   people: readonly Employee[];
+  /** FR 49. The colleagues whose approvals this person is covering, to name them. LMS 327. */
+  covering: readonly Employee[];
   /** Every leave type, for each request's name and its chain as it now stands. */
   types: readonly LeaveType[];
   /** The leave years the requests fall in, for the balance sentence's label. */
@@ -340,10 +350,14 @@ export function queueFor(facts: QueueFacts): ApproverQueue {
     }
   }
 
+  const coveringById = new Map(facts.covering.map((person) => [person.id, person] as const));
+
   const items = [...facts.requests].sort(bySoonestToStart).map((request) =>
     itemFor({
       request,
       asker: peopleById.get(request.employeeId),
+      /** FR 49, LMS 327. */
+      answeringFor: answeringFor(facts, request, peopleById.get(request.employeeId), coveringById),
       type: typesById.get(request.leaveTypeId),
       year: yearsById.get(request.leaveYearId),
       decisions: decisionsByRequest.get(request.id) ?? [],
@@ -397,6 +411,47 @@ function rejectionsInWords(items: readonly QueueItem[]): string {
   );
 }
 
+/**
+ * Whose approvals this row is being answered under, or null where they are the reader's own. FR 49, FR 52, LMS 327.
+ *
+ * The same resolution `answeredOnBehalfOf` makes at the decide door, from the queue's side:
+ * `MANAGER` is the asker's own line manager, and the other two are whichever colleague handed
+ * that desk over. A desk this person staffs themselves is theirs, delegation or not.
+ */
+function answeringFor(
+  facts: QueueFacts,
+  request: LeaveRequest,
+  asker: Employee | undefined,
+  coveringById: ReadonlyMap<string, Employee>,
+): Asker | null {
+  const desk = request.awaitingApprovalFrom;
+
+  if (desk === null) {
+    return null;
+  }
+
+  /* `MANAGER` is asked before `own`, because staffing that desk is managing *somebody* and
+     this row is one asker's: a reader who manages other people is still covering here. */
+  const approverId =
+    desk === 'MANAGER'
+      ? (asker?.managerId ?? null)
+      : facts.staffed.own.includes(desk)
+        ? null
+        : (facts.staffed.delegated.find((one) => one.desks.includes(desk))?.approverId ?? null);
+
+  if (approverId === null || approverId === facts.approverId) {
+    return null;
+  }
+
+  const person = coveringById.get(approverId);
+
+  return {
+    employeeId: approverId,
+    name: person === undefined ? 'a colleague' : nameOf(person),
+    jobTitle: person?.jobTitle ?? null,
+  };
+}
+
 /** Soonest to start first, then longest waiting. {@link queueFor}. */
 export function bySoonestToStart(left: LeaveRequest, right: LeaveRequest): number {
   if (left.from !== right.from) {
@@ -416,6 +471,8 @@ export function bySoonestToStart(left: LeaveRequest, right: LeaveRequest): numbe
 function itemFor(input: {
   request: LeaveRequest;
   asker: Employee | undefined;
+  /** FR 49, LMS 327. */
+  answeringFor: Asker | null;
   type: LeaveType | undefined;
   year: LeaveYear | undefined;
   decisions: readonly LeaveDecision[];
@@ -521,6 +578,9 @@ function itemFor(input: {
 
     balance,
     team,
+
+    /** FR 49, LMS 327. */
+    answeringFor: input.answeringFor,
 
     actionable: notActionableBecause === null,
     notActionableBecause,

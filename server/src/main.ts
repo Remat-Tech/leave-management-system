@@ -7,6 +7,7 @@ import { createMailer } from './mail/mailer.js';
 import { BalanceRepository } from './features/balance/balance.db.js';
 import { EmployeeRepository } from './features/employee/employee.db.js';
 import { HolidayRepository } from './features/holiday/holiday.db.js';
+import { ApprovalDelegationRepository } from './features/leave-request/delegation.db.js';
 import { AttachmentRepository } from './features/leave-request/attachment.db.js';
 import { LeaveDecisionRepository } from './features/leave-request/leave-decision.db.js';
 import { LeaveRequestDraftRepository } from './features/leave-request/draft.db.js';
@@ -27,6 +28,7 @@ import { createStorage } from './storage/index.js';
 import { sessionSecretFrom } from './features/sign-in/session-cookie.routes.js';
 import { BalanceService } from './features/balance/balance.service.js';
 import { LeaveCalculatorService } from './features/leave-calculator/leave-calculator.service.js';
+import { ApprovalDelegationService } from './features/leave-request/delegation.service.js';
 import { LeaveRequestService } from './features/leave-request/leave-request.service.js';
 import { NotificationService } from './features/notification/notification.service.js';
 import { SignInService } from './features/sign-in/sign-in.service.js';
@@ -68,6 +70,13 @@ const attachments = new AttachmentRepository(db);
 const balances = new BalanceRepository(db);
 /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
 const organisation = new OrganisationRepository(db);
+/** FR 49, LMS 327. */
+const delegations = new ApprovalDelegationService(
+  new ApprovalDelegationRepository(db),
+  guard,
+  employees,
+  roles,
+);
 
 const mailer = createMailer();
 
@@ -92,6 +101,7 @@ const leaveRequests = new LeaveRequestService(
   withdrawals,
   attachments,
   roles,
+  delegations,
   organisation,
   new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
   new NotificationService(new NotificationRepository(db), mailer, guard),
@@ -117,6 +127,7 @@ const app = buildApp({
   scanner: createScanner(),
   accounts,
   roles,
+  delegations,
   organisation,
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process
      before a socket is opened rather than while the first request is being served. */

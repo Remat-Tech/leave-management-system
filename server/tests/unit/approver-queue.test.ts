@@ -57,7 +57,7 @@ describe('the desks somebody staffs', () => {
     const staffed = desksStaffedBy(asManager(), AMA.id);
 
     expect(staffed.desks).toEqual(['MANAGER']);
-    expect(staffed.managerId).toBe(KOFI.id);
+    expect(staffed.managerIds).toEqual([KOFI.id]);
     expect(companyWideDesks(staffed)).toEqual([]);
   });
 
@@ -65,7 +65,7 @@ describe('the desks somebody staffs', () => {
     const staffed = desksStaffedBy(asOfficer(ESI.id), AMA.id);
 
     expect(staffed.desks).toEqual(['HR']);
-    expect(staffed.managerId).toBeNull();
+    expect(staffed.managerIds).toEqual([]);
     expect(companyWideDesks(staffed)).toEqual(['HR']);
   });
 
@@ -91,6 +91,8 @@ describe('the desks somebody staffs', () => {
         managerId: KOFI.id,
         awaiting: desk,
         chiefExecutiveId: AMA.id,
+        /** FR 49, LMS 327. Nobody is covering for anybody here. */
+        standingIn: [],
       };
 
       expect(desksStaffedBy(staffs, AMA.id).desks).toContain(desk);
@@ -106,7 +108,7 @@ describe('the desks somebody staffs', () => {
     const staffed = desksStaffedBy(theSystem('a scheduled job'), AMA.id);
 
     expect(staffed.desks).toEqual(['HR']);
-    expect(staffed.managerId).toBeNull();
+    expect(staffed.managerIds).toEqual([]);
   });
 });
 
@@ -426,6 +428,8 @@ function queueOf(facts: Partial<QueueFacts>): ApproverQueue {
     staffed: desksStaffedBy(asManager(), AMA.id),
     requests: [],
     people: PEOPLE,
+    /** FR 49, LMS 327. */
+    covering: PEOPLE,
     types: [ANNUAL, UNPAID],
     years: [YEAR_2026],
     decisions: [],
@@ -537,6 +541,7 @@ function decision(changes: Partial<LeaveDecision>): LeaveDecision {
     onBehalfOf: 'MANAGER',
     comment: null,
     overridesDecisionId: null,
+    delegatedFor: null,
     decidedBy: 'employee kofi',
     decidedByEmployeeId: KOFI.id,
     decidedAt: at('01-06'),

@@ -44,6 +44,7 @@ import { UnavailableScanner } from '../../src/scanning/unavailable-scanner.js';
 import { InMemoryStorage } from '../support/in-memory-storage.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { delegationService } from '../support/delegations.js';
 
 /**
  * Evidence attached to a request. FR 12, NFR SEC 04, NFR SEC 07. LMS 310.
@@ -112,6 +113,8 @@ beforeAll(async () => {
     /** FR 13, LMS 311. */
     new AttachmentRepository(db),
     new RoleRepository(db),
+    /** FR 49, LMS 327. */
+    delegationService(db, guard),
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     new NotificationService(new NotificationRepository(db), recordingMailer(), guard),
@@ -126,6 +129,7 @@ beforeAll(async () => {
     employees,
     types,
     organisation,
+    delegationService(db, guard),
     storage,
     new SignatureScanner(),
   );
@@ -137,6 +141,7 @@ beforeAll(async () => {
     employees,
     types,
     organisation,
+    delegationService(db, guard),
     storage,
     new UnavailableScanner(),
   );

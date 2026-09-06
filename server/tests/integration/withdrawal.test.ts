@@ -32,6 +32,7 @@ import { NotificationService } from '../../src/features/notification/notificatio
 import { RequestHistoryService } from '../../src/features/leave-request/request-history.service.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { delegationService } from '../support/delegations.js';
 
 /**
  * Withdrawing leave every desk has agreed to. FR 47, §8.2. LMS 324.
@@ -101,6 +102,8 @@ beforeAll(async () => {
     /** FR 13, LMS 311. */
     new AttachmentRepository(db),
     new RoleRepository(db),
+    /** FR 49, LMS 327. */
+    delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     new NotificationService(notices, recordingMailer(), guard),

@@ -34,6 +34,7 @@ import { LeaveYearService } from '../../src/features/leave-year/leave-year.servi
 import { NotificationService } from '../../src/features/notification/notification.service.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { delegationService } from '../support/delegations.js';
 
 /**
  * Pending leave follows the reporting line. FR 07, §8.4. LMS 325.
@@ -112,6 +113,8 @@ beforeAll(async () => {
     new WithdrawalRepository(db),
     new AttachmentRepository(db),
     new RoleRepository(db),
+    /** FR 49, LMS 327. */
+    delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     new NotificationService(notices, recordingMailer(), guard),
@@ -225,7 +228,12 @@ async function reportsTo(employeeId: string, managerId: string) {
 
 /** What is waiting on one line manager, which is the queue the story is about. FR 40. */
 async function waitingOn(managerId: string): Promise<string[]> {
-  const rows = await new LeaveRequestRepository(db).awaiting({ desks: ['MANAGER'], managerId });
+  const rows = await new LeaveRequestRepository(db).awaiting({
+    desks: ['MANAGER'],
+    own: ['MANAGER'],
+    managerIds: [managerId],
+    delegated: [],
+  });
 
   return rows.map((row) => row.id);
 }

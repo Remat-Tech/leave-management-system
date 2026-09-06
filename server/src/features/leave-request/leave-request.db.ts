@@ -160,18 +160,18 @@ export class LeaveRequestRepository {
    * an equivalence, so a row at a desk is a row still being decided.
    *
    * `HR` and `CEO` are staffed for the whole company and are a plain `IN`. `MANAGER` resolves
-   * through a reporting line, so it is narrowed to this manager's own reports.
+   * through a reporting line, so it is narrowed to the reports of every manager whose desk
+   * this person answers — their own, and since LMS 327 anybody covering for them. FR 49.
    */
   async awaiting(staffed: DesksStaffed): Promise<LeaveRequest[]> {
     const companyWide = companyWideDesks(staffed);
+    const managerIds = staffed.managerIds;
 
     /* Unreachable: `leaveRequestPolicy.queue` refuses somebody who staffs nothing. Answered
        anyway, because a `WHERE` built from no desks is the shape that becomes `WHERE true`. */
-    if (companyWide.length === 0 && staffed.managerId === null) {
+    if (companyWide.length === 0 && managerIds.length === 0) {
       return [];
     }
-
-    const managerId = staffed.managerId;
 
     const rows = await this.db
       .selectFrom('leave_request')
@@ -179,12 +179,12 @@ export class LeaveRequestRepository {
       .selectAll('leave_request')
       .where((eb) =>
         eb.or([
-          ...(managerId === null
+          ...(managerIds.length === 0
             ? []
             : [
                 eb.and([
                   eb('leave_request.awaiting_approval_from', '=', 'MANAGER'),
-                  eb('employee.manager_id', '=', managerId),
+                  eb('employee.manager_id', 'in', [...managerIds]),
                 ]),
               ]),
           ...(companyWide.length === 0

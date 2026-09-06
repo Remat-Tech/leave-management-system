@@ -38,6 +38,7 @@ import { SignatureScanner } from '../../src/scanning/signature-scanner.js';
 import { InMemoryStorage } from '../support/in-memory-storage.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { delegationService } from '../support/delegations.js';
 
 /**
  * Attachments over HTTP. FR 12, NFR SEC 04, NFR SEC 07. LMS 310.
@@ -96,6 +97,8 @@ beforeAll(async () => {
     /** FR 13, LMS 311. */
     new AttachmentRepository(db),
     roles,
+    /** FR 49, LMS 327. */
+    delegationService(db, guard),
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     new NotificationService(new NotificationRepository(db), recordingMailer(), guard),
@@ -122,6 +125,7 @@ beforeAll(async () => {
     scanner: new SignatureScanner(),
     accounts,
     roles,
+    delegations: delegationService(db, guard),
     organisation,
     secret: SECRET,
   });

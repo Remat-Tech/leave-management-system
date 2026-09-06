@@ -74,16 +74,17 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | A draft of one. FR 19 | the person planning it, and nobody else at all | the person planning it, and nobody else at all |
 | A certificate attached to one. FR 12 | whoever may read the request, plus the desk it is sitting on | yourself, `HR_OFFICER`, `HR_ADMIN` — never the line manager |
 | Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
-| Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` — never yourself |
+| Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN`, or a colleague covering for one of them — never yourself |
 | Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
 | Sending a request nobody could decide back to an approver. FR 48b | | `HR_OFFICER`, `HR_ADMIN` — never the person who asked |
 | Asking for agreed leave to be taken off the books. FR 47 | | the person whose leave it is, and nobody else |
 | Answering that ask, and putting the taken days back. FR 47 | | `HR_OFFICER`, `HR_ADMIN` — never the person who asked |
+| Handing your approvals to a colleague while away. FR 49 | either end of it, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | the approver alone — and ending one is theirs or HR's |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
 
-Eleven of those lines are decisions rather than defaults, and each is argued in the
+Twelve of those lines are decisions rather than defaults, and each is argued in the
 policy file that holds it.
 
 **Withdrawing agreed leave is the one pair of rows where the ask is narrower than
@@ -114,6 +115,16 @@ for the certificate the decision turns on, so `readAttachment` is `read` widened
 by `isAt` — the same question the queue asks, asked about one request. Writing
 stays exactly as wide as asking for the leave: an approver who wants a document
 asks the person for it rather than supplying one on their behalf.
+
+**A delegation is the one row where nominating is narrower than ending.** FR 49,
+LMS 327. Handing your approvals over is the approver's own act and nobody else's,
+because HR handing out somebody else's authority to decide leave is a power nobody
+asked for. Ending one is theirs or HR's, because taking authority away is the safe
+direction to be wrong in when the approver cannot be reached — and being the
+*delegate* is standing to do neither. What a delegation never carries is a say over
+the delegator's own leave: that is FR 48 laundered through a colleague, and it is
+refused in the policy, in the routing and by
+`leave_request_never_decided_for_the_requester` on every connection.
 
 **A line manager sees their reports because of the record, never because of a
 role.** `employee.managerId` is read off the record in hand, so moving a

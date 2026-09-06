@@ -31,6 +31,8 @@ import type { ApproverQueueService } from './approver-queue.service.js';
 import type { DraftAsSent, DraftProgress, LeaveRequestDraft } from './draft.js';
 import { progressOfDraft } from './draft.js';
 import type { LeaveRequestDraftService } from './draft.service.js';
+import type { ApprovalDelegation } from './delegation.js';
+import type { ApprovalDelegationService } from './delegation.service.js';
 import type { LeaveRequestService } from './leave-request.service.js';
 import type { RequestFormService } from './request-form.service.js';
 import type { RequestHistoryService } from './request-history.service.js';
@@ -46,10 +48,73 @@ export interface RequestRoutes {
   queue: ApproverQueueService;
   /** FR 19, LMS 302. Requests started and not finished. */
   drafts: LeaveRequestDraftService;
+  /** FR 49, LMS 327. Who is covering my approvals while I am away. */
+  delegations: ApprovalDelegationService;
 }
 
-export function requestRoutes({ history, form, requests, queue, drafts }: RequestRoutes): Router {
+export function requestRoutes({
+  history,
+  form,
+  requests,
+  queue,
+  drafts,
+  delegations,
+}: RequestRoutes): Router {
   const routes = Router();
+
+  /* ------------------------------------------- delegated approvals. FR 49, LMS 327 */
+
+  /** What I have handed over, and what has been handed to me. FR 49. */
+  routes.get('/me/approval-delegations', (_request: Request, response: Response, next) => {
+    const me = employeeIdOf(response);
+
+    void Promise.all([
+      delegations.handedOverBy(actorOf(response), me),
+      delegations.handedTo(actorOf(response), me),
+    ])
+      .then(([given, held]) => {
+        response.json({
+          /** The approvals somebody else answers while I am away. */
+          given: given.map(delegationAsJson),
+          /** And the ones I answer for a colleague. */
+          held: held.map(delegationAsJson),
+        });
+      })
+      .catch(next);
+  });
+
+  /**
+   * Hands my approvals to a colleague for a date range. FR 49, the story's first criterion.
+   *
+   * `/me`, because the approver is the only person who may nominate one — there is no id to
+   * supply and no way to hand out anybody else's authority.
+   */
+  routes.post('/me/approval-delegations', (request: Request, response: Response, next) => {
+    const sent = bodyOf(request);
+
+    void delegations
+      .nominate(actorOf(response), {
+        approverId: employeeIdOf(response),
+        delegateId: asString(sent.delegateId),
+        from: asString(sent.from),
+        to: asString(sent.to),
+        because: sent.because,
+      })
+      .then((nominated) => {
+        response.status(201).json(delegationAsJson(nominated));
+      })
+      .catch(next);
+  });
+
+  /** Ends one early. FR 49. Not `/me`: HR may end one too, and the id says whose it is. */
+  routes.post('/approval-delegations/:id/end', (request: Request, response: Response, next) => {
+    void delegations
+      .revoke(actorOf(response), asString(request.params.id))
+      .then((ended) => {
+        response.json(delegationAsJson(ended));
+      })
+      .catch(next);
+  });
 
   /**
    * Everything waiting on me. FR 20, FR 40. LMS 404.
@@ -604,6 +669,24 @@ function progressAsJson(progress: DraftProgress): unknown {
 
 /* ---------------------------------------------------------------- the queue, as JSON */
 
+/** One delegation, as a screen reads it. FR 49, LMS 327. */
+function delegationAsJson(delegation: ApprovalDelegation): unknown {
+  return {
+    id: delegation.id,
+    /** Whose approvals, and who is answering them. */
+    approverId: delegation.approverId,
+    delegateId: delegation.delegateId,
+    /** Ten characters, each way. NFR DAT 03. */
+    from: delegation.from,
+    to: delegation.to,
+    because: delegation.because,
+    /** Null while it stands. */
+    revokedAt: delegation.revokedAt?.toISOString() ?? null,
+    nominatedBy: delegation.nominatedBy,
+    nominatedAt: delegation.nominatedAt.toISOString(),
+  };
+}
+
 function queueAsJson(queue: ApproverQueue): unknown {
   return {
     approverId: queue.approverId,
@@ -657,6 +740,9 @@ function queueItemAsJson(item: QueueItem): unknown {
 
     balance: balanceAsJson(item.balance),
     team: teamAsJson(item.team),
+
+    /** FR 49, LMS 327. Whose approvals this row is answered under, null where the reader's. */
+    answeringFor: item.answeringFor,
 
     /** FR 48, §8.6a. */
     actionable: item.actionable,
@@ -896,6 +982,8 @@ function decidedAsJson(decided: LeaveApproved): unknown {
       /** FR 44. The decision this one reversed, where it reversed one. */
       overridesDecisionId: decided.decision.overridesDecisionId,
       decidedBy: decided.decision.decidedBy,
+      /** FR 49, FR 52, LMS 327. The approver whose absence this covered, where it covered one. */
+      delegatedFor: decided.decision.delegatedFor,
       decidedAt: decided.decision.decidedAt.toISOString(),
     },
     /** Null where this decision was not the last word and no days moved. */

@@ -40,6 +40,7 @@ import { recordingDenials } from '../support/recording-denials.js';
 import { recordingMailer, type RecordingMailer } from '../support/recording-mailer.js';
 import { recordingNotices } from '../support/recording-notices.js';
 import { seed } from '../../seeds/seed.mjs';
+import { delegationService } from '../support/delegations.js';
 
 /**
  * Being told what happened to your leave. FR 59, §7.1. LMS 329.
@@ -142,6 +143,8 @@ beforeAll(async () => {
     /** FR 13, LMS 311. */
     new AttachmentRepository(db),
     new RoleRepository(db),
+    /** FR 49, LMS 327. */
+    delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     notifications,

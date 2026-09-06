@@ -884,7 +884,8 @@ describe('the audit log', () => {
  */
 describe('moving a balance, FR 26 and LMS 212', () => {
   /** Ama's balance. Akosua is her line manager. */
-  const hers = { employeeId: 'ama', managerId: 'akosua' };
+  /** FR 49, LMS 327. Nobody is covering for anybody unless a case says so. */
+  const hers = { employeeId: 'ama', managerId: 'akosua', standingIn: [] };
 
   /**
    * Her request, sitting at a desk. FR 38a, FR 44. LMS 318.

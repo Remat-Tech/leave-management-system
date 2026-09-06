@@ -39,6 +39,7 @@ import { SignatureScanner } from '../../src/scanning/signature-scanner.js';
 import { InMemoryStorage } from '../support/in-memory-storage.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { delegationService } from '../support/delegations.js';
 
 /**
  * Certified sickness beyond the three days. FR 32a, FR 32b, FR 33, §8.6b. LMS 312.
@@ -105,6 +106,8 @@ beforeAll(async () => {
     new WithdrawalRepository(db),
     attachmentRepository,
     new RoleRepository(db),
+    /** FR 49, LMS 327. */
+    delegationService(db, guard),
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     new NotificationService(new NotificationRepository(db), recordingMailer(), guard),
@@ -119,6 +122,7 @@ beforeAll(async () => {
     employees,
     types,
     organisation,
+    delegationService(db, guard),
     storage,
     new SignatureScanner(),
   );

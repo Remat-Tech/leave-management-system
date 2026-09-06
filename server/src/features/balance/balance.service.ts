@@ -3,7 +3,12 @@
  */
 
 import type { Actor } from '../../auth/actor.js';
-import { leaveRequestPolicy } from '../leave-request/policy.js';
+import {
+  answeredOnBehalfOf,
+  leaveRequestPolicy,
+  standsInForAnApprover,
+} from '../leave-request/policy.js';
+import type { DelegatedDesks } from '../leave-request/delegation.js';
 import { type BalanceOwner, ledgerPolicy } from './policy.js';
 import type { Guard } from '../../auth/policy.js';
 import {
@@ -152,6 +157,8 @@ export interface RequestToDecide {
   available: DesksAvailable;
   /** FR 48d. Who is at each of them. LMS 322. */
   occupants: DeskOccupants;
+  /** FR 49. Whose approvals the decider answers today, if anybody's. LMS 327. */
+  standingIn: readonly DelegatedDesks[];
   /** FR 27. The sentence for a DEDUCTION, where this decision is a final yes. */
   reasonForTaking: string;
   /** FR 27. The sentence for a RELEASE, where this decision is a final no. */
@@ -489,7 +496,7 @@ export class BalanceService {
    */
   async decideForRequest(actor: Actor, decision: RequestToDecide): Promise<LeaveApproved> {
     const { request, action, chain, chiefExecutiveId, available, occupants } = decision;
-    const { comment, overturns, versionSeen } = decision;
+    const { comment, overturns, versionSeen, standingIn } = decision;
     const { reasonForTaking, reasonForGivingBack } = decision;
     const owner = await this.ownerOf(request.employeeId);
 
@@ -507,7 +514,15 @@ export class BalanceService {
        desk; this asks whether they have any business moving this balance at all, and it is
        asked for the intermediate outcome as well as the final one — a stage approved by
        somebody who may not move the balance is a stage that would have to be unpicked. */
-    this.guard.enforce(ledgerPolicy.commit(actor, owner, chiefExecutiveId));
+    /** FR 49, LMS 327. Whose desks this decider is covering, for both doors below. */
+    const covering = standsInForAnApprover({
+      ...owner,
+      awaiting: request.awaitingApprovalFrom,
+      chiefExecutiveId,
+      standingIn,
+    });
+
+    this.guard.enforce(ledgerPolicy.commit(actor, owner, chiefExecutiveId, covering));
 
     const key = keyOf(request);
 
@@ -553,13 +568,15 @@ export class BalanceService {
          that binds, and it is here rather than there for the reason `settlementTo` is asked
          again in the release door: the answer that matters is the one taken against the row
          nobody else can move. */
-      this.guard.enforce(
-        leaveRequestPolicy.decide(actor, action, {
-          ...owner,
-          awaiting: current.awaitingApprovalFrom,
-          chiefExecutiveId,
-        }),
-      );
+      const atTheDesk = {
+        ...owner,
+        awaiting: current.awaitingApprovalFrom,
+        chiefExecutiveId,
+        /** FR 49, LMS 327. */
+        standingIn,
+      };
+
+      this.guard.enforce(leaveRequestPolicy.decide(actor, action, atTheDesk));
 
       /** FR 44, FR 48d. The same rows, as the walk and the policy below want them. LMS 322. */
       const decisions = whoDecidedWhere(recorded);
@@ -629,6 +646,10 @@ export class BalanceService {
             comment,
             /** FR 44. */
             overridesDecisionId: overturns,
+            /* FR 49, FR 52, LMS 327. The story's third criterion: `decided_by` is the hand
+               and this is the approver whose absence it covered. Worked out against
+               `outcome.by`, the desk the walk found inside this lock. */
+            delegatedFor: answeredOnBehalfOf(actor, outcome.by, atTheDesk),
           }),
         ),
         /* And the ledger entry, of which there are now three cases rather than two.

@@ -15,6 +15,7 @@ import type { LeavePeriod } from '../leave-calculator/leave-calculator.js';
 import { calendarDateIn } from '../../shared/time.js';
 import type { BalanceRepository } from '../balance/balance.db.js';
 import type { EmployeeRepository } from '../employee/employee.db.js';
+import type { ApprovalDelegationService } from './delegation.service.js';
 import type { LeaveDecisionRepository } from './leave-decision.db.js';
 import type { LeaveRequestRepository } from './leave-request.db.js';
 import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
@@ -45,6 +46,8 @@ export class ApproverQueueService {
     private readonly types: LeaveTypeRepository,
     /** The year label the balance sentence names. */
     private readonly years: LeaveYearRepository,
+    /** FR 49. Whose approvals this person is covering today. LMS 327. */
+    private readonly delegations: ApprovalDelegationService,
   ) {}
 
   /**
@@ -63,7 +66,13 @@ export class ApproverQueueService {
        approve door cannot disagree about who holds that seat. LMS 321. */
     const chiefExecutiveId = await this.organisation.chiefExecutiveId();
 
-    const staffed = desksStaffedBy(actor, chiefExecutiveId);
+    /* FR 49, LMS 327. A delegate staffs whatever their delegator staffs, for as long as the
+       nomination runs — read now, so a delegation that ended this morning reaches nothing. */
+    const staffed = desksStaffedBy(
+      actor,
+      chiefExecutiveId,
+      await this.delegations.standingInFor(actor.employeeId),
+    );
 
     this.guard.enforce(leaveRequestPolicy.queue(actor, staffed));
 
@@ -84,6 +93,10 @@ export class ApproverQueueService {
       staffed,
       requests,
       people,
+      /** FR 49, LMS 327. The colleagues being covered for, so a row can name them. */
+      covering: await this.employees.findAllById(
+        staffed.delegated.map((one) => one.approverId).concat(managersOf(askers)),
+      ),
       types: await this.types.list(),
       years: await this.years.list(),
       decisions: await this.decisions.forRequests(requests.map((request) => request.id)),
@@ -105,17 +118,32 @@ export class ApproverQueueService {
             managerId: colleague.managerId,
           }),
         ),
-      /* FR 48, §8.6a. The policy's own answer and its own sentence. */
+      /**
+       * FR 48, §8.6a, FR 49. The policy's own answers and its own sentences.
+       *
+       * Both questions the approve door asks, in its order, so the queue and the door cannot
+       * disagree about who may decide what. The second one is the delegate's case: a row can
+       * be at a desk somebody covers and still not be theirs to answer, because a delegation
+       * carries no say over the delegator's own leave. LMS 327.
+       */
       whyNotDecidable: (request: LeaveRequest) => {
         const asker = askers.find((one) => one.id === request.employeeId);
+        const owner = { employeeId: request.employeeId, managerId: asker?.managerId ?? null };
 
-        const decision = leaveRequestPolicy.notTheirOwn(
-          actor,
-          { employeeId: request.employeeId, managerId: asker?.managerId ?? null },
-          'APPROVE',
-        );
+        const theirs = leaveRequestPolicy.notTheirOwn(actor, owner, 'APPROVE');
 
-        return decision.allowed ? null : decision.told;
+        if (!theirs.allowed) {
+          return theirs.told;
+        }
+
+        const desk = leaveRequestPolicy.approve(actor, {
+          ...owner,
+          awaiting: request.awaitingApprovalFrom,
+          chiefExecutiveId,
+          standingIn: staffed.delegated,
+        });
+
+        return desk.allowed ? null : desk.told;
       },
     });
   }

@@ -186,6 +186,7 @@ describe('a decision on its way to being written', () => {
       comment: 'Fine by me',
       /** FR 44. Null on everything that is not an override. LMS 318. */
       overridesDecisionId: null,
+      delegatedFor: null,
     });
   });
 
@@ -227,6 +228,9 @@ describe('a decision on its way to being written', () => {
     expect(Object.keys(written).sort()).toEqual([
       'action',
       'comment',
+      /* FR 49, LMS 327. Whose approvals were answered — the desk's own resolution, not the
+         decider's claim about themselves. */
+      'delegatedFor',
       'leaveRequestId',
       'onBehalfOf',
       /* FR 44, LMS 318. Null on everything but an override, and supplied by the door rather
@@ -246,6 +250,7 @@ describe('the refusal among a request’s decisions', () => {
     onBehalfOf: 'MANAGER',
     comment,
     overridesDecisionId: null,
+    delegatedFor: null,
     decidedBy: 'employee 7',
     decidedByEmployeeId: '7',
     decidedAt: new Date('2026-03-01T09:00:00Z'),
@@ -288,6 +293,7 @@ describe('the desks that have approved a request', () => {
     onBehalfOf,
     comment: action === 'REFUSE' ? 'No cover' : null,
     overridesDecisionId: null,
+    delegatedFor: null,
     decidedBy: 'employee 7',
     decidedByEmployeeId: '7',
     decidedAt: new Date('2026-03-01T09:00:00Z'),
@@ -328,6 +334,7 @@ describe('overturning a line manager’s decision', () => {
     action: 'OVERTURN_REJECTION' as const,
     onBehalfOf: 'HR' as const,
     overridesDecisionId: '9',
+    delegatedFor: null,
   };
 
   /* The story's second criterion, and it is refused for the same three shapes a refusal is:
@@ -355,6 +362,7 @@ describe('overturning a line manager’s decision', () => {
       onBehalfOf: 'HR',
       comment: 'Carry-over expires this month',
       overridesDecisionId: '9',
+      delegatedFor: null,
     });
   });
 
@@ -380,6 +388,7 @@ describe('overturning a line manager’s decision', () => {
         onBehalfOf: 'HR',
         comment: null,
         overridesDecisionId: '9',
+        delegatedFor: null,
       }),
     ).toThrow(InvalidDecision);
   });
@@ -400,6 +409,7 @@ describe('the override a plain verb would have to be', () => {
     onBehalfOf: 'MANAGER',
     comment: action === 'REFUSE' ? 'No cover' : null,
     overridesDecisionId: null,
+    delegatedFor: null,
     decidedBy: 'Kofi Mensah',
     decidedByEmployeeId: '3',
     decidedAt: new Date('2026-02-10T09:00:00Z'),
@@ -456,6 +466,7 @@ describe('the decision a desk has already made', () => {
     onBehalfOf,
     comment: action === 'REFUSE' ? 'No cover' : null,
     overridesDecisionId: null,
+    delegatedFor: null,
     decidedBy: onBehalfOf === 'MANAGER' ? 'Kofi Boateng' : 'Efua Mensah',
     decidedByEmployeeId: '3',
     decidedAt: new Date('2026-03-01T09:00:00Z'),

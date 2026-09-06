@@ -121,6 +121,29 @@ export class RoleRepository {
     return rows.map((row) => row.employee_id);
   }
 
+  /** The role codes several employees hold, keyed by employee. FR 49, LMS 327. */
+  async codesForEmployees(employeeIds: readonly string[]): Promise<Map<string, RoleCode[]>> {
+    if (employeeIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.db
+      .selectFrom('user_role')
+      .innerJoin('role', 'role.id', 'user_role.role_id')
+      .innerJoin('app_user', 'app_user.id', 'user_role.user_id')
+      .where('app_user.employee_id', 'in', [...employeeIds])
+      .select(['app_user.employee_id', 'role.code'])
+      .execute();
+
+    const held = new Map<string, string[]>();
+
+    for (const row of rows) {
+      held.set(row.employee_id, [...(held.get(row.employee_id) ?? []), row.code]);
+    }
+
+    return new Map([...held].map(([id, codes]) => [id, orderRoles(codes)]));
+  }
+
   /** How many accounts hold a role. */
   async countHolding(code: RoleCode): Promise<number> {
     const row = await this.db
