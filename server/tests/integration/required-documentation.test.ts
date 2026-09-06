@@ -153,6 +153,14 @@ beforeEach(async () => {
   await admin.query('BEGIN');
   await admin.query('DELETE FROM leave_type_approval_step WHERE leave_type_id = $1', [annualId]);
   await admin.query('SELECT ensure_statutory_approval_chains()');
+  /* FR 13. One test below configures a rule on annual leave, and `leave_type` is reference
+     data the migration wrote and the seed does not restore. */
+  await admin.query(
+    `UPDATE leave_type
+        SET documentation = 'NOT_REQUIRED', documentation_after_days = NULL
+      WHERE id = $1`,
+    [annualId],
+  );
   await admin.query('COMMIT');
 
   await grant(annualId, 20);
@@ -188,10 +196,17 @@ async function grant(leaveTypeId: string, days: number): Promise<void> {
   });
 }
 
-function daysFromToday(offset: number): string {
+/** The nth working day from today. FR 21 — a calendar offset lands fixtures on a Saturday. */
+function workingDaysAhead(offset: number): string {
   const day = new Date();
 
-  day.setUTCDate(day.getUTCDate() + offset);
+  for (let counted = 0; counted < offset;) {
+    day.setUTCDate(day.getUTCDate() + 1);
+
+    if (day.getUTCDay() !== 0 && day.getUTCDay() !== 6) {
+      counted += 1;
+    }
+  }
 
   return calendarDateIn(day, 'UTC');
 }
@@ -219,8 +234,8 @@ function pastTheAllowance(evidence: string[] = []) {
   return {
     employeeId: people.officer,
     leaveTypeId: sickId,
-    from: daysFromToday(21),
-    to: daysFromToday(25),
+    from: workingDaysAhead(15),
+    to: workingDaysAhead(19),
     reason: 'Off sick',
     evidence,
   };
@@ -384,8 +399,8 @@ describe('leave that policy asks for documentation on', () => {
   it('and the allowance is the threshold: what is left needs nothing', async () => {
     const { request } = await requests.submit(asTheEmployee(), {
       ...pastTheAllowance(),
-      from: daysFromToday(21),
-      to: daysFromToday(23),
+      from: workingDaysAhead(15),
+      to: workingDaysAhead(17),
     });
 
     expect(request.days).toBe(3);
@@ -396,15 +411,15 @@ describe('leave that policy asks for documentation on', () => {
   it('and the day after the allowance runs out needs one, however short the request', async () => {
     await requests.submit(asTheEmployee(), {
       ...pastTheAllowance(),
-      from: daysFromToday(21),
-      to: daysFromToday(23),
+      from: workingDaysAhead(15),
+      to: workingDaysAhead(17),
     });
 
     await expect(
       requests.submit(asTheEmployee(), {
         ...pastTheAllowance(),
-        from: daysFromToday(28),
-        to: daysFromToday(28),
+        from: workingDaysAhead(22),
+        to: workingDaysAhead(22),
       }),
     ).rejects.toBeInstanceOf(DocumentationNotAttached);
   });
@@ -522,7 +537,9 @@ describe('the file a request was allowed through on', () => {
 
     await expect(
       admin.query('DELETE FROM leave_request_attachment WHERE id = $1', [certificate.id]),
-    ).rejects.toThrow(/leave_request_attachment_is_what_it_was_allowed_on/);
+    ).rejects.toMatchObject({
+      constraint: 'leave_request_attachment_is_what_it_was_allowed_on',
+    });
 
     expect((await attachments.forRequest(asTheEmployee(), request.id)).attachments).toHaveLength(1);
   });
@@ -552,21 +569,29 @@ describe('the table itself', () => {
   it('refuses to commit a request that needed evidence with none on it', async () => {
     await admin.query('BEGIN');
 
-    await expect(
-      admin
-        .query(
-          `INSERT INTO leave_request
-           (employee_id, leave_type_id, leave_year_id, start_date, end_date, reason,
-            evidence_required, counting_basis, days, calendar_days, status,
-            awaiting_approval_from)
-         VALUES ($1, $2, $3, $4, $5, 'Off sick', TRUE, 'WORKING_DAYS', 5, 5, 'SUBMITTED',
-                 'MANAGER')`,
-          [people.officer, sickId, y2026.id, daysFromToday(21), daysFromToday(25)],
-        )
-        .then(() => admin.query('COMMIT')),
-    ).rejects.toThrow(/leave_request_that_needed_evidence_has_it/);
+    const { rows } = await admin.query<{ id: string }>(
+      `INSERT INTO leave_request
+         (employee_id, leave_type_id, leave_year_id, start_date, end_date, reason,
+          evidence_required, counting_basis, days, calendar_days, status,
+          awaiting_approval_from)
+       VALUES ($1, $2, $3, $4, $4, 'Off sick', TRUE, 'WORKING_DAYS', 1, 1, 'SUBMITTED',
+               'MANAGER')
+       RETURNING id`,
+      [people.officer, sickId, y2026.id, workingDaysAhead(15)],
+    );
 
-    await admin.query('ROLLBACK');
+    /* The days it costs, so `leave_request_holds_its_days` — deferred too, and older — is
+       answered and the rule left to fire at commit is FR 13's. */
+    await admin.query(
+      `INSERT INTO leave_ledger_entry (
+          employee_id, leave_type_id, leave_year_id, entry_type, days, reason, leave_request_id)
+       VALUES ($1, $2, $3, 'RESERVATION', '-1.00', 'held', $4)`,
+      [people.officer, sickId, y2026.id, rows[0].id],
+    );
+
+    await expect(admin.query('COMMIT')).rejects.toMatchObject({
+      constraint: 'leave_request_that_needed_evidence_has_it',
+    });
 
     expect(await requestCount()).toBe(0);
   });
@@ -583,7 +608,7 @@ describe('the table itself', () => {
          VALUES ($1, $2, 1, 'theirs.pdf', 'application/pdf', 10, $3, $4, 'PENDING')`,
         [request.id, people.engineer, 'c'.repeat(64), 'd'.repeat(64)],
       ),
-    ).rejects.toThrow(/leave_request_attachment_stays_with_whose_it_is/);
+    ).rejects.toMatchObject({ constraint: 'leave_request_attachment_stays_with_whose_it_is' });
   });
 
   /* And a file goes onto a request once. `slot` moves with it and nothing else does. */
@@ -595,7 +620,7 @@ describe('the table itself', () => {
       admin.query('UPDATE leave_request_attachment SET leave_request_id = NULL WHERE id = $1', [
         certificate.id,
       ]),
-    ).rejects.toThrow(/leave_request_attachment_is_the_file_it_was/);
+    ).rejects.toMatchObject({ constraint: 'leave_request_attachment_is_the_file_it_was' });
 
     expect((await attachments.forRequest(asTheEmployee(), request.id)).attachments).toHaveLength(1);
   });

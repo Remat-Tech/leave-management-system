@@ -1890,13 +1890,13 @@ been in the domain since LMS 201 and are what a story offering the split would u
 is two requests with one approval between them, which is a decision rather than an
 arithmetic. What the refusal says is [below](#dates-that-are-obviously-wrong).
 
-**Notice and documentation warn; they do not refuse.** FR 17 is advisory by design —
-leave is sometimes needed at short notice, and a system that refused it is a system people
-work around — so a short-notice request is submitted and the quote says by how much. FR
-13's documentation is an attachment, and since LMS 310 there is somewhere to put one — see
-[evidence attached to a request](#evidence-attached-to-a-request). It still warns rather
-than refuses: what a certificate settles is whether the requirement is *met*, not whether
-the leave may be asked for.
+**Notice warns; documentation refused to, and since LMS 311 does.** FR 17 is advisory by
+design — leave is sometimes needed at short notice, and a system that refused it is a system
+people work around — so a short-notice request is submitted and the quote says by how much.
+The two were paired here until LMS 310 gave FR 13's documentation somewhere to be put and
+LMS 311 made it a condition of submitting; they are no longer the same kind of rule, and
+this is where that was got wrong for three stories. See [documentation that has to arrive
+with the request](#documentation-that-has-to-arrive-with-the-request).
 
 Since LMS 307 the warning is also *answered*. It still refuses no leave and moves no
 dates; what it refuses is submitting through the warning without saying it was read. See
@@ -2126,13 +2126,19 @@ highlights the balance with the same branch either way rather than drawing them 
 unrelated problems. Both messages open with the same clause, from
 `daysAgainstTheBalance()`, for the same reason.
 
-**Sick leave is not refused at all.** FR 32a and §8.6b: `exceedable_with_document` makes
-the allowance the point at which a medical certificate is asked for rather than a cap, so
-the balance goes below nought and the leave is granted. Read off the column by
+**Sick leave is not refused for want of days.** FR 32a and §8.6b: `exceedable_with_document`
+makes the allowance the point at which a medical certificate is asked for rather than a cap,
+so the balance goes below nought and the leave is granted. Read off the column by
 `balanceMayBeExceededWithDocument()` — which has sat in `/features/leave-type/leave-type.ts` since LMS
 201 saying the check "belongs to the submission path, which is the only thing that knows
 what the balance is", and this is that path. No leave type code is compared to anything;
 design principle 5.
+
+Since LMS 311 it *is* refused for want of the certificate, and the two are not the same
+refusal: `NOT_ENOUGH_DAYS` never fires for these types and `DOCUMENTATION_REQUIRED` does.
+The allowance stayed a threshold; what changed is that the threshold now has to be answered
+before the leave is asked for rather than afterwards. See [documentation that has to arrive
+with the request](#documentation-that-has-to-arrive-with-the-request).
 
 ---
 
@@ -3207,6 +3213,82 @@ open the evidence cannot decide on it.
 **And it is not audited.** The row is frozen by its own trigger, so it is already its own
 history — and `before`/`after` snapshots are jsonb in a table HR reads, which would copy the
 filename of every medical certificate somewhere nobody asked to put it. NFR AUD 01.
+
+---
+
+### Documentation that has to arrive with the request
+
+**Where policy asks for evidence, the request is refused without it.** FR 13, FR 32a, §8.6b,
+LMS 311. LMS 310 gave a certificate somewhere to hang and nothing that insisted on one, so
+FR 13 was a sentence on a form and an attachment somebody might get round to. The story's
+"so that" is the whole of what changed: *the evidence arrives with the request rather than
+being chased afterwards*.
+
+**Two thresholds, constantly mistaken for one.** This is why `documentationGroundsFor`
+returns a list rather than a boolean, and why the refusal names whichever apply.
+
+| Ground | The question it asks | The column | Sick leave |
+|---|---|---|---|
+| `THE_LENGTH_OF_THE_REQUEST` | is *this request* longer than n days? | `documentation`, `documentation_after_days` | no rule |
+| `PAST_THE_ALLOWANCE` | would it take the *yearly balance* past its allowance? | `exceedable_with_document` | its three days |
+
+FR 32a's "beyond 3 days in a leave year" is the second, and it is a comparison against the
+balance rather than a number written down anywhere: three days is askable with nothing
+attached by somebody who has taken none, and the fourth day of the year is not, however short
+the request that reaches it. Both can bite at once, and one certificate answers either.
+
+**Evidence has to be able to exist before the request does.** FR 13 is answered at
+submission, which is before there is a row to hang anything off — so `leave_request_id`
+became nullable and a file waits under `held_for_employee_id` until the request that names it
+is written beside it. That is the migration, and it is the whole reason there was one.
+
+**Five seats in the pile as well as five on the request.** Two partial unique indexes rather
+than one, because NULLs are distinct in a unique index: without the second, somebody could
+stack up however many files they liked before ever asking for leave. The seat a file held
+while it waited is not the seat it takes on the request, and `slot` is the one thing besides
+`leave_request_id` that `refuse_rewriting_an_attachment` lets move — once, on the way on.
+
+**The certificate and the leave are one commit.** The request row, its `RESERVATION` and the
+attachment land together or none of them does.
+`leave_request_that_needed_evidence_has_it` is a deferred constraint trigger, because the
+request is written before the files are put on it and the question is only answerable at the
+end of the transaction. It is the second deferred rule an insert has to satisfy —
+`leave_request_holds_its_days` is the other, and answers first — so a test that means to
+reach this one has to give the request its `RESERVATION` as well.
+
+**Unscanned is a state, and it satisfies nothing — including this.** NFR SEC 07. The trigger
+looks for `CLEAN` and nothing else, which is `attachmentSatisfiesADocumentationRule` said in
+SQL. A request carrying only a file the scanner never answered for is refused, and the
+sentence says how many are still being checked rather than saying there is nothing there.
+
+**`evidence_required` is a column, for the reason `counting_basis` is.** Both thresholds move
+after the fact — the balance FR 32a judged it against is spent by the time anybody reads the
+request, and HR may reword the type's rule tomorrow. A request whose evidence rule was
+recomputed a month later would say something true about today rather than about what the
+leave was allowed on, so the answer is copied onto the row and
+`leave_request_says_what_it_said` freezes it with the rest of the price.
+
+**And it cannot come off afterwards**, which is what makes "arrives with the request"
+different from "arrived once". `leave_request_attachment_is_what_it_was_allowed_on` refuses
+the *last* usable file rather than any of them, so attaching a better scan first frees the
+old one — which is what `DocumentationCannotBeRemoved`'s message tells somebody to do. A
+request nobody asked evidence of keeps LMS 310's rule unchanged and its files come off
+freely.
+
+**Naming a file that is not yours reaches nothing rather than being refused.** NFR SEC 04.
+`evidenceWaitingFor` looks every id up against *this person's* waiting pile instead of
+fetching by id and checking after, and an id that reaches nothing is dropped. A refusal
+naming the id would let a submission be used to discover that a colleague uploaded a medical
+certificate this morning; what the person meets instead is FR 13's own sentence about their
+leave. `leave_request_attachment_stays_with_whose_it_is` holds the same thing in the
+database, where `leave_request_draft_stays_with_whose_it_is` already held it for drafts.
+
+**The warning and the refusal are one condition seen at two moments.**
+`documentationAgainstWhatIsAsked` writes the clause both share, the arrangement
+`daysAgainstTheBalance` makes, and `DocumentationNotAttached.code` is deliberately the same
+`DOCUMENTATION_REQUIRED` token as the quote's warning — so a form highlights the upload on
+both with one branch. What the quote now says is "attach it before you ask" rather than
+"have it ready", because since this story the second sentence was untrue.
 
 ---
 
