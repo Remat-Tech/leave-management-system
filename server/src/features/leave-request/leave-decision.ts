@@ -4,6 +4,7 @@
 
 import type { ApproverRole } from '../leave-type/approval-chain.js';
 import type { RequestAction } from './leave-request.js';
+import type { DeskDecision } from './routing.js';
 
 /** The verbs that are a decision at a desk. FR 39, FR 44, LMS 315, LMS 318. */
 export const DECIDING_ACTIONS = [
@@ -218,6 +219,14 @@ export function desksThatRefused(decisions: readonly LeaveDecision[]): ApproverR
 /** The desks that have had their say, whichever way they went. FR 44, LMS 318. */
 export function desksThatDecided(decisions: readonly LeaveDecision[]): ApproverRole[] {
   return decisions.map((decision) => decision.onBehalfOf);
+}
+
+/** The same, with the hand behind each one. FR 48d, LMS 322. */
+export function whoDecidedWhere(decisions: readonly LeaveDecision[]): DeskDecision[] {
+  return decisions.map((decision) => ({
+    desk: decision.onBehalfOf,
+    by: decision.decidedByEmployeeId,
+  }));
 }
 
 /** Whether an override has already reversed this decision. FR 44, LMS 318. */

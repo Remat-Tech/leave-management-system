@@ -6,6 +6,7 @@ import { type ApproverRole, APPROVER_ROLES } from '../leave-type/approval-chain.
 import { type DesksStaffed, staffsAnyDesk } from './approver-queue.js';
 import { type DecidingAction, isADecision, type OverridingAction } from './leave-decision.js';
 import { type RequestAction, type Standing, standingsFor } from './leave-request.js';
+import { type DeskDecision, decidedBy } from './routing.js';
 import { isAnAnswer, type WithdrawalAnswer } from './withdrawal.js';
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import type { BalanceOwner } from '../balance/policy.js';
@@ -56,6 +57,32 @@ function notTheirOwn(actor: Actor, owner: BalanceOwner, action: RequestAction): 
         owner.employeeId,
         'is the person who asked for the leave, and nobody decides their own request',
         isAnAnswer(action) ? ANSWERING_IS_SOMEBODY_ELSE : DECIDING_IS_SOMEBODY_ELSE,
+      )
+    : about.allow(actor, said, owner.employeeId);
+}
+
+/**
+ * Two stages are answered by two people. FR 48d, §8.6a, LMS 322.
+ *
+ * The half of FR 48d routing cannot do: a desk with a second officer is asked as usual, and
+ * the officer who signed the earlier stage is refused there. An actor no decision names is
+ * nobody — `theSystem` — and two of its decisions are not one person's.
+ */
+function eachStageADifferentPerson(
+  actor: Actor,
+  owner: BalanceOwner,
+  action: RequestAction,
+  decided: readonly DeskDecision[],
+): Decision {
+  const said = action.toLowerCase();
+
+  return actor.employeeId !== null && decidedBy(decided, actor.employeeId)
+    ? about.refuseOpenly(
+        actor,
+        said,
+        owner.employeeId,
+        'has already decided this request at an earlier stage',
+        A_SECOND_STAGE_IS_SOMEBODY_ELSE,
       )
     : about.allow(actor, said, owner.employeeId);
 }
@@ -144,6 +171,13 @@ const DECIDING_IS_SOMEBODY_ELSE =
   'and wherever the request is sitting. If you no longer want this leave, withdraw it; if ' +
   'it should not be on the books at all, HR cancels it. FR 48.';
 
+/** Said openly, and only to somebody who is an approver of this request. FR 48d, LMS 322. */
+const A_SECOND_STAGE_IS_SOMEBODY_ELSE =
+  'A request that two stages decide is decided by two people. You answered an earlier stage ' +
+  'of this one, so this stage is a colleague’s to answer — and where the company has nobody ' +
+  'else to ask, the request goes through stamped as decided by a single approver rather ' +
+  'than carrying your name twice. FR 48d.';
+
 /** The same rule at the other end of a request's life. FR 47, FR 48, LMS 324. */
 const ANSWERING_IS_SOMEBODY_ELSE =
   'An ask to take agreed leave off the books is answered by somebody other than the person ' +
@@ -156,6 +190,9 @@ export const leaveRequestPolicy = {
 
   /** Nobody decides their own request. FR 48, §8.6, LMS 319. */
   notTheirOwn,
+
+  /** And nobody decides two stages of one. FR 48d, §8.6a, LMS 322. */
+  eachStageADifferentPerson,
 
   /** Asking for leave. FR 10. */
   submit(actor: Actor, owner: BalanceOwner): Decision {

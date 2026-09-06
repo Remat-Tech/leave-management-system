@@ -312,6 +312,8 @@ export interface LeaveRequestTable {
   status: string;
   /** FR 38a, FR 40. */
   awaiting_approval_from: string | null;
+  /** FR 48d. One hand answered every stage, because there was nobody else. LMS 322. */
+  decided_by_a_single_approver: ColumnType<boolean, never, boolean>;
   submitted_at: Timestamp;
   created_at: Timestamp;
   updated_at: Timestamp;

@@ -10,8 +10,11 @@ import {
   stagesYetToDecide,
 } from '../leave-type/approval-chain.js';
 import {
+  type DeskDecision,
+  type DeskOccupants,
   desksAsked,
   type DesksAvailable,
+  NO_OCCUPANTS_NAMED,
   type Routed,
   routeFrom,
   type SkippedStage,
@@ -461,6 +464,8 @@ export interface ApprovalOutcome {
   awaiting: ApproverRole | null;
   /** Stages the routing had to skip on the way, to be recorded. FR 48b, LMS 320. */
   skips: readonly SkippedStage[];
+  /** FR 48d. Whether one person answered the whole chain, to be stamped. LMS 322. */
+  singleApprover: boolean;
 }
 
 /**
@@ -789,18 +794,22 @@ export function reasonForGivingBackTakenDays(
         `the days actually taken`;
 }
 
-/** Everything a decision's destination is worked out from. FR 38a, FR 44, FR 48b. */
+/** Everything a decision's destination is worked out from. FR 38a, FR 44, FR 48b, FR 48d. */
 export interface DecisionAtADesk {
   request: LeaveRequest;
   action: DecidingAction;
   /** FR 38a. The type's chain as it stands now. */
   chain: readonly ApproverRole[];
-  /** FR 44. The desks that have decided, whichever way they went. */
-  decidedAlready: readonly ApproverRole[];
+  /** FR 44, FR 48d. The desks that have decided and whose hand each was. */
+  decidedAlready: readonly DeskDecision[];
+  /** FR 48d. Whose hand this one is, or null where nothing names them. LMS 322. */
+  decider: string | null;
   /** FR 48b. The stages already skipped, as recorded against this request. LMS 320. */
   skipped: readonly SkippedStage[];
   /** FR 48b. Who can be asked at each desk, for this request. LMS 320. */
   available: DesksAvailable;
+  /** FR 48d. Who is at each of them. LMS 322. */
+  occupants: DeskOccupants;
 }
 
 /**
@@ -816,7 +825,7 @@ export interface DecisionAtADesk {
  * people to ask never approves and never refuses anything.
  */
 export function decisionTo(input: DecisionAtADesk): ApprovalOutcome {
-  const { request, action, chain, decidedAlready, skipped, available } = input;
+  const { request, action, chain, decidedAlready, skipped, available, occupants } = input;
 
   const transition = transitionFor(request.status, action);
 
@@ -841,18 +850,39 @@ export function decisionTo(input: DecisionAtADesk): ApprovalOutcome {
 
   const routed = routeFrom({
     chain,
-    decided: [...decidedAlready, desk],
+    /** FR 48d. This decision counts as made: the desk, and the hand behind it. LMS 322. */
+    decided: [...decidedAlready, { desk, by: input.decider }],
     skipped,
     available,
+    occupants,
   });
 
   switch (routed.kind) {
     case 'DESK':
-      return { by: desk, to: request.status, awaiting: routed.desk, skips: routed.skips };
+      return {
+        by: desk,
+        to: request.status,
+        awaiting: routed.desk,
+        skips: routed.skips,
+        singleApprover: false,
+      };
     case 'UNROUTABLE':
-      return { by: desk, to: 'UNROUTABLE', awaiting: null, skips: routed.skips };
+      return {
+        by: desk,
+        to: 'UNROUTABLE',
+        awaiting: null,
+        skips: routed.skips,
+        singleApprover: false,
+      };
     default:
-      return { by: desk, to: transition.to, awaiting: null, skips: routed.skips };
+      return {
+        by: desk,
+        to: transition.to,
+        awaiting: null,
+        skips: routed.skips,
+        /** FR 48d, LMS 322. */
+        singleApprover: routed.singleApprover,
+      };
   }
 }
 
@@ -883,11 +913,13 @@ export interface RoutedAgain {
 export function routingTo(input: {
   request: LeaveRequest;
   chain: readonly ApproverRole[];
-  decidedAlready: readonly ApproverRole[];
+  decidedAlready: readonly DeskDecision[];
   skipped: readonly SkippedStage[];
   available: DesksAvailable;
+  /** FR 48d. Who is at each desk. LMS 322. */
+  occupants: DeskOccupants;
 }): RoutedAgain {
-  const { request, chain, decidedAlready, skipped, available } = input;
+  const { request, chain, decidedAlready, skipped, available, occupants } = input;
 
   const transition = transitionFor(request.status, 'ROUTE');
 
@@ -895,7 +927,7 @@ export function routingTo(input: {
     throw refuseTheMove(request, 'ROUTE');
   }
 
-  const routed = routeFrom({ chain, decided: decidedAlready, skipped, available });
+  const routed = routeFrom({ chain, decided: decidedAlready, skipped, available, occupants });
 
   if (routed.kind === 'UNROUTABLE') {
     throw new StillNobodyToDecideIt(
@@ -933,6 +965,8 @@ export interface ApprovalProgress {
   stillToApprove: readonly ApproverRole[];
   /** The desk it is sitting on now, or null once it is sitting nowhere. */
   awaiting: ApproverRole | null;
+  /** FR 48d. One person answered the whole chain, because there was nobody else. LMS 322. */
+  singleApprover: boolean;
   /** Stages of today's chain with no approval on this request, whatever its status. */
   stagesMissing: readonly ApproverRole[];
   /** NFR USA 03. */
@@ -977,6 +1011,8 @@ export function progressOf(input: {
     refusedBy: turnedDown,
     stillToApprove: beingDecided ? unasked : [],
     awaiting: request.awaitingApprovalFrom,
+    /** FR 48d, LMS 322. Off the row: it was stamped by the decision that settled it. */
+    singleApprover: request.decidedBySingleApprover,
     stagesMissing: missing,
     inWords: progressInWords(request, signed, turnedDown, unasked, agreed, unroutable),
   };
@@ -1001,7 +1037,12 @@ function progressInWords(
     .filter((sentence): sentence is string => sentence !== null)
     .join(' ');
 
-  const soFar = said === '' ? 'Nobody has decided it yet.' : said;
+  /** FR 48d, LMS 322. Said wherever the decisions are, so one hand is never read as two. */
+  const soFar = `${said === '' ? 'Nobody has decided it yet.' : said}${
+    request.decidedBySingleApprover
+      ? ' One approver decided every stage of it, because there was nobody else to ask.'
+      : ''
+  }`;
 
   if (agreed) {
     return `This leave is agreed and is yours to take. ${soFar}`;
@@ -1211,6 +1252,13 @@ export interface LeaveRequest {
    * that had been agreed in somebody's queue for ever.
    */
   awaitingApprovalFrom: ApproverRole | null;
+  /**
+   * FR 48d. One person answered a chain that asked for more than one. LMS 322.
+   *
+   * Set where there was nobody else to ask, and held against the decisions themselves by
+   * `leave_request_says_when_one_person_decided_it`.
+   */
+  decidedBySingleApprover: boolean;
   submittedAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -2422,7 +2470,15 @@ function theFirstDesk(chain: readonly ApproverRole[], available: DesksAvailable)
     );
   }
 
-  const routed = routeFrom({ chain, decided: [], skipped: [], available });
+  /* FR 48d. Who is at each desk decides nothing while nobody has decided, so the walk is
+     given no names rather than three lists this path would not use. LMS 322. */
+  const routed = routeFrom({
+    chain,
+    decided: [],
+    skipped: [],
+    available,
+    occupants: NO_OCCUPANTS_NAMED,
+  });
 
   if (routed.kind === 'DECIDED') {
     /* Unreachable: a non-empty chain whose first stage can be answered returns `DESK`, and

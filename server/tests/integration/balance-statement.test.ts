@@ -14,7 +14,10 @@ import {
 } from '../../src/features/balance/balance-statement.js';
 import { EmployeeNotFound } from '../../src/features/employee/employee.js';
 import type { LeaveRequest } from '../../src/features/leave-request/leave-request.js';
-import type { DesksAvailable } from '../../src/features/leave-request/routing.js';
+import {
+  type DesksAvailable,
+  NO_OCCUPANTS_NAMED,
+} from '../../src/features/leave-request/routing.js';
 import { LeaveYearNotFound } from '../../src/features/leave-year/leave-year.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
@@ -536,6 +539,8 @@ function yes(request: LeaveRequest) {
       HR: 'CAN_DECIDE',
       CEO: 'CAN_DECIDE',
     } as DesksAvailable,
+    /** FR 48d. The manager and the administrator, who are two people. LMS 322. */
+    occupants: NO_OCCUPANTS_NAMED,
     reasonForTaking: `${String(request.days)} days taken`,
     reasonForGivingBack: `${String(request.days)} days given back`,
     comment: null,

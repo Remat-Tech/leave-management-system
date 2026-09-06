@@ -1393,7 +1393,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        which is what stops it being "a way to reach the transition without passing the check
        that knows which desk FR 38a's chain has the request sitting on" — the sentence this
        file refused it with for two stories. */
-    it('and the decisions it holds are these eighteen', () => {
+    it('and the decisions it holds are these nineteen', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
         /** FR 47, LMS 324. HR's three answers, decided by one rule. */
         'answerAWithdrawal',
@@ -1410,6 +1410,8 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         /* FR 19, LMS 302. The narrowest rule here: the person planning the leave and nobody
            else, where every other read widens outwards to the manager and to HR. */
         'draft',
+        /** FR 48d, LMS 322. Nobody answers two stages of one request. */
+        'eachStageADifferentPerson',
         'notTheirOwn',
         'override',
         'queue',

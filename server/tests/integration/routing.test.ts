@@ -319,28 +319,30 @@ describe('a request whose HR stage only the requester staffs', () => {
   });
 
   /**
-   * And the two stages stay two questions even where one person answers both.
+   * And where both stages come back to one person, they are asked once. FR 48d, LMS 322.
    *
    * Ama reports to the Chief Executive, so the manager desk and the HR desk's stand-in are
-   * the same human. They are still different stages, and the routing deduplicates by *desk*
-   * rather than by person — a chain is a list of offices, and which people fill them today
-   * is not something a walk over a list of desks can or should know.
+   * the same human. LMS 320 deduplicated by desk and asked him twice; FR 48d does not, so
+   * the HR stage is answered by the desk he signed at and the request says on its face that
+   * one approver decided it. ./single-approver.test.ts is the whole of that story.
    */
-  it('falls to the Chief Executive once the manager has signed', async () => {
+  it('is settled by the manager alone where the stand-in is that same person', async () => {
     const { request } = await requests.submit(asTheHeadOfHr(), aRequest(people.headOfHr));
 
     /* Her own line manager is the Chief Executive, so the first stage is ordinary. */
     expect(request.awaitingApprovalFrom).toBe('MANAGER');
 
-    const atTheHrStage = await requests.approve(asTheChiefExecutive(), request.id);
+    const decided = await requests.approve(asTheChiefExecutive(), request.id);
 
-    expect(atTheHrStage.request.status).toBe('SUBMITTED');
-    expect(atTheHrStage.request.awaitingApprovalFrom).toBe('CEO');
-    expect(await routing.forRequest(request.id)).toMatchObject([{ stage: 'HR', routedTo: 'CEO' }]);
+    expect(decided.request.status).toBe('APPROVED');
+    expect(decided.request.decidedBySingleApprover).toBe(true);
 
-    expect((await requests.approve(asTheChiefExecutive(), request.id)).request.status).toBe(
-      'APPROVED',
-    );
+    /* The HR stage was answered by the desk that hand signed at, rather than asked again. */
+    expect(await routing.forRequest(request.id)).toMatchObject([
+      { stage: 'HR', routedTo: 'MANAGER' },
+    ]);
+
+    expect(await decisions.forRequest(request.id)).toHaveLength(1);
   });
 
   /* And with HR as the only stage, it goes straight to the Chief Executive. */

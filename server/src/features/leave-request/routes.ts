@@ -737,6 +737,8 @@ function entryAsJson(entry: RequestHistoryEntry): unknown {
     approvedBy: [...entry.progress.approvedBy],
     stillToApprove: [...entry.progress.stillToApprove],
     stagesMissing: [...entry.progress.stagesMissing],
+    /** FR 48d. One hand answered the whole chain. LMS 322. */
+    decidedBySingleApprover: entry.progress.singleApprover,
     progressInWords: entry.progress.inWords,
 
     trail: entry.trail.map(stepAsJson),

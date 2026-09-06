@@ -202,6 +202,11 @@ function asAnHrOfficer() {
   return signedInAs(people.hrOfficer, { roles: ['EMPLOYEE', 'HR_OFFICER'], isManager: false });
 }
 
+/** FR 48c, FR 48d. HR's stand-in, which is where an officer's own second stage goes. */
+function asTheChiefExecutive() {
+  return signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
+}
+
 /**
  * One approved request, agreed by every desk of annual leave's chain.
  *
@@ -443,8 +448,11 @@ describe('HR agreeing before the leave has started', () => {
       acknowledgesShortNotice: true,
     });
 
+    /* FR 48d, LMS 322. The head of HR is this officer's line manager and the whole of the HR
+       desk once she is out of it, so the second stage falls to the Chief Executive rather
+       than back to the hand that signed the first. */
     await requests.approve(asTheHeadOfHr(), request.id);
-    await requests.approve(asTheHeadOfHr(), request.id);
+    await requests.approve(asTheChiefExecutive(), request.id);
 
     await requests.askToWithdraw(asAnHrOfficer(), request.id, 'Not needed after all');
 
