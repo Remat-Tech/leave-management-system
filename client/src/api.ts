@@ -253,6 +253,8 @@ export interface Submitted {
   status: RequestStatus;
   /** FR 13, FR 32a. Whether documentation was asked of it, and so is on it. LMS 311. */
   evidenceRequired: boolean;
+  /** FR 32a, §8.6b. How many of its days went past the allowance on that certificate. LMS 312. */
+  certifiedDays: number;
   /** FR 38a. The desk it is now sitting on. */
   awaitingApprovalFrom: Desk | null;
   submittedAt: string;

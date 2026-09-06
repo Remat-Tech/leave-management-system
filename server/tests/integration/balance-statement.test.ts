@@ -484,6 +484,7 @@ async function askFor(employeeId: string, leaveTypeId: string, days: number) {
       /** FR 18, LMS 308. */
       lateEntryReason: null,
       evidenceRequired: false,
+      certifiedDays: 0,
       countingBasis: 'CALENDAR_DAYS' as const,
       days,
       calendarDays: days,

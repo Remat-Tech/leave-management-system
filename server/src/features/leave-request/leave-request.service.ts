@@ -42,6 +42,7 @@ import type { AttachmentRepository } from './attachment.db.js';
 import {
   type ApprovalProgress,
   assertDocumentationIsAttached,
+  certifiedDaysIn,
   assertItCostsSomething,
   assertShortNoticeIsAcknowledged,
   assertTheDaysAreThere,
@@ -370,6 +371,9 @@ export class LeaveRequestService {
       lateEntryReason,
       /** FR 13, FR 32a, LMS 311. Decided above, and copied onto the row it was true of. */
       evidenceRequired: grounds.length > 0,
+      /* FR 32a, §8.6b, LMS 312. How many of the days the certificate is carrying, from the
+         same reading the ground was found in. */
+      certifiedDays: certifiedDaysIn({ type, days: count.days, availableNow }),
       /* The story's third criterion, taken here and never read off the type again. */
       countingBasis: type.countingBasis,
       days: count.days,

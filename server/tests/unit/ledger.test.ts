@@ -366,6 +366,56 @@ describe('which request a movement is about', () => {
   });
 });
 
+/* --------------------------------------- days past an allowance, FR 32a. LMS 312 */
+
+describe('how many of a movement’s days were certified', () => {
+  /**
+   * The story's criterion, and why it is a part of a movement rather than one of its own:
+   * a RESERVATION of five days two of which stood on a certificate is one line in
+   * somebody's history, not two.
+   */
+  it.each(REQUEST_MOVEMENTS)('%s may carry some', (entryType) => {
+    const days = ENTRY_SIGNS[entryType] === 'ADDS' ? 5 : -5;
+
+    expect(
+      validateNewLedgerEntry({ ...soundFor(entryType), days, certifiedDays: 2 }).certifiedDays,
+    ).toBe(2);
+  });
+
+  it('and none is what an entry that says nothing carries', () => {
+    expect(validateNewLedgerEntry(SOUND).certifiedDays).toBe(0);
+  });
+
+  /* What somebody is owed is not certified by anything. */
+  it.each(LEDGER_ENTRY_TYPES.filter((type) => !REQUEST_MOVEMENTS.includes(type)))(
+    '%s moves what somebody is owed, so none of it went past an allowance',
+    (entryType) => {
+      const days = ENTRY_SIGNS[entryType] === 'CONSUMES' ? -5 : 5;
+
+      expect(
+        refusedField(() => validateNewLedgerEntry({ ...SOUND, entryType, days, certifiedDays: 1 })),
+      ).toBe('certifiedDays');
+    },
+  );
+
+  /* Part of the movement rather than beside it. `leave_ledger_entry_certified_days_are_part_of_it`. */
+  it('and cannot be more days than the movement moved', () => {
+    expect(
+      refusedField(() =>
+        validateNewLedgerEntry({ ...soundFor('RESERVATION'), days: -5, certifiedDays: 6 }),
+      ),
+    ).toBe('certifiedDays');
+  });
+
+  it.each([2.5, -1])('and %s is not a number of days past an allowance', (certifiedDays) => {
+    expect(
+      refusedField(() =>
+        validateNewLedgerEntry({ ...soundFor('RESERVATION'), days: -5, certifiedDays }),
+      ),
+    ).toBe('certifiedDays');
+  });
+});
+
 describe('whole days, and the one place a fraction belongs', () => {
   it.each(REQUEST_MOVEMENTS)('%s follows a request, so it moves whole days', (entryType) => {
     const whole = ENTRY_SIGNS[entryType] === 'ADDS' ? 5 : -5;

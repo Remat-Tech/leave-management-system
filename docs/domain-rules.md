@@ -2140,6 +2140,10 @@ The allowance stayed a threshold; what changed is that the threshold now has to 
 before the leave is asked for rather than afterwards. See [documentation that has to arrive
 with the request](#documentation-that-has-to-arrive-with-the-request).
 
+Since LMS 312 the days that went past are counted rather than merely allowed:
+`certified_days` on the request and on the movement it caused. See [sick leave beyond the
+third day](#sick-leave-beyond-the-third-day).
+
 ---
 
 ### No maximum request length
@@ -3289,6 +3293,66 @@ database, where `leave_request_draft_stays_with_whose_it_is` already held it for
 `DOCUMENTATION_REQUIRED` token as the quote's warning — so a form highlights the upload on
 both with one branch. What the quote now says is "attach it before you ask" rather than
 "have it ready", because since this story the second sentence was untrue.
+
+---
+
+### Sick leave beyond the third day
+
+**The days past the allowance are recorded as certified, and they never touch annual
+leave.** FR 32a, FR 32b, FR 33, §8.6b, LMS 312. LMS 311 made the allowance answerable — past
+it a request is refused for want of a certificate rather than for want of days. What it did
+not do is record *which* days stood on that certificate, and a sick balance of −2 says
+somebody is two days over while saying nothing about whether anybody ever produced evidence
+for them. The story's "so that" is the whole of what changed: *genuine illness is recorded
+properly.*
+
+**`certified_days` is a part of a movement rather than a movement of its own.** Splitting the
+`RESERVATION` into an ordinary half and a certified half would double every line in a
+person's history and turn `leave_request_holds_its_days` from a comparison into a sum. So
+the count rides on the entry, bounded by it —
+`leave_ledger_entry_certified_days_are_part_of_it` — and only the four movements a request
+causes may carry one, because what somebody is *owed* is not certified by anything.
+
+**It is on the ledger and not only on the request, because the ledger is the truth.** Design
+principle 1. "How much certified sickness was there this year" is a question the account
+answers by reading `DEDUCTION` less `RECALCULATION`; a figure recomputed from the balance
+would be an answer about today rather than about what the leave was allowed on.
+
+**The request carries it too, and it is frozen with the price.** The same argument
+`evidence_required` makes and for the same two reasons: the balance FR 32a judged it against
+is spent by the time anybody reads the row, and HR may reword the type's rule tomorrow.
+`leave_request_says_what_it_said` refuses to move it, so the four movements a request causes
+copy it off the row rather than working it out again.
+
+| | Says | Where it comes from |
+|---|---|---|
+| `certifiedDaysIn` | how many of *these* days are past the allowance | the same reading `documentationGroundsFor` found `PAST_THE_ALLOWANCE` in |
+| `leave_request.certified_days` | how many of them were, when the days were held | copied on at submission and frozen |
+| `leave_ledger_entry.certified_days` | how many of them this movement moved | copied off the request inside the lock |
+
+**What is left over is floored, for the reason the refusal that names a figure floors it.**
+§8.6d pro rates a mid year joiner to a fraction, and 2.5 days left is two days somebody may
+book without a certificate — so the third is certified. Telling them otherwise would be
+telling them to ask for half a day, which `requireWholeDays()` refuses.
+
+**Certified days come back first.** FR 47, LMS 324. `certifiedDaysGivenBack` is
+`min(certified, given back)`, and it is arithmetic rather than a policy: five days with two
+certified, one given back, leaves four days against an allowance of three — one still past
+it. The days that are *kept* are the ones the allowance re-absorbs first, so the ones that
+go back are the ones that were past it.
+
+**Certified days exist only where the allowance is one to be exceeded.** FR 32a is
+`exceedable_with_document` and nothing else, and design principle 5 holds in SQL:
+`refuse_certified_days_a_type_does_not_allow()` is one function attached to both tables,
+because both name a leave type and both count the same days. A type refused at its allowance
+has no days past it to certify.
+
+**And FR 33 needed nothing.** `leave_type_never_deducts_from_annual` has been a CHECK since
+the leave-type-rules migration, and every entry is filed under its own `leave_type_id`.
+What the story adds is the proof rather than the rule: five days of sick leave over the
+allowance moves the sick balance to −2 and leaves twenty days of annual leave exactly where
+they were. That is the failure this story is written against — genuine illness quietly
+eating somebody's holiday — and an absence, like FR 20a's, is a thing that has to be kept.
 
 ---
 

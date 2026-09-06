@@ -5,6 +5,8 @@ import {
   assertDocumentationIsAttached,
   assertItCostsSomething,
   assertShortNoticeIsAcknowledged,
+  certifiedDaysGivenBack,
+  certifiedDaysIn,
   type DocumentationGround,
   documentationGroundsFor,
   DocumentationNotAttached,
@@ -137,6 +139,7 @@ function aStoredRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     /** FR 18, LMS 308. */
     lateEntryReason: null,
     evidenceRequired: false,
+    certifiedDays: 0,
     countingBasis: 'WORKING_DAYS',
     days: 6,
     calendarDays: 9,
@@ -394,6 +397,59 @@ describe('when a document is asked for, and on which of the two grounds', () => 
   /* And a type that may not be exceeded is refused rather than evidenced. FR 14. */
   it('asks for nothing of a type whose allowance is a cap', () => {
     expect(documentationGroundsFor({ type: ANNUAL, days: 7, availableNow: 3 })).toEqual([]);
+  });
+});
+
+/* ------------------------------------------- certified days, FR 32a, §8.6b. LMS 312 */
+
+describe('how many of a request’s days go past the allowance', () => {
+  /**
+   * The `PAST_THE_ALLOWANCE` ground said as a number, and the story's third criterion.
+   *
+   * Five days against three left is two certified. The days inside the allowance are
+   * ordinary sick leave and are not tagged as anything.
+   */
+  it('is what is left over once the allowance is used up', () => {
+    expect(certifiedDaysIn({ type: SICK_BY_BALANCE, days: 5, availableNow: 3 })).toBe(2);
+  });
+
+  it('and is nought while the allowance covers it', () => {
+    expect(certifiedDaysIn({ type: SICK_BY_BALANCE, days: 3, availableNow: 3 })).toBe(0);
+    expect(certifiedDaysIn({ type: SICK_BY_BALANCE, days: 1, availableNow: 20 })).toBe(0);
+  });
+
+  /* §8.6b. Once the balance is below nought there is nothing left to be inside. */
+  it('and is all of them once the balance is already spent', () => {
+    expect(certifiedDaysIn({ type: SICK_BY_BALANCE, days: 2, availableNow: 0 })).toBe(2);
+    expect(certifiedDaysIn({ type: SICK_BY_BALANCE, days: 2, availableNow: -4 })).toBe(2);
+  });
+
+  /* §8.6d pro rates a joiner to a fraction, and 2.5 days left is two days askable. */
+  it('and floors a fractional balance, as the refusal that names a figure does', () => {
+    expect(certifiedDaysIn({ type: SICK_BY_BALANCE, days: 5, availableNow: 2.5 })).toBe(3);
+  });
+
+  /* FR 32a is `exceedable_with_document` and nothing else. Design principle 5. */
+  it('and a type refused at its allowance certifies nothing', () => {
+    expect(certifiedDaysIn({ type: ANNUAL, days: 7, availableNow: 3 })).toBe(0);
+    expect(certifiedDaysIn({ type: SICK_BY_LENGTH, days: 7, availableNow: 3 })).toBe(0);
+  });
+});
+
+describe('certified days given back', () => {
+  /**
+   * FR 47, LMS 324. Certified days come back first, because the days that are kept are
+   * the ones the allowance takes back first: five days with two certified, one given
+   * back, leaves four days of which one is past an allowance of three.
+   */
+  it('comes off the certified days before the ordinary ones', () => {
+    expect(certifiedDaysGivenBack(2, 1)).toBe(1);
+    expect(certifiedDaysGivenBack(2, 3)).toBe(2);
+    expect(certifiedDaysGivenBack(2, 5)).toBe(2);
+  });
+
+  it('and gives back none where none were certified', () => {
+    expect(certifiedDaysGivenBack(0, 4)).toBe(0);
   });
 });
 
@@ -777,6 +833,7 @@ describe('what a request has to say', () => {
       /** FR 18, LMS 308. Nothing to explain: this one is not a late entry. */
       lateEntryReason: null,
       evidenceRequired: false,
+      certifiedDays: 0,
       status: 'SUBMITTED',
       awaitingApprovalFrom: 'MANAGER',
       /** FR 48b. Nothing was skipped: every desk can be asked. LMS 320. */

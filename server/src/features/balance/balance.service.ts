@@ -30,6 +30,7 @@ import {
 import { type LeaveEvent, validateNewLeaveEvent } from '../leave-event/leave-event.js';
 import type { ApproverRole } from '../leave-type/approval-chain.js';
 import {
+  certifiedDaysGivenBack,
   decisionTo,
   isTheLastWord,
   type LeaveRequest,
@@ -313,6 +314,9 @@ export class BalanceService {
           ...key,
           entryType: 'RESERVATION',
           days: -days,
+          /* FR 32a, §8.6b, LMS 312. Off the row rather than worked out again: the request
+             was priced against a balance this lock is now holding still. */
+          certifiedDays: written.certifiedDays,
           reason,
           leaveRequestId: written.id,
         }),
@@ -374,6 +378,8 @@ export class BalanceService {
           ...key,
           entryType: 'RELEASE',
           days,
+          /** FR 32a, LMS 312. All of them go back, so all of the certified ones do. */
+          certifiedDays: current.certifiedDays,
           reason,
           leaveRequestId: current.id,
         }),
@@ -598,6 +604,9 @@ export class BalanceService {
                      days go into `taken`, so available does not move and the balance stops
                      saying the leave is still being decided. */
                   days: -daysToCommit(held, current.days),
+                  /* FR 32a, §8.6b, LMS 312. The story's criterion where it counts: this is
+                     the entry that says certified sickness was actually taken. */
+                  certifiedDays: current.certifiedDays,
                   reason: reasonForTaking,
                   leaveRequestId: current.id,
                 }),
@@ -608,6 +617,8 @@ export class BalanceService {
                   ...key,
                   entryType: 'RELEASE',
                   days: daysToRelease(held, current.days),
+                  /** FR 32a, LMS 312. */
+                  certifiedDays: current.certifiedDays,
                   reason: reasonForGivingBack,
                   leaveRequestId: current.id,
                 }),
@@ -811,6 +822,9 @@ export class BalanceService {
                 /* Positive. A RECALCULATION moves one bucket: the days come out of
                    `taken`, so available goes up by exactly what came back. */
                 days: daysToGiveBackFromTaken(held, days),
+                /* FR 32a, FR 47, LMS 312. Certified days come back first — the days that
+                   are kept are the ones the allowance takes back first. */
+                certifiedDays: certifiedDaysGivenBack(current.certifiedDays, days),
                 reason: reasonForGivingBack,
                 leaveRequestId: current.id,
               }),

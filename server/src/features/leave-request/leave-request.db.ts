@@ -38,6 +38,9 @@ const KEPT_ITS_DAYS_ON_APPROVAL = 'leave_request_takes_its_days';
 /** The exclusion constraint from the prevent-overlapping-requests migration. */
 const OVERLAPS_ANOTHER = 'leave_request_never_overlaps';
 
+/** The trigger from the sick-leave-beyond-the-allowance migration. FR 32a, LMS 312. */
+const NOT_EXCEEDABLE = 'leave_request_certified_days_need_an_exceedable_allowance';
+
 /** Which field a refused row is reported against. */
 const CHECKED_FIELDS: Record<string, string> = {
   leave_request_ends_after_it_starts: 'to',
@@ -50,6 +53,9 @@ const CHECKED_FIELDS: Record<string, string> = {
   leave_request_spans_its_own_dates: 'calendarDays',
   leave_request_awaiting_role_known: 'awaitingApprovalFrom',
   leave_request_waits_at_a_desk: 'awaitingApprovalFrom',
+  /** FR 32a, LMS 312. */
+  leave_request_certified_days_are_part_of_it: 'certifiedDays',
+  leave_request_certified_days_stand_on_evidence: 'certifiedDays',
 };
 
 /** Which field a missing reference is reported against. */
@@ -318,6 +324,9 @@ export class LeaveRequestRepository {
         if (constraint === ALREADY_PRICED) {
           throw new InvalidLeaveRequest('id', (error as Error).message);
         }
+        if (constraint === NOT_EXCEEDABLE) {
+          throw new InvalidLeaveRequest('certifiedDays', (error as Error).message);
+        }
 
         /* The state machine's three, and all of them are backstops rather than paths.
            `settlementTo` and `approvalTo` ask the first question inside the balance lock,
@@ -380,6 +389,10 @@ function messageFor(constraint: string): string {
         'A request that is still being decided is waiting on exactly one desk, and one ' +
         'that has been approved or has ended is waiting on none. FR 38a.'
       );
+    case 'leave_request_certified_days_are_part_of_it':
+      return 'The days past an allowance are some of a request’s days, not extra ones. FR 32a.';
+    case 'leave_request_certified_days_stand_on_evidence':
+      return 'Days past an allowance were let through on a certificate, so one was asked for.';
     default:
       return `${constraint} refused this request.`;
   }
@@ -404,6 +417,8 @@ function rowFor(request: ValidatedLeaveRequest): Insertable<LeaveRequestTable> {
     late_entry_reason: request.lateEntryReason,
     /** FR 13, FR 32a. What the evidence rule said when the days were held. LMS 311. */
     evidence_required: request.evidenceRequired,
+    /** FR 32a, §8.6b. How many of them the certificate carried. LMS 312. */
+    certified_days: request.certifiedDays,
     counting_basis: request.countingBasis,
     days: request.days,
     calendar_days: request.calendarDays,
@@ -426,6 +441,7 @@ function toRequest(row: LeaveRequestRow): LeaveRequest {
     reason: row.reason,
     lateEntryReason: row.late_entry_reason,
     evidenceRequired: row.evidence_required,
+    certifiedDays: row.certified_days,
     countingBasis: row.counting_basis as CountingBasis,
     days: row.days,
     calendarDays: row.calendar_days,
