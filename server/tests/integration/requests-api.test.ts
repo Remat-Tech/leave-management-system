@@ -659,6 +659,116 @@ describe('deciding a request', () => {
   });
 });
 
+/* ------------------------------------------------------- several at once. FR 51, LMS 328 */
+
+describe('deciding several requests at once', () => {
+  /** The story's first criterion, over the wire and off the queue's own rows. */
+  it('answers every row the queue handed out, in one press', async () => {
+    const first = await aRequest();
+    const second = await aRequest({ from: '2026-03-16', to: '2026-03-20' });
+
+    const waiting = await queueFor(people.teamLead);
+
+    const response = await post('/api/me/approvals/decisions', people.teamLead, {
+      action: 'APPROVE',
+      requests: waiting.items,
+    });
+    const answered = (await response.json()) as JsonBulk;
+
+    expect(response.status).toBe(200);
+    expect(answered.inWords).toBe('2 requests approved.');
+    expect(answered.undecided).toEqual([]);
+    expect(answered.decided.map((one) => one.requestId).sort()).toEqual([first, second].sort());
+
+    /* Each row answers exactly what the single door answers, version and all. */
+    for (const decided of answered.decided) {
+      expect(decided.awaitingApprovalFrom).toBe('HR');
+      expect(decided.decision).toMatchObject({ action: 'APPROVE', onBehalfOf: 'MANAGER' });
+      expect(typeof decided.version).toBe('string');
+    }
+  });
+
+  /**
+   * And a row somebody answered meanwhile is one item's news rather than the press's. LMS 326.
+   *
+   * 200, because the other request was decided and there is no single status the whole reply
+   * could carry. What refused it is the sentence the single door would have answered with.
+   */
+  it('and reports the ones it could not decide beside the ones it did', async () => {
+    const first = await aRequest();
+    await aRequest({ from: '2026-03-16', to: '2026-03-20' });
+
+    const waiting = await queueFor(people.teamLead);
+
+    /** Answered singly, so the version the selection is holding for it has moved on. */
+    await requests.approve(asTheirManager(), first);
+
+    const response = await post('/api/me/approvals/decisions', people.teamLead, {
+      action: 'APPROVE',
+      requests: waiting.items,
+    });
+    const answered = (await response.json()) as JsonBulk;
+
+    expect(response.status).toBe(200);
+    expect(answered.decided).toHaveLength(1);
+    expect(answered.undecided).toEqual([
+      {
+        requestId: first,
+        error: 'LeaveAlreadyDecided',
+        message: expect.stringContaining('has not been recorded') as unknown as string,
+      },
+    ]);
+  });
+
+  /* FR 39. Owed by the press, refused before any of them is decided, and beside the box. */
+  it('and refuses a batch of refusals with nothing said, deciding none of them', async () => {
+    const id = await aRequest();
+
+    const waiting = await queueFor(people.teamLead);
+
+    const response = await post('/api/me/approvals/decisions', people.teamLead, {
+      action: 'REFUSE',
+      requests: waiting.items,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: 'RefusalNeedsAComment',
+      field: 'comment',
+    });
+
+    expect((await historyFor(people.officer)).entries).toHaveLength(1);
+    expect(entryOf(await historyFor(people.officer), id).awaiting).toBe('MANAGER');
+  });
+
+  /* FR 44. And an override is decided one request at a time, which the sentence says. */
+  it('and refuses a batch of a verb that has none', async () => {
+    await aRequest();
+
+    const waiting = await queueFor(people.teamLead);
+
+    const response = await post('/api/me/approvals/decisions', people.teamLead, {
+      action: 'OVERTURN_REJECTION',
+      comment: BECAUSE_POLICY,
+      requests: waiting.items,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: 'NotABulkAction', field: 'action' });
+  });
+
+  /* And a press that selected nothing is told so rather than answered with an empty report. */
+  it('and refuses a press that named nothing', async () => {
+    const response = await post('/api/me/approvals/decisions', people.teamLead, {
+      action: 'APPROVE',
+      requests: [],
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: 'NothingToDecide', field: 'requests' });
+  });
+});
+
 /* ------------------------------------------------------------------- the year filter */
 
 describe('narrowing to one leave year', () => {
@@ -755,6 +865,14 @@ interface JsonDecided {
   };
   entryId: string | null;
   availableAfter: number;
+}
+
+/** FR 51. What one press did, request by request. LMS 328. */
+interface JsonBulk {
+  action: string;
+  inWords: string;
+  decided: JsonDecided[];
+  undecided: { requestId: string; error: string; message: string }[];
 }
 
 /** NFR DAT 02, §8.1. The rows a decision is taken from, each with its version. LMS 326. */

@@ -33,10 +33,11 @@ import { progressOfDraft } from './draft.js';
 import type { LeaveRequestDraftService } from './draft.service.js';
 import type { ApprovalDelegation } from './delegation.js';
 import type { ApprovalDelegationService } from './delegation.service.js';
-import type { LeaveRequestService } from './leave-request.service.js';
+import type { BulkDecided, LeaveRequestService } from './leave-request.service.js';
 import type { RequestFormService } from './request-form.service.js';
 import type { RequestHistoryService } from './request-history.service.js';
 import { actorOf } from '../../http/identify.js';
+import { type FailureLog, failuresToStderr, problemInABatch } from '../../http/problems.js';
 
 export interface RequestRoutes {
   history: RequestHistoryService;
@@ -50,6 +51,8 @@ export interface RequestRoutes {
   drafts: LeaveRequestDraftService;
   /** FR 49, LMS 327. Who is covering my approvals while I am away. */
   delegations: ApprovalDelegationService;
+  /** FR 51, LMS 328. Where a fault inside a batch is written down. */
+  failures?: FailureLog;
 }
 
 export function requestRoutes({
@@ -59,6 +62,7 @@ export function requestRoutes({
   queue,
   drafts,
   delegations,
+  failures = failuresToStderr(),
 }: RequestRoutes): Router {
   const routes = Router();
 
@@ -145,6 +149,33 @@ export function requestRoutes({
       .rejectionsFor(actorOf(response))
       .then((waiting) => {
         response.json(queueAsJson(waiting));
+      })
+      .catch(next);
+  });
+
+  /**
+   * Answers several of them at once. FR 51, the story's first criterion. LMS 328.
+   *
+   * `/me/approvals`, because the desks are the reader's own and there is no id to supply — the
+   * same argument the queue above makes. Every row named is decided at its own desk under its
+   * own version, so a batch reaches nothing `POST /requests/:id/approve` would not.
+   *
+   * 200 whatever the mix, and deliberately: each item carries its own answer, so a status over
+   * the whole reply would have to pick one of them to be about. What went through is `decided`
+   * and what did not is `undecided`, each with the sentence that refused it.
+   */
+  routes.post('/me/approvals/decisions', (request: Request, response: Response, next) => {
+    const sent = bodyOf(request);
+
+    void requests
+      .decideMany(actorOf(response), {
+        action: sent.action,
+        /** FR 39. One reason, on every refusal in the batch. */
+        comment: sent.comment,
+        requests: sent.requests,
+      })
+      .then((answered) => {
+        response.json(bulkAsJson(answered, request, failures));
       })
       .catch(next);
   });
@@ -989,6 +1020,25 @@ function decidedAsJson(decided: LeaveApproved): unknown {
     /** Null where this decision was not the last word and no days moved. */
     entryId: decided.entry?.id ?? null,
     availableAfter: decided.balance.available,
+  };
+}
+
+/**
+ * What one press did, request by request. FR 51. LMS 328.
+ *
+ * `decided` is exactly what each row would have answered on its own, and `undecided` is the
+ * refusal each of the others met — rendered by the same table every other refusal goes through,
+ * so a batch cannot invent a sentence the single door would not have said.
+ */
+function bulkAsJson(answered: BulkDecided, request: Request, failures: FailureLog): unknown {
+  return {
+    action: answered.action,
+    inWords: answered.inWords,
+    decided: answered.decided.map(decidedAsJson),
+    undecided: answered.undecided.map((one) => ({
+      requestId: one.requestId,
+      ...problemInABatch(one.because, { method: request.method, path: request.path }, failures),
+    })),
   };
 }
 

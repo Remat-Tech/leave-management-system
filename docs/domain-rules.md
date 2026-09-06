@@ -4305,3 +4305,63 @@ the delegate's approvals and never for their delegator's. And nothing here widen
 a chain: a delegation changes who is at a desk, never how many desks there are.
 
 ---
+
+### Clearing a queue in one press
+
+**A manager answers several requests at once, and every rule that guards one guards each
+of them.** FR 51, LMS 328. The story is a week away and a queue on the way back, and what
+it asks for is a press rather than an afternoon.
+
+**A batch is not a second way of deciding.** `decideMany` validates the press and then calls
+`decide` once per row — the same method the single door calls — so the desk, the chain, the
+version, the balance lock and the notice are all what they already were. Nothing about a
+selection reaches a request that a click on that request would not have reached. The whole of
+the story's second criterion follows from that: `notTheirOwn` is asked of every item, so the
+approver's own leave among nine of their team's is refused on its own and the nine go through.
+
+**One row that cannot be decided does not stop the rest**, and that is the shape the story
+turns on. A queue is read once and answered a minute later, so by the time the press lands one
+row has been withdrawn, another was answered by the second HR officer, and a third needs the
+override FR 44 will not let a plain approval make. Rolling the press back for any of those
+would mean a manager pressing again and again and never being told which. So the reply is a
+report: `decided` carries what a single decision would have answered for each row that went
+through, and `undecided` carries the others with the refusal each met — rendered by the same
+`REFUSED_BY_A_RULE` table every other refusal in the system goes through, so a batch cannot
+invent a sentence the single door would not have said.
+
+That is also why the reply is a 200 whatever the mix. Each item has its own answer, and a
+status over the whole reply would have to pick one of them to be about.
+
+**Sequential, and that is load bearing.** Every decision takes the balance lock and then the
+request — the order [two approvers deciding at
+once](#two-approvers-deciding-at-once) fixed — and running the rows of one press at once would
+be those two locks in as many orders as there are rows. A batch is slower than a parallel one
+would be, and it is a batch of transactions rather than one transaction: a press that decided
+ten requests atomically would put ten balances and ten request rows under one lock for its
+whole length, and a failure at the tenth would unsay nine decisions that were correct.
+
+| | Says | Why there |
+|---|---|---|
+| approve and refuse only | an override is reasoned about one request at a time | FR 44's justification is about *that* request, not the ten beside it |
+| one reason for the batch | a refusal says why, and the words go on every decision in it | FR 39, asked once and refused before any row is read |
+| at most fifty | a queue this long is cleared in two goes | each row is a transaction of its own, and one press should not hold a connection for minutes |
+| the same request twice is one decision | a selection is a set of rows | the second mention would have lost to the first anyway, at `leave_request_decision_once_per_desk` |
+
+**The versions are per row**, which is what keeps LMS 326 working through a press. Each item
+carries the version its queue row handed out, so a row somebody answered while the queue was
+open is refused as that row rather than as the batch — the loser is still told by name who got
+there first.
+
+**A fault among them is one item's answer too.** The alternative is throwing the report away
+after decisions have committed and notices have gone out, which would leave the manager
+knowing only that something went wrong and not which nine of their ten went through. It is
+written to the same log a five hundred goes to, so it is still a bug somebody sees.
+
+**What is deliberately not here.** There is no bulk withdrawal, cancellation or reroute: FR 51
+is about an approver's queue. Nothing here changes what a decision is, so a batch writes no row
+of its own — a press leaves ten ordinary decisions on the record, each attributed to the hand
+that made it, and afterwards it is not readable as a batch at all. That is intended. The
+account of why leave was refused is the comment, and ten requests refused for one reason all
+carry that reason.
+
+---

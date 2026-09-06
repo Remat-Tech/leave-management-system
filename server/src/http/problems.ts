@@ -105,10 +105,36 @@ export function problemFor(error: unknown): { status: number; body: Problem } {
 
   const refusal = REFUSED_BY_A_RULE[error.name];
   if (refusal !== undefined) {
-    return { status: refusal, body: { error: error.name, message: error.message } };
+    /* The field where the rule named one — `RefusalNeedsAComment` names the box that was left
+       blank. NFR USA 03, the same reason the `Invalid` family above carries it. */
+    return {
+      status: refusal,
+      body: { error: error.name, message: error.message, field: fieldOf(error) },
+    };
   }
 
   return unexpected();
+}
+
+/**
+ * One item's refusal inside a batch, with a fault among them written down. FR 51, LMS 328.
+ *
+ * A batch answers each row on its own, so a refusal is that row's body rather than the whole
+ * reply's status. The log is what {@link answerProblems} would have done: a five hundred that
+ * is reported instead of thrown is still a five hundred somebody has to see.
+ */
+export function problemInABatch(
+  error: unknown,
+  where: { method: string; path: string },
+  log: FailureLog = failuresToStderr(),
+): Problem {
+  const { status, body } = problemFor(error);
+
+  if (status >= 500) {
+    log.record({ at: new Date(), method: where.method, path: where.path, error });
+  }
+
+  return body;
 }
 
 /**
@@ -186,6 +212,13 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
    * request, and the same request goes through the moment the certificate is on it.
    */
   DocumentationNotAttached: 400,
+
+  /** FR 51. The other verb is the fix; an override is decided one request at a time. LMS 328. */
+  NotABulkAction: 400,
+  /** FR 51. Nothing was selected, and the selection is the fix. LMS 328. */
+  NothingToDecide: 400,
+  /** FR 51. Fewer rows is the fix, and the message names how many. LMS 328. */
+  TooManyToDecideAtOnce: 400,
 
   /** FR 44. There is nothing on this request to reverse. LMS 318. */
   NothingToOverturn: 409,
