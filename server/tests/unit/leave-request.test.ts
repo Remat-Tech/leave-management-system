@@ -1778,6 +1778,7 @@ describe('a decision that lost the race', () => {
     onBehalfOf: 'MANAGER',
     comment: null,
     overridesDecisionId: null,
+    delegatedFor: null,
     decidedBy: 'Kofi Boateng',
     decidedByEmployeeId: '3',
     decidedAt: new Date('2026-02-10T09:00:00Z'),

@@ -116,6 +116,8 @@ function rowFor(decision: ValidatedDecision): Insertable<LeaveRequestDecisionTab
     comment: decision.comment,
     /** FR 44. */
     overrides_decision_id: decision.overridesDecisionId,
+    /** FR 49, FR 52, LMS 327. */
+    delegated_for_employee_id: decision.delegatedFor,
   };
 }
 
@@ -127,6 +129,8 @@ function toDecision(row: DecisionRow): LeaveDecision {
     onBehalfOf: row.on_behalf_of as ApproverRole,
     comment: row.comment,
     overridesDecisionId: row.overrides_decision_id,
+    /** FR 49, FR 52, LMS 327. */
+    delegatedFor: row.delegated_for_employee_id,
     decidedBy: row.decided_by,
     decidedByEmployeeId: row.decided_by_employee_id,
     decidedAt: row.decided_at,

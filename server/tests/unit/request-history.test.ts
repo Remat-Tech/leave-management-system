@@ -512,6 +512,7 @@ function decision(changes: Partial<LeaveDecision>): LeaveDecision {
     comment: null,
     /** FR 44. Null on everything that is not an override. LMS 318. */
     overridesDecisionId: null,
+    delegatedFor: null,
     /* What `signedInAs` actually writes into the column — a handle for a log rather than a
        name. Fixtures carrying names would pass whether or not anything resolved them. */
     decidedBy: 'employee 2',

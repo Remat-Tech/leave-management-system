@@ -58,9 +58,9 @@ export function theSystem(purpose: string): Actor {
   };
 }
 
-/** Whether the actor holds any of these roles. */
-export function holdsAny(actor: Actor, ...codes: readonly RoleCode[]): boolean {
-  return codes.some((code) => actor.roles.includes(code));
+/** Whether these roles include any of those. An `Authority`, so a delegator's answer too. FR 49. */
+export function holdsAny(who: Authority, ...codes: readonly RoleCode[]): boolean {
+  return codes.some((code) => who.roles.includes(code));
 }
 
 /**

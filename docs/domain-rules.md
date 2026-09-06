@@ -4219,3 +4219,89 @@ and `daysToCommit` refuses to take more out of a hold than is in it. What this s
 that the second approver never gets that far, and is told why.
 
 ---
+
+### Approvals handed to a colleague
+
+**An approver nominates somebody to answer for them over a date range, and every decision
+made under it says whose absence it covered.** FR 49, §8.6a, LMS 327.
+[LMS 320](#routing-round-an-approver-who-cannot-decide) routed round a desk that is *empty*
+and said in as many words that cover while an approver is themselves away "is a different
+question". This is that question: the desk is staffed, its occupant is on a beach, and the
+team waits.
+
+**A delegation is of a person, never of a desk**, and that is the whole design. The three
+desks resolve to somebody three different ways, and none of them can be handed over as
+itself — moving a reporting line moves the person's own leave and their chart entry with it,
+and granting an HR role hands over every record in the company and keeps it after the
+fortnight is out. So the row says *whatever I answer, they answer for me, between these two
+dates*, and which desks that reaches is worked out from what the approver holds on the day a
+request arrives.
+
+That is one function rather than two. `desksStaffedBy` already turned an authority into a
+list of desks; it now does it for the actor and for each of their delegators and unions the
+answers, so a delegate's desks are read from the delegator's roles and reporting line rather
+than copied onto the nomination. An officer who loses their HR role on Tuesday hands nothing
+on from Tuesday.
+
+**`MANAGER` is narrowed by id, and that narrowing is the story's sharpest edge.** That desk
+is a relationship, so a delegate of one manager answers for *that manager's* reports and
+nobody else's. `DesksStaffed.managerId` became `managerIds` — the approver's own, and every
+manager covered for — and the queue's `WHERE` is built from the list. Without it a delegation
+would quietly widen into every team in the company.
+
+**A delegation carries no say over the delegator's own leave.** FR 48, and it is the one path
+[LMS 319](#nobody-approves-their-own-request) could have been walked round: the lone HR
+officer's own unpaid leave stands at the desk she staffs, and a delegate of hers answering it
+would be her own request decided by a standing she granted this morning. Refused three times
+— in `delegationsThatBearOn` before the desk's occupants are worked out, in the policy where
+the answer binds whoever assembled the facts, and by
+`leave_request_never_decided_for_the_requester` on every connection.
+
+**And one hand is still one hand.** A delegate who answers the manager's stage and then holds
+an HR role of their own is one person signing twice, which `eachStageADifferentPerson` already
+refuses — `decidedBy` compares ids and knows nothing about hats. FR 48d needed no change.
+
+| | Says | Held by |
+|---|---|---|
+| one delegate at a time | two people holding one person's approvals is a decision recorded under whichever pressed first | `approval_delegation_one_delegate_at_a_time`, a GiST exclusion |
+| never yourself | a delegation to yourself hands nothing to anybody | `approval_delegation_is_somebody_else` |
+| ended, never edited | a delegation rewritten would rewrite what every decision made under it was explained by | `approval_delegation_is_never_rewritten` |
+| cover rather than an arrangement | a permanent change of approver is a change to a reporting line or a role, and both move the desk | a year's cap in `validateNewDelegation` |
+
+**Ending one is wider than making one, and the asymmetry is the point.** Nominating is the
+approver's own act — HR handing out somebody else's authority to decide leave is a power
+nobody asked for. Ending is theirs or HR's, because taking authority away is the safe
+direction to be wrong in when the approver is unreachable, and because a fortnight handed to
+the wrong person otherwise has no remedy at all. Being the *delegate* is standing to do
+neither.
+
+**The ledger door was widened by one clause**, and it had to be: `ledgerPolicy.commit` admits
+the line manager, the roles that read every record and FR 04's seat, and a delegate is none of
+those. `standsInForAnApprover` asks whether they answer *any* desk of this request for a
+colleague — deliberately weaker than the desk question, because it is asked before the walk
+has settled which desk binds, and `leaveRequestPolicy.decide` asks the sharp one inside the
+lock.
+
+**The decision records both**, which is the story's third criterion and one column.
+`decided_by_employee_id` was already the hand; `delegated_for_employee_id` is the approver
+whose absence it covered, null on an ordinary decision where the two would say the same thing
+twice. It is resolved against `outcome.by` — the desk the walk found inside the lock — rather
+than the desk a screen was showing, for the reason the desk itself is: a decision filed under
+a stage somebody was looking at a minute ago is a record of them signing for a desk they were
+not at.
+
+**And the queue says whose row it is.** `answeringFor` names the colleague being covered for,
+or null where the desk is the reader's own — the same resolution `answeredOnBehalfOf` makes at
+the decide door, from the other side. A delegate looking at a queue full of somebody else's
+team should be told that rather than left to infer it.
+
+**What is deliberately not here.** The delegate is not *told* they have been nominated: FR 59
+owns notification for a request's life and there is no criterion here asking for one, so the
+story that wants it adds an event to `NOTICE_EVENTS` and a call beside `nominate`.
+Chained delegation is not here either and is refused by construction rather than by a rule —
+resolution is one deep, exactly as [FR 48b's stand-in ladder
+is](#routing-round-an-approver-who-cannot-decide), so a delegate's own delegate answers for
+the delegate's approvals and never for their delegator's. And nothing here widens or shortens
+a chain: a delegation changes who is at a desk, never how many desks there are.
+
+---

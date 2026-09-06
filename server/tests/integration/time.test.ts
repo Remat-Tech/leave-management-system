@@ -177,12 +177,15 @@ describe('the columns', () => {
      arrive — FR 19's whole sentence. They are days for the reason the request's own two
      are: a draft becomes a request by handing these across unchanged, so a zone creeping
      in here would move the leave by a day at the moment somebody committed to it. */
-  it('the thirteen dates there are today are the ones expected', async () => {
+  it('the fifteen dates there are today are the ones expected', async () => {
     const dates = (await temporalColumns())
       .filter((column) => column.data_type === 'date')
       .map((column) => `${column.table_name}.${column.column_name}`);
 
     expect(dates).toEqual([
+      /** FR 49, LMS 327. The days a delegate answers for somebody. */
+      'approval_delegation.ends_on',
+      'approval_delegation.starts_on',
       'employee.exit_date',
       'employee.start_date',
       'holiday.holiday_date',

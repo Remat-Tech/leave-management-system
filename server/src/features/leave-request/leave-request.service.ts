@@ -3,7 +3,9 @@
  */
 
 import type { Actor } from '../../auth/actor.js';
-import { leaveRequestPolicy } from './policy.js';
+import { desksHandedTo, leaveRequestPolicy } from './policy.js';
+import { delegatesOf, delegationsThatBearOn } from './delegation.js';
+import type { ApprovalDelegationService } from './delegation.service.js';
 import type { ApproverRole } from '../leave-type/approval-chain.js';
 import type { BalanceOwner } from '../balance/policy.js';
 import type { Decision, Guard } from '../../auth/policy.js';
@@ -201,6 +203,14 @@ export class LeaveRequestService {
      * The one question asked of it: is there anybody in HR who is not the person asking.
      */
     private readonly roles: RoleRepository,
+    /**
+     * Who is covering for an approver who is away. FR 49, §8.6a, LMS 327.
+     *
+     * Beside `roles` for the same reason: a delegate is at a desk, so it is one more question
+     * about who can be asked there. A service rather than the repository, because what a
+     * delegation reaches depends on what its approver holds today.
+     */
+    private readonly delegations: ApprovalDelegationService,
     /**
      * Who the `CEO` desk resolves to. FR 48c, LMS 321.
      *
@@ -644,10 +654,18 @@ export class LeaveRequestService {
     /** FR 04, FR 48b, FR 48d. Who staffs each desk, and who FR 04's seat is. LMS 320, LMS 322. */
     const { available, occupants, chiefExecutiveId } = await this.whoCanDecide(employee);
 
+    /** FR 49, LMS 327. Whose approvals this actor answers today, if anybody's. */
+    const standingIn = desksHandedTo(
+      actor,
+      chiefExecutiveId,
+      await this.delegations.standingInFor(actor.employeeId),
+    );
+
     const standing = leaveRequestPolicy.decide(actor, action, {
       ...owner,
       awaiting: request.awaitingApprovalFrom,
       chiefExecutiveId,
+      standingIn,
     });
 
     if (!standing.allowed) {
@@ -704,6 +722,8 @@ export class LeaveRequestService {
       chiefExecutiveId,
       available,
       occupants,
+      /** FR 49, LMS 327. Carried into the lock, where the desk it answers for is settled. */
+      standingIn,
       comment,
       overturns,
       /** NFR DAT 02, §8.1. Carried into the lock, where the same question binds. LMS 326. */
@@ -1319,7 +1339,7 @@ export class LeaveRequestService {
       this.employeesInHr(),
     ]);
 
-    const atTheDesk: Record<ApproverRole, string[]> = {
+    const themselves: Record<ApproverRole, string[]> = {
       /** FR 04. A reporting line, never a role. */
       MANAGER: stillHere(manager),
       /** Two role codes staff one desk. FR 38a. */
@@ -1327,6 +1347,19 @@ export class LeaveRequestService {
       /** FR 48c. A setting, never a job title. */
       CEO: stillHere(chiefExecutive),
     };
+
+    /* FR 49, LMS 327. Whoever is covering for the people at those desks is at them too, so
+       the walk finds a desk answerable where its occupant is away. A delegation of the
+       requester's own carries nothing, which is LMS 319 read as a fact about the desk. */
+    const covering = delegationsThatBearOn(
+      await this.delegations.delegatesAt([...new Set(Object.values(themselves).flat())]),
+      employee.id,
+    );
+
+    const atTheDesk: DeskOccupants = deskOccupants((desk) => [
+      ...themselves[desk],
+      ...delegatesOf(covering, themselves[desk]),
+    ]);
 
     return {
       available: desksAvailable((desk) => standingOf(atTheDesk[desk], employee.id)),

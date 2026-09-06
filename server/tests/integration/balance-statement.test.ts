@@ -541,6 +541,8 @@ function yes(request: LeaveRequest) {
     } as DesksAvailable,
     /** FR 48d. The manager and the administrator, who are two people. LMS 322. */
     occupants: NO_OCCUPANTS_NAMED,
+    /** FR 49, LMS 327. Nobody is covering for anybody here. */
+    standingIn: [],
     reasonForTaking: `${String(request.days)} days taken`,
     reasonForGivingBack: `${String(request.days)} days given back`,
     comment: null,

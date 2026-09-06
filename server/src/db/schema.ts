@@ -373,6 +373,8 @@ export interface LeaveRequestDecisionTable {
   comment: ColumnType<string | null, string | null, never>;
   /** The decision this one reverses. FR 44, §7.2, LMS 318. */
   overrides_decision_id: ColumnType<string | null, string | null, never>;
+  /** FR 49, FR 52. Whose approvals were answered, null where the decider's own. LMS 327. */
+  delegated_for_employee_id: ColumnType<string | null, string | null, never>;
   decided_by: ColumnType<string, never, never>;
   decided_by_employee_id: ColumnType<string | null, never, never>;
   decided_at: Timestamp;
@@ -425,6 +427,26 @@ export interface LeaveRequestReassignmentTable {
   recorded_at: Timestamp;
 }
 
+/** One approver's approvals, handed to a colleague for a date range. FR 49, §8.6a, LMS 327. */
+export interface ApprovalDelegationTable {
+  id: Generated<string>;
+  /** Whose approvals these are, and who answers them meanwhile. */
+  approver_employee_id: ColumnType<string, string, never>;
+  delegate_employee_id: ColumnType<string, string, never>;
+  /** Inclusive at both ends. NFR DAT 03. */
+  starts_on: ColumnType<string, string, never>;
+  ends_on: ColumnType<string, string, never>;
+  /** NFR USA 03. */
+  because: ColumnType<string | null, string | null, never>;
+  /* Ended early. The only update the row takes, and the trigger stamps the other two. */
+  revoked_at: ColumnType<Date | null, never, Date | null>;
+  revoked_by: ColumnType<string | null, never, never>;
+  revoked_by_employee_id: ColumnType<string | null, never, never>;
+  nominated_by: ColumnType<string, never, never>;
+  nominated_by_employee_id: ColumnType<string | null, never, never>;
+  nominated_at: Timestamp;
+}
+
 /** What the company itself is configured as. FR 48c, §4.3.1, LMS 321. */
 export interface OrganisationSettingTable {
   id: Generated<string>;
@@ -452,6 +474,8 @@ export interface NotificationTable {
 
 export interface Database {
   app_user: AppUserTable;
+  /** FR 49, LMS 327. */
+  approval_delegation: ApprovalDelegationTable;
   audit_log: AuditLogTable;
   balances_that_disagree_with_the_ledger: BalanceDisagreementView;
   department: DepartmentTable;

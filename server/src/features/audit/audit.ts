@@ -33,6 +33,8 @@ export const AUDITED_ENTITIES = [
   'leave_request',
   /** LMS 321. */
   'organisation_setting',
+  /** FR 49, LMS 327. */
+  'approval_delegation',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];

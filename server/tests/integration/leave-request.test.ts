@@ -57,6 +57,7 @@ import { NotificationService } from '../../src/features/notification/notificatio
 import { recordingDenials } from '../support/recording-denials.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { delegationService } from '../support/delegations.js';
 
 /**
  * Asking for leave, against a real database. FR 10, FR 11, §8. LMS 301.
@@ -171,6 +172,8 @@ beforeAll(async () => {
     /** FR 13, LMS 311. */
     attachments,
     new RoleRepository(db),
+    /** FR 49, LMS 327. */
+    delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
     /* FR 59, LMS 329. Every verb in the service now tells the requester afterwards, and this

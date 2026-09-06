@@ -20,6 +20,7 @@ import type { LeaveRequestService } from '../features/leave-request/leave-reques
 import type { LeaveTypeRepository } from '../features/leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../features/leave-year/leave-year.db.js';
 import type { OrganisationRepository } from '../features/organisation/organisation.db.js';
+import type { ApprovalDelegationService } from '../features/leave-request/delegation.service.js';
 import type { RoleRepository } from '../features/role/role.db.js';
 import type { SignInAccountRepository } from '../features/sign-in/sign-in-account.db.js';
 import type { AttachmentRepository } from '../features/leave-request/attachment.db.js';
@@ -70,6 +71,8 @@ export interface Application {
   scanner: Scanner;
   accounts: SignInAccountRepository;
   roles: RoleRepository;
+  /** FR 49. Who is covering for an approver who is away. LMS 327. */
+  delegations: ApprovalDelegationService;
   /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
   organisation: OrganisationRepository;
   /** Where a 500 is written down. */
@@ -155,7 +158,11 @@ export function buildApp(parts: Application): Express {
         parts.balances,
         parts.types,
         parts.years,
+        /** FR 49, LMS 327. */
+        parts.delegations,
       ),
+      /** FR 49, LMS 327. */
+      delegations: parts.delegations,
       /* FR 19, LMS 302. A draft holds nothing, so this needs no transaction and no
          balance — but finishing one is an ordinary submission, so it is handed the same
          write door rather than a second way into `leave_request`. */
@@ -180,6 +187,7 @@ export function buildApp(parts: Application): Express {
         parts.employees,
         parts.types,
         parts.organisation,
+        parts.delegations,
         parts.storage,
         parts.scanner,
       ),

@@ -4,6 +4,11 @@
 
 import { type ApproverRole, APPROVER_ROLES } from '../leave-type/approval-chain.js';
 import { type DesksStaffed, staffsAnyDesk } from './approver-queue.js';
+import {
+  type DelegatedApprover,
+  type DelegatedDesks,
+  delegationsThatBearOn,
+} from './delegation.js';
 import { type DecidingAction, isADecision, type OverridingAction } from './leave-decision.js';
 import { type RequestAction, type Standing, standingsFor } from './leave-request.js';
 import { type DeskDecision, decidedBy } from './routing.js';
@@ -11,9 +16,17 @@ import { isAnAnswer, type WithdrawalAnswer } from './withdrawal.js';
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import type { BalanceOwner } from '../balance/policy.js';
 import { type Decision, policyFor } from '../../auth/policy.js';
-import { APPROVES_AS_HR, MAINTAINS_EMPLOYEE_RECORDS, READS_EVERY_RECORD } from '../role/roles.js';
+import {
+  APPROVES_AS_HR,
+  type Authority,
+  MAINTAINS_EMPLOYEE_RECORDS,
+  READS_EVERY_RECORD,
+} from '../role/roles.js';
 
 const about = policyFor('leave request');
+
+/** FR 49, LMS 327. */
+const aboutDelegation = policyFor('approval delegation');
 
 /** Everything a decision about a request is made from, beyond who is asking. §6, §10., LMS 314. */
 export interface RequestAtADesk extends BalanceOwner {
@@ -21,10 +34,19 @@ export interface RequestAtADesk extends BalanceOwner {
   awaiting: ApproverRole | null;
   /** FR 48c. */
   chiefExecutiveId: string | null;
+  /**
+   * FR 49. What colleagues have handed to whoever is asking, in force today. LMS 327.
+   *
+   * The one field here that is about the asker rather than the request: which desks a
+   * delegation reaches is a question about the delegator's roles and reporting line, and
+   * only the caller can read those.
+   */
+  standingIn: readonly DelegatedDesks[];
 }
 
 /** The facts a standing may be decided from, whether or not the caller has all of them. LMS 313. */
-type StandingFacts = BalanceOwner & Partial<Pick<RequestAtADesk, 'awaiting' | 'chiefExecutiveId'>>;
+type StandingFacts = BalanceOwner &
+  Partial<Pick<RequestAtADesk, 'awaiting' | 'chiefExecutiveId' | 'standingIn'>>;
 
 /** Which roles satisfy each standing the transition table names. §6, §10., LMS 313. */
 function hasStanding(actor: Actor, subject: StandingFacts, standing: Standing): boolean {
@@ -88,9 +110,16 @@ function eachStageADifferentPerson(
 }
 
 /**
- * Whether this actor is the person the chain's current desk resolves to. FR 38a, FR 48, FR 48c, LMS 314, LMS 321.
+ * Whether this actor answers at the desk the request is sitting on. FR 38a, FR 48, FR 48c, FR 49, LMS 314, LMS 321, LMS 327.
+ *
+ * In their own right, or for a colleague who handed their approvals over.
  */
 function isAt(actor: Actor, subject: StandingFacts): boolean {
+  return isThereThemselves(actor, subject) || whoTheyAnswerFor(subject) !== null;
+}
+
+/** The same, without the delegations: this actor is the desk. FR 38a, FR 48c, LMS 314, LMS 321. */
+function isThereThemselves(actor: Actor, subject: StandingFacts): boolean {
   switch (subject.awaiting) {
     case 'MANAGER':
       return isSelf(actor, subject.managerId);
@@ -101,6 +130,48 @@ function isAt(actor: Actor, subject: StandingFacts): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * The colleague whose approvals this desk is being answered for, or null. FR 49, FR 52, LMS 327.
+ *
+ * `MANAGER` is narrowed to the requester's own line, because that desk is a relationship: a
+ * delegate of one manager has no standing over another manager's reports. And a delegation
+ * never carries a say over the delegator's own leave — {@link delegationsThatBearOn}, asked
+ * again here because this is the answer that binds whoever assembled the facts. FR 48.
+ */
+function whoTheyAnswerFor(subject: StandingFacts): string | null {
+  const desk = subject.awaiting;
+
+  if (desk === null || desk === undefined) {
+    return null;
+  }
+
+  const bearing = delegationsThatBearOn(subject.standingIn ?? [], subject.employeeId);
+
+  return (
+    bearing.find(
+      (one) =>
+        one.desks.includes(desk) && (desk !== 'MANAGER' || one.approverId === subject.managerId),
+    )?.approverId ?? null
+  );
+}
+
+/**
+ * Whose approvals a decision at this desk answers, or null where the decider's own. FR 49, FR 52, LMS 327.
+ *
+ * What `leave_request_decision.delegated_for_employee_id` is written from. The desk is passed
+ * rather than read off the request, because the one that binds is the desk the walk found
+ * inside the lock.
+ */
+export function answeredOnBehalfOf(
+  actor: Actor,
+  desk: ApproverRole,
+  subject: RequestAtADesk,
+): string | null {
+  const atThisDesk = { ...subject, awaiting: desk };
+
+  return isThereThemselves(actor, atThisDesk) ? null : whoTheyAnswerFor(atThisDesk);
 }
 
 /**
@@ -115,25 +186,81 @@ function isAt(actor: Actor, subject: StandingFacts): boolean {
  * words. `CEO` takes the configured id because FR 48c makes it a setting rather than a role or
  * a reporting line; a null is nobody, as {@link isSelf} answers.
  */
-export function desksStaffedBy(actor: Actor, chiefExecutiveId: string | null): DesksStaffed {
-  const desks = APPROVER_ROLES.filter((desk) => {
-    switch (desk) {
-      case 'MANAGER':
-        return actor.isManager;
-      case 'HR':
-        return holdsAny(actor, ...APPROVES_AS_HR);
-      default:
-        return isSelf(actor, chiefExecutiveId);
-    }
-  });
+export function desksStaffedBy(
+  actor: Actor,
+  chiefExecutiveId: string | null,
+  /** FR 49. What colleagues have handed over to them, in force today. LMS 327. */
+  delegated: readonly DelegatedApprover[] = [],
+): DesksStaffed {
+  const own = desksOf(actor.employeeId, actor, chiefExecutiveId);
+
+  /* Read through the same function, so a delegate's desks are whatever their delegator's
+     roles and reporting line say — never a copy taken when the nomination was written. */
+  const handed = delegated
+    .map((one) => ({
+      approverId: one.approverId,
+      desks: desksOf(one.approverId, one, chiefExecutiveId),
+    }))
+    .filter((one) => one.desks.length > 0);
 
   return {
-    desks,
-    /* The manager's desk covers this person's own reports and nobody else's, so the queue's
-       query needs their id beside the desk rather than the desk alone. Null where they are not
-       a manager at all, so that a caller cannot narrow by somebody who manages nobody. */
-    managerId: desks.includes('MANAGER') ? actor.employeeId : null,
+    desks: APPROVER_ROLES.filter(
+      (desk) => own.includes(desk) || handed.some((one) => one.desks.includes(desk)),
+    ),
+    own,
+    /* The manager's desk covers one person's own reports and nobody else's, so the queue's
+       query needs the ids beside the desk rather than the desk alone. Empty where nobody
+       whose desks these are manages anybody, so a caller cannot narrow by nothing. */
+    managerIds: [
+      ...(own.includes('MANAGER') && actor.employeeId !== null ? [actor.employeeId] : []),
+      ...handed.filter((one) => one.desks.includes('MANAGER')).map((one) => one.approverId),
+    ],
+    delegated: handed,
   };
+}
+
+/**
+ * Whether this actor answers any desk of this request for a colleague. FR 49, LMS 327.
+ *
+ * What the ledger door is widened by. It is asked before the walk has settled which desk
+ * binds, so it asks about every desk rather than one: standing to move this balance at all
+ * is a weaker question than standing to answer the stage it is sitting on, and
+ * {@link leaveRequestPolicy.decide} asks that one inside the lock.
+ */
+export function standsInForAnApprover(subject: RequestAtADesk): boolean {
+  return APPROVER_ROLES.some((desk) => whoTheyAnswerFor({ ...subject, awaiting: desk }) !== null);
+}
+
+/**
+ * The desks colleagues have handed to this actor, as {@link RequestAtADesk.standingIn}. FR 49, LMS 327.
+ *
+ * {@link desksStaffedBy}'s delegated half, so the queue and the decide door work a delegate's
+ * desks out the same way.
+ */
+export function desksHandedTo(
+  actor: Actor,
+  chiefExecutiveId: string | null,
+  delegated: readonly DelegatedApprover[],
+): readonly DelegatedDesks[] {
+  return desksStaffedBy(actor, chiefExecutiveId, delegated).delegated;
+}
+
+/** One person's desks, from what they hold and who they are. FR 38a, FR 04, FR 48c. */
+function desksOf(
+  employeeId: string | null,
+  authority: Authority,
+  chiefExecutiveId: string | null,
+): ApproverRole[] {
+  return APPROVER_ROLES.filter((desk) => {
+    switch (desk) {
+      case 'MANAGER':
+        return authority.isManager;
+      case 'HR':
+        return holdsAny(authority, ...APPROVES_AS_HR);
+      default:
+        return employeeId !== null && employeeId === chiefExecutiveId;
+    }
+  });
 }
 
 /** Whether this actor may make this move, decided against the table. §6., LMS 313. */
@@ -472,6 +599,70 @@ export const leaveRequestPolicy = {
           'is not the person who asked for the leave',
           'The reason on a request is the account given by the person who asked for it, ' +
             'and it is what an approver decides on. Only they may change it.',
+        );
+  },
+};
+
+/** Handing your approvals to a colleague, and taking them back. FR 49, §8.6a, §10., LMS 327. */
+export const approvalDelegationPolicy = {
+  resource: aboutDelegation.resource,
+
+  /**
+   * Nominating a delegate. FR 49.
+   *
+   * The approver's own act and nobody else's, which is the narrowness `askToWithdraw` keeps
+   * and for the same reason: handing out somebody else's approval authority is a power
+   * nobody asked for, and the story is an approver planning their own absence.
+   */
+  nominate(actor: Actor, approverId: string): Decision {
+    return isSelf(actor, approverId)
+      ? aboutDelegation.allow(actor, 'nominate', approverId)
+      : aboutDelegation.refuseOpenly(
+          actor,
+          'nominate',
+          approverId,
+          'is not the approver whose approvals these are',
+          'A delegate is nominated by the approver whose approvals are being handed over. ' +
+            'Nobody hands out somebody else’s authority to decide leave. FR 49.',
+        );
+  },
+
+  /**
+   * Ending one. FR 49.
+   *
+   * Wider than {@link nominate} by one standing, and deliberately: HR cannot give an
+   * approver's authority away and can take it back, because taking authority away is the
+   * safe direction to be wrong in when the approver is unreachable.
+   */
+  revoke(actor: Actor, approverId: string): Decision {
+    return isSelf(actor, approverId) || holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)
+      ? aboutDelegation.allow(actor, 'revoke', approverId)
+      : aboutDelegation.refuseOpenly(
+          actor,
+          'revoke',
+          approverId,
+          'is neither the approver nor a role that maintains leave for the company',
+          'A delegation is ended by the approver who nominated it, or by HR. Being the ' +
+            'delegate is not standing to end it — hand the requests back by deciding them ' +
+            'or by asking them to. FR 49.',
+        );
+  },
+
+  /**
+   * Reading what somebody has handed over, or been handed. FR 49.
+   *
+   * Either end of it, because a delegate has to be able to see what they are answering for,
+   * and a role that reads every record. Refused silently, as `read` is.
+   */
+  read(actor: Actor, employeeId: string): Decision {
+    return isSelf(actor, employeeId) || holdsAny(actor, ...READS_EVERY_RECORD)
+      ? aboutDelegation.allow(actor, 'read', employeeId)
+      : aboutDelegation.refuse(
+          actor,
+          'read',
+          employeeId,
+          'is not the person whose delegations these are, and holds no role that reads ' +
+            'everybody',
         );
   },
 };

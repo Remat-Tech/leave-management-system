@@ -91,6 +91,8 @@ export const ledgerPolicy = {
     owner: BalanceOwner,
     /** FR 04. */
     chiefExecutiveId: string | null = null,
+    /** FR 49. Whether a colleague handed them a desk of this request. LMS 327. */
+    standsInForAnApprover = false,
   ): Decision {
     if (isSelf(actor, owner.employeeId)) {
       return about.refuseOpenly(
@@ -105,7 +107,9 @@ export const ledgerPolicy = {
     if (
       isSelf(actor, owner.managerId) ||
       isSelf(actor, chiefExecutiveId) ||
-      holdsAny(actor, ...READS_EVERY_RECORD)
+      holdsAny(actor, ...READS_EVERY_RECORD) ||
+      /** FR 49, LMS 327. A delegate moves what the approver they cover would have moved. */
+      standsInForAnApprover
     ) {
       return about.allow(actor, 'commit', owner.employeeId);
     }
@@ -114,8 +118,8 @@ export const ledgerPolicy = {
       actor,
       'commit',
       owner.employeeId,
-      'not their line manager, not an approver this leave is routed to, and holds no ' +
-        'role that reads everybody',
+      'not their line manager, not an approver this leave is routed to, not covering for ' +
+        'one, and holds no role that reads everybody',
       APPROVAL_IS_SOMEBODY_ELSE,
     );
   },

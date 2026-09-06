@@ -157,6 +157,8 @@ export interface ValidatedDecision {
   comment: string | null;
   /** The refusal this overturns; set exactly on an override. FR 44, LMS 318. */
   overridesDecisionId: string | null;
+  /** FR 49, FR 52. The approver whose absence this covered, null where it covered none. LMS 327. */
+  delegatedFor: string | null;
 }
 
 /** A decision as it comes back out. */
@@ -169,6 +171,8 @@ export interface LeaveDecision {
   comment: string | null;
   /** FR 44, LMS 318. */
   overridesDecisionId: string | null;
+  /** FR 49, FR 52, LMS 327. */
+  delegatedFor: string | null;
   /** Who, in words. */
   decidedBy: string;
   /** Who, as an id to join on. */
@@ -217,6 +221,8 @@ export function validateDecision(input: {
   comment: unknown;
   /** FR 44. The decision being reversed, on an override and on nothing else. */
   overridesDecisionId?: string | null;
+  /** FR 49. The approver this answered for, where somebody handed their approvals over. */
+  delegatedFor?: string | null;
 }): ValidatedDecision {
   const overriding = isAnOverride(input.action);
   const overturns = input.overridesDecisionId ?? null;
@@ -239,6 +245,8 @@ export function validateDecision(input: {
     onBehalfOf: input.onBehalfOf,
     comment: commentFor(input.action, input.comment),
     overridesDecisionId: overturns,
+    /** FR 49, LMS 327. */
+    delegatedFor: input.delegatedFor ?? null,
   };
 }
 
