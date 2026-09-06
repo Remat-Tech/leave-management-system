@@ -546,6 +546,68 @@ export async function myApprovals(): Promise<ApproverQueue> {
   return request<ApproverQueue>('GET', '/api/me/approvals');
 }
 
+/* ------------------------------------------ several at once. FR 51, LMS 328 */
+
+/** One request a batch decided, as the single door answers it too. FR 38a, FR 39. */
+export interface Decided {
+  requestId: string;
+  /** NFR DAT 02. Where the row now stands, for whatever decides on it next. LMS 326. */
+  version: string;
+  status: RequestStatus;
+  /** FR 38a. Null once there is nobody left to ask. */
+  awaitingApprovalFrom: Desk | null;
+  decision: {
+    action: 'APPROVE' | 'REFUSE';
+    /** FR 52. */
+    onBehalfOf: Desk;
+    comment: string | null;
+    overridesDecisionId: string | null;
+    decidedBy: string;
+    /** FR 49. The approver whose absence this covered. LMS 327. */
+    delegatedFor: string | null;
+    decidedAt: string;
+  };
+  /** Null where this decision was not the last word and no days moved. */
+  entryId: string | null;
+  availableAfter: number;
+}
+
+/** One a batch left where it was, carrying the server's own refusal. FR 51, LMS 328. */
+export interface Undecided {
+  requestId: string;
+  /** The refusal's name, to branch on — `NotAuthorised` for my own request, FR 48. */
+  error: string;
+  /** NFR USA 03. The sentence, shown beside the row. */
+  message: string;
+  field?: string;
+}
+
+/** What one press did. FR 51, LMS 328. */
+export interface BulkDecided {
+  action: 'APPROVE' | 'REFUSE';
+  inWords: string;
+  decided: Decided[];
+  undecided: Undecided[];
+}
+
+/**
+ * Answers several requests at once. FR 51, LMS 328.
+ *
+ * Never a refusal of the whole selection: each row is decided at its own desk and the ones
+ * that could not be are in `undecided` with the sentence saying why. The versions are the
+ * ones the queue rows carried — a row somebody else has since answered is refused on its own
+ * rather than taking the batch down with it. NFR DAT 02, LMS 326.
+ *
+ * `comment` is required of a refusal and goes on every one in the batch. FR 39.
+ */
+export async function decideMany(input: {
+  action: 'APPROVE' | 'REFUSE';
+  requests: { requestId: string; version: string }[];
+  comment?: string;
+}): Promise<BulkDecided> {
+  return request<BulkDecided>('POST', '/api/me/approvals/decisions', input);
+}
+
 /**
  * Asks for the leave. FR 10.
  *

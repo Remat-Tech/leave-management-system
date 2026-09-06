@@ -172,6 +172,9 @@ export function buildApp(parts: Application): Express {
         parts.employees,
         parts.leaveRequests,
       ),
+      /* FR 51, LMS 328. A batch reports each row's refusal rather than throwing, so a fault
+         among them reaches the same log `answerProblems` writes to and not neither. */
+      failures: parts.failures,
     }),
   );
 

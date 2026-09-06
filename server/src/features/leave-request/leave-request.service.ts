@@ -7,6 +7,12 @@ import { desksHandedTo, leaveRequestPolicy } from './policy.js';
 import { delegatesOf, delegationsThatBearOn } from './delegation.js';
 import type { ApprovalDelegationService } from './delegation.service.js';
 import type { ApproverRole } from '../leave-type/approval-chain.js';
+import {
+  type BulkAction,
+  type BulkAsSent,
+  bulkInWords,
+  validateBulkDecision,
+} from './bulk-decision.js';
 import type { BalanceOwner } from '../balance/policy.js';
 import type { Decision, Guard } from '../../auth/policy.js';
 import type { Employee } from '../employee/employee.js';
@@ -130,6 +136,21 @@ export type QuotableLeave = Omit<
 export interface RequestThatFollowed {
   request: LeaveRequest;
   reassignment: RecordedReassignment | null;
+}
+
+/** One request a batch left where it was, and what refused it. FR 51, LMS 328. */
+export interface LeftUndecided {
+  requestId: string;
+  /** The refusal itself, so the boundary renders it as it renders every other. */
+  because: unknown;
+}
+
+/** What one press did. FR 51, LMS 328. */
+export interface BulkDecided {
+  action: BulkAction;
+  decided: LeaveApproved[];
+  undecided: LeftUndecided[];
+  inWords: string;
 }
 
 /** Leave asked for in a year that has been settled. §8.9.. */
@@ -616,6 +637,42 @@ export class LeaveRequestService {
     versionSeen?: string | null,
   ): Promise<LeaveApproved> {
     return this.decide(actor, id, action, requireAJustification(justification), versionSeen);
+  }
+
+  /**
+   * Answers several requests at one press. FR 51, FR 39, FR 48, §8.6a. LMS 328.
+   *
+   * Every item goes through {@link LeaveRequestService.decide}, so a batch is not a second way
+   * of deciding: the self-approval refusal, the desk, the version and the lock are asked of
+   * each one. One request that cannot be decided does not stop the rest, and the report says
+   * which went through and what refused the others.
+   *
+   * Sequential, and that is load bearing. Each decision takes the balance lock and then the
+   * request; running them at once would be those two locks in as many orders as there are rows.
+   *
+   * A fault is one item's answer rather than the batch's, for the same reason: the decisions
+   * already committed cannot be unsaid by throwing the report away.
+   */
+  async decideMany(actor: Actor, sent: BulkAsSent): Promise<BulkDecided> {
+    const { action, comment, requests } = validateBulkDecision(sent);
+
+    const decided: LeaveApproved[] = [];
+    const undecided: LeftUndecided[] = [];
+
+    for (const one of requests) {
+      try {
+        decided.push(await this.decide(actor, one.requestId, action, comment, one.version));
+      } catch (error) {
+        undecided.push({ requestId: one.requestId, because: error });
+      }
+    }
+
+    return {
+      action,
+      decided,
+      undecided,
+      inWords: bulkInWords(action, decided.length, undecided.length),
+    };
   }
 
   /**
