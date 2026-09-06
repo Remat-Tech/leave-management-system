@@ -545,6 +545,8 @@ function yes(request: LeaveRequest) {
     reasonForGivingBack: `${String(request.days)} days given back`,
     comment: null,
     overturns: null,
+    /** NFR DAT 02, §8.1. No screen behind this one, so there is no version to check. LMS 326. */
+    versionSeen: null,
   };
 }
 

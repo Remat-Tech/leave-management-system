@@ -21,7 +21,13 @@ import {
   stagesSkipped,
   whatWouldRouteIt,
 } from './routing.js';
-import type { DecidingAction } from './leave-decision.js';
+import {
+  type DecidingAction,
+  LeaveAlreadyDecided,
+  type LeaveDecision,
+  theDecisionAt,
+  theLastDecision,
+} from './leave-decision.js';
 import type { GrantingAction, WithdrawalAction } from './withdrawal.js';
 import type { DayCount, FreeDay, LeavePeriod } from '../leave-calculator/leave-calculator.js';
 import {
@@ -1278,6 +1284,64 @@ export interface LeaveRequest {
   submittedAt: Date;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * The version of a request a screen holds, and hands back when it decides. NFR DAT 02, §8.1, LMS 326.
+ *
+ * `updated_at`, which `leave_request_set_updated_at` stamps on every write from every
+ * connection. It is a version because that trigger makes it one — a row nobody could have
+ * touched without moving it — rather than because anything here maintains it.
+ */
+export function versionOf(request: LeaveRequest): string {
+  return request.updatedAt.toISOString();
+}
+
+/**
+ * Whether the request still stands as the screen deciding on it saw it. NFR DAT 02, §8.1, LMS 326.
+ *
+ * True where no version was sent: it is what a caller offers, not what the row demands.
+ */
+export function standsAsItWasSeen(request: LeaveRequest, versionSeen: string | null): boolean {
+  return versionSeen === null || versionSeen === versionOf(request);
+}
+
+/**
+ * Refuses a decision the answer arrived ahead of. NFR DAT 02, §8.1, LMS 326.
+ *
+ * A desk that has already answered is a race lost whether or not a version was sent — one
+ * decision stands at each desk. A version that has moved is the same news, and catches the
+ * loser whose request was decided outright rather than handed on.
+ */
+export function assertNobodyGotThereFirst(input: {
+  /** The request as it stands now. */
+  request: LeaveRequest;
+  /** The desk the screen that is deciding had it at. */
+  deskTheyStoodAt: ApproverRole | null;
+  decisions: readonly LeaveDecision[];
+  versionSeen: string | null;
+}): void {
+  const { request, deskTheyStoodAt, decisions, versionSeen } = input;
+
+  const answered = deskTheyStoodAt === null ? undefined : theDecisionAt(deskTheyStoodAt, decisions);
+
+  if (answered !== undefined) {
+    throw new LeaveAlreadyDecided(request.id, answered.onBehalfOf, answered);
+  }
+
+  if (standsAsItWasSeen(request, versionSeen)) {
+    return;
+  }
+
+  /* Named only where the request has stopped waiting: a row still with a desk moved some
+     other way, and naming whoever last decided would attribute that to them. */
+  const settled = request.awaitingApprovalFrom === null ? theLastDecision(decisions) : undefined;
+
+  throw new LeaveAlreadyDecided(
+    request.id,
+    settled?.onBehalfOf ?? request.awaitingApprovalFrom,
+    settled ?? null,
+  );
 }
 
 /* ------------------------------------------------------------------- refusals */

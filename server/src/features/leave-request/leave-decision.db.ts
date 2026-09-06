@@ -7,6 +7,7 @@ import type { ApproverRole } from '../leave-type/approval-chain.js';
 import type { Attribution } from '../audit/audit.js';
 import {
   type DecidingAction,
+  LeaveAlreadyDecided,
   type LeaveDecision,
   OverrideNeedsAJustification,
   RefusalNeedsAComment,
@@ -16,6 +17,12 @@ import { recording } from '../../db/recording.js';
 
 /** Postgres `check_violation`. */
 const CHECK_VIOLATION = '23514';
+
+/** Postgres `unique_violation`. */
+const UNIQUE_VIOLATION = '23505';
+
+/** The index that holds one decision to a desk. NFR DAT 02, §8.1, LMS 326. */
+const ONCE_PER_DESK = 'leave_request_decision_once_per_desk';
 
 /** The CHECK that carries LMS 315's first criterion into the schema. */
 const REFUSAL_SAYS_WHY = 'leave_request_refusal_says_why';
@@ -30,7 +37,7 @@ export class LeaveDecisionRepository {
 
   /** Writes one decision. */
   async record(by: Attribution, decision: ValidatedDecision): Promise<LeaveDecision> {
-    return this.catchRefusals(async () => {
+    return this.catchRefusals(decision, async () => {
       const row = await recording(this.db, by, (on) =>
         on
           .insertInto('leave_request_decision')
@@ -72,11 +79,19 @@ export class LeaveDecisionRepository {
   }
 
   /** Turns what the database refused into something a caller can act on. */
-  private async catchRefusals<T>(write: () => Promise<T>): Promise<T> {
+  private async catchRefusals<T>(decision: ValidatedDecision, write: () => Promise<T>): Promise<T> {
     try {
       return await write();
     } catch (error) {
       const failure = error as { code?: string; constraint?: string };
+
+      /* NFR DAT 02, §8.1, LMS 326. The desk answered twice. `BalanceService.decideForRequest`
+         reads the decisions inside the lock and refuses this with the winner named, so what
+         reaches here is a writer that found another way in — and it is told the same thing
+         rather than a message about an index. */
+      if (failure.code === UNIQUE_VIOLATION && failure.constraint === ONCE_PER_DESK) {
+        throw new LeaveAlreadyDecided(decision.leaveRequestId, decision.onBehalfOf);
+      }
 
       if (failure.code === CHECK_VIOLATION && failure.constraint === REFUSAL_SAYS_WHY) {
         throw new RefusalNeedsAComment();

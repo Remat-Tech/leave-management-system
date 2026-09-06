@@ -540,6 +540,8 @@ describe('the wire', () => {
       'team',
       'to',
       'typeName',
+      /** NFR DAT 02, §8.1. What a decision off this row hands back. LMS 326. */
+      'version',
       'warnings',
     ]);
   });

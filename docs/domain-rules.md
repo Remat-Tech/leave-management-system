@@ -4172,3 +4172,50 @@ manager's stage that went to HR on Monday does not come back down because somebo
 Wednesday. What moves is the stage nobody has answered yet.
 
 ---
+
+### Two approvers deciding at once
+
+**Two people at one desk pressing the button on one request decide it once, and the second is
+told what happened rather than deducting the days again.** NFR DAT 02, §8.1, LMS 326.
+
+**The HR desk is staffed by more than one person, which is what makes this real.** A line
+manager desk resolves to one human, so the only race there is somebody's own second click. HR
+is two officers looking at the same queue, both entitled to answer, and nothing about the
+screens tells either that the other is looking. The failure is not exotic: both read a request
+nobody had decided, both walk the chain to its end, and both post a `DEDUCTION` — six days off
+a balance twice for one week of leave.
+
+**Three things stop it, and they are three because each holds where the one above it cannot.**
+
+| | Where it holds | What it catches |
+|---|---|---|
+| the balance lock, `hold_one_balance_while_it_is_checked()` | every door that moves a request | two decision transactions running at once — the second waits |
+| the request row, `SELECT … FOR UPDATE` | inside that transaction, taken second | a writer moving the row between the read and the write |
+| `leave_request_decision_once_per_desk` | every connection, at the moment of the write | a second decision at a desk, however it got there |
+
+The lock order is the balance and then the request, in every door, because two locks taken in
+two orders is a deadlock rather than a discipline.
+
+**The version is the optimistic half, and it is what the API layer carries.** Every queue row
+hands out a `version` — the request's own `updated_at`, which `leave_request_set_updated_at`
+moves on every write from every connection — and a decision hands it back. A version that has
+moved is a decision taken on a request that has since changed, and it is refused before
+anything is read. Sending none is not sending a stale one: a caller with no screen behind it is
+answered by the locks alone.
+
+**The loser gets a 409 and a sentence, and this is the whole point of the story.** Without it
+they meet the desk policy: the request has moved on, so they are no longer the desk it is
+waiting at, and they are told they may not decide this request — true, and about their standing
+rather than about the leave. `LeaveAlreadyDecided` names whoever got there first, says what they
+did, and answers the question the person actually has: whether their own press did anything. It
+is asked before the desk policy in both doors, and inside the lock is where the answer binds.
+`LeaveAlreadySettled` and `LeaveCannotBeMoved` — the same race met against leave somebody
+withdrew or approved out from under the decider — became 409s here too; they had been reaching
+the browser as "Something went wrong. It has been logged."
+
+**No double deduction was already true, and stayed true.** `leave_request_commits_once` is a
+unique index on `DEDUCTION` per request and has held since route-a-request-through-its-chain,
+and `daysToCommit` refuses to take more out of a hold than is in it. What this story added is
+that the second approver never gets that far, and is told why.
+
+---

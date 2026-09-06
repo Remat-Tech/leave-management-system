@@ -598,6 +598,50 @@ describe('deciding a request', () => {
     );
   });
 
+  /**
+   * And the row's version comes back with the decision, for whatever decides next. LMS 326.
+   *
+   * Optimistic locking over the wire: `/me/approvals` hands a version out with every row, a
+   * decision hands it back, and one that has moved since is refused with 409 rather than
+   * taken a second time. NFR DAT 02, §8.1.
+   */
+  it('and carries the version of the row it decided', async () => {
+    const id = await aRequest();
+
+    const waiting = await queueFor(people.teamLead);
+    const version = waiting.items.find((item) => item.requestId === id)?.version;
+
+    expect(typeof version).toBe('string');
+
+    const decided = (await (
+      await post(`/api/requests/${id}/approve`, people.teamLead, { version })
+    ).json()) as JsonDecided;
+
+    /** The decision moved the row, so what it was decided at is spent. */
+    expect(decided.version).not.toBe(version);
+  });
+
+  /* And the loser of two approvers deciding at once is answered with a sentence rather than
+     with "not your desk" or a stack trace. NFR DAT 02, LMS 326. */
+  it('and a decision sent from a screen the request has moved on from is refused with 409', async () => {
+    const id = await aRequest();
+
+    const waiting = await queueFor(people.teamLead);
+    const stale = waiting.items.find((item) => item.requestId === id)?.version;
+
+    await requests.approve(asTheirManager(), id);
+
+    const response = await post(`/api/requests/${id}/approve`, people.hrOfficer, {
+      version: stale,
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: 'LeaveAlreadyDecided',
+      message: expect.stringContaining('has not been recorded') as unknown as string,
+    });
+  });
+
   /* And a verb that is neither is refused at the boundary rather than cast through it. */
   it('and an override that is neither of the two verbs is refused', async () => {
     const id = await aRequest();
@@ -695,6 +739,8 @@ interface JsonEntry {
 /** What one desk's decision did to the request, as the route sends it. FR 44, LMS 318. */
 interface JsonDecided {
   requestId: string;
+  /** NFR DAT 02, §8.1. Where the row stands after this decision. LMS 326. */
+  version: string;
   status: string;
   awaitingApprovalFrom: string | null;
   decision: {
@@ -705,6 +751,11 @@ interface JsonDecided {
   };
   entryId: string | null;
   availableAfter: number;
+}
+
+/** NFR DAT 02, §8.1. The rows a decision is taken from, each with its version. LMS 326. */
+interface JsonQueue {
+  items: { requestId: string; version: string }[];
 }
 
 interface JsonHistory {
@@ -730,6 +781,15 @@ function post(path: string, employeeId: string, body: unknown): Promise<Response
     },
     body: JSON.stringify(body),
   });
+}
+
+/** Everything waiting on this approver, as the queue screen reads it. FR 20, LMS 404. */
+async function queueFor(employeeId: string): Promise<JsonQueue> {
+  const response = await get('/api/me/approvals', { cookie: mintSession(employeeId, SECRET) });
+
+  expect(response.status).toBe(200);
+
+  return (await response.json()) as JsonQueue;
 }
 
 async function historyFor(employeeId: string, query = ''): Promise<JsonHistory> {

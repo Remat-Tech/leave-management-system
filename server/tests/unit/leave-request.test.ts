@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import {
+  LeaveAlreadyDecided,
+  type LeaveDecision,
+} from '../../src/features/leave-request/leave-decision.js';
 import type { DayCount } from '../../src/features/leave-calculator/leave-calculator.js';
 import {
   decisionTo,
   assertDocumentationIsAttached,
+  assertNobodyGotThereFirst,
   assertItCostsSomething,
   assertShortNoticeIsAcknowledged,
   certifiedDaysGivenBack,
@@ -33,6 +38,8 @@ import {
   reachesPastTheEndOf,
   reasonForRelease,
   reasonForReservation,
+  standsAsItWasSeen,
+  versionOf,
   RELEASING_STATUSES,
   REQUEST_STATUSES,
   ShortNoticeNotAcknowledged,
@@ -1751,5 +1758,112 @@ describe('where this story stops', () => {
       skips: [],
       singleApprover: true,
     });
+  });
+});
+
+/* -------------------------------- two approvers deciding at once. NFR DAT 02, LMS 326 */
+
+/**
+ * A decision the answer arrived ahead of. NFR DAT 02, §8.1. LMS 326.
+ *
+ * The rule the two doors both ask — `LeaveRequestService.decide` for the sentence and
+ * `BalanceService.decideForRequest` inside the lock, where it binds. What it is asked *of*
+ * is the row as it stands; ../integration/concurrent-decisions.test.ts races real ones.
+ */
+describe('a decision that lost the race', () => {
+  const managers: LeaveDecision = {
+    id: '9',
+    leaveRequestId: 'request-1',
+    action: 'APPROVE',
+    onBehalfOf: 'MANAGER',
+    comment: null,
+    overridesDecisionId: null,
+    decidedBy: 'Kofi Boateng',
+    decidedByEmployeeId: '3',
+    decidedAt: new Date('2026-02-10T09:00:00Z'),
+  };
+
+  const asItStands = (overrides: Partial<LeaveRequest> = {}) =>
+    aStoredRequest({ updatedAt: new Date('2026-02-11T09:00:00Z'), ...overrides });
+
+  /** The version is the row's own `updated_at`, which every write moves. */
+  it('is measured against the version the screen was drawn from', () => {
+    const request = asItStands();
+
+    expect(versionOf(request)).toBe('2026-02-11T09:00:00.000Z');
+    expect(standsAsItWasSeen(request, versionOf(request))).toBe(true);
+    expect(standsAsItWasSeen(request, '2026-02-10T09:00:00.000Z')).toBe(false);
+    /** Nothing sent is not a stale version. */
+    expect(standsAsItWasSeen(request, null)).toBe(true);
+  });
+
+  it('lets a decision through where the desk is unanswered and nothing has moved', () => {
+    expect(() =>
+      assertNobodyGotThereFirst({
+        request: asItStands(),
+        deskTheyStoodAt: 'MANAGER',
+        decisions: [],
+        versionSeen: versionOf(asItStands()),
+      }),
+    ).not.toThrow();
+  });
+
+  /* The story's third criterion. The desk this approver set out to answer has an answer on
+     it, so their press did nothing — and the refusal names whose did. */
+  it('and refuses a second decision at a desk, naming who got there first', () => {
+    let refusal: LeaveAlreadyDecided | undefined;
+
+    try {
+      assertNobodyGotThereFirst({
+        request: asItStands({ awaitingApprovalFrom: 'HR' }),
+        deskTheyStoodAt: 'MANAGER',
+        decisions: [managers],
+        /** Version or no version: one decision stands at each desk. */
+        versionSeen: null,
+      });
+    } catch (error) {
+      refusal = error as LeaveAlreadyDecided;
+    }
+
+    expect(refusal?.name).toBe('LeaveAlreadyDecided');
+    expect(refusal?.desk).toBe('MANAGER');
+    expect(refusal?.decided).toBe(managers);
+  });
+
+  /* And the loser whose request was decided outright rather than handed on. The desk they
+     stood at is nobody's now, so it is the version that catches them, and what settled it
+     is what is named. */
+  it('and refuses one sent from a screen the request has been decided since', () => {
+    const settled = { ...managers, onBehalfOf: 'HR' as const, decidedBy: 'Efua Mensah' };
+
+    try {
+      assertNobodyGotThereFirst({
+        request: asItStands({ status: 'APPROVED', awaitingApprovalFrom: null }),
+        deskTheyStoodAt: null,
+        decisions: [managers, settled],
+        versionSeen: '2026-02-10T09:00:00.000Z',
+      });
+      expect.unreachable('a stale version is refused');
+    } catch (error) {
+      expect((error as LeaveAlreadyDecided).decided?.decidedBy).toBe('Efua Mensah');
+      expect((error as LeaveAlreadyDecided).message).toContain('Efua Mensah approved it');
+    }
+  });
+
+  /* And a request that moved some other way — rerouted, reworded — is refused without a
+     name on it, because the last decision is not what moved it. */
+  it('and names nobody where the request moved some other way', () => {
+    try {
+      assertNobodyGotThereFirst({
+        request: asItStands({ awaitingApprovalFrom: 'HR' }),
+        deskTheyStoodAt: 'HR',
+        decisions: [managers],
+        versionSeen: '2026-02-10T09:00:00.000Z',
+      });
+      expect.unreachable('a stale version is refused');
+    } catch (error) {
+      expect((error as LeaveAlreadyDecided).decided).toBeNull();
+      expect((error as LeaveAlreadyDecided).desk).toBe('HR');
+    }
   });
 });

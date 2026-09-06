@@ -97,6 +97,56 @@ export class OverrideNeedsAJustification extends Error {
   }
 }
 
+/**
+ * A desk answered by somebody else while this approver was deciding. NFR DAT 02, §8.1, LMS 326.
+ *
+ * Its own refusal, because the alternative is the desk policy telling the loser they are not
+ * the desk — about their standing rather than about the leave.
+ */
+export class LeaveAlreadyDecided extends Error {
+  /** NFR DAT 02. What a client branches on, as `ALREADY_SETTLED` is. */
+  readonly code = 'ALREADY_DECIDED';
+  readonly leaveRequestId: string;
+  /** The desk that was answered, or where the request now waits. Null once it waits nowhere. */
+  readonly desk: ApproverRole | null;
+  /** Who got there first, where what was read says who. */
+  readonly decided: LeaveDecision | null;
+
+  constructor(
+    leaveRequestId: string,
+    desk: ApproverRole | null,
+    decided: LeaveDecision | null = null,
+  ) {
+    super(
+      (decided === null
+        ? 'This request moved on while you had it open, so what you sent has not been ' +
+          'recorded. '
+        : `${decided.decidedBy} ${decisionInWords(decided.action)} while you had this ` +
+          `open, so what you sent has not been recorded. `) +
+        'One decision stands at each desk and the days have moved once. Open the request ' +
+        'again to see where it now stands. NFR DAT 02.',
+    );
+    this.name = 'LeaveAlreadyDecided';
+    this.leaveRequestId = leaveRequestId;
+    this.desk = desk;
+    this.decided = decided;
+  }
+}
+
+/** What a desk said, as somebody reads it afterwards. NFR USA 03, FR 44. */
+export function decisionInWords(action: DecidingAction): string {
+  switch (action) {
+    case 'APPROVE':
+      return 'approved it';
+    case 'REFUSE':
+      return 'turned it down';
+    case 'OVERTURN_REJECTION':
+      return 'overturned the rejection';
+    default:
+      return 'overturned the approval';
+  }
+}
+
 /** What is written down, once the rules about the comment have been applied. */
 export interface ValidatedDecision {
   leaveRequestId: string;
@@ -214,6 +264,24 @@ export function desksThatApproved(decisions: readonly LeaveDecision[]): Approver
 /** The desks that have said no to this request. FR 44, LMS 318. */
 export function desksThatRefused(decisions: readonly LeaveDecision[]): ApproverRole[] {
   return decisions.filter((decision) => !saysYes(decision.action)).map((one) => one.onBehalfOf);
+}
+
+/**
+ * The decision this desk has already made, where it has made one. NFR DAT 02, §8.1, LMS 326.
+ *
+ * One per desk, which `leave_request_decision_once_per_desk` holds on every connection — so
+ * a decision arriving at a desk this answers for is one that lost a race to it.
+ */
+export function theDecisionAt(
+  desk: ApproverRole,
+  decisions: readonly LeaveDecision[],
+): LeaveDecision | undefined {
+  return decisions.find((decision) => decision.onBehalfOf === desk);
+}
+
+/** The most recent decision on the record, where anybody has decided. NFR DAT 02, LMS 326. */
+export function theLastDecision(decisions: readonly LeaveDecision[]): LeaveDecision | undefined {
+  return decisions[decisions.length - 1];
 }
 
 /** The desks that have had their say, whichever way they went. FR 44, LMS 318. */
