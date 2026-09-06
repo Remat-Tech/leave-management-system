@@ -1,5 +1,5 @@
 /**
- * Where a request goes when the desk its chain names cannot decide it. FR 48, FR 48b, FR 48c, FR 04, §8.6a, LMS 320, LMS 321.
+ * Where a request goes when the desk its chain names cannot decide it. FR 48, FR 48b, FR 48c, FR 48d, FR 04, §8.6a, LMS 320, LMS 321, LMS 322.
  */
 
 import { type ApproverRole, APPROVER_ROLES, deskInWords } from '../leave-type/approval-chain.js';
@@ -9,8 +9,29 @@ export const DESK_STANDINGS = ['CAN_DECIDE', 'ONLY_THE_REQUESTER', 'NOBODY_STAFF
 
 export type DeskStanding = (typeof DESK_STANDINGS)[number];
 
+/**
+ * The same, once who has already decided this request is known. FR 48d, LMS 322.
+ *
+ * Staffed, and by nobody but a hand already on this request. Outside {@link DESK_STANDINGS}
+ * because {@link standingOf} cannot see it: it is a fact about a request.
+ */
+export type DeskStandingNow = DeskStanding | 'ALREADY_DECIDED_IT';
+
 /** Who can be asked at each desk, for one request. FR 38a, FR 48b. */
 export type DesksAvailable = Readonly<Record<ApproverRole, DeskStanding>>;
+
+/** Who is at each desk who could decide this request: the requester excluded. FR 48d, LMS 322. */
+export type DeskOccupants = Readonly<Record<ApproverRole, readonly string[]>>;
+
+/** One desk that has decided, and who decided at it. FR 44, FR 48d, LMS 322. */
+export interface DeskDecision {
+  desk: ApproverRole;
+  /** Null where nothing named them — a job, a migration, a seed. */
+  by: string | null;
+}
+
+/** Nobody is at any desk, because nobody has decided yet. FR 48d, LMS 322. */
+export const NO_OCCUPANTS_NAMED: DeskOccupants = { MANAGER: [], HR: [], CEO: [] };
 
 /**
  * Who answers for a desk that cannot answer for itself. FR 48b, §8.6a, §4.3.1.
@@ -44,7 +65,12 @@ export interface SkippedStage {
 export type Routed =
   | { kind: 'DESK'; desk: ApproverRole; skips: readonly SkippedStage[] }
   /** Every stage has had its say, so the decision just made is the last word. FR 41, FR 44. */
-  | { kind: 'DECIDED'; skips: readonly SkippedStage[] }
+  | {
+      kind: 'DECIDED';
+      skips: readonly SkippedStage[];
+      /** FR 48d. One named person answered a chain that asked for more than one. LMS 322. */
+      singleApprover: boolean;
+    }
   /** Neither this stage's desk nor its stand-in can be asked. FR 48b. */
   | {
       kind: 'UNROUTABLE';
@@ -57,11 +83,13 @@ export type Routed =
 export interface RoutingQuestion {
   /** FR 38a. The type's chain as it stands now. */
   chain: readonly ApproverRole[];
-  /** The desks that have decided, whichever way they went. FR 44. */
-  decided: readonly ApproverRole[];
+  /** The desks that have decided and who decided at each, whichever way they went. FR 44, FR 48d. */
+  decided: readonly DeskDecision[];
   /** The stages already skipped, as recorded against the request. */
   skipped: readonly SkippedStage[];
   available: DesksAvailable;
+  /** FR 48d. Who could still be asked at each desk. LMS 322. */
+  occupants: DeskOccupants;
 }
 
 /** Whether somebody other than the requester answers there. */
@@ -69,8 +97,18 @@ export function canDecide(available: DesksAvailable, desk: ApproverRole): boolea
   return available[desk] === 'CAN_DECIDE';
 }
 
+/** Whether that desk has had its say. FR 44. */
+function hasDecided(decided: readonly DeskDecision[], desk: ApproverRole): boolean {
+  return decided.some((one) => one.desk === desk);
+}
+
+/** Whether that person has already decided this request. FR 48d, LMS 322. */
+export function decidedBy(decided: readonly DeskDecision[], who: string): boolean {
+  return decided.some((one) => one.by === who);
+}
+
 /**
- * The desk this request goes to, skipping every stage nobody can answer. FR 38a, FR 48, FR 48b, FR 41, §8.6a.
+ * The desk this request goes to, skipping every stage nobody can answer. FR 38a, FR 48, FR 48b, FR 48d, FR 41, §8.6a.
  *
  * A recorded skip is never reconsidered — the same rule LMS 316 gives a decision — so a
  * stage passed on Monday is not re-asked because somebody was hired on Wednesday.
@@ -78,9 +116,14 @@ export function canDecide(available: DesksAvailable, desk: ApproverRole): boolea
  * It stops at the first stage nobody can answer rather than looking ahead, and `DECIDED` is
  * reached only by stages deciding. Running out of desks that can be filled never approves
  * anything.
+ *
+ * Since LMS 322 it knows who is at a desk as well as whether anybody is: a stage its own
+ * people have already decided goes to a second officer where the company has one, and where
+ * it has none the stage falls to the desk that hand signed at and the request is `DECIDED` by
+ * a single approver. FR 48d.
  */
 export function routeFrom(question: RoutingQuestion): Routed {
-  const { chain, decided, skipped, available } = question;
+  const { chain, decided, skipped } = question;
 
   const answeredBy = new Map<ApproverRole, ApproverRole>(
     skipped.map((skip) => [skip.stage, skip.routedTo]),
@@ -89,23 +132,27 @@ export function routeFrom(question: RoutingQuestion): Routed {
   const skips: SkippedStage[] = [];
 
   for (const stage of chain) {
-    const desk = answeredBy.get(stage) ?? standingAt(stage, available);
+    const desk = answeredBy.get(stage) ?? answeringFor(stage, question);
 
     if (desk === undefined) {
       return {
         kind: 'UNROUTABLE',
         stranded: stage,
-        because: skipInWords(stage, null, available),
+        because: skipInWords(stage, null, standingNow(stage, question)),
         skips,
       };
     }
 
     if (desk !== stage && !answeredBy.has(stage)) {
-      skips.push({ stage, routedTo: desk, because: skipInWords(stage, desk, available) });
+      skips.push({
+        stage,
+        routedTo: desk,
+        because: skipInWords(stage, desk, standingNow(stage, question)),
+      });
       answeredBy.set(stage, desk);
     }
 
-    if (!decided.includes(desk)) {
+    if (!hasDecided(decided, desk)) {
       return { kind: 'DESK', desk, skips };
     }
 
@@ -113,18 +160,76 @@ export function routeFrom(question: RoutingQuestion): Routed {
        collapse onto one desk asks that person once. */
   }
 
-  return { kind: 'DECIDED', skips };
+  return { kind: 'DECIDED', skips, singleApprover: decidedBySingleApprover(chain, decided) };
 }
 
-/** The desk that answers a stage: itself, its stand-in, or nobody. FR 48b. */
-function standingAt(stage: ApproverRole, available: DesksAvailable): ApproverRole | undefined {
-  if (canDecide(available, stage)) {
+/**
+ * The desk that answers a stage: itself, its stand-in, the desk that hand signed at, or
+ * nobody. FR 48b, FR 48d.
+ *
+ * The order is the rule: a desk that has decided, then either desk with somebody left to ask
+ * — FR 48d's second officer — and only then a desk whose people have all signed already.
+ */
+function answeringFor(stage: ApproverRole, question: RoutingQuestion): ApproverRole | undefined {
+  const standIn = STAND_IN_FOR[stage];
+
+  if (hasDecided(question.decided, stage)) {
     return stage;
   }
 
-  const standIn = STAND_IN_FOR[stage];
+  for (const desk of [stage, standIn]) {
+    if (desk !== null && standingNow(desk, question) === 'CAN_DECIDE') {
+      return desk;
+    }
+  }
 
-  return standIn !== null && canDecide(available, standIn) ? standIn : undefined;
+  /** FR 48d. Nobody new to ask, so the stage falls to the desk that hand signed at. LMS 322. */
+  for (const desk of [stage, standIn]) {
+    if (desk !== null && standingNow(desk, question) === 'ALREADY_DECIDED_IT') {
+      return whereTheyDecided(desk, question);
+    }
+  }
+
+  return undefined;
+}
+
+/** What a desk amounts to for this request, once who has decided it is known. FR 48b, FR 48d. */
+function standingNow(desk: ApproverRole, question: RoutingQuestion): DeskStandingNow {
+  const standing = question.available[desk];
+
+  if (standing !== 'CAN_DECIDE') {
+    return standing;
+  }
+
+  const there = question.occupants[desk];
+
+  /* Empty is the caller having no person to name rather than an empty desk — `available`
+     has just said somebody is there — so it routes as LMS 320 always did. */
+  return there.length > 0 && there.every((who) => decidedBy(question.decided, who))
+    ? 'ALREADY_DECIDED_IT'
+    : 'CAN_DECIDE';
+}
+
+/** The desk somebody at this one already decided at. FR 48d, LMS 322. */
+function whereTheyDecided(desk: ApproverRole, question: RoutingQuestion): ApproverRole | undefined {
+  return question.decided.find(
+    (one) => one.by !== null && question.occupants[desk].includes(one.by),
+  )?.desk;
+}
+
+/** Whether one named hand answered a chain that asked for more than one. FR 48d, LMS 322. */
+function decidedBySingleApprover(
+  chain: readonly ApproverRole[],
+  decided: readonly DeskDecision[],
+): boolean {
+  const [first] = decided;
+
+  return (
+    chain.length > 1 &&
+    first !== undefined &&
+    first.by !== null &&
+    decided.every((one) => one.by === first.by)
+  );
 }
 
 /**
@@ -163,14 +268,14 @@ export function stagesSkipped(
   return chain.flatMap((stage) => skipped.filter((skip) => skip.stage === stage));
 }
 
-/** Why a stage was skipped and where it went, in one sentence. NFR USA 03, FR 48b. */
+/** Why a stage was skipped and where it went, in one sentence. NFR USA 03, FR 48b, FR 48d. */
 export function skipInWords(
   stage: ApproverRole,
   routedTo: ApproverRole | null,
-  available: DesksAvailable,
+  standing: DeskStandingNow,
 ): string {
   const desk = sentenceCase(deskInWords(stage));
-  const because = deskCannotDecideReason(stage, available[stage]);
+  const because = deskCannotDecideReason(stage, standing);
 
   return routedTo === null
     ? `${desk} could not decide this request — ${because} — and neither could ` +
@@ -179,13 +284,21 @@ export function skipInWords(
         `${deskInWords(routedTo)} instead. Nobody approved it on the way. FR 48b.`;
 }
 
-/** What is empty about a desk. FR 04, FR 48, FR 48b, FR 48c. */
-function deskCannotDecideReason(stage: ApproverRole, standing: DeskStanding): string {
+/** What is empty about a desk. FR 04, FR 48, FR 48b, FR 48c, FR 48d. */
+function deskCannotDecideReason(stage: ApproverRole, standing: DeskStandingNow): string {
   /** FR 48, LMS 319. Staffed, and by the one person who may never answer at it. */
   if (standing === 'ONLY_THE_REQUESTER') {
     return (
       'the only person at that desk is the one who asked for the leave, and nobody ' +
       'decides their own request'
+    );
+  }
+
+  /** FR 48d, LMS 322. Staffed, and by nobody but a hand already on this request. */
+  if (standing === 'ALREADY_DECIDED_IT') {
+    return (
+      'everybody at that desk has already decided this request at an earlier stage, and ' +
+      'one person does not approve the same leave twice'
     );
   }
 
@@ -246,13 +359,23 @@ export function desksAvailable(standingAt: (desk: ApproverRole) => DeskStanding)
   ) as DesksAvailable;
 }
 
+/** Every desk answered, as {@link desksAvailable} is. FR 48d, LMS 322. */
+export function deskOccupants(peopleAt: (desk: ApproverRole) => readonly string[]): DeskOccupants {
+  return Object.fromEntries(APPROVER_ROLES.map((desk) => [desk, peopleAt(desk)])) as DeskOccupants;
+}
+
+/** Who at a desk could decide this request. The requester never can. FR 48, FR 48d. */
+export function whoCouldDecide(occupants: readonly string[], requesterId: string): string[] {
+  return occupants.filter((id) => id !== requesterId);
+}
+
 /** One desk's standing, from who is there and who may not answer. FR 48, FR 48b. */
-export function standingOf(whoIsThere: readonly string[], requesterId: string): DeskStanding {
-  if (whoIsThere.length === 0) {
+export function standingOf(occupants: readonly string[], requesterId: string): DeskStanding {
+  if (occupants.length === 0) {
     return 'NOBODY_STAFFS_IT';
   }
 
-  return whoIsThere.some((id) => id !== requesterId) ? 'CAN_DECIDE' : 'ONLY_THE_REQUESTER';
+  return occupants.some((id) => id !== requesterId) ? 'CAN_DECIDE' : 'ONLY_THE_REQUESTER';
 }
 
 function sentenceCase(words: string): string {

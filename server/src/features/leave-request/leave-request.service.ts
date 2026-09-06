@@ -14,7 +14,6 @@ import { validateLeavePeriod } from '../leave-calculator/leave-calculator.js';
 import {
   type DecidingAction,
   desksThatApproved,
-  desksThatDecided,
   desksThatRefused,
   isAnOverride,
   type LeaveDecision,
@@ -25,13 +24,17 @@ import {
   requireAJustification,
   saysYes,
   theManagersDecision,
+  whoDecidedWhere,
 } from './leave-decision.js';
 import {
+  type DeskOccupants,
+  deskOccupants,
   type DesksAvailable,
   desksAvailable,
   routeFrom,
   standingOf,
   whatWouldRouteIt,
+  whoCouldDecide,
 } from './routing.js';
 import { APPROVES_AS_HR } from '../role/roles.js';
 import type { RoleRepository } from '../role/role.db.js';
@@ -356,7 +359,7 @@ export class LeaveRequestService {
     });
 
     /** FR 48b, LMS 320. Who can be asked, before the first desk is chosen. */
-    const { available } = await this.whoCanDecide(employee);
+    const { available, occupants } = await this.whoCanDecide(employee);
 
     const request = validateNewLeaveRequest({
       employeeId: employee.id,
@@ -402,7 +405,7 @@ export class LeaveRequestService {
     /* FR 48b. Nobody can decide it, so HR is told rather than the request being refused —
        the leave is real and its days are held. LMS 320. */
     if (submitted.request.status === 'UNROUTABLE') {
-      await this.alertThatNobodyCanDecideIt(submitted, employee, type, available);
+      await this.alertThatNobodyCanDecideIt(submitted, employee, type, { available, occupants });
 
       return submitted;
     }
@@ -611,8 +614,8 @@ export class LeaveRequestService {
 
     const type = await this.typeFor(request.leaveTypeId);
 
-    /** FR 04, FR 48b. Who staffs each desk, and who FR 04's seat is. LMS 320. */
-    const { available, chiefExecutiveId } = await this.whoCanDecide(employee);
+    /** FR 04, FR 48b, FR 48d. Who staffs each desk, and who FR 04's seat is. LMS 320, LMS 322. */
+    const { available, occupants, chiefExecutiveId } = await this.whoCanDecide(employee);
 
     const standing = leaveRequestPolicy.decide(actor, action, {
       ...owner,
@@ -632,13 +635,28 @@ export class LeaveRequestService {
       request,
       action,
       chain: type.approvalChain,
-      decidedAlready: desksThatDecided(decisions),
+      decidedAlready: whoDecidedWhere(decisions),
+      /** FR 48d, LMS 322. */
+      decider: actor.employeeId,
       skipped: await this.routing.forRequest(request.id),
       available,
+      occupants,
     });
 
     /** FR 44, §7.2. */
     const overturns = this.whatThisReverses(request, action, decisions);
+
+    /* FR 48d. A standing question, so it is asked here with the others rather than before
+       them: somebody reaching for leave that has since been approved is told that. LMS 322.
+       The answer that binds is the same question inside the lock. */
+    this.guard.enforce(
+      leaveRequestPolicy.eachStageADifferentPerson(
+        actor,
+        owner,
+        action,
+        whoDecidedWhere(decisions),
+      ),
+    );
 
     this.guard.enforce(standing);
 
@@ -648,6 +666,7 @@ export class LeaveRequestService {
       chain: type.approvalChain,
       chiefExecutiveId,
       available,
+      occupants,
       comment,
       overturns,
       reasonForTaking: reasonForApproval(type.name, request, request.days, outcome.by),
@@ -658,7 +677,7 @@ export class LeaveRequestService {
 
     /* FR 48b. The decision was recorded and there is nowhere left to send it. LMS 320. */
     if (decided.request.status === 'UNROUTABLE') {
-      await this.alertThatNobodyCanDecideIt(decided, employee, type, available);
+      await this.alertThatNobodyCanDecideIt(decided, employee, type, { available, occupants });
     }
 
     return decided;
@@ -904,10 +923,13 @@ export class LeaveRequestService {
 
     const type = await this.typeFor(request.leaveTypeId);
 
+    const { available, occupants } = await this.whoCanDecide(employee);
+
     const rerouted = await this.balances.rerouteRequest(actor, {
       request,
       chain: type.approvalChain,
-      available: (await this.whoCanDecide(employee)).available,
+      available,
+      occupants,
     });
 
     /** FR 59. It is moving again, and the person who asked hears the same as at submission. */
@@ -938,15 +960,18 @@ export class LeaveRequestService {
     stuck: { request: LeaveRequest; balance: { available: number } },
     employee: Employee,
     type: LeaveType,
-    available: DesksAvailable,
+    desks: { available: DesksAvailable; occupants: DeskOccupants },
   ): Promise<void> {
+    const { available, occupants } = desks;
+
     /* The stage it stopped at, worked out from the same walk that stopped there, so the
        sentence in the alert is the walk's own account rather than a second opinion. */
     const routed = routeFrom({
       chain: type.approvalChain,
-      decided: desksThatDecided(await this.decisions.forRequest(stuck.request.id)),
+      decided: whoDecidedWhere(await this.decisions.forRequest(stuck.request.id)),
       skipped: await this.routing.forRequest(stuck.request.id),
       available,
+      occupants,
     });
 
     const said =
@@ -1136,6 +1161,10 @@ export class LeaveRequestService {
 
     return {
       available: desksAvailable((desk) => standingOf(atTheDesk[desk], employee.id)),
+      /* FR 48d, LMS 322. The same read said as names rather than as a standing, because a
+         second officer is a person: `available` says whether a desk can be asked at all and
+         this says who is there to ask. */
+      occupants: deskOccupants((desk) => whoCouldDecide(atTheDesk[desk], employee.id)),
       /* FR 48c. The configured id, not `stillHere`'s answer: being the desk and the desk
          being able to decide are different questions, and the second is `available`. */
       chiefExecutiveId,
@@ -1645,6 +1674,8 @@ export class LeaveRequestService {
 /** Who staffs each desk for one request, and who the `CEO` desk resolves to. FR 48b, FR 48c, LMS 320, LMS 321. */
 interface WhoIsThere {
   available: DesksAvailable;
+  /** FR 48d, LMS 322. */
+  occupants: DeskOccupants;
   /** FR 48c. */
   chiefExecutiveId: string | null;
 }

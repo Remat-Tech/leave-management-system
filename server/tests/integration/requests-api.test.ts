@@ -353,6 +353,8 @@ describe('every request I have made', () => {
       'countingBasis',
       'countingBasisLabel',
       'days',
+      /** FR 48d, LMS 322. One approver answered every stage of it. */
+      'decidedBySingleApprover',
       'from',
       /** FR 18, LMS 308. Why HR entered it late, where they did. */
       'lateEntryReason',

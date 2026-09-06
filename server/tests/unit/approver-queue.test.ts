@@ -521,6 +521,7 @@ function request(changes: Partial<LeaveRequest>): LeaveRequest {
     calendarDays: 5,
     status: 'SUBMITTED',
     awaitingApprovalFrom: 'MANAGER',
+    decidedBySingleApprover: false,
     submittedAt: at('01-05'),
     createdAt: at('01-05'),
     updatedAt: at('01-05'),

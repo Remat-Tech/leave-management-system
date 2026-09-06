@@ -6,7 +6,10 @@ import { leaveRequestPolicy } from '../../src/features/leave-request/policy.js';
 import type { BalanceOwner } from '../../src/features/balance/policy.js';
 import { APPROVER_ROLES, type ApproverRole } from '../../src/features/leave-type/approval-chain.js';
 import type { DecidingAction } from '../../src/features/leave-request/leave-decision.js';
-import type { DesksAvailable } from '../../src/features/leave-request/routing.js';
+import {
+  type DesksAvailable,
+  NO_OCCUPANTS_NAMED,
+} from '../../src/features/leave-request/routing.js';
 import {
   type ApprovalOutcome,
   blocksTheCalendar,
@@ -93,6 +96,7 @@ function aRequestIn(status: RequestStatus, awaiting: ApproverRole = 'MANAGER'): 
     calendarDays: 9,
     status,
     awaitingApprovalFrom: status === 'SUBMITTED' ? awaiting : null,
+    decidedBySingleApprover: false,
     submittedAt: new Date('2026-02-01T09:00:00Z'),
     createdAt: new Date('2026-02-01T09:00:00Z'),
     updatedAt: new Date('2026-02-01T09:00:00Z'),
@@ -107,6 +111,9 @@ const ANYBODY: DesksAvailable = { MANAGER: 'CAN_DECIDE', HR: 'CAN_DECIDE', CEO: 
  *
  * Routing around an empty desk is ./routing.test.ts's; what is asserted below is where a
  * decision lands when every desk can be asked, which is what these all meant.
+ *
+ * A different officer at every desk, which is the ordinary case, so LMS 322's stamp is false
+ * in all of these. The exception itself is ./routing.test.ts's. FR 48d.
  */
 function decisionTo(
   request: LeaveRequest,
@@ -114,7 +121,17 @@ function decisionTo(
   chain: readonly ApproverRole[],
   decidedAlready: readonly ApproverRole[],
 ): ApprovalOutcome {
-  return decide({ request, action, chain, decidedAlready, skipped: [], available: ANYBODY });
+  return decide({
+    request,
+    action,
+    chain,
+    /** FR 48d, LMS 322. A different officer at each of them, which is the ordinary case. */
+    decidedAlready: decidedAlready.map((desk, index) => ({ desk, by: `officer-${index}` })),
+    decider: 'the officer deciding now',
+    skipped: [],
+    available: ANYBODY,
+    occupants: NO_OCCUPANTS_NAMED,
+  });
 }
 
 describe('the transitions a request may make', () => {
@@ -448,14 +465,26 @@ describe('where an approval lands', () => {
   it('sends a request on to the next desk, leaving it where it was', () => {
     const outcome = decisionTo(waitingOn('MANAGER'), 'APPROVE', ORDINARY, []);
 
-    expect(outcome).toEqual({ by: 'MANAGER', to: 'SUBMITTED', awaiting: 'HR', skips: [] });
+    expect(outcome).toEqual({
+      by: 'MANAGER',
+      to: 'SUBMITTED',
+      awaiting: 'HR',
+      skips: [],
+      singleApprover: false,
+    });
     expect(isTheLastWord(outcome)).toBe(false);
   });
 
   it('and approves it when every stage has approved', () => {
     const outcome = decisionTo(waitingOn('HR'), 'APPROVE', ORDINARY, ['MANAGER']);
 
-    expect(outcome).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null, skips: [] });
+    expect(outcome).toEqual({
+      by: 'HR',
+      to: 'APPROVED',
+      awaiting: null,
+      skips: [],
+      singleApprover: false,
+    });
     expect(isTheLastWord(outcome)).toBe(true);
   });
 
@@ -474,6 +503,7 @@ describe('where an approval lands', () => {
       to: 'SUBMITTED',
       awaiting: 'CEO',
       skips: [],
+      singleApprover: false,
     });
 
     expect(decisionTo(waitingOn('CEO'), 'APPROVE', UNPAID, ['HR'])).toEqual({
@@ -481,6 +511,7 @@ describe('where an approval lands', () => {
       to: 'APPROVED',
       awaiting: null,
       skips: [],
+      singleApprover: false,
     });
   });
 
@@ -492,6 +523,7 @@ describe('where an approval lands', () => {
       to: 'APPROVED',
       awaiting: null,
       skips: [],
+      singleApprover: false,
     });
   });
 
@@ -557,7 +589,13 @@ describe('where an approval lands', () => {
 
     const outcome = decisionTo(waitingOn('HR'), 'APPROVE', widened, ['MANAGER']);
 
-    expect(outcome).toEqual({ by: 'HR', to: 'SUBMITTED', awaiting: 'CEO', skips: [] });
+    expect(outcome).toEqual({
+      by: 'HR',
+      to: 'SUBMITTED',
+      awaiting: 'CEO',
+      skips: [],
+      singleApprover: false,
+    });
     expect(isTheLastWord(outcome)).toBe(false);
   });
 
@@ -571,6 +609,7 @@ describe('where an approval lands', () => {
       to: 'APPROVED',
       awaiting: null,
       skips: [],
+      singleApprover: false,
     });
   });
 
@@ -583,6 +622,7 @@ describe('where an approval lands', () => {
       to: 'SUBMITTED',
       awaiting: 'CEO',
       skips: [],
+      singleApprover: false,
     });
   });
 });
@@ -612,7 +652,13 @@ describe('a line manager’s rejection', () => {
   it('sends the request on to HR rather than ending it', () => {
     const outcome = decisionTo(waitingOn('MANAGER'), 'REFUSE', ORDINARY, []);
 
-    expect(outcome).toEqual({ by: 'MANAGER', to: 'SUBMITTED', awaiting: 'HR', skips: [] });
+    expect(outcome).toEqual({
+      by: 'MANAGER',
+      to: 'SUBMITTED',
+      awaiting: 'HR',
+      skips: [],
+      singleApprover: false,
+    });
     expect(isTheLastWord(outcome)).toBe(false);
   });
 
@@ -628,7 +674,13 @@ describe('a line manager’s rejection', () => {
   it('and a rejection at the last desk ends the request', () => {
     const outcome = decisionTo(waitingOn('HR'), 'REFUSE', ORDINARY, ['MANAGER']);
 
-    expect(outcome).toEqual({ by: 'HR', to: 'REFUSED', awaiting: null, skips: [] });
+    expect(outcome).toEqual({
+      by: 'HR',
+      to: 'REFUSED',
+      awaiting: null,
+      skips: [],
+      singleApprover: false,
+    });
     expect(isTheLastWord(outcome)).toBe(true);
   });
 
@@ -642,7 +694,13 @@ describe('a line manager’s rejection', () => {
   it('and HR overturning it approves the leave, as their plain yes would', () => {
     const overturned = decisionTo(waitingOn('HR'), 'OVERTURN_REJECTION', ORDINARY, ['MANAGER']);
 
-    expect(overturned).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null, skips: [] });
+    expect(overturned).toEqual({
+      by: 'HR',
+      to: 'APPROVED',
+      awaiting: null,
+      skips: [],
+      singleApprover: false,
+    });
     expect(overturned).toEqual(decisionTo(waitingOn('HR'), 'APPROVE', ORDINARY, ['MANAGER']));
   });
 
@@ -650,7 +708,13 @@ describe('a line manager’s rejection', () => {
   it('and HR overturning an approval turns the leave down, as their plain no would', () => {
     const overturned = decisionTo(waitingOn('HR'), 'OVERTURN_APPROVAL', ORDINARY, ['MANAGER']);
 
-    expect(overturned).toEqual({ by: 'HR', to: 'REFUSED', awaiting: null, skips: [] });
+    expect(overturned).toEqual({
+      by: 'HR',
+      to: 'REFUSED',
+      awaiting: null,
+      skips: [],
+      singleApprover: false,
+    });
     expect(overturned).toEqual(decisionTo(waitingOn('HR'), 'REFUSE', ORDINARY, ['MANAGER']));
   });
 
@@ -672,6 +736,7 @@ describe('a line manager’s rejection', () => {
       to: 'SUBMITTED',
       awaiting: 'CEO',
       skips: [],
+      singleApprover: false,
     });
   });
 

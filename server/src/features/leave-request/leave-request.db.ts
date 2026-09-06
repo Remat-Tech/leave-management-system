@@ -267,12 +267,18 @@ export class LeaveRequestRepository {
     id: string,
     to: RequestStatus,
     awaiting: ApproverRole | null,
+    /** FR 48d. Stamped by the move that settles it, and false on every other. LMS 322. */
+    decidedBySingleApprover = false,
   ): Promise<LeaveRequest | undefined> {
     return this.catchRefusals(async () => {
       const row = await recording(this.db, by, (on) =>
         on
           .updateTable('leave_request')
-          .set({ status: to, awaiting_approval_from: awaiting })
+          .set({
+            status: to,
+            awaiting_approval_from: awaiting,
+            decided_by_a_single_approver: decidedBySingleApprover,
+          })
           .where('id', '=', id)
           .returningAll()
           .executeTakeFirst(),
@@ -447,6 +453,8 @@ function toRequest(row: LeaveRequestRow): LeaveRequest {
     calendarDays: row.calendar_days,
     status: row.status as RequestStatus,
     awaitingApprovalFrom: row.awaiting_approval_from as ApproverRole | null,
+    /** FR 48d, LMS 322. */
+    decidedBySingleApprover: row.decided_by_a_single_approver,
     submittedAt: row.submitted_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

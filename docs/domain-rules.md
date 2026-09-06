@@ -73,7 +73,10 @@ reaches them — is [LMS 314](#routing-a-request-to-its-approvers) and
 [LMS 319](#nobody-approves-their-own-request). FR 48b is the reciprocal and is
 [LMS 320](#routing-round-an-approver-who-cannot-decide): a stage its own desk cannot
 answer is skipped to the one desk that stands in for it, and where neither can be
-filled the request is `UNROUTABLE` with an alert rather than approved by nobody.
+filled the request is `UNROUTABLE` with an alert rather than approved by nobody. FR
+48d is [LMS 322](#a-request-one-person-decided): two stages that come back to one
+person are answered by two officers where the company has two, and where it has one
+the request is stamped rather than signed twice.
 
 **Everything is a whole number of days.** FR 24. Half days are settled between an
 employee and their manager, come off no balance, and are not in this system at all.
@@ -3017,17 +3020,66 @@ whose leave stopped — *nobody has approved or turned it down, and your days ar
 and everybody who could change the organisation so that it has not, which is HR and the Chief
 Executive. It is written to say what to fix rather than only that something is wrong.
 
-**Deduplication is by desk, never by person.** A chain whose stages collapse onto one desk
-asks that person once: the lone HR officer's unpaid leave is HR then the Chief Executive with
-the first stage standing in on the second, and one signature settles both. Where two
-*different* desks happen to resolve to the same human — the Head of HR reporting to the Chief
-Executive — they are still two stages and are asked twice. A walk over a list of offices does
-not know which people fill them, and should not.
+**Deduplication was by desk, never by person, and [LMS 322](#a-request-one-person-decided)
+changed that.** A chain whose stages collapse onto one desk still asks that person once. What
+this story said next — that two *different* desks resolving to the same human are still two
+stages and are asked twice — is what FR 48d overturned: the same signature twice is two
+approvals on the record where there was one. The walk now knows who is at a desk as well as
+whether anybody is.
 
 **What is deliberately not here.** Cover while an approver is themselves away is FR 49 and is
 a different question: this story is about a desk that is empty, not one whose occupant is on
 holiday. A terminated record staffs nothing — somebody who has left cannot sign in — and that
 is the whole of the overlap.
+
+---
+
+### A request one person decided
+
+**Two stages are answered by two people, and where the company has nobody else the request
+says on its face that one approver decided it.** FR 48d, §8.6a, LMS 322. The half
+[LMS 320](#routing-round-an-approver-who-cannot-decide) left open: it deduplicated by desk and
+argued that a walk over a list of offices should not know which people fill them. It should,
+and this is where.
+
+**The case is ordinary rather than exotic.** The head of HR is somebody's line manager and
+holds an HR role, so their report's annual leave is manager then HR and both stages are her.
+Asked twice, she signs twice, and the record afterwards reads as two approvals.
+
+| What the second stage finds | What happens |
+|---|---|
+| somebody at the desk who has not decided | it is asked, as usual — and the officer who signed the first stage is refused there |
+| only people who have already decided it | it goes to the desk's stand-in, which is FR 48b's ladder walked for a different reason |
+| nobody anywhere who has not decided | the stage is answered by the desk that hand signed at, and the request is stamped |
+
+**The refusal and the routing are both needed, and neither is enough alone.** The routing
+cannot help where the desk genuinely has a second officer — the request must go there — so
+`leaveRequestPolicy.eachStageADifferentPerson` refuses the first officer at the second desk,
+and `leave_request_decision_once_per_person` refuses the row on every connection. The routing
+is what stops that refusal being a dead end: it only ever sends a stage somewhere a decision
+can actually be made.
+
+**A collapsed stage is recorded as a skip to the desk that answered it**, so
+`leave_request_is_approved_by_every_stage` still finds every stage answered. The lone HR
+officer's annual leave goes to her line manager, who is also HR's stand-in: he decides once,
+the HR stage is recorded as having gone to `MANAGER`, and there is one decision row rather
+than two.
+
+**The stamp is `leave_request.decided_by_a_single_approver`**, written by the move that
+settles the request and judged against the decisions themselves at COMMIT by
+`leave_request_says_when_one_person_decided_it` — both ways, so the exception can be neither
+left off nor claimed. It is true where a chain of more than one stage was answered entirely by
+one named person. **A chain of one stage is not an exception**: one desk asked once is an
+ordinary request, and stamping every one of them would make the flag say nothing.
+
+**An unnamed writer is nobody.** `decided_by_employee_id` is null where nothing named the
+writer — a job, a migration, a seed — and two of those are not one person's decisions. The
+unique index holds as many nulls as arrive, and the domain asks about the id rather than the
+row.
+
+**What is deliberately not here.** Nothing widens or shortens a chain: FR 48d changes who is
+asked, never how many stages there are. A company too small to staff two desks does not get
+its approvals halved — it gets them recorded honestly.
 
 ---
 

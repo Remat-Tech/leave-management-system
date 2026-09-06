@@ -22,10 +22,10 @@ import type { Employee } from '../employee/employee.js';
 import { EmployeeNotFound } from '../employee/employee.js';
 import {
   type DecidingAction,
-  desksThatDecided,
   saysYes,
   type LeaveDecision,
   validateDecision,
+  whoDecidedWhere,
 } from '../leave-request/leave-decision.js';
 import { type LeaveEvent, validateNewLeaveEvent } from '../leave-event/leave-event.js';
 import type { ApproverRole } from '../leave-type/approval-chain.js';
@@ -42,7 +42,7 @@ import {
   type ValidatedLeaveRequest,
   withdrawalTo,
 } from '../leave-request/leave-request.js';
-import type { DesksAvailable } from '../leave-request/routing.js';
+import type { DeskOccupants, DesksAvailable } from '../leave-request/routing.js';
 import {
   AlreadyAskedToWithdraw,
   isAGrant,
@@ -147,6 +147,8 @@ export interface RequestToDecide {
   chiefExecutiveId: string | null;
   /** FR 48b. Who can be asked at each desk, for this requester. LMS 320. */
   available: DesksAvailable;
+  /** FR 48d. Who is at each of them. LMS 322. */
+  occupants: DeskOccupants;
   /** FR 27. The sentence for a DEDUCTION, where this decision is a final yes. */
   reasonForTaking: string;
   /** FR 27. The sentence for a RELEASE, where this decision is a final no. */
@@ -164,6 +166,8 @@ export interface RequestToReroute {
   chain: readonly ApproverRole[];
   /** FR 48b. Who can be asked at each desk, as things now stand. */
   available: DesksAvailable;
+  /** FR 48d. Who is at each of them. LMS 322. */
+  occupants: DeskOccupants;
 }
 
 /** The request, the movement it caused, and the balance it left. */
@@ -470,7 +474,8 @@ export class BalanceService {
    * `leave_request_commits_once`.
    */
   async decideForRequest(actor: Actor, decision: RequestToDecide): Promise<LeaveApproved> {
-    const { request, action, chain, chiefExecutiveId, available, comment, overturns } = decision;
+    const { request, action, chain, chiefExecutiveId, available, occupants } = decision;
+    const { comment, overturns } = decision;
     const { reasonForTaking, reasonForGivingBack } = decision;
     const owner = await this.ownerOf(request.employeeId);
 
@@ -526,6 +531,11 @@ export class BalanceService {
         }),
       );
 
+      /* FR 44, FR 48d. What has been decided and by whom, read inside the lock for the
+         reason the desk is: two officers deciding together would otherwise both find
+         themselves the first, and one of them is the same person as the other. LMS 322. */
+      const decisions = whoDecidedWhere(await repositories.decisions.forRequest(current.id));
+
       /* FR 41, LMS 316. Which stages have signed, read inside the lock and against the rows
          as they stand — the same discipline the status and the desk are held to, and it
          matters here for the sharpest reason of the three. Two approvals of one request
@@ -537,18 +547,28 @@ export class BalanceService {
         request: current,
         action,
         chain,
-        decidedAlready: desksThatDecided(await repositories.decisions.forRequest(current.id)),
+        decidedAlready: decisions,
+        /** FR 48d. Whose hand this one is. LMS 322. */
+        decider: actor.employeeId,
         /* FR 48b, LMS 320. Read inside the lock for the reason the decisions are: two
            approvals arriving together would otherwise both skip the same stage. */
         skipped: await repositories.routing.forRequest(current.id),
         available,
+        occupants,
       });
+
+      /** FR 48d. Asked after the outcome, as the service asks it, and here it binds. LMS 322. */
+      this.guard.enforce(
+        leaveRequestPolicy.eachStageADifferentPerson(actor, owner, action, decisions),
+      );
 
       const written = await repositories.requests.moveTo(
         actor,
         current.id,
         outcome.to,
         outcome.awaiting,
+        /** FR 48d. Stamped by the decision that settled it. LMS 322. */
+        outcome.singleApprover,
       );
 
       /* Unreachable for the same reason, and one statement later. */
@@ -641,7 +661,7 @@ export class BalanceService {
    * are ordered rather than interleaved.
    */
   async rerouteRequest(actor: Actor, reroute: RequestToReroute): Promise<LeaveRerouted> {
-    const { request, chain, available: desks } = reroute;
+    const { request, chain, available: desks, occupants } = reroute;
     const owner = await this.ownerOf(request.employeeId);
 
     this.guard.enforce(leaveRequestPolicy.route(actor, owner));
@@ -661,9 +681,10 @@ export class BalanceService {
       const routed = routingTo({
         request: current,
         chain,
-        decidedAlready: desksThatDecided(await repositories.decisions.forRequest(current.id)),
+        decidedAlready: whoDecidedWhere(await repositories.decisions.forRequest(current.id)),
         skipped: await repositories.routing.forRequest(current.id),
         available: desks,
+        occupants,
       });
 
       /* The skips first, so that the row explaining where the request went exists before

@@ -145,6 +145,7 @@ function aStoredRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     calendarDays: 9,
     status: 'SUBMITTED',
     awaitingApprovalFrom: 'MANAGER',
+    decidedBySingleApprover: false,
     submittedAt: new Date('2026-02-01T09:00:00Z'),
     createdAt: new Date('2026-02-01T09:00:00Z'),
     updatedAt: new Date('2026-02-01T09:00:00Z'),
@@ -1736,10 +1737,19 @@ describe('where this story stops', () => {
       action: 'APPROVE',
       chain,
       decidedAlready: [],
+      decider: 'efua',
       skipped: [{ stage: 'MANAGER', routedTo: 'HR', because: 'no line manager' }],
       available: { MANAGER: 'NOBODY_STAFFS_IT', HR: 'CAN_DECIDE', CEO: 'CAN_DECIDE' },
+      occupants: { MANAGER: [], HR: ['efua'], CEO: ['kofi'] },
     });
 
-    expect(outcome).toEqual({ by: 'HR', to: 'APPROVED', awaiting: null, skips: [] });
+    /* FR 48d, LMS 322. One officer answered both stages, because the manager's was empty. */
+    expect(outcome).toEqual({
+      by: 'HR',
+      to: 'APPROVED',
+      awaiting: null,
+      skips: [],
+      singleApprover: true,
+    });
   });
 });

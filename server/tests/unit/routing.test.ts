@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { APPROVER_ROLES, type ApproverRole } from '../../src/features/leave-type/approval-chain.js';
 import {
   canDecide,
+  type DeskDecision,
+  type DeskOccupants,
   DESK_STANDINGS,
   type DesksAvailable,
   desksAsked,
   desksAvailable,
   type DeskStanding,
+  NO_OCCUPANTS_NAMED,
   routeFrom,
   type SkippedStage,
   STAND_IN_FOR,
@@ -40,13 +43,43 @@ function withDesks(overrides: Partial<DesksAvailable>): DesksAvailable {
   return { ...ANYBODY, ...overrides };
 }
 
+/** Who signs at a desk, where the three desks are three different people. FR 48d. */
+function officerAt(desk: ApproverRole): string {
+  return `${desk.toLowerCase()}-officer`;
+}
+
 function route(
   chain: readonly ApproverRole[],
   available: DesksAvailable,
   decided: readonly ApproverRole[] = [],
   skipped: readonly SkippedStage[] = [],
 ) {
-  return routeFrom({ chain, decided, skipped, available });
+  return routeFrom({
+    chain,
+    decided: decided.map((desk) => ({ desk, by: officerAt(desk) })),
+    skipped,
+    available,
+    /* FR 48d. No names, which is what LMS 320's walk had: who is at a desk changes nothing
+       until somebody at it has decided. LMS 322. */
+    occupants: NO_OCCUPANTS_NAMED,
+  });
+}
+
+/** The same walk with people at the desks, which is what FR 48d turns on. LMS 322. */
+function routeAmong(input: {
+  chain: readonly ApproverRole[];
+  occupants: DeskOccupants;
+  decided?: readonly DeskDecision[];
+  available?: DesksAvailable;
+  skipped?: readonly SkippedStage[];
+}) {
+  return routeFrom({
+    chain: input.chain,
+    decided: input.decided ?? [],
+    skipped: input.skipped ?? [],
+    available: input.available ?? ANYBODY,
+    occupants: input.occupants,
+  });
 }
 
 /* -------------------------------------------------------------- nothing to route around */
@@ -65,7 +98,12 @@ describe('a chain every desk can answer', () => {
   });
 
   it('and is decided once every stage has had its say', () => {
-    expect(route(ORDINARY, ANYBODY, ['MANAGER', 'HR'])).toEqual({ kind: 'DECIDED', skips: [] });
+    expect(route(ORDINARY, ANYBODY, ['MANAGER', 'HR'])).toEqual({
+      kind: 'DECIDED',
+      skips: [],
+      /** FR 48d. Two desks, two officers. LMS 322. */
+      singleApprover: false,
+    });
   });
 });
 
@@ -98,7 +136,12 @@ describe('a manager stage nobody can answer', () => {
   it('and HR deciding once settles both stages', () => {
     const skips = route(ORDINARY, noManager).skips;
 
-    expect(route(ORDINARY, noManager, ['HR'], skips)).toEqual({ kind: 'DECIDED', skips: [] });
+    expect(route(ORDINARY, noManager, ['HR'], skips)).toEqual({
+      kind: 'DECIDED',
+      skips: [],
+      /** FR 48d. One signature settled both stages, so the request says so. LMS 322. */
+      singleApprover: true,
+    });
   });
 
   /* Nothing is approved by the stage being empty: HR still has to say yes. */
@@ -141,7 +184,12 @@ describe('an HR stage only the requester staffs', () => {
   it('and the Chief Executive deciding once settles both stages of unpaid leave', () => {
     const skips = route(UNPAID, loneHr).skips;
 
-    expect(route(UNPAID, loneHr, ['CEO'], skips)).toEqual({ kind: 'DECIDED', skips: [] });
+    expect(route(UNPAID, loneHr, ['CEO'], skips)).toEqual({
+      kind: 'DECIDED',
+      skips: [],
+      /** FR 48d, LMS 322. */
+      singleApprover: true,
+    });
   });
 
   /* Their annual leave still goes to their own line manager first: only the empty stage moves. */
@@ -176,6 +224,8 @@ describe('a CEO stage the requester holds', () => {
           because: expect.stringContaining('nobody decides their own request') as string,
         },
       ],
+      /** FR 48d, LMS 322. */
+      singleApprover: true,
     });
   });
 
@@ -235,6 +285,118 @@ describe('a stage with neither its desk nor its stand-in', () => {
       expect(route([desk], empty).kind).toBe('UNROUTABLE');
       expect(route([desk], empty).kind).not.toBe('DECIDED');
     }
+  });
+});
+
+/* ------------------------------------------- two stages that resolve to one person */
+
+/**
+ * The single approver exception. FR 48d, LMS 322.
+ *
+ * Ama is Kofi's line manager and holds an HR role, so his annual leave has two stages with
+ * one person at both. LMS 320 asked her twice; this asks somebody else, and where the company
+ * has nobody else it says on the record that one approver decided it.
+ */
+describe('a stage its own people have already decided', () => {
+  /** Ama is the manager and in HR; Efua is the other officer; Kwesi is the Chief Executive. */
+  const decidedByAma: readonly DeskDecision[] = [{ desk: 'MANAGER', by: 'ama' }];
+
+  it('is still asked where a second officer is at the desk', () => {
+    const routed = routeAmong({
+      chain: ORDINARY,
+      decided: decidedByAma,
+      occupants: { MANAGER: ['ama'], HR: ['ama', 'efua'], CEO: ['kwesi'] },
+    });
+
+    expect(routed).toEqual({ kind: 'DESK', desk: 'HR', skips: [] });
+  });
+
+  /* The story's first criterion: two stages, two different officers. */
+  it('and goes to the stand-in where the desk is that one person alone', () => {
+    const routed = routeAmong({
+      chain: ORDINARY,
+      decided: decidedByAma,
+      occupants: { MANAGER: ['ama'], HR: ['ama'], CEO: ['kwesi'] },
+    });
+
+    expect(routed).toEqual({
+      kind: 'DESK',
+      desk: 'CEO',
+      skips: [
+        {
+          stage: 'HR',
+          routedTo: 'CEO',
+          because: expect.stringContaining('already decided this request') as string,
+        },
+      ],
+    });
+  });
+
+  /* And the second criterion: with nobody else, it is stamped rather than signed twice, and
+     the stage is recorded against the desk that hand did sign at. */
+  it('and is decided by a single approver where the company has nobody else', () => {
+    const routed = routeAmong({
+      chain: ORDINARY,
+      decided: decidedByAma,
+      available: withDesks({ CEO: 'NOBODY_STAFFS_IT' }),
+      occupants: { MANAGER: ['ama'], HR: ['ama'], CEO: [] },
+    });
+
+    expect(routed).toEqual({
+      kind: 'DECIDED',
+      singleApprover: true,
+      skips: [{ stage: 'HR', routedTo: 'MANAGER', because: expect.any(String) as string }],
+    });
+  });
+
+  /* Two people is the ordinary case, and is not stamped. */
+  it('and a chain two people answered is not a single approver', () => {
+    const routed = routeAmong({
+      chain: ORDINARY,
+      decided: [
+        { desk: 'MANAGER', by: 'ama' },
+        { desk: 'HR', by: 'efua' },
+      ],
+      occupants: { MANAGER: ['ama'], HR: ['ama', 'efua'], CEO: ['kwesi'] },
+    });
+
+    expect(routed).toMatchObject({ kind: 'DECIDED', singleApprover: false });
+  });
+
+  /* Nor is a chain that only ever asked for one signature: that is not an exception. */
+  it('and a chain of one stage is not an exception', () => {
+    const routed = routeAmong({
+      chain: ['HR'],
+      decided: [{ desk: 'HR', by: 'ama' }],
+      occupants: { MANAGER: [], HR: ['ama'], CEO: [] },
+    });
+
+    expect(routed).toMatchObject({ kind: 'DECIDED', singleApprover: false });
+  });
+
+  /* And an unnamed writer is nobody, so two of its decisions are not one person's. */
+  it('and decisions nothing named are not one approver', () => {
+    const routed = routeAmong({
+      chain: ORDINARY,
+      decided: [
+        { desk: 'MANAGER', by: null },
+        { desk: 'HR', by: null },
+      ],
+      occupants: { MANAGER: ['ama'], HR: ['efua'], CEO: ['kwesi'] },
+    });
+
+    expect(routed).toMatchObject({ kind: 'DECIDED', singleApprover: false });
+  });
+
+  /* A stage nobody staffs still stops the request rather than collapsing onto a hand. */
+  it('and a stage with nobody at either desk still stops the request', () => {
+    const routed = routeAmong({
+      chain: UNPAID,
+      available: withDesks({ HR: 'NOBODY_STAFFS_IT', CEO: 'NOBODY_STAFFS_IT' }),
+      occupants: { MANAGER: ['ama'], HR: [], CEO: [] },
+    });
+
+    expect(routed).toMatchObject({ kind: 'UNROUTABLE', stranded: 'HR' });
   });
 });
 
