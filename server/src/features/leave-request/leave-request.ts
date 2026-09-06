@@ -1110,6 +1110,8 @@ export interface ValidatedLeaveRequest {
    * tomorrow. Not supplied by the caller — {@link documentationGroundsFor} decides it.
    */
   evidenceRequired: boolean;
+  /** FR 32a, §8.6b. How many days went past the allowance. {@link certifiedDaysIn}. LMS 312. */
+  certifiedDays: number;
   countingBasis: CountingBasis;
   days: number;
   calendarDays: number;
@@ -1172,6 +1174,14 @@ export interface LeaveRequest {
    * request that says this has a `CLEAN` file on it, and one that has none cannot commit.
    */
   evidenceRequired: boolean;
+  /**
+   * FR 32a, §8.6b. How many of its days went past the allowance on a certificate. LMS 312.
+   *
+   * Frozen with the price for the reason `evidenceRequired` is: the balance FR 32a judged it
+   * against is spent by the time anybody reads the row. Nought on everything but sick leave
+   * today, and on most of that.
+   */
+  certifiedDays: number;
   /**
    * FR 11. The basis this was priced under, as it stood at submission.
    *
@@ -1586,6 +1596,40 @@ export function documentationGroundsFor(input: {
   }
 
   return grounds;
+}
+
+/**
+ * How many of this request's days go past the allowance. FR 32a, §8.6b. LMS 312.
+ *
+ * The `PAST_THE_ALLOWANCE` ground said as a number, from the same reading, so what a person
+ * was asked for a certificate for is what the ledger records them as having used it on.
+ *
+ * What is left is floored, for the reason {@link NotEnoughDays} floors it: §8.6d pro rates a
+ * mid year joiner to a fraction, and 2.5 days left is two days askable without a certificate.
+ */
+export function certifiedDaysIn(input: {
+  type: LeaveType;
+  days: number;
+  availableNow: number;
+}): number {
+  const { type, days, availableNow } = input;
+
+  if (!balanceMayBeExceededWithDocument(type)) {
+    return 0;
+  }
+
+  return Math.max(0, days - Math.max(0, Math.floor(availableNow)));
+}
+
+/**
+ * How many of them come back when days are given back. FR 32a, FR 47. LMS 312, LMS 324.
+ *
+ * Certified days come back first, because the days that are kept are the ones the allowance
+ * takes back first: five days with two certified, one given back, leaves four days of which
+ * one is past an allowance of three.
+ */
+export function certifiedDaysGivenBack(certifiedDays: number, daysGivenBack: number): number {
+  return Math.max(0, Math.min(certifiedDays, daysGivenBack));
 }
 
 /**
@@ -2302,6 +2346,13 @@ export function validateNewLeaveRequest(input: {
    * the same state, and false is what almost every request is.
    */
   evidenceRequired?: boolean;
+  /**
+   * FR 32a, §8.6b. How many of the days went past the allowance. LMS 312.
+   *
+   * {@link certifiedDaysIn}'s answer brought here, as `evidenceRequired` is
+   * {@link documentationGroundsFor}'s. Optional, and absent is nought.
+   */
+  certifiedDays?: number;
   countingBasis: CountingBasis;
   days: number;
   calendarDays: number;
@@ -2317,6 +2368,9 @@ export function validateNewLeaveRequest(input: {
   available: DesksAvailable;
 }): ValidatedLeaveRequest {
   const routed = theFirstDesk(input.approvalChain, input.available);
+  /* Before the certified count below, which is a part of it: a request of −3 days is
+     refused for its day count rather than for what that count contains. */
+  const days = requireWholeDays('days', input.days);
 
   return {
     employeeId: requireId('employeeId', input.employeeId),
@@ -2329,8 +2383,10 @@ export function validateNewLeaveRequest(input: {
     lateEntryReason: input.lateEntryReason ?? null,
     /** FR 13, FR 32a. Already decided; see {@link documentationGroundsFor}. LMS 311. */
     evidenceRequired: input.evidenceRequired ?? false,
+    /** FR 32a. Already decided; see {@link certifiedDaysIn}. LMS 312. */
+    certifiedDays: requireCertifiedDays(input.certifiedDays ?? 0, days),
     countingBasis: input.countingBasis,
-    days: requireWholeDays('days', input.days),
+    days,
     calendarDays: requireWholeDays('calendarDays', input.calendarDays),
     /* Not a parameter. A caller that could choose the status could submit something
        already approved, and the README's rule is that only the state machine moves
@@ -2452,6 +2508,26 @@ function requireWholeDays(field: string, value: unknown): number {
       field,
       `${field} is a whole number of days, at least one. Leave is requested in whole ` +
         `days — FR 24 — and a morning off is settled with a manager rather than here.`,
+    );
+  }
+
+  return value;
+}
+
+/** FR 32a. Part of the request rather than beside it. `leave_request_certified_days_are_part_of_it`. */
+function requireCertifiedDays(value: unknown, days: number): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new InvalidLeaveRequest(
+      'certifiedDays',
+      `certifiedDays is a whole number of days past an allowance, or nought. FR 24, FR 32a.`,
+    );
+  }
+
+  if (value > days) {
+    throw new InvalidLeaveRequest(
+      'certifiedDays',
+      `${value} of this request's days cannot be past the allowance when it is only ` +
+        `${String(days)} days long. FR 32a.`,
     );
   }
 

@@ -67,6 +67,8 @@ export interface NewLedgerEntry {
   entryType: LedgerEntryType;
   /** Signed. */
   days: number;
+  /** FR 32a. How many of them are past the allowance. Defaults to none. LMS 312. */
+  certifiedDays?: number;
   /** FR 27. */
   reason: string;
   /** The entry this one puts right. */
@@ -82,6 +84,7 @@ export interface ValidatedLedgerEntry {
   leaveYearId: string;
   entryType: LedgerEntryType;
   days: number;
+  certifiedDays: number;
   reason: string;
   correctsId: string | null;
   leaveRequestId: string | null;
@@ -95,6 +98,12 @@ export interface LedgerEntry {
   leaveYearId: string;
   entryType: LedgerEntryType;
   days: number;
+  /**
+   * FR 32a, §8.6b. How many of this movement's days went past the allowance. LMS 312.
+   *
+   * Nought on everything but the four movements a request causes, and on most of those.
+   */
+  certifiedDays: number;
   reason: string;
   correctsId: string | null;
   /**
@@ -201,12 +210,15 @@ export function validateNewLedgerEntry(input: NewLedgerEntry): ValidatedLedgerEn
     );
   }
 
+  const days = requireDays(entryType, input.days);
+
   return {
     employeeId: requireId('employeeId', input.employeeId),
     leaveTypeId: requireId('leaveTypeId', input.leaveTypeId),
     leaveYearId: requireId('leaveYearId', input.leaveYearId),
     entryType,
-    days: requireDays(entryType, input.days),
+    days,
+    certifiedDays: requireCertifiedDays(entryType, days, input.certifiedDays),
     reason: requireReason(input.reason),
     correctsId,
     leaveRequestId,
@@ -313,6 +325,44 @@ function requireDays(entryType: LedgerEntryType, value: unknown): number {
       `${String(value)} days is more than a ledger entry holds. The longest absence this ` +
         `system knows about is a hundred and twenty days of maternity leave, so a figure ` +
         `this size is a unit or a decimal point rather than a movement.`,
+    );
+  }
+
+  return value;
+}
+
+/**
+ * How many of them went past the allowance on a certificate. FR 32a, §8.6b, LMS 312.
+ *
+ * A part of the movement rather than a movement of its own, so it is bounded by it and only
+ * the four a request causes may carry one. `leave_ledger_entry_only_a_request_certifies` and
+ * `leave_ledger_entry_certified_days_are_part_of_it` hold both for every other writer.
+ */
+function requireCertifiedDays(entryType: LedgerEntryType, days: number, value: unknown): number {
+  if (value === undefined || value === null) {
+    return 0;
+  }
+
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || !isWholeDays(value)) {
+    throw new InvalidLedgerEntry(
+      'certifiedDays',
+      `${String(value)} is not a number of days past an allowance. ${WHOLE_DAYS_ONLY}`,
+    );
+  }
+
+  if (value > 0 && !isARequestMovement(entryType)) {
+    throw new InvalidLedgerEntry(
+      'certifiedDays',
+      `A ${entryType} is not caused by a leave request, so none of its days went past an ` +
+        `allowance on a certificate. FR 32a.`,
+    );
+  }
+
+  if (value > Math.abs(days)) {
+    throw new InvalidLedgerEntry(
+      'certifiedDays',
+      `${String(value)} days cannot be certified out of a movement of ${Math.abs(days)}. The ` +
+        `certified days are part of the movement rather than beside it.`,
     );
   }
 

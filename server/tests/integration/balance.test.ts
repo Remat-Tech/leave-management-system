@@ -369,6 +369,7 @@ async function askFor(
       /** FR 18, LMS 308. */
       lateEntryReason: null,
       evidenceRequired: false,
+      certifiedDays: 0,
       countingBasis: 'CALENDAR_DAYS' as const,
       days,
       calendarDays: span,

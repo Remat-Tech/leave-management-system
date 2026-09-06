@@ -70,6 +70,7 @@ function aRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     reason: null,
     lateEntryReason: null,
     evidenceRequired: false,
+    certifiedDays: 0,
     countingBasis: 'WORKING_DAYS',
     days: 5,
     calendarDays: 5,

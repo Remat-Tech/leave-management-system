@@ -87,6 +87,7 @@ function aRequestIn(status: RequestStatus, awaiting: ApproverRole = 'MANAGER'): 
     /** FR 18, LMS 308. */
     lateEntryReason: null,
     evidenceRequired: false,
+    certifiedDays: 0,
     countingBasis: 'WORKING_DAYS',
     days: 6,
     calendarDays: 9,

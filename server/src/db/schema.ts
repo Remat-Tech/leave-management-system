@@ -200,6 +200,8 @@ export interface LeaveLedgerEntryTable {
   entry_type: string;
   /** How many days, signed. §8.6, FR 24, LMS 211. */
   days: string;
+  /** FR 32a, §8.6b. How many of them went past the allowance on a certificate. LMS 312. */
+  certified_days: number;
   /** FR 27. */
   reason: string;
   corrects_id: string | null;
@@ -300,6 +302,8 @@ export interface LeaveRequestTable {
   late_entry_reason: ColumnType<string | null, string | null, never>;
   /** FR 13, FR 32a. Whether this request had to arrive with documentation. LMS 311. */
   evidence_required: ColumnType<boolean, boolean, never>;
+  /** FR 32a, §8.6b. How many of its days went past the allowance on a certificate. LMS 312. */
+  certified_days: ColumnType<number, number, never>;
   /** FR 11, the story's third criterion. */
   counting_basis: ColumnType<string, string, never>;
   /** What it cost, and what the RESERVATION took. FR 24. */

@@ -910,6 +910,8 @@ function submittedAsJson(submitted: LeaveRequested): unknown {
     status: submitted.request.status,
     /** FR 13, FR 32a. Whether documentation was asked of it, and so is on it. LMS 311. */
     evidenceRequired: submitted.request.evidenceRequired,
+    /** FR 32a, §8.6b. How many of its days the certificate carried. LMS 312. */
+    certifiedDays: submitted.request.certifiedDays,
     /** FR 38a. The desk it is now sitting on. */
     awaitingApprovalFrom: submitted.request.awaitingApprovalFrom,
     submittedAt: submitted.request.submittedAt.toISOString(),

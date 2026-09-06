@@ -515,6 +515,7 @@ function request(changes: Partial<LeaveRequest>): LeaveRequest {
     /** FR 18, LMS 308. */
     lateEntryReason: null,
     evidenceRequired: false,
+    certifiedDays: 0,
     countingBasis: 'WORKING_DAYS',
     days: 5,
     calendarDays: 5,
