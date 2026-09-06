@@ -34,6 +34,7 @@ import { DepartmentRepository } from '../../src/features/department/department.d
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
 import { DepartmentService } from '../../src/features/department/department.service.js';
+import { noLeaveFollows } from '../../src/features/employee/employee.js';
 import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { seed } from '../../seeds/seed.mjs';
 import type { Kysely } from 'kysely';
@@ -131,6 +132,7 @@ beforeAll(async () => {
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
     guard,
+    noLeaveFollows(),
     { domains: DOMAINS },
   );
 });

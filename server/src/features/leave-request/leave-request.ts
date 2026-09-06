@@ -540,6 +540,13 @@ export const TRANSITIONS: readonly Transition[] = [
      the manager, which is the whole of the third criterion. */
   { from: 'SUBMITTED', action: 'APPROVE', to: 'APPROVED', by: ['THE_DESK_IT_IS_WITH'] },
 
+  /* Working the routing out again under a request nobody has answered. FR 07, §8.4. LMS 325.
+
+     `to` is where it lands when a desk can still be asked; where none can, it lands on
+     `UNROUTABLE` — the same reading `approvalTo` makes of the `APPROVE` row above. Nothing
+     is decided by it, which is why it leaves a request being decided still being decided. */
+  { from: 'SUBMITTED', action: 'ROUTE', to: 'SUBMITTED', by: ['LEAVE_ADMINISTRATION'] },
+
   /* The same two verbs said over a line manager who decided otherwise. FR 44, §7.2. LMS 318.
 
      An override is an ordinary decision at the desk the request is sitting on, and the
@@ -896,19 +903,23 @@ export function isTheLastWord(outcome: ApprovalOutcome): boolean {
   return outcome.awaiting === null && outcome.to !== 'UNROUTABLE';
 }
 
-/** Where a request goes when it is sent back into its chain. FR 48b, §8.6a. LMS 320. */
+/** Where a request goes when it is sent back into its chain. FR 48b, §8.6a. LMS 320, LMS 325. */
 export interface RoutedAgain {
   to: RequestStatus;
-  awaiting: ApproverRole;
+  /** Null where the walk ran out of desks, which only a live request can do. LMS 325. */
+  awaiting: ApproverRole | null;
   skips: readonly SkippedStage[];
 }
 
 /**
- * Where sending an unroutable request back into its chain leaves it. FR 48b, §8.6a. LMS 320.
+ * Where sending a request back into its chain leaves it. FR 48b, FR 07, §8.6a, §8.4. LMS 320, LMS 325.
  *
  * The same walk a decision makes, with nothing decided by it: no desk answers, no ledger
- * entry is written, and the request goes back to being decided at whichever desk can now be
- * asked. Refused with {@link StillNobodyToDecideIt} where nothing has changed.
+ * entry is written, and the request goes to whichever desk can now be asked.
+ *
+ * Where none can, the two starting states part company. One that was already stuck stays
+ * stuck and the caller is told what would move it, which is {@link StillNobodyToDecideIt}. One
+ * still being decided has just lost its desk under it, and lands on `UNROUTABLE`.
  */
 export function routingTo(input: {
   request: LeaveRequest;
@@ -930,17 +941,22 @@ export function routingTo(input: {
   const routed = routeFrom({ chain, decided: decidedAlready, skipped, available, occupants });
 
   if (routed.kind === 'UNROUTABLE') {
-    throw new StillNobodyToDecideIt(
-      request,
-      routed.stranded,
-      whatWouldRouteIt(routed.stranded, available),
-    );
+    if (request.status === 'UNROUTABLE') {
+      throw new StillNobodyToDecideIt(
+        request,
+        routed.stranded,
+        whatWouldRouteIt(routed.stranded, available),
+      );
+    }
+
+    /** FR 07, LMS 325. The desk emptied under a request that was being decided. */
+    return { to: 'UNROUTABLE', awaiting: null, skips: routed.skips };
   }
 
   if (routed.kind === 'DECIDED') {
-    /* Unreachable: a request is unroutable because a stage it reached had nobody to answer
-       it, and a stage nobody answered has not decided. Answered rather than asserted,
-       because the alternative is leave agreed by a stage that was never asked. */
+    /* Routing never approves. Unreachable from `UNROUTABLE` — a stage nobody answered has
+       not decided — and reachable from `SUBMITTED` only where every remaining stage
+       collapsed onto a desk that has signed, which is a request to leave where it is. */
     throw new LeaveCannotBeMoved(request, 'ROUTE');
   }
 

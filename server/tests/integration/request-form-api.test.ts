@@ -932,7 +932,7 @@ async function yearIdOf(label: string): Promise<string> {
 function emptyTheLeaveTables(): Promise<unknown> {
   return admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'leave_request_attachment, leave_request_decision, leave_request_routing, leave_request_withdrawal, leave_request, leave_balance',
+      'leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request, leave_balance',
   );
 }
 

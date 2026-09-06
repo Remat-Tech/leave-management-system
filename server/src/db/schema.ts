@@ -408,6 +408,23 @@ export interface LeaveRequestRoutingTable {
   recorded_at: Timestamp;
 }
 
+/** One request a reporting-line change carried to a new manager. FR 07, §8.4, LMS 325. */
+export interface LeaveRequestReassignmentTable {
+  id: Generated<string>;
+  leave_request_id: ColumnType<string, string, never>;
+  /** Who managed them, and who does now. Either may be nobody. FR 04. */
+  from_manager_employee_id: ColumnType<string | null, string | null, never>;
+  to_manager_employee_id: ColumnType<string | null, string | null, never>;
+  /** The desk before and after. Null is nobody, as `awaiting_approval_from` is. */
+  moved_from: ColumnType<string | null, string | null, never>;
+  moved_to: ColumnType<string | null, string | null, never>;
+  /** NFR USA 03. */
+  because: ColumnType<string, string, never>;
+  recorded_by: ColumnType<string, never, never>;
+  recorded_by_employee_id: ColumnType<string | null, never, never>;
+  recorded_at: Timestamp;
+}
+
 /** What the company itself is configured as. FR 48c, §4.3.1, LMS 321. */
 export interface OrganisationSettingTable {
   id: Generated<string>;
@@ -448,6 +465,7 @@ export interface Database {
   leave_request_attachment: LeaveRequestAttachmentTable;
   leave_request_decision: LeaveRequestDecisionTable;
   leave_request_draft: LeaveRequestDraftTable;
+  leave_request_reassignment: LeaveRequestReassignmentTable;
   leave_request_routing: LeaveRequestRoutingTable;
   leave_request_withdrawal: LeaveRequestWithdrawalTable;
   leave_type: LeaveTypeTable;

@@ -20,6 +20,8 @@ export const NOTICE_EVENTS = [
   'DECISION_OVERTURNED',
   /** Nobody can decide it, told to the requester and to whoever can fix that. FR 48b, LMS 320. */
   'UNROUTABLE',
+  /** The manager who has just inherited a pending request. FR 07, §8.4, LMS 325. */
+  'REASSIGNED',
   /**
    * The four turns of FR 47's conversation about agreed leave. LMS 324.
    *
@@ -324,6 +326,19 @@ export function noticeOf(happened: WhatHappened): NewNotice {
               ],
         };
       }
+
+      /* FR 07, §8.4, LMS 325. Written to the manager who has just inherited the decision.
+         It says the balance nothing about, because the days are somebody else's. */
+      case 'REASSIGNED':
+        return {
+          subject: `${possessively(employee.name)} ${typeName} for ${period} is now yours to decide`,
+          paragraphs: [
+            `${employee.name} asked for ${cost}, and you are now their line manager, so the request is waiting on you.`,
+            ...said,
+            'Nothing has been decided at your stage. Any approval an earlier stage has already given stands, in the name of whoever gave it.',
+            `Their ${held} are held while it is decided, so an answer either way is worth having soon.`,
+          ],
+        };
 
       /* FR 47, LMS 324. HR's copy, and the only message in this file that asks somebody to
          do something. It carries the employee's own account whole, in their words, because

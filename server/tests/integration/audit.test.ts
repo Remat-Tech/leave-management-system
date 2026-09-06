@@ -21,6 +21,7 @@ import { Transactions } from '../../src/db/transaction.js';
 import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
 import { AuditService } from '../../src/features/audit/audit.service.js';
 import { DepartmentService } from '../../src/features/department/department.service.js';
+import { noLeaveFollows } from '../../src/features/employee/employee.js';
 import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { RoleService } from '../../src/features/role/role.service.js';
 import { SignInService } from '../../src/features/sign-in/sign-in.service.js';
@@ -103,6 +104,7 @@ beforeAll(async () => {
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
     guard,
+    noLeaveFollows(),
     { domains: DOMAINS },
   );
   departments = new DepartmentService(new DepartmentRepository(db), guard);
@@ -111,7 +113,9 @@ beforeAll(async () => {
   logins = new SignInService(accounts, employeeRepository, roleRepository, mailer, guard, {
     domains: DOMAINS,
   });
-  imports = new StaffImportService(new Transactions(db), guard, { domains: DOMAINS });
+  imports = new StaffImportService(new Transactions(db), guard, noLeaveFollows(), {
+    domains: DOMAINS,
+  });
 });
 
 beforeEach(async () => {

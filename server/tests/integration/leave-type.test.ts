@@ -23,6 +23,7 @@ import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { DepartmentRepository } from '../../src/features/department/department.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { noLeaveFollows } from '../../src/features/employee/employee.js';
 import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { LeaveTypeService } from '../../src/features/leave-type/leave-type.service.js';
 import { seed } from '../../seeds/seed.mjs';
@@ -98,6 +99,7 @@ beforeAll(async () => {
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
     guard,
+    noLeaveFollows(),
     { domains: DOMAINS },
   );
 

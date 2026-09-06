@@ -219,13 +219,13 @@ describe('the transitions a request may make', () => {
    */
   it('and everything can be done to a request that is waiting to be decided', () => {
     for (const action of REQUEST_ACTIONS) {
-      /* FR 48b, LMS 320. `ROUTE` is the verb this state has no row for, and the absence is
-         the rule: a request that is being decided is already with somebody.
+      /* FR 47, LMS 324. The four withdrawal verbs are the ones this state has no row for:
+         they are about leave every desk has agreed to, and a request still being decided is
+         taken back by `WITHDRAW` without anybody's permission.
 
-         FR 47, LMS 324. The four withdrawal verbs are absent for the mirror reason — they
-         are about leave every desk has agreed to, and a request still being decided is taken
-         back by `WITHDRAW` without anybody's permission. */
-      if (action === 'ROUTE' || isAboutAWithdrawal(action)) {
+         FR 07, LMS 325. `ROUTE` was among them until the reporting line was allowed to move
+         a request nobody has answered. */
+      if (isAboutAWithdrawal(action)) {
         expect(transitionFor('SUBMITTED', action)).toBeUndefined();
         continue;
       }
@@ -338,12 +338,13 @@ describe('the transitions a request may make', () => {
   it('and the verbs that say yes are the only rows whose destination keeps the request alive', () => {
     const live = TRANSITIONS.filter((transition) => !isSettled(transition.to));
 
-    /* `ROUTE` joined them with LMS 320, and it is the one that decides nothing. FR 48b.
-       Three of FR 47's four joined with LMS 324, and they are the rows whose destination is
-       the state they started in: asking, amending and turning an ask down all leave agreed
-       leave agreed. LMS 324. */
+    /* `ROUTE` joined them with LMS 320 and again with LMS 325, and it is the one that decides
+       nothing. FR 48b, FR 07. Three of FR 47's four joined with LMS 324, and they are the rows
+       whose destination is the state they started in: asking, amending and turning an ask down
+       all leave agreed leave agreed. LMS 324. */
     expect(live.map((transition) => transition.action)).toEqual([
       'APPROVE',
+      'ROUTE',
       'OVERTURN_REJECTION',
       'ROUTE',
       'ASK_TO_WITHDRAW',
@@ -930,6 +931,15 @@ describe('the table, written out', () => {
         action: 'APPROVE',
         to: 'APPROVED',
         by: ['THE_DESK_IT_IS_WITH'],
+      },
+      /* FR 07, §8.4, LMS 325. The routing worked out again under a request nobody has
+         answered, because the reporting line moved. Nothing is decided by it, so it leaves
+         a request being decided still being decided. */
+      {
+        from: 'SUBMITTED',
+        action: 'ROUTE',
+        to: 'SUBMITTED',
+        by: ['LEAVE_ADMINISTRATION'],
       },
       /* FR 44, §7.2, LMS 318. The same standing as the two plain verbs, because an override
          is an ordinary decision that happens to disagree with an earlier stage. */

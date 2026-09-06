@@ -353,10 +353,12 @@ this is a rule the compiler holds as well as the prose.
 
 **`AUDITED_ENTITIES` is the list, and what is off it is off it on purpose.** An
 integration test reads the tables carrying the trigger straight out of the
-catalogue and asserts they are exactly that list, so neither can drift. Three
-tables are deliberately absent for two different reasons. `leave_request_decision`
-and `leave_request_withdrawal` are append only, so each row is already its own
-history and an audit of it would be a second copy. `leave_request_draft` is the
+catalogue and asserts they are exactly that list, so neither can drift. The
+absences are deliberate, for two different reasons. `leave_request_decision`,
+`leave_request_withdrawal`, `leave_request_routing` and
+`leave_request_reassignment` are append only and carry their own writer and
+instant, so each row is already its own history and an audit of it would be a
+second copy. `leave_request_draft` is the
 opposite case: a draft is rewritten as often as somebody changes their mind and
 thrown away when they do, so auditing it would keep the contents of everything
 anybody discarded — which is precisely what a draft exists not to be. FR 19.

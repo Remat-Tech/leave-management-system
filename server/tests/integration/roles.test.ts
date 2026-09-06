@@ -20,6 +20,7 @@ import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { RoleRepository } from '../../src/features/role/role.db.js';
 import { SignInAccountRepository } from '../../src/features/sign-in/sign-in-account.db.js';
 import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { noLeaveFollows } from '../../src/features/employee/employee.js';
 import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { RoleService } from '../../src/features/role/role.service.js';
 import { SignInService } from '../../src/features/sign-in/sign-in.service.js';
@@ -104,6 +105,7 @@ beforeAll(async () => {
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
     guard,
+    noLeaveFollows(),
     { domains: DOMAINS },
   );
 });

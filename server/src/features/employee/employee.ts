@@ -2,6 +2,7 @@
  * The employee record. FR 01, FR 05, FR 06, LMS 102, FR 02, FR 04, LMS 103, FR 03, LMS 104, LMS 105, FR 23, LMS 106, LMS 112.
  */
 
+import type { Actor } from '../../auth/actor.js';
 import { assertCompanyEmail } from '../sign-in/company-email.js';
 import { type CalendarDate, isCalendarDate } from '../../shared/time.js';
 
@@ -435,6 +436,31 @@ export function planTermination(
   checkDatesAgree(current.startDate, exitDate, 'TERMINATED');
 
   return changes;
+}
+
+/** A reporting line that has just moved. FR 07, §8.4, LMS 325. */
+export interface ReportingLineMove {
+  employeeId: string;
+  /** Who managed them, and who does now. Either may be nobody. FR 04. */
+  from: string | null;
+  to: string | null;
+}
+
+/**
+ * What follows an employee when their reporting line moves. FR 07, §8.4, LMS 325.
+ *
+ * The port `LeaveRequestService` fills. Declared here rather than imported, so this
+ * feature keeps its own dependency direction.
+ */
+export interface LeaveThatFollows {
+  followTheReportingLine(actor: Actor, move: ReportingLineMove): Promise<unknown>;
+}
+
+/** For a caller with no leave to carry: a seed, a test about departments. LMS 325. */
+export function noLeaveFollows(): LeaveThatFollows {
+  return {
+    followTheReportingLine: () => Promise.resolve([]),
+  };
 }
 
 /**

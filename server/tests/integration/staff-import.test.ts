@@ -15,6 +15,7 @@ import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { Transactions } from '../../src/db/transaction.js';
 import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
 import { DepartmentService } from '../../src/features/department/department.service.js';
+import { noLeaveFollows } from '../../src/features/employee/employee.js';
 import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { StaffImportService } from '../../src/features/staff-import/staff-import.service.js';
 import { seed } from '../../seeds/seed.mjs';
@@ -99,7 +100,9 @@ beforeAll(async () => {
   admin = new Client({ connectionString: testDatabaseUrl });
   await admin.connect();
 
-  imports = new StaffImportService(new Transactions(db), guard, { domains: DOMAINS });
+  imports = new StaffImportService(new Transactions(db), guard, noLeaveFollows(), {
+    domains: DOMAINS,
+  });
 
   departments = new DepartmentService(new DepartmentRepository(db), guard);
   employees = new EmployeeService(
@@ -107,6 +110,7 @@ beforeAll(async () => {
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
     guard,
+    noLeaveFollows(),
     { domains: DOMAINS },
   );
 });
@@ -376,6 +380,62 @@ describe('cycle detection during the import', () => {
     expect(akosua?.managerId).toBe(kofi?.id);
     expect(kofi?.managerId).toBe(yaw?.id);
     expect(await employees.reportingLineWarnings(system)).toEqual([]);
+  });
+
+  /**
+   * And the pending leave follows every line the file moved. FR 07, §8.4. LMS 325.
+   *
+   * A re-org moves lines by the hundred, and each one is somebody with a request in a queue.
+   * What is asserted here is the reporting: which lines moved, that a row the file left alone
+   * is not among them, and that the moves are reported after the transaction rather than
+   * inside it — the routing has to read the lines this import wrote, not the ones it is still
+   * writing. Where the requests then go is ./reassignment.test.ts's.
+   */
+  it('and reports every line it moved, once, after the import has committed', async () => {
+    const moved: { employeeId: string; from: string | null; to: string | null }[] = [];
+    let committedWhenTold = false;
+
+    const source = fileOf(
+      'RH-0007,Akosua,Darko,akosua.darko@rematholdings.com,Operations,RH-0010,2019-03-18,' +
+        'Operations Manager',
+      'RH-0010,Kofi,Boateng,kofi.boateng@rematholdings.com,Operations,RH-0003,2022-04-25,' +
+        'Operations Team Lead',
+      ADWOA_UNCHANGED,
+    );
+
+    const watching = new StaffImportService(
+      new Transactions(db),
+      guard,
+      {
+        followTheReportingLine: async (_actor, move) => {
+          moved.push(move);
+
+          /* Read on another connection, so it sees only what has committed. */
+          const { rows } = await admin.query<{ manager: string | null }>(
+            'SELECT manager_id AS manager FROM employee WHERE id = $1',
+            [move.employeeId],
+          );
+
+          committedWhenTold = rows[0].manager === move.to;
+        },
+      },
+      { domains: DOMAINS },
+    );
+
+    const plan = await watching.dryRun(system, source);
+    await watching.confirm(system, source, plan.fingerprint);
+
+    const akosua = await employees.byNumber(system, 'RH-0007');
+    const kofi = await employees.byNumber(system, 'RH-0010');
+
+    expect(moved.map((one) => one.employeeId).sort()).toEqual([akosua!.id, kofi!.id].sort());
+    expect(committedWhenTold).toBe(true);
+
+    /* Adwoa's row is in the file and says what her record already said, so her line did not
+       move and her leave has nothing to follow. */
+    const adwoa = await employees.byNumber(system, 'RH-0011');
+
+    expect(moved.map((one) => one.employeeId)).not.toContain(adwoa!.id);
   });
 });
 
