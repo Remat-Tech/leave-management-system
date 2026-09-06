@@ -68,11 +68,13 @@ function kindsOf(type: LeaveType): FormRuleKind[] {
 }
 
 describe('documentation, explained before anything is submitted', () => {
-  it('says so for a type that always needs it, and says to have it ready', () => {
+  /* LMS 311. "Have it ready" became "or you are refused", which is what the rule now does. */
+  it('says so for a type that always needs it, and says a request without it is refused', () => {
     const said_ = said(stored({ documentation: 'ALWAYS' }), 'DOCUMENTATION');
 
     expect(said_).toContain('needs supporting documentation');
-    expect(said_).toContain('before you submit');
+    expect(said_).toContain('Upload it before you ask');
+    expect(said_).toContain('refused');
   });
 
   it('names the length on both sides of a threshold, so `after 2 days` cannot be read as `2 days`', () => {

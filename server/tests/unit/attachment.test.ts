@@ -9,7 +9,9 @@ import {
   MAX_ATTACHMENTS_PER_REQUEST,
   acceptedInWords,
   assertAttachmentsAreOpen,
+  assertItIsNotTheLastEvidence,
   attachmentSatisfiesADocumentationRule,
+  DocumentationCannotBeRemoved,
   evidenceOn,
   type LeaveRequestAttachment,
   nextFreeSlot,
@@ -67,6 +69,7 @@ function aRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     to: '2026-03-06',
     reason: null,
     lateEntryReason: null,
+    evidenceRequired: false,
     countingBasis: 'WORKING_DAYS',
     days: 5,
     calendarDays: 5,
@@ -83,6 +86,7 @@ function anAttachment(overrides: Partial<LeaveRequestAttachment> = {}): LeaveReq
   return {
     id: 'attachment-1',
     leaveRequestId: 'request-1',
+    heldForEmployeeId: 'ama',
     slot: 1,
     filename: 'certificate.pdf',
     contentType: 'application/pdf',
@@ -331,6 +335,55 @@ describe('when evidence may go on, and come off', () => {
   });
 });
 
+/* --------------------------- the file a request was let through on, FR 13, LMS 311 */
+
+describe('taking the last of a request’s evidence back off it', () => {
+  /* FR 13, LMS 311. A request that could not have been made without a certificate. */
+  const NEEDED_ONE = aRequest({ evidenceRequired: true });
+
+  const CERTIFICATE = anAttachment({ id: 'attachment-1' });
+  const A_SECOND = anAttachment({ id: 'attachment-2', slot: 2 });
+
+  /**
+   * The hole LMS 310 could not have had, because nothing required anything.
+   *
+   * Evidence that arrives with the request and is removed a minute later is evidence that
+   * was chased after all, and the request is left on the books in a state submission would
+   * have refused.
+   */
+  it('is refused where it is the only thing standing as it', () => {
+    expect(() => assertItIsNotTheLastEvidence(NEEDED_ONE, CERTIFICATE, [CERTIFICATE])).toThrow(
+      DocumentationCannotBeRemoved,
+    );
+  });
+
+  it('and allowed where another usable file is behind it', () => {
+    expect(() =>
+      assertItIsNotTheLastEvidence(NEEDED_ONE, CERTIFICATE, [CERTIFICATE, A_SECOND]),
+    ).not.toThrow();
+  });
+
+  /* NFR SEC 07. A file nothing has cleared is not what is holding the request up. */
+  it('and is not held back by a file that counts for nothing', () => {
+    const unscanned = anAttachment({ id: 'attachment-2', slot: 2, scanStatus: 'PENDING' });
+
+    expect(() =>
+      assertItIsNotTheLastEvidence(NEEDED_ONE, CERTIFICATE, [CERTIFICATE, unscanned]),
+    ).toThrow(DocumentationCannotBeRemoved);
+
+    /* And removing the unscanned one takes nothing away, so it goes. */
+    expect(() =>
+      assertItIsNotTheLastEvidence(NEEDED_ONE, unscanned, [CERTIFICATE, unscanned]),
+    ).not.toThrow();
+  });
+
+  it('and asks nothing of a request no rule applied to', () => {
+    expect(() =>
+      assertItIsNotTheLastEvidence(aRequest(), CERTIFICATE, [CERTIFICATE]),
+    ).not.toThrow();
+  });
+});
+
 /* -------------------------------------------------- what satisfies a requirement */
 
 describe('an unscanned file satisfies nothing', () => {
@@ -352,10 +405,10 @@ describe('an unscanned file satisfies nothing', () => {
 });
 
 describe('whether a request has the documentation it needs', () => {
-  /* FR 13. Five days of sick leave, where the rule is "after three". */
-  const NEEDS_ONE = aRequest({ days: 5 });
+  /* FR 13, LMS 311. Five days of sick leave that was let through on a certificate. */
+  const NEEDS_ONE = aRequest({ days: 5, evidenceRequired: true });
 
-  it('is unsatisfied where the rule applies and nothing is attached', () => {
+  it('is unsatisfied where the rule applied and nothing is attached', () => {
     const evidence = evidenceOn(SICK, NEEDS_ONE, []);
 
     expect(evidence.required).toBe(true);
@@ -377,17 +430,30 @@ describe('whether a request has the documentation it needs', () => {
     expect(evidence.inWords).toContain('still being checked');
   });
 
-  it('is satisfied where the type asks for nothing, attached or not', () => {
+  it('is satisfied where nothing was asked of it, attached or not', () => {
     const short = aRequest({ leaveTypeId: ANNUAL.id, days: 2 });
 
     expect(evidenceOn(ANNUAL, short, []).required).toBe(false);
     expect(evidenceOn(ANNUAL, short, []).satisfied).toBe(true);
   });
 
-  /* FR 13's threshold is the request's length, counted under the type's own basis. */
-  it('asks for nothing below the threshold and something above it', () => {
-    expect(evidenceOn(SICK, aRequest({ days: 3 }), []).required).toBe(false);
-    expect(evidenceOn(SICK, aRequest({ days: 4 }), []).required).toBe(true);
+  /**
+   * LMS 311, and it is the change worth pinning: `required` is the *request's* answer, not
+   * the type's as it now stands.
+   *
+   * Before this story the two were the same question, and they cannot be. FR 32a's threshold
+   * is the balance, which has moved by the time an approver opens the page; FR 13's is a rule
+   * HR may reword this afternoon. A screen that recomputed it would tell an approver what
+   * today's rule says about leave that was allowed under a different one.
+   */
+  it('reports what the leave was allowed on rather than what the type says now', () => {
+    const fourDays = aRequest({ days: 4, evidenceRequired: false });
+
+    expect(evidenceOn(SICK, fourDays, []).required).toBe(false);
+    expect(evidenceOn(SICK, fourDays, []).satisfied).toBe(true);
+
+    /* And the other way: a two day absence that went past the sick allowance. FR 32a. */
+    expect(evidenceOn(SICK, aRequest({ days: 2, evidenceRequired: true }), []).required).toBe(true);
   });
 });
 

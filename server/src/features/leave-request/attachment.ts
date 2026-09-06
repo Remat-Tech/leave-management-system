@@ -2,7 +2,7 @@
  * A certificate or supporting document on a request. FR 12, FR 13, NFR SEC 07. LMS 310.
  */
 
-import { documentationRequired, type LeaveType } from '../leave-type/leave-type.js';
+import type { LeaveType } from '../leave-type/leave-type.js';
 import { type LeaveRequest, isSettled } from './leave-request.js';
 
 /** FR 12. What is accepted, as the bytes say it rather than as the name claims it. */
@@ -50,8 +50,17 @@ export type ScanStatus = (typeof SCAN_STATUSES)[number];
 /** An attachment as it comes back out. */
 export interface LeaveRequestAttachment {
   id: string;
-  leaveRequestId: string;
-  /** Which of the five seats on the request this holds. */
+  /**
+   * The request this evidences, or null while it is still waiting for one. LMS 311.
+   *
+   * FR 13 is answered at submission, which is before a request exists — so a file is
+   * uploaded, waits under {@link LeaveRequestAttachment.heldForEmployeeId}, and is put on
+   * the request in the same transaction as the row itself.
+   */
+  leaveRequestId: string | null;
+  /** Whose evidence this is. The one thing a waiting file can be addressed by. LMS 311. */
+  heldForEmployeeId: string;
+  /** Which of the five seats this holds — on the request, or in the pile waiting for one. */
   slot: number;
   /** The uploader's own name for it. A label, never a path. */
   filename: string;
@@ -73,7 +82,9 @@ export interface LeaveRequestAttachment {
 
 /** What a validated upload holds, before it is written. */
 export interface NewAttachment {
-  leaveRequestId: string;
+  /** Null where it is being uploaded ahead of the request it will evidence. LMS 311. */
+  leaveRequestId: string | null;
+  heldForEmployeeId: string;
   slot: number;
   filename: string;
   contentType: AcceptedContentType;
@@ -111,8 +122,11 @@ export function evidenceOn(
   request: LeaveRequest,
   attachments: readonly LeaveRequestAttachment[],
 ): EvidenceOnARequest {
-  const required = documentationRequired(type, request.days);
-  const usable = attachments.filter(attachmentSatisfiesADocumentationRule).length;
+  /* LMS 311. Read off the request rather than asked of the type again, and the two are not
+     the same question: FR 32a's threshold is the balance, which has moved since, and FR 13's
+     is a rule HR may have reworded. What this reports is what the leave was allowed on. */
+  const required = request.evidenceRequired;
+  const usable = countUsable(attachments);
   const waiting = attachments.length - usable;
 
   return {
@@ -122,6 +136,11 @@ export function evidenceOn(
     attached: attachments.length,
     inWords: evidenceInWords(type, required, usable, waiting),
   };
+}
+
+/** How many of these can stand as evidence. NFR SEC 07. */
+export function countUsable(attachments: readonly LeaveRequestAttachment[]): number {
+  return attachments.filter(attachmentSatisfiesADocumentationRule).length;
 }
 
 function evidenceInWords(
@@ -138,17 +157,17 @@ function evidenceInWords(
 
   if (!required) {
     return usable === 0
-      ? `${type.name} of this length asks for no documentation. Anything attached is ` +
+      ? `This ${type.name.toLowerCase()} asked for no documentation. Anything attached is ` +
           `there because you wanted it on the record.${unscanned}`
-      : `${type.name} of this length asks for no documentation, and ${usable} ` +
+      : `This ${type.name.toLowerCase()} asked for no documentation, and ${usable} ` +
           `${usable === 1 ? 'file is' : 'files are'} attached anyway.${unscanned}`;
   }
 
   return usable === 0
-    ? `${type.name} of this length needs supporting documentation, and nothing usable is ` +
-        `attached.${unscanned} Attach ${acceptedInWords()}, up to ` +
+    ? `This ${type.name.toLowerCase()} needed supporting documentation, and nothing usable ` +
+        `is attached.${unscanned} Attach ${acceptedInWords()}, up to ` +
         `${MAX_ATTACHMENTS_PER_REQUEST} files.`
-    : `${type.name} of this length needs supporting documentation, and ${usable} ` +
+    : `This ${type.name.toLowerCase()} needed supporting documentation, and ${usable} ` +
         `${usable === 1 ? 'file' : 'files'} can stand as it.${unscanned}`;
 }
 
@@ -224,19 +243,25 @@ export class AttachmentTooLarge extends Error {
   }
 }
 
-/** FR 12. */
+/** FR 12. Five seats, on a request or in the pile waiting for one. LMS 311. */
 export class TooManyAttachments extends Error {
   readonly code = 'TOO_MANY_FILES';
-  readonly leaveRequestId: string;
+  /** Null where the five that are full are the ones waiting for a request. LMS 311. */
+  readonly leaveRequestId: string | null;
   readonly maxFiles = MAX_ATTACHMENTS_PER_REQUEST;
 
-  constructor(request: LeaveRequest) {
+  constructor(request: LeaveRequest | null) {
     super(
-      `This request already has ${MAX_ATTACHMENTS_PER_REQUEST} files on it, which is the ` +
-        `limit. Remove one you no longer need and attach this in its place. FR 12.`,
+      `${
+        request === null
+          ? `You already have ${MAX_ATTACHMENTS_PER_REQUEST} files waiting to go on a ` +
+            `request, which is the limit`
+          : `This request already has ${MAX_ATTACHMENTS_PER_REQUEST} files on it, which is ` +
+            `the limit`
+      }. Remove one you no longer need and attach this in its place. FR 12.`,
     );
     this.name = 'TooManyAttachments';
-    this.leaveRequestId = request.id;
+    this.leaveRequestId = request?.id ?? null;
   }
 }
 
@@ -305,6 +330,52 @@ export function assertAttachmentsAreOpen(
 
   if (closed) {
     throw new AttachmentsAreClosed(request, act);
+  }
+}
+
+/**
+ * The file a request was let through on, being taken back off. FR 13, LMS 311.
+ *
+ * The hole LMS 310 could not have: evidence that arrives with the request and leaves a minute
+ * later is evidence that was chased after all. A second certificate attached first frees this
+ * one, so it refuses the *last* usable file rather than any of them.
+ */
+export class DocumentationCannotBeRemoved extends Error {
+  /** FR 13. What a client branches on, so a screen can grey the button rather than throw. */
+  readonly code = 'DOCUMENTATION_STANDS';
+  readonly leaveRequestId: string;
+  readonly attachmentId: string;
+
+  constructor(request: LeaveRequest, attachment: LeaveRequestAttachment) {
+    super(
+      `This leave needed supporting documentation and this is the only file standing as ` +
+        `it, so taking it off would leave a request on the books that could not have been ` +
+        `made. Attach the replacement first and this one can go. If the leave itself is ` +
+        `wrong, withdraw it. FR 13.`,
+    );
+    this.name = 'DocumentationCannotBeRemoved';
+    this.leaveRequestId = request.id;
+    this.attachmentId = attachment.id;
+  }
+}
+
+/**
+ * Refuses taking the last of a request's evidence off it. FR 13, LMS 311.
+ *
+ * `leave_request_attachment_is_what_it_was_allowed_on` holds the same rule where no sentence
+ * can reach, and on every connection.
+ */
+export function assertItIsNotTheLastEvidence(
+  request: LeaveRequest,
+  attachment: LeaveRequestAttachment,
+  onTheRequest: readonly LeaveRequestAttachment[],
+): void {
+  if (!request.evidenceRequired || !attachmentSatisfiesADocumentationRule(attachment)) {
+    return;
+  }
+
+  if (countUsable(onTheRequest.filter((held) => held.id !== attachment.id)) === 0) {
+    throw new DocumentationCannotBeRemoved(request, attachment);
   }
 }
 

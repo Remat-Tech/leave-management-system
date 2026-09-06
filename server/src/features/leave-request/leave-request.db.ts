@@ -402,6 +402,8 @@ function rowFor(request: ValidatedLeaveRequest): Insertable<LeaveRequestTable> {
     reason: request.reason,
     /** FR 18. Null on everything inside the window. LMS 308. */
     late_entry_reason: request.lateEntryReason,
+    /** FR 13, FR 32a. What the evidence rule said when the days were held. LMS 311. */
+    evidence_required: request.evidenceRequired,
     counting_basis: request.countingBasis,
     days: request.days,
     calendar_days: request.calendarDays,
@@ -423,6 +425,7 @@ function toRequest(row: LeaveRequestRow): LeaveRequest {
     to: row.end_date,
     reason: row.reason,
     lateEntryReason: row.late_entry_reason,
+    evidenceRequired: row.evidence_required,
     countingBasis: row.counting_basis as CountingBasis,
     days: row.days,
     calendarDays: row.calendar_days,

@@ -121,6 +121,8 @@ beforeAll(async () => {
     new LeaveRoutingRepository(db),
     /** FR 47, LMS 324. */
     new WithdrawalRepository(db),
+    /** FR 13, LMS 311. */
+    new AttachmentRepository(db),
     new RoleRepository(db),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -277,7 +279,8 @@ describe('what each kind of leave asks of me', () => {
     const maternity = await typeOnTheForm(people.headOfHr, maternityId);
 
     expect(said(maternity, 'DOCUMENTATION')).toContain('needs supporting documentation');
-    expect(said(maternity, 'DOCUMENTATION')).toContain('before you submit');
+    /** LMS 311. And that a request without it is refused rather than chased. */
+    expect(said(maternity, 'DOCUMENTATION')).toContain('Upload it before you ask');
     expect(ruleOf(maternity, 'DOCUMENTATION')?.asks).toBe(true);
   });
 

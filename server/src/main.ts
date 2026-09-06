@@ -90,6 +90,7 @@ const leaveRequests = new LeaveRequestService(
   decisions,
   routing,
   withdrawals,
+  attachments,
   roles,
   organisation,
   new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),

@@ -251,6 +251,8 @@ export interface Submitted {
   days: number;
   calendarDays: number;
   status: RequestStatus;
+  /** FR 13, FR 32a. Whether documentation was asked of it, and so is on it. LMS 311. */
+  evidenceRequired: boolean;
   /** FR 38a. The desk it is now sitting on. */
   awaitingApprovalFrom: Desk | null;
   submittedAt: string;
@@ -545,6 +547,10 @@ export async function myApprovals(): Promise<ApproverQueue> {
  *
  * `acknowledgesShortNotice` answers the quote's `SHORT_NOTICE` warning. FR 17, LMS 307. Sent
  * either way; whether one was owed is the server's to decide.
+ *
+ * `evidence` answers its `DOCUMENTATION_REQUIRED` one. FR 13, FR 32a, LMS 311. Ids from
+ * {@link holdEvidence}, uploaded before this call, because a type that asks for documentation
+ * refuses a request that arrives without it.
  */
 export async function askForLeave(input: {
   leaveTypeId: string;
@@ -553,6 +559,8 @@ export async function askForLeave(input: {
   /** FR 10. Sent as typed; whether nothing is allowed is the leave type's rule. */
   reason: string;
   acknowledgesShortNotice?: boolean;
+  /** FR 13, FR 32a. Attachment ids, never files. LMS 311. */
+  evidence?: string[];
 }): Promise<Submitted> {
   return request<Submitted>('POST', '/api/me/requests', input);
 }
@@ -600,11 +608,13 @@ export async function discardDraft(draftId: string): Promise<void> {
 export async function submitDraft(
   draftId: string,
   acknowledgesShortNotice = false,
+  /** FR 13, FR 32a, LMS 311. Given here for the same reason: a draft holds no files. */
+  evidence: string[] = [],
 ): Promise<Submitted> {
   return request<Submitted>(
     'POST',
     `/api/me/request-drafts/${encodeURIComponent(draftId)}/submit`,
-    { acknowledgesShortNotice },
+    { acknowledgesShortNotice, evidence },
   );
 }
 
@@ -622,7 +632,10 @@ export type AttachmentContentType =
 
 export interface Attachment {
   attachmentId: string;
-  leaveRequestId: string;
+  /** FR 13. Null while the file is waiting for the request it will evidence. LMS 311. */
+  leaveRequestId: string | null;
+  /** FR 13. Whose evidence it is. LMS 311. */
+  heldForEmployeeId: string;
   slot: number;
   filename: string;
   /** Sniffed server side. What this says may differ from what the file was called. */
@@ -654,6 +667,15 @@ export interface Attachments {
   evidence: Evidence;
 }
 
+/** FR 13. What has been uploaded and not yet asked for leave with. LMS 311. */
+export interface EvidenceWaiting {
+  employeeId: string;
+  attachments: Attachment[];
+  /** How many of them could stand as documentation. `PENDING` counts for nothing. */
+  usable: number;
+  inWords: string;
+}
+
 /** FR 12. Ten megabytes, five files. Shown on the form, enforced on the server. */
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_REQUEST = 5;
@@ -670,7 +692,12 @@ export async function attachmentsOn(requestId: string): Promise<Attachments> {
  * the server decides on — it sniffs the bytes. NFR SEC 07.
  */
 export async function attachToRequest(requestId: string, file: File): Promise<Attachment> {
-  const response = await fetch(`/api/requests/${encodeURIComponent(requestId)}/attachments`, {
+  return upload(`/api/requests/${encodeURIComponent(requestId)}/attachments`, file);
+}
+
+/** The one shape both uploads have: bytes as the body, name in a header. FR 12. */
+async function upload(path: string, file: File): Promise<Attachment> {
+  const response = await fetch(path, {
     method: 'POST',
     credentials: 'same-origin',
     headers: {
@@ -687,6 +714,32 @@ export async function attachToRequest(requestId: string, file: File): Promise<At
   }
 
   return payload as Attachment;
+}
+
+/**
+ * Uploads evidence ahead of the request it will go on. FR 13, FR 32a. LMS 311.
+ *
+ * The call a form makes *before* it submits, because a type that asks for documentation
+ * refuses a request that arrives without it. The id that comes back is what
+ * {@link submitRequest} names in `evidence`.
+ */
+export async function holdEvidence(file: File): Promise<Attachment> {
+  return upload('/api/me/evidence', file);
+}
+
+/** What is waiting, and how much of it counts. FR 13, LMS 311. */
+export async function evidenceWaiting(): Promise<EvidenceWaiting> {
+  return request<EvidenceWaiting>('GET', '/api/me/evidence');
+}
+
+/** Throws away a waiting file. It is addressed by its own id; there is no request yet. */
+export async function discardEvidence(attachmentId: string): Promise<void> {
+  await request<void>('DELETE', `/api/evidence/${encodeURIComponent(attachmentId)}`);
+}
+
+/** Asks the scanner again about a waiting file it never answered for. NFR SEC 07, LMS 311. */
+export async function rescanEvidence(attachmentId: string): Promise<Attachment> {
+  return request<Attachment>('POST', `/api/evidence/${encodeURIComponent(attachmentId)}/scan`);
 }
 
 /** Where the browser fetches the bytes from. Refused unless the scan came back clean. */

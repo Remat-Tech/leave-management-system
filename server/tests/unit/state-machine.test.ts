@@ -86,6 +86,7 @@ function aRequestIn(status: RequestStatus, awaiting: ApproverRole = 'MANAGER'): 
     reason: 'My sister is getting married',
     /** FR 18, LMS 308. */
     lateEntryReason: null,
+    evidenceRequired: false,
     countingBasis: 'WORKING_DAYS',
     days: 6,
     calendarDays: 9,

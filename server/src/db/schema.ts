@@ -298,6 +298,8 @@ export interface LeaveRequestTable {
   reason: string | null;
   /** FR 18. Why HR entered it past the type's backdating window. Written once. LMS 308. */
   late_entry_reason: ColumnType<string | null, string | null, never>;
+  /** FR 13, FR 32a. Whether this request had to arrive with documentation. LMS 311. */
+  evidence_required: ColumnType<boolean, boolean, never>;
   /** FR 11, the story's third criterion. */
   counting_basis: ColumnType<string, string, never>;
   /** What it cost, and what the RESERVATION took. FR 24. */
@@ -329,9 +331,12 @@ export interface LeaveRequestDraftTable {
 /** A certificate or supporting document on a request. FR 12, NFR SEC 07, LMS 310. */
 export interface LeaveRequestAttachmentTable {
   id: Generated<string>;
-  leave_request_id: ColumnType<string, string, never>;
-  /** One of five, and never moved. */
-  slot: ColumnType<number, number, never>;
+  /** Null while the file is waiting for the request it will evidence. LMS 311. */
+  leave_request_id: ColumnType<string | null, string | null, string>;
+  /** Whose evidence it is. Never moved. LMS 311. */
+  held_for_employee_id: ColumnType<string, string, never>;
+  /** One of five, and moved only when the file goes onto a request. LMS 311. */
+  slot: ColumnType<number, number, number>;
   /** A label for a screen. Never a path. */
   filename: ColumnType<string, string, never>;
   /** Sniffed server side. NFR SEC 07. */

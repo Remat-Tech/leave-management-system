@@ -37,12 +37,16 @@ import { APPROVES_AS_HR } from '../role/roles.js';
 import type { RoleRepository } from '../role/role.db.js';
 import type { LeaveRoutingRepository } from './routing.db.js';
 import type { WithdrawalRepository } from './withdrawal.db.js';
+import { countUsable, type LeaveRequestAttachment } from './attachment.js';
+import type { AttachmentRepository } from './attachment.db.js';
 import {
   type ApprovalProgress,
+  assertDocumentationIsAttached,
   assertItCostsSomething,
   assertShortNoticeIsAcknowledged,
   assertTheDaysAreThere,
   decisionTo,
+  documentationGroundsFor,
   grantingAction,
   InvalidLeaveRequest,
   lateEntryFor,
@@ -168,6 +172,14 @@ export class LeaveRequestService {
      * the days it moves, so the writing is `BalanceService`'s.
      */
     private readonly withdrawals: WithdrawalRepository,
+    /**
+     * The evidence waiting to go on a request, for the reads. FR 13, LMS 311.
+     *
+     * The same division `decisions` is held to: the files land in the same transaction as the
+     * request they evidence, so the writing is `BalanceService`'s and this is the reading —
+     * which is what {@link assertDocumentationIsAttached} is answered from.
+     */
+    private readonly attachments: AttachmentRepository,
     /**
      * Who holds an HR role, so that the HR desk's occupants are never a copy. FR 48b, LMS 320.
      *
@@ -315,16 +327,32 @@ export class LeaveRequestService {
        answer that is stored. See the module note for why it is not the caller's. */
     const count = await this.countFor(actor, employee, type, period);
 
+    /* Read once, and both of the next two rules are decided from it: what a person is
+       refused on and what they are asked for evidence for are the same figure. */
+    const availableNow = await this.availableFor(actor, employee, type, year);
+
     /* FR 14, LMS 305. The days, checked while the form is still open and against the
        same figure the quote showed. `daysToReserve` checks it again inside the lock and
        that is the answer that binds; this is the one that can name the leave type, the
        figure and what to ask for instead. */
-    assertTheDaysAreThere(
+    assertTheDaysAreThere(type, period, count, availableNow);
+
+    /* FR 13, FR 32a, LMS 311. The two documentation thresholds, and the evidence that has
+       been waiting under this person's name to answer them. Asked here — while the form is
+       still open and the sentence can name what to upload — and held again by
+       `leave_request_that_needed_evidence_has_it` as the transaction below commits. */
+    const grounds = documentationGroundsFor({ type, days: count.days, availableNow });
+    const evidence = await this.evidenceWaitingFor(employee, input.evidence ?? []);
+
+    assertDocumentationIsAttached({
       type,
       period,
-      count,
-      await this.availableFor(actor, employee, type, year),
-    );
+      days: count.days,
+      availableNow,
+      grounds,
+      usable: countUsable(evidence),
+      waiting: evidence.length - countUsable(evidence),
+    });
 
     /** FR 48b, LMS 320. Who can be asked, before the first desk is chosen. */
     const { available } = await this.whoCanDecide(employee);
@@ -340,6 +368,8 @@ export class LeaveRequestService {
       reasonRequired: type.reasonRequired,
       /** FR 18, LMS 308. Decided above; null on everything inside the window. */
       lateEntryReason,
+      /** FR 13, FR 32a, LMS 311. Decided above, and copied onto the row it was true of. */
+      evidenceRequired: grounds.length > 0,
       /* The story's third criterion, taken here and never read off the type again. */
       countingBasis: type.countingBasis,
       days: count.days,
@@ -358,6 +388,11 @@ export class LeaveRequestService {
     const submitted = await this.balances.reserveForRequest(actor, {
       request,
       reason: reasonForReservation(type.name, period, count.days),
+      /* FR 13, LMS 311. The files go onto the request in the same transaction as the row,
+         which is what "the evidence arrives with the request" means when it is written down:
+         a request that needed documentation and a certificate that never reached it cannot
+         be two halves of one commit. */
+      evidence: evidence.map((file) => file.id),
     });
 
     /* FR 48b. Nobody can decide it, so HR is told rather than the request being refused —
@@ -1424,6 +1459,32 @@ export class LeaveRequestService {
          than one that says less. */
       typeName: type?.name ?? 'leave',
     });
+  }
+
+  /**
+   * The files this submission named, of the ones actually waiting for it. FR 13, LMS 311.
+   *
+   * Every id is looked up against *this person's* waiting pile rather than fetched by id and
+   * checked afterwards, so an id belonging to somebody else is not found rather than refused
+   * — the same silence `leaveRequestPolicy.attach` keeps, and it means a request cannot be
+   * used to discover that a colleague uploaded a medical certificate this morning.
+   *
+   * An id that reaches nothing is dropped rather than refused. What matters to FR 13 is
+   * whether anything usable arrived, and {@link assertDocumentationIsAttached} says that in a
+   * sentence about the leave; "attachment 41 is not yours" would say it about an identifier.
+   */
+  private async evidenceWaitingFor(
+    employee: Employee,
+    ids: readonly string[],
+  ): Promise<LeaveRequestAttachment[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const waiting = await this.attachments.waitingFor(employee.id);
+    const named = new Set(ids);
+
+    return waiting.filter((file) => named.has(file.id));
   }
 
   /**

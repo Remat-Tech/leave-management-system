@@ -2,7 +2,12 @@
 
 import express, { type Request, type Response, Router } from 'express';
 import { actorOf } from '../../http/identify.js';
-import type { AttachmentService, AttachmentsOnARequest } from './attachment.service.js';
+import type {
+  AttachmentService,
+  AttachmentsOnARequest,
+  AttachmentsWaiting,
+  UploadedFile,
+} from './attachment.service.js';
 import {
   type EvidenceOnARequest,
   type LeaveRequestAttachment,
@@ -15,6 +20,90 @@ export interface AttachmentRoutes {
 
 export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
   const routes = Router();
+
+  /**
+   * Uploads evidence ahead of the request it will go on. FR 13, LMS 311.
+   *
+   * The route the story needs and LMS 310 had no place for: FR 13 is answered at submission,
+   * so the certificate has to exist before the request does. Same body, same header, same
+   * caps as the one below — what differs is only that it names nothing to hang off.
+   */
+  routes.post(
+    '/me/evidence',
+    express.raw({ type: () => true, limit: MAX_ATTACHMENT_BYTES }),
+    (request: Request, response: Response, next) => {
+      void attachments
+        .hold(actorOf(response), employeeIdOf(response), uploadIn(request))
+        .then((held) => {
+          response.status(201).json(attachmentAsJson(held));
+        })
+        .catch(next);
+    },
+  );
+
+  /**
+   * The same, for HR putting somebody else's leave on the record. FR 13, FR 18, LMS 311.
+   *
+   * `leaveRequestPolicy.attach` has admitted HR on somebody's behalf since LMS 310; `/me`
+   * has no way to say whose evidence it is, exactly as `/me/requests` has none to say whose
+   * leave it is.
+   */
+  routes.post(
+    '/employees/:id/evidence',
+    express.raw({ type: () => true, limit: MAX_ATTACHMENT_BYTES }),
+    (request: Request, response: Response, next) => {
+      void attachments
+        .hold(actorOf(response), asString(request.params.id), uploadIn(request))
+        .then((held) => {
+          response.status(201).json(attachmentAsJson(held));
+        })
+        .catch(next);
+    },
+  );
+
+  /** What is waiting to go on a request, and how much of it counts. FR 13, LMS 311. */
+  routes.get('/me/evidence', (_request: Request, response: Response, next) => {
+    void attachments
+      .waitingFor(actorOf(response), employeeIdOf(response))
+      .then((waiting) => {
+        response.json(waitingAsJson(waiting));
+      })
+      .catch(next);
+  });
+
+  routes.get('/employees/:id/evidence', (request: Request, response: Response, next) => {
+    void attachments
+      .waitingFor(actorOf(response), asString(request.params.id))
+      .then((waiting) => {
+        response.json(waitingAsJson(waiting));
+      })
+      .catch(next);
+  });
+
+  /**
+   * Throws away a file that never went on a request. FR 13, LMS 311.
+   *
+   * Addressed by its own id, because there is no request to address it through. Whose it is
+   * is the row's own answer, and the policy is asked about that person.
+   */
+  routes.delete('/evidence/:id', (request: Request, response: Response, next) => {
+    void attachments
+      .discard(actorOf(response), asString(request.params.id))
+      .then(() => {
+        response.status(204).end();
+      })
+      .catch(next);
+  });
+
+  /** Asks the scanner again about a waiting file it never answered for. NFR SEC 07, LMS 311. */
+  routes.post('/evidence/:id/scan', (request: Request, response: Response, next) => {
+    void attachments
+      .rescanWaiting(actorOf(response), asString(request.params.id))
+      .then((scanned) => {
+        response.json(attachmentAsJson(scanned));
+      })
+      .catch(next);
+  });
 
   /**
    * Attaches one file. FR 12.
@@ -33,11 +122,7 @@ export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
     express.raw({ type: () => true, limit: MAX_ATTACHMENT_BYTES }),
     (request: Request, response: Response, next) => {
       void attachments
-        .attach(actorOf(response), asString(request.params.id), {
-          filename: filenameOf(request),
-          content: request.body,
-          claimedContentType: asString(request.get('content-type')),
-        })
+        .attach(actorOf(response), asString(request.params.id), uploadIn(request))
         .then((attached) => {
           response.status(201).json(attachmentAsJson(attached));
         })
@@ -153,13 +238,35 @@ function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/** The upload as it arrived: the bytes, the name, and what the client claimed it was. */
+function uploadIn(request: Request): UploadedFile {
+  return {
+    filename: filenameOf(request),
+    content: request.body,
+    claimedContentType: asString(request.get('content-type')),
+  };
+}
+
+/** The signed-in person, for the `/me` routes. The same reading requestRoutes makes. */
+function employeeIdOf(response: Response): string {
+  const actor = actorOf(response);
+
+  if (actor.employeeId === null) {
+    throw new Error('This route was reached by an actor with no employee behind it.');
+  }
+
+  return actor.employeeId;
+}
+
 /* ------------------------------------------------------ an attachment, as JSON */
 
 /** `storageKey` is deliberately absent: it is storage's handle, not a client's. NFR SEC 04. */
 function attachmentAsJson(attachment: LeaveRequestAttachment): unknown {
   return {
     attachmentId: attachment.id,
+    /** FR 13. Null while it waits for the request it will evidence. LMS 311. */
     leaveRequestId: attachment.leaveRequestId,
+    heldForEmployeeId: attachment.heldForEmployeeId,
     slot: attachment.slot,
     filename: attachment.filename,
     /** NFR SEC 07. What the bytes are, never what they were called. */
@@ -174,6 +281,16 @@ function attachmentAsJson(attachment: LeaveRequestAttachment): unknown {
     downloadable: attachment.scanStatus === 'CLEAN',
     uploadedBy: attachment.uploadedByEmployeeId,
     uploadedAt: attachment.uploadedAt.toISOString(),
+  };
+}
+
+/** FR 13, LMS 311. What is waiting to go on a request, and how much of it counts. */
+function waitingAsJson(waiting: AttachmentsWaiting): unknown {
+  return {
+    employeeId: waiting.employeeId,
+    attachments: waiting.attachments.map(attachmentAsJson),
+    usable: waiting.usable,
+    inWords: waiting.inWords,
   };
 }
 

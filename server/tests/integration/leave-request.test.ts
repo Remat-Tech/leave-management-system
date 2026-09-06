@@ -1,4 +1,6 @@
 import { Client } from 'pg';
+import { randomBytes } from 'node:crypto';
+import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
@@ -13,6 +15,7 @@ import { DECIDING_ACTIONS } from '../../src/features/leave-request/leave-decisio
 import { EmployeeNotFound } from '../../src/features/employee/employee.js';
 import { InvalidLeavePeriod } from '../../src/features/leave-calculator/leave-calculator.js';
 import {
+  DocumentationNotAttached,
   InvalidLeaveRequest,
   LeaveAlreadySettled,
   LeaveCountsNoDays,
@@ -99,6 +102,8 @@ let requests: LeaveRequestService;
 let balances: BalanceService;
 let repository: LeaveRequestRepository;
 let decisions: LeaveDecisionRepository;
+/** FR 13, LMS 311. */
+let attachments: AttachmentRepository;
 let years: LeaveYearService;
 let people: Record<string, string>;
 let seededYears: Record<string, unknown>[];
@@ -149,6 +154,8 @@ beforeAll(async () => {
   balances = new BalanceService(new BalanceRepository(db), guard, employees, new Transactions(db));
   years = new LeaveYearService(yearRepository, guard);
 
+  attachments = new AttachmentRepository(db);
+
   requests = new LeaveRequestService(
     balances,
     guard,
@@ -161,6 +168,8 @@ beforeAll(async () => {
     new LeaveRoutingRepository(db),
     /** FR 47, LMS 324. */
     new WithdrawalRepository(db),
+    /** FR 13, LMS 311. */
+    attachments,
     new RoleRepository(db),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -346,6 +355,35 @@ function aRequest(overrides: Partial<NewLeaveRequest> = {}): NewLeaveRequest {
     acknowledgesShortNotice: true,
     ...overrides,
   };
+}
+
+/**
+ * A certificate waiting to go on a request. FR 13, FR 32a. LMS 311.
+ *
+ * Written through the repository rather than through `AttachmentService`, because what these
+ * tests need is a clean file in the pile and not a scanner, a store and a second policy —
+ * ./attachment.test.ts is where the upload path itself is walked.
+ */
+async function aCertificateFor(employeeId: string): Promise<string> {
+  const held = await attachments.add(
+    { employeeId, description: `employee ${employeeId}` },
+    {
+      leaveRequestId: null,
+      heldForEmployeeId: employeeId,
+      slot: 1,
+      filename: 'certificate.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 2048,
+      checksumSha256: 'a'.repeat(64),
+      storageKey: randomBytes(32).toString('hex'),
+      scanStatus: 'CLEAN',
+      scanSignature: null,
+      scannedBy: 'the built-in test signature scanner',
+      scannedAt: new Date(),
+    },
+  );
+
+  return held.id;
 }
 
 /** A calendar date this many days either side of today, in UTC. FR 18, LMS 308. */
@@ -638,7 +676,13 @@ describe('short notice is acknowledged rather than refused', () => {
   it('and asks nothing of a type that carries no notice requirement', async () => {
     const { request } = await requests.submit(
       asThemselves(),
-      aRequest({ leaveTypeId: sickId, acknowledgesShortNotice: false }),
+      aRequest({
+        leaveTypeId: sickId,
+        acknowledgesShortNotice: false,
+        /* FR 32a, LMS 311. Six days against a three day allowance, so the certificate is a
+           separate rule this one has to get past to reach the notice question. */
+        evidence: [await aCertificateFor(people.officer)],
+      }),
     );
 
     expect(request.status).toBe('SUBMITTED');
@@ -944,16 +988,45 @@ describe('a request the balance does not hold', () => {
    * annual leave is accepted here and takes the balance below nought, which is correct
    * rather than a leak: FR 32a makes going past the allowance a request for a medical
    * certificate, and the leave is granted either way.
+   *
+   * Since LMS 311 the certificate is the price of that rather than an expectation: the same
+   * submission without one meets `DocumentationNotAttached`, which is the test below.
    */
   it('and a type that may be exceeded is submitted instead, going below nought', async () => {
     const { request, balance } = await requests.submit(
       asThemselves(),
-      aRequest({ ...TOO_LONG, leaveTypeId: sickId }),
+      aRequest({
+        ...TOO_LONG,
+        leaveTypeId: sickId,
+        evidence: [await aCertificateFor(people.officer)],
+      }),
     );
 
     expect(request.status).toBe('SUBMITTED');
+    expect(request.evidenceRequired).toBe(true);
     expect(balance.available).toBeLessThan(0);
     expect(balance.pending).toBe(request.days);
+  });
+
+  /**
+   * FR 32a's other half, and the story's second criterion. LMS 311.
+   *
+   * "Sick leave requires a certificate beyond 3 days in a leave year" — the allowance is the
+   * point at which evidence is demanded, and demanding it means refusing the request that
+   * arrives without it rather than letting it through and chasing the paperwork.
+   */
+  it('and is refused outright where the certificate the allowance asks for is not on it', async () => {
+    await expect(
+      requests.submit(asThemselves(), aRequest({ ...TOO_LONG, leaveTypeId: sickId })),
+    ).rejects.toBeInstanceOf(DocumentationNotAttached);
+
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*) FROM leave_ledger_entry WHERE entry_type = 'RESERVATION'",
+        )
+      ).rows[0].count,
+    ).toBe('0');
   });
 
   /**

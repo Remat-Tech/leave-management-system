@@ -1,4 +1,5 @@
 import { Client } from 'pg';
+import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
@@ -101,6 +102,8 @@ beforeAll(async () => {
     decisions,
     routing,
     new WithdrawalRepository(db),
+    /** FR 13, LMS 311. */
+    new AttachmentRepository(db),
     new RoleRepository(db),
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
