@@ -4106,3 +4106,69 @@ and is a different story; what this one leaves behind for it is the entry, the d
 rule that neither may give back more than was taken.
 
 ---
+
+### Leave that follows the reporting line
+
+**A pending request goes with the person when their manager changes, and does not sit in the
+queue of somebody who no longer manages them.** FR 07, §8.4, LMS 325.
+
+**Most of it was already true, and that is the point rather than an anticlimax.** The
+`MANAGER` desk [is a relationship](#routing-a-request-to-its-approvers), resolved through
+`employee.manager_id` at the moment somebody opens their queue, so a request waiting there is
+the new manager's the instant the line moves and no column on the request changes at all.
+`LeaveRequestRepository.awaiting` joins the reporting line; `whoCanDecide` reads it; the two
+cannot disagree because there is one column. What the story adds is everything that does *not*
+follow from that:
+
+| | Why it does not follow | What was added |
+|---|---|---|
+| the handover is on the record | no column moved, so the audit log has nothing to show | `leave_request_reassignment` |
+| the new manager is told | nothing had happened *to the request* to notify anybody about | the `REASSIGNED` notice |
+| a stranded request is unstuck | `UNROUTABLE` waits for HR to press a button | the line moving is itself the re-route |
+
+**Approvals already given stand, and only stages nobody has answered move.** The filter is one
+line — a request waiting at the `MANAGER` desk, or one that is `UNROUTABLE` — and it is the
+whole of the second criterion. A stage that decided has already moved the request off that
+desk, so a request sitting at HR is one whose manager's stage is settled, by an approval, a
+refusal or [a recorded skip](#routing-round-an-approver-who-cannot-decide). Carrying it would
+re-ask a question somebody answered. Nothing is ever rewritten: `leave_request_decision` is
+append only and the walk is *given* the decisions, so a stage its old manager approved is not
+asked again and their name stays on it.
+
+**A reassignment is the second thing that can explain a move.**
+`leave_request_records_its_decision` refuses a request that changed desks with nothing to say
+who moved it — which is right, and which would refuse this. So the trigger takes a second kind
+of explanation: a `leave_request_reassignment` row whose `moved_from` and `moved_to` are the
+desks this statement moved between. It can only ever explain landing on `SUBMITTED` or
+`UNROUTABLE`; a reassignment decides nothing, so it cannot explain `APPROVED` or `REFUSED`, and
+the guard says so rather than relying on the caller.
+
+**`ROUTE` gains a row out of `SUBMITTED`**, and `routingTo` answers the two starting states
+differently where the walk runs out of desks. A request that was already stuck stays stuck and
+the caller is told what would fill the desk — `StillNobodyToDecideIt`, unchanged, because HR
+pressing the button again is asking a question. A request still being decided has just had its
+desk emptied underneath it, and lands on `UNROUTABLE` with the alert. Neither ever approves
+anything: the walk returning `DECIDED` is refused here, exactly as it is for a re-route.
+
+**The employee door holds the leave door, and it is required rather than optional.**
+`EmployeeService` takes a `LeaveThatFollows` and calls it after the record it follows has been
+written. Optional would be silent: every record correct, and a request left in the wrong queue.
+`noLeaveFollows()` is how a caller with no leave to carry — a seed, a test about departments —
+says so out loud.
+
+**A bulk re-org reports its moves after the transaction commits.** `StaffImportService` writes
+every row through `EmployeeService` inside one transaction, so the import hands that one a
+`noLeaveFollows()` and collects the lines that actually moved; the follow-up runs once the
+import has committed. Routing has to read the reporting lines the import *wrote*, not the ones
+it is still writing, and a re-route opening its own transaction inside that one would read
+neither.
+
+**What is deliberately not here.** A request whose new line manager has already decided it at
+an earlier stage stays where it is. Every stage of its chain has then been answered by one
+hand, which is the state [FR 48d](#a-request-one-person-decided) calls a single approver — and
+reaching it by moving a reporting line is not the same as reaching it by somebody deciding, so
+the leave is not approved and HR settles it. And a recorded skip is still never reconsidered: a
+manager's stage that went to HR on Monday does not come back down because somebody was hired on
+Wednesday. What moves is the stage nobody has answered yet.
+
+---

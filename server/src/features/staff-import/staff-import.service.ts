@@ -15,9 +15,12 @@ import {
   type Employee,
   type EmployeeChanges,
   InvalidEmployee,
+  type LeaveThatFollows,
   ManagerHasLeft,
   ManagerNotFound,
   type NewEmployee,
+  noLeaveFollows,
+  type ReportingLineMove,
   validateEmployeeChanges,
   validateNewEmployee,
 } from '../employee/employee.js';
@@ -108,6 +111,8 @@ export class StaffImportService {
     private readonly transactions: Transactions,
     /** NFR SEC 02. */
     private readonly guard: Guard,
+    /** FR 07, §8.4. A re-org moves reporting lines by the hundred. LMS 325. */
+    private readonly leave: LeaveThatFollows,
     options: EmployeeServiceOptions = {},
   ) {
     // Resolved once, at construction, exactly as EmployeeService does it, so a
@@ -134,7 +139,7 @@ export class StaffImportService {
   ): Promise<ImportOutcome> {
     this.guard.enforce(employeePolicy.importStaff(actor));
 
-    return this.transactions.allOrNothing(async (repositories) => {
+    const written = await this.transactions.allOrNothing(async (repositories) => {
       const { plan, organisation } = await this.plan(repositories, source, options);
 
       if (plan.fingerprint !== fingerprint) {
@@ -147,6 +152,14 @@ export class StaffImportService {
 
       return this.write(actor, repositories, plan, organisation);
     });
+
+    /* FR 07, §8.4. After the import commits, because the routing has to read the reporting
+       lines this import wrote rather than the ones it is still writing. LMS 325. */
+    for (const move of written.linesMoved) {
+      await this.leave.followTheReportingLine(actor, move);
+    }
+
+    return written.outcome;
   }
 
   /** The dry run itself: file to plan, with nothing written. */
@@ -511,17 +524,20 @@ export class StaffImportService {
     repositories: Repositories,
     plan: ImportPlan,
     organisation: Organisation,
-  ): Promise<ImportOutcome> {
+  ): Promise<{ outcome: ImportOutcome; linesMoved: ReportingLineMove[] }> {
     /* The same guard this service was built with, so that a row refused four
        hundred deep is written to the same log as anything else. The actor is the
        HR officer who confirmed the import, carried down rather than replaced by
        a system actor — a bulk write is still something a person did, and the
        trail should say who. */
+    /* FR 07, LMS 325. The lines this loop moves are followed after the transaction commits,
+       by `confirm` — nothing that reads them can run while they are still being written. */
     const employees = new EmployeeService(
       repositories.employees,
       repositories.departments,
       repositories.patterns,
       this.guard,
+      noLeaveFollows(),
       { domains: this.domains },
     );
 
@@ -549,6 +565,8 @@ export class StaffImportService {
 
     const created: Employee[] = [];
     const changed: Employee[] = [];
+    /** FR 07, §8.4. The lines that actually moved, for the leave to follow. LMS 325. */
+    const linesMoved: ReportingLineMove[] = [];
 
     for (const operation of orderForWriting(plan, reportingLinesAfter(plan, organisation))) {
       if (operation.kind === 'create') {
@@ -569,14 +587,28 @@ export class StaffImportService {
         changes.managerId = managerId(change.managerNumber ?? null);
       }
 
-      changed.push(await employees.update(actor, change.employeeId, changes));
+      const before = organisation.employeeByNumber.get(key(change.employeeNumber));
+      const updated = await employees.update(actor, change.employeeId, changes);
+
+      if (before !== undefined && before.managerId !== updated.managerId) {
+        linesMoved.push({
+          employeeId: updated.id,
+          from: before.managerId,
+          to: updated.managerId,
+        });
+      }
+
+      changed.push(updated);
     }
 
     return {
-      created,
-      changed,
-      unchanged: plan.unchanged.length,
-      skipped: plan.rejected,
+      outcome: {
+        created,
+        changed,
+        unchanged: plan.unchanged.length,
+        skipped: plan.rejected,
+      },
+      linesMoved,
     };
   }
 }

@@ -8,6 +8,7 @@ import { DepartmentRepository } from '../features/department/department.db.js';
 import { EmployeeRepository } from '../features/employee/employee.db.js';
 import { LeaveDecisionRepository } from '../features/leave-request/leave-decision.db.js';
 import { LeaveEventRepository } from '../features/leave-event/leave-event.db.js';
+import { LeaveReassignmentRepository } from '../features/leave-request/reassignment.db.js';
 import { LeaveRequestRepository } from '../features/leave-request/leave-request.db.js';
 import { LeaveRoutingRepository } from '../features/leave-request/routing.db.js';
 import { LeaveTypeRepository } from '../features/leave-type/leave-type.db.js';
@@ -33,6 +34,8 @@ export interface Repositories {
   decisions: LeaveDecisionRepository;
   /** FR 48b. The stages a request's routing skipped. LMS 320. */
   routing: LeaveRoutingRepository;
+  /** FR 07. The requests a moved reporting line carried. LMS 325. */
+  reassignments: LeaveReassignmentRepository;
   /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
   withdrawals: WithdrawalRepository;
   /** FR 13. The evidence a request has to arrive with, put on it here. LMS 311. */
@@ -57,6 +60,7 @@ export class Transactions {
         requests: new LeaveRequestRepository(trx),
         decisions: new LeaveDecisionRepository(trx),
         routing: new LeaveRoutingRepository(trx),
+        reassignments: new LeaveReassignmentRepository(trx),
         withdrawals: new WithdrawalRepository(trx),
         attachments: new AttachmentRepository(trx),
       }),

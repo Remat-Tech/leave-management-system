@@ -26,6 +26,8 @@ import {
   theManagersDecision,
   whoDecidedWhere,
 } from './leave-decision.js';
+import { lineMoved, type ReportingLineMove, requestsThatFollow } from './reassignment.js';
+import type { RecordedReassignment } from './reassignment.db.js';
 import {
   type DeskOccupants,
   deskOccupants,
@@ -54,6 +56,7 @@ import {
   grantingAction,
   InvalidLeaveRequest,
   lateEntryFor,
+  LeaveCannotBeMoved,
   LeaveCrossesAYearEnd,
   type LeaveRequest,
   type LeaveRequestQuote,
@@ -73,6 +76,7 @@ import {
   reasonForReservation,
   type ReleasingAction,
   settlementTo,
+  StillNobodyToDecideIt,
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
   whatIsLeftOf,
@@ -118,6 +122,12 @@ export type QuotableLeave = Omit<
   NewLeaveRequest,
   'reason' | 'acknowledgesShortNotice' | 'lateEntryReason'
 >;
+
+/** One request a moved reporting line carried, and the handover recorded. FR 07, LMS 325. */
+export interface RequestThatFollowed {
+  request: LeaveRequest;
+  reassignment: RecordedReassignment | null;
+}
 
 /** Leave asked for in a year that has been settled. §8.9.. */
 export class LeaveYearIsClosed extends Error {
@@ -944,6 +954,136 @@ export class LeaveRequestService {
     });
 
     return rerouted;
+  }
+
+  /**
+   * Carries somebody's pending leave to their new line manager. FR 07, §8.4, FR 59. LMS 325.
+   *
+   * What a reporting-line change does to the requests waiting on it. The `MANAGER` desk is
+   * the line, so a request waiting there is the new manager's the moment the line moves and
+   * the walk usually leaves it exactly where it is; what this adds is the record of the
+   * handover, the new manager being told, and the two cases where the desk itself moves — a
+   * request an empty manager's desk had stranded, and one this change empties.
+   *
+   * Nothing is decided and no days move. Approvals already given stand, attributed to
+   * whoever gave them, which is why only stages nobody has answered are carried.
+   *
+   * One request that cannot be moved does not stop the rest: the reporting line has already
+   * changed, and it is not undone by leave that had nowhere to go.
+   */
+  async followTheReportingLine(
+    actor: Actor,
+    move: ReportingLineMove,
+  ): Promise<RequestThatFollowed[]> {
+    if (!lineMoved(move)) {
+      return [];
+    }
+
+    const employee = await this.employeeFor(move.employeeId);
+
+    this.guard.enforce(leaveRequestPolicy.route(actor, ownerOf(employee)));
+
+    const waiting = [
+      ...(await this.requests.list({ employeeId: employee.id, status: 'SUBMITTED' })),
+      ...(await this.requests.list({ employeeId: employee.id, status: 'UNROUTABLE' })),
+    ];
+
+    const followed: RequestThatFollowed[] = [];
+
+    for (const request of requestsThatFollow(waiting)) {
+      const carried = await this.carry(actor, employee, request, move);
+
+      if (carried !== null) {
+        followed.push(carried);
+      }
+    }
+
+    return followed;
+  }
+
+  /** One request carried, or null where the walk had nowhere new to put it. FR 07, LMS 325. */
+  private async carry(
+    actor: Actor,
+    employee: Employee,
+    request: LeaveRequest,
+    move: ReportingLineMove,
+  ): Promise<RequestThatFollowed | null> {
+    const type = await this.typeFor(request.leaveTypeId);
+    const desks = await this.whoCanDecide(employee);
+
+    let carried: LeaveRerouted;
+
+    try {
+      carried = await this.balances.rerouteRequest(actor, {
+        request,
+        chain: type.approvalChain,
+        available: desks.available,
+        occupants: desks.occupants,
+        /** FR 07. What is being recorded against every request this moves. */
+        movedBy: move,
+      });
+    } catch (error) {
+      /* A request this line did not unstick stays stuck, and one whose remaining stages have
+         all signed stays where it is. Neither is a failure of the change to the record. */
+      if (error instanceof StillNobodyToDecideIt || error instanceof LeaveCannotBeMoved) {
+        return null;
+      }
+
+      throw error;
+    }
+
+    await this.tellThemItMoved(carried, employee, type, desks);
+
+    return { request: carried.request, reassignment: carried.reassignment };
+  }
+
+  /** Who hears about a request the reporting line moved. FR 07, FR 59, §8.4. LMS 325. */
+  private async tellThemItMoved(
+    carried: LeaveRerouted,
+    employee: Employee,
+    type: LeaveType,
+    desks: { available: DesksAvailable; occupants: DeskOccupants },
+  ): Promise<void> {
+    const { request } = carried;
+
+    /** FR 48b. The change emptied the desk under it, so it is the alert LMS 320 wrote. */
+    if (request.status === 'UNROUTABLE') {
+      await this.alertThatNobodyCanDecideIt(carried, employee, type, desks);
+      return;
+    }
+
+    const manager =
+      request.awaitingApprovalFrom === 'MANAGER' && employee.managerId !== null
+        ? await this.employees.findById(employee.managerId)
+        : undefined;
+
+    /** FR 07. The story's third criterion: the manager who has inherited the decision. */
+    if (manager !== undefined) {
+      await this.notifications.tell({
+        event: 'REASSIGNED',
+        employee,
+        recipient: manager,
+        request,
+        typeName: type.name,
+        decidedBy: null,
+        comment: null,
+        availableAfter: carried.balance.available,
+      });
+
+      return;
+    }
+
+    /* The stage went to a desk that is not a reporting line, so there is nobody new to name.
+       The person whose leave it is hears where it has got to, as they do at submission. */
+    await this.notifications.tell({
+      event: 'SUBMITTED',
+      employee,
+      request,
+      typeName: type.name,
+      decidedBy: null,
+      comment: null,
+      availableAfter: carried.balance.available,
+    });
   }
 
   /**

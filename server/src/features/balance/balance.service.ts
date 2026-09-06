@@ -42,6 +42,8 @@ import {
   type ValidatedLeaveRequest,
   withdrawalTo,
 } from '../leave-request/leave-request.js';
+import { reassignmentFor, type ReportingLineMove } from '../leave-request/reassignment.js';
+import type { RecordedReassignment } from '../leave-request/reassignment.db.js';
 import type { DeskOccupants, DesksAvailable } from '../leave-request/routing.js';
 import {
   AlreadyAskedToWithdraw,
@@ -159,7 +161,7 @@ export interface RequestToDecide {
   overturns: string | null;
 }
 
-/** What `LeaveRequestService` supplies to send an unroutable request back in. FR 48b, LMS 320. */
+/** What `LeaveRequestService` supplies to send a request back into its chain. FR 48b, LMS 320. */
 export interface RequestToReroute {
   request: LeaveRequest;
   /** FR 38a. */
@@ -168,6 +170,8 @@ export interface RequestToReroute {
   available: DesksAvailable;
   /** FR 48d. Who is at each of them. LMS 322. */
   occupants: DeskOccupants;
+  /** FR 07. The reporting line that moved, where one did rather than HR asking. LMS 325. */
+  movedBy?: ReportingLineMove | null;
 }
 
 /** The request, the movement it caused, and the balance it left. */
@@ -212,6 +216,8 @@ export interface WithdrawalAnswered extends WithdrawalAsked {
 export interface LeaveRerouted {
   request: LeaveRequest;
   balance: BalanceWithAvailable;
+  /** FR 07. The handover recorded, where a reporting line moved it. LMS 325. */
+  reassignment: RecordedReassignment | null;
 }
 
 /**
@@ -649,19 +655,24 @@ export class BalanceService {
   }
 
   /**
-   * Sends a request nobody could decide back into its chain. FR 48b, §8.6a. LMS 320.
+   * Sends a request back into its chain. FR 48b, FR 07, §8.6a, §8.4. LMS 320, LMS 325.
    *
    * The fourth door, and the only one that moves no days at all: the routing is worked out
-   * again against the organisation as it now stands, and the request goes back to being
-   * decided at whichever desk can now be asked. No ledger entry, and no decision — nobody
-   * has said anything about the leave.
+   * again against the organisation as it now stands, and the request goes to whichever desk
+   * can now be asked. No ledger entry, and no decision — nobody has said anything about the
+   * leave.
    *
    * It takes the lock anyway, for the reason an intermediate approval does: every move a
    * request makes goes through this class, so a re-route and a withdrawal arriving together
    * are ordered rather than interleaved.
+   *
+   * `movedBy` is FR 07's reason for asking: a reporting line moved and the request went with
+   * it. The handover is recorded in the same transaction as the move it explains, which is
+   * what `leave_request_records_its_decision` reads.
    */
   async rerouteRequest(actor: Actor, reroute: RequestToReroute): Promise<LeaveRerouted> {
     const { request, chain, available: desks, occupants } = reroute;
+    const movedBy = reroute.movedBy ?? null;
     const owner = await this.ownerOf(request.employeeId);
 
     this.guard.enforce(leaveRequestPolicy.route(actor, owner));
@@ -691,12 +702,24 @@ export class BalanceService {
          anything reads the desk it went to. */
       await repositories.routing.record(actor, current.id, routed.skips);
 
-      const written = await repositories.requests.moveTo(
-        actor,
-        current.id,
-        routed.to,
-        routed.awaiting,
-      );
+      /** FR 07, LMS 325. Before the move, for the same reason. */
+      const reassignment =
+        movedBy === null
+          ? null
+          : await repositories.reassignments.record(
+              actor,
+              current.id,
+              reassignmentFor(current, routed, movedBy),
+            );
+
+      /* FR 07, LMS 325. A line that moved the person and not the desk changes no column:
+         the desk is the reporting line, so it is the new manager's already. */
+      const stays =
+        routed.to === current.status && routed.awaiting === current.awaitingApprovalFrom;
+
+      const written = stays
+        ? current
+        : await repositories.requests.moveTo(actor, current.id, routed.to, routed.awaiting);
 
       /* Unreachable for the same reason, and one statement later. */
       if (written === undefined) {
@@ -705,6 +728,7 @@ export class BalanceService {
 
       return {
         request: written,
+        reassignment,
         /* Nothing moved. The RESERVATION written at submission has held the days
            throughout, including while the request was stuck. */
         entry: null,

@@ -21,6 +21,7 @@ import { EntitlementRuleRepository } from '../../src/features/entitlement/entitl
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
 import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { noLeaveFollows } from '../../src/features/employee/employee.js';
 import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { EntitlementRuleService } from '../../src/features/entitlement/entitlement-rule.service.js';
 import { earliestOpenDayFrom } from '../../src/features/leave-year/leave-year.service.js';
@@ -91,6 +92,7 @@ beforeAll(async () => {
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
     guard,
+    noLeaveFollows(),
     { domains: DOMAINS },
   );
 });

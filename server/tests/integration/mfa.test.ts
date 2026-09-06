@@ -16,6 +16,7 @@ import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { RoleRepository } from '../../src/features/role/role.db.js';
 import { SignInAccountRepository } from '../../src/features/sign-in/sign-in-account.db.js';
 import { WorkPatternRepository } from '../../src/features/work-pattern/work-pattern.db.js';
+import { noLeaveFollows } from '../../src/features/employee/employee.js';
 import { EmployeeService } from '../../src/features/employee/employee.service.js';
 import { type SignedIn, SignInService } from '../../src/features/sign-in/sign-in.service.js';
 import { recordingMailer, type RecordingMailer } from '../support/recording-mailer.js';
@@ -110,6 +111,7 @@ beforeAll(async () => {
     new DepartmentRepository(db),
     new WorkPatternRepository(db),
     guard,
+    noLeaveFollows(),
     { domains: DOMAINS },
   );
 });

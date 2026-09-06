@@ -10,6 +10,7 @@ import { assertCanTakeEmployees, DepartmentNotFound } from '../department/depart
 import {
   assertNoManagerCycle,
   EmployeeNotFound,
+  type LeaveThatFollows,
   ManagerHasLeft,
   ManagerNotFound,
   planTermination,
@@ -44,6 +45,16 @@ export class EmployeeService {
     private readonly patterns: WorkPatternRepository,
     /** NFR SEC 02. */
     private readonly guard: Guard,
+    /**
+     * What follows a reporting line that moves. FR 07, §8.4, LMS 325.
+     *
+     * Required rather than defaulted, for the reason `LeaveRequestService`'s notifier is:
+     * a service that can be built without one is a service somebody builds without one, and
+     * the failure is silent — every record correct, and a request left in the queue of
+     * somebody who no longer manages the person. `noLeaveFollows()` is how a caller with
+     * none says so out loud.
+     */
+    private readonly leave: LeaveThatFollows,
     options: EmployeeServiceOptions = {},
   ) {
     // Resolved once, at construction. allowedDomains() throws on an empty list,
@@ -125,6 +136,16 @@ export class EmployeeService {
       // reporting it is cheaper than returning undefined and making every caller
       // wonder.
       throw new EmployeeNotFound(id);
+    }
+
+    /* FR 07, §8.4. The pending leave goes with the line, after the record it follows has
+       been written. LMS 325. */
+    if (updated.managerId !== current.managerId) {
+      await this.leave.followTheReportingLine(actor, {
+        employeeId: updated.id,
+        from: current.managerId,
+        to: updated.managerId,
+      });
     }
 
     return updated;
