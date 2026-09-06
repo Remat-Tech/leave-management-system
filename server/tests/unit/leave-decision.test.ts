@@ -3,10 +3,12 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   DECIDING_ACTIONS,
+  decisionInWords,
   desksThatApproved,
   isADecision,
   InvalidDecision,
   isAnOverride,
+  LeaveAlreadyDecided,
   type LeaveDecision,
   OverrideNeedsAJustification,
   overrideRequiredFor,
@@ -16,6 +18,8 @@ import {
   requireAComment,
   reverses,
   saysYes,
+  theDecisionAt,
+  theLastDecision,
   theRefusal,
   validateDecision,
 } from '../../src/features/leave-request/leave-decision.js';
@@ -433,6 +437,72 @@ describe('the override a plain verb would have to be', () => {
     const chiefExecutive: LeaveDecision = { ...managers('REFUSE'), onBehalfOf: 'CEO' };
 
     expect(overrideRequiredFor('APPROVE', [chiefExecutive])).toBeNull();
+  });
+});
+
+/* --------------------------------------- two approvers at one desk. NFR DAT 02, LMS 326 */
+
+/**
+ * What the loser of two decisions arriving at once is told. NFR DAT 02, §8.1. LMS 326.
+ *
+ * The reading half of the story: which decision was already there, and what the refusal says
+ * about it. ../integration/concurrent-decisions.test.ts races two real transactions.
+ */
+describe('the decision a desk has already made', () => {
+  const decision = (onBehalfOf: 'MANAGER' | 'HR', action: 'APPROVE' | 'REFUSE'): LeaveDecision => ({
+    id: onBehalfOf,
+    leaveRequestId: '41',
+    action,
+    onBehalfOf,
+    comment: action === 'REFUSE' ? 'No cover' : null,
+    overridesDecisionId: null,
+    decidedBy: onBehalfOf === 'MANAGER' ? 'Kofi Boateng' : 'Efua Mensah',
+    decidedByEmployeeId: '3',
+    decidedAt: new Date('2026-03-01T09:00:00Z'),
+  });
+
+  it('is the one filed under that desk, where there is one', () => {
+    const decisions = [decision('MANAGER', 'REFUSE')];
+
+    expect(theDecisionAt('MANAGER', decisions)?.decidedBy).toBe('Kofi Boateng');
+    expect(theDecisionAt('HR', decisions)).toBeUndefined();
+  });
+
+  /** What settled a request that is waiting on nobody. */
+  it('and the last one is the most recent, or nothing at all', () => {
+    expect(theLastDecision([decision('MANAGER', 'APPROVE'), decision('HR', 'APPROVE')])?.id).toBe(
+      'HR',
+    );
+    expect(theLastDecision([])).toBeUndefined();
+  });
+
+  /* NFR USA 03. The sentence names who, says what they did, and answers the question the
+     person reading it actually has: whether their own press did anything. */
+  it('and the refusal names whoever got there first', () => {
+    const refusal = new LeaveAlreadyDecided('41', 'HR', decision('HR', 'REFUSE'));
+
+    expect(refusal.code).toBe('ALREADY_DECIDED');
+    expect(refusal.decided?.decidedBy).toBe('Efua Mensah');
+    expect(refusal.message).toContain('Efua Mensah turned it down');
+    expect(refusal.message).toContain('has not been recorded');
+  });
+
+  /* And it says the same thing where the caller could not say who, which is what the
+     schema's own refusal has to work with. */
+  it('and says it plainly where nothing read says who', () => {
+    const refusal = new LeaveAlreadyDecided('41', 'HR');
+
+    expect(refusal.decided).toBeNull();
+    expect(refusal.message).toContain('moved on while you had it open');
+  });
+
+  it('and each verb reads back as what the desk did', () => {
+    expect(DECIDING_ACTIONS.map(decisionInWords)).toEqual([
+      'approved it',
+      'turned it down',
+      'overturned the rejection',
+      'overturned the approval',
+    ]);
   });
 });
 

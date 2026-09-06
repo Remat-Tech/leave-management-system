@@ -18,6 +18,7 @@ import {
   InvalidLeaveRequest,
   type LeaveRequestQuote,
   type RequestWarning,
+  versionOf,
 } from './leave-request.js';
 import type {
   LeaveApproved,
@@ -90,8 +91,15 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
    * asymmetry: somebody whose leave is granted needs no explanation of the yes.
    */
   routes.post('/requests/:id/approve', (request: Request, response: Response, next) => {
+    const sent = bodyOf(request);
+
     void requests
-      .approve(actorOf(response), asString(request.params.id), asString(bodyOf(request).comment))
+      .approve(
+        actorOf(response),
+        asString(request.params.id),
+        asString(sent.comment),
+        versionSent(sent),
+      )
       .then((decided) => {
         response.json(decidedAsJson(decided));
       })
@@ -105,8 +113,15 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
    * the request on to the next desk with the days still held.
    */
   routes.post('/requests/:id/refuse', (request: Request, response: Response, next) => {
+    const sent = bodyOf(request);
+
     void requests
-      .refuse(actorOf(response), asString(request.params.id), asString(bodyOf(request).comment))
+      .refuse(
+        actorOf(response),
+        asString(request.params.id),
+        asString(sent.comment),
+        versionSent(sent),
+      )
       .then((decided) => {
         response.json(decidedAsJson(decided));
       })
@@ -133,6 +148,7 @@ export function requestRoutes({ history, form, requests, queue, drafts }: Reques
         asString(request.params.id),
         readOverride(sent.action),
         asString(sent.justification),
+        versionSent(sent),
       )
       .then((decided) => {
         response.json(decidedAsJson(decided));
@@ -504,6 +520,16 @@ function asIds(value: unknown): string[] {
 }
 
 /**
+ * The version of the request the deciding screen was drawn from. NFR DAT 02, §8.1. LMS 326.
+ *
+ * The whole of the optimistic half at the boundary: what a queue row carried is handed back,
+ * and absent means "no screen behind this" rather than "any version".
+ */
+function versionSent(sent: Record<string, unknown>): string | null {
+  return typeof sent.version === 'string' && sent.version !== '' ? sent.version : null;
+}
+
+/**
  * Which way an override goes. FR 44, §7.2. LMS 318.
  *
  * The one place in this file that reads a value rather than coercing one, because there is no
@@ -591,6 +617,8 @@ function queueAsJson(queue: ApproverQueue): unknown {
 function queueItemAsJson(item: QueueItem): unknown {
   return {
     requestId: item.requestId,
+    /** NFR DAT 02, §8.1. What a decision from this row sends back. LMS 326. */
+    version: item.version,
     asker: {
       employeeId: item.asker.employeeId,
       name: item.asker.name,
@@ -854,6 +882,8 @@ function freeDayAsJson(day: FreeDay): unknown {
 function decidedAsJson(decided: LeaveApproved): unknown {
   return {
     requestId: decided.request.id,
+    /** NFR DAT 02, §8.1. Where the row now stands, for whatever decides on it next. LMS 326. */
+    version: versionOf(decided.request),
     status: decided.request.status,
     /** FR 38a. Null once there is nobody left to ask. */
     awaitingApprovalFrom: decided.request.awaitingApprovalFrom,

@@ -109,6 +109,23 @@ export class LeaveRequestRepository {
     return row === undefined ? undefined : toRequest(row);
   }
 
+  /**
+   * The same row, held still until this transaction ends. NFR DAT 02, §8.1, LMS 326.
+   *
+   * `BalanceRepository.holdStill` for the request itself, and every door that moves one takes
+   * it — after the balance lock and never before, because two orders is a deadlock.
+   */
+  async holdStill(id: string): Promise<LeaveRequest | undefined> {
+    const row = await this.db
+      .selectFrom('leave_request')
+      .selectAll()
+      .where('id', '=', id)
+      .forUpdate()
+      .executeTakeFirst();
+
+    return row === undefined ? undefined : toRequest(row);
+  }
+
   /** One person's requests, the leave they start with first. */
   async list(options: LeaveRequestListOptions): Promise<LeaveRequest[]> {
     let query = this.db

@@ -315,6 +315,13 @@ export interface TeamContext {
 /** One request waiting on me, with what the decision needs beside it. */
 export interface QueueItem {
   requestId: string;
+  /**
+   * NFR DAT 02, §8.1. What this row was drawn from, sent back with the decision. LMS 326.
+   *
+   * A screen that hands it back is told its decision lost a race — 409, and the server's own
+   * sentence — rather than answering a request somebody else has.
+   */
+  version: string;
   asker: Asker;
   leaveTypeId: string;
   typeName: string;

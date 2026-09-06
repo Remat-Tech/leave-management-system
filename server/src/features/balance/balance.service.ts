@@ -30,6 +30,7 @@ import {
 import { type LeaveEvent, validateNewLeaveEvent } from '../leave-event/leave-event.js';
 import type { ApproverRole } from '../leave-type/approval-chain.js';
 import {
+  assertNobodyGotThereFirst,
   certifiedDaysGivenBack,
   decisionTo,
   isTheLastWord,
@@ -159,6 +160,12 @@ export interface RequestToDecide {
   comment: string | null;
   /** FR 44. The line manager's decision an override reverses, and null otherwise. */
   overturns: string | null;
+  /**
+   * NFR DAT 02, §8.1. The version of the request the deciding screen was drawn from. LMS 326.
+   *
+   * Null where the caller named none: it is what a screen offers, not what the row demands.
+   */
+  versionSeen: string | null;
 }
 
 /** What `LeaveRequestService` supplies to send a request back into its chain. FR 48b, LMS 320. */
@@ -358,7 +365,8 @@ export class BalanceService {
     return this.transactions.allOrNothing(async (repositories) => {
       const held = await repositories.balances.holdStill(key);
 
-      const current = await repositories.requests.findById(request.id);
+      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. LMS 326. */
+      const current = await repositories.requests.holdStill(request.id);
 
       if (current === undefined) {
         throw new LeaveRequestNotFound(request.id);
@@ -481,7 +489,7 @@ export class BalanceService {
    */
   async decideForRequest(actor: Actor, decision: RequestToDecide): Promise<LeaveApproved> {
     const { request, action, chain, chiefExecutiveId, available, occupants } = decision;
-    const { comment, overturns } = decision;
+    const { comment, overturns, versionSeen } = decision;
     const { reasonForTaking, reasonForGivingBack } = decision;
     const owner = await this.ownerOf(request.employeeId);
 
@@ -506,7 +514,9 @@ export class BalanceService {
     return this.transactions.allOrNothing(async (repositories) => {
       const held = await repositories.balances.holdStill(key);
 
-      const current = await repositories.requests.findById(request.id);
+      /* NFR DAT 02, §8.1. The row itself held still, and not merely read: nothing else moves
+         it between here and the write below. LMS 326. */
+      const current = await repositories.requests.holdStill(request.id);
 
       /* Unreachable: the caller read this row a moment ago and `leave_request_is_never_
          deleted` refuses to remove one on any connection. Answered rather than asserted,
@@ -514,6 +524,20 @@ export class BalanceService {
       if (current === undefined) {
         throw new LeaveRequestNotFound(request.id);
       }
+
+      /* FR 44, FR 48d. What has been decided and by whom, read inside the lock for the
+         reason the desk is: two officers deciding together would otherwise both find
+         themselves the first, and one of them is the same person as the other. LMS 322. */
+      const recorded = await repositories.decisions.forRequest(current.id);
+
+      /* NFR DAT 02, §8.1. The race, lost, and here is where that answer binds. LMS 326.
+         Before the desk policy below, which would tell the loser they are not the desk. */
+      assertNobodyGotThereFirst({
+        request: current,
+        deskTheyStoodAt: request.awaitingApprovalFrom,
+        decisions: recorded,
+        versionSeen,
+      });
 
       /* **The desk, re-decided against the row as it stands now**, and this is the check
          that closes the one window a lock alone would leave open here.
@@ -537,10 +561,8 @@ export class BalanceService {
         }),
       );
 
-      /* FR 44, FR 48d. What has been decided and by whom, read inside the lock for the
-         reason the desk is: two officers deciding together would otherwise both find
-         themselves the first, and one of them is the same person as the other. LMS 322. */
-      const decisions = whoDecidedWhere(await repositories.decisions.forRequest(current.id));
+      /** FR 44, FR 48d. The same rows, as the walk and the policy below want them. LMS 322. */
+      const decisions = whoDecidedWhere(recorded);
 
       /* FR 41, LMS 316. Which stages have signed, read inside the lock and against the rows
          as they stand — the same discipline the status and the desk are held to, and it
@@ -682,7 +704,8 @@ export class BalanceService {
     return this.transactions.allOrNothing(async (repositories) => {
       await repositories.balances.holdStill(key);
 
-      const current = await repositories.requests.findById(request.id);
+      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. LMS 326. */
+      const current = await repositories.requests.holdStill(request.id);
 
       /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
       if (current === undefined) {
@@ -755,7 +778,8 @@ export class BalanceService {
     return this.transactions.allOrNothing(async (repositories) => {
       await repositories.balances.holdStill(key);
 
-      const current = await repositories.requests.findById(request.id);
+      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. LMS 326. */
+      const current = await repositories.requests.holdStill(request.id);
 
       /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
       if (current === undefined) {
@@ -816,7 +840,8 @@ export class BalanceService {
     return this.transactions.allOrNothing(async (repositories) => {
       const held = await repositories.balances.holdStill(key);
 
-      const current = await repositories.requests.findById(request.id);
+      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. LMS 326. */
+      const current = await repositories.requests.holdStill(request.id);
 
       /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
       if (current === undefined) {

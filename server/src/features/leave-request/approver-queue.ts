@@ -39,6 +39,7 @@ import {
   periodsOverlap,
   progressOf,
   type RequestStatus,
+  versionOf,
 } from './leave-request.js';
 import { type CalendarDate, formatDay } from '../../shared/time.js';
 
@@ -175,6 +176,13 @@ export interface TeamContext {
 /** One request waiting on this approver, with everything the decision needs beside it. */
 export interface QueueItem {
   requestId: string;
+  /**
+   * NFR DAT 02, §8.1. The version of the request this row was drawn from. LMS 326.
+   *
+   * Sent back with the decision, so a screen deciding on a request that has since moved is
+   * refused rather than answered.
+   */
+  version: string;
   asker: Asker;
   leaveTypeId: string;
   typeName: string;
@@ -467,6 +475,8 @@ function itemFor(input: {
 
   return {
     requestId: request.id,
+    /** NFR DAT 02, §8.1. LMS 326. */
+    version: versionOf(request),
     asker: {
       employeeId: request.employeeId,
       name: askerName,

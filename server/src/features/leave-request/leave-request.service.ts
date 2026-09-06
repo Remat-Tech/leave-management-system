@@ -47,6 +47,7 @@ import type { AttachmentRepository } from './attachment.db.js';
 import {
   type ApprovalProgress,
   assertDocumentationIsAttached,
+  assertNobodyGotThereFirst,
   certifiedDaysIn,
   assertItCostsSomething,
   assertShortNoticeIsAcknowledged,
@@ -559,8 +560,14 @@ export class LeaveRequestService {
    * leave that has already been approved, and {@link ApprovalChainChanged} where the chain
    * has moved out from under it.
    */
-  async approve(actor: Actor, id: string, comment?: string): Promise<LeaveApproved> {
-    return this.decide(actor, id, 'APPROVE', readComment(comment));
+  async approve(
+    actor: Actor,
+    id: string,
+    comment?: string,
+    /** NFR DAT 02, §8.1. The version the screen was drawn from, where it named one. LMS 326. */
+    versionSeen?: string | null,
+  ): Promise<LeaveApproved> {
+    return this.decide(actor, id, 'APPROVE', readComment(comment), versionSeen);
   }
 
   /**
@@ -570,8 +577,14 @@ export class LeaveRequestService {
    * decision at a stage, so it records the no and hands the request on to the next desk.
    * The days come back only when the last desk is the one saying it.
    */
-  async refuse(actor: Actor, id: string, comment: string): Promise<LeaveApproved> {
-    return this.decide(actor, id, 'REFUSE', requireAComment(comment));
+  async refuse(
+    actor: Actor,
+    id: string,
+    comment: string,
+    /** NFR DAT 02, §8.1. LMS 326. */
+    versionSeen?: string | null,
+  ): Promise<LeaveApproved> {
+    return this.decide(actor, id, 'REFUSE', requireAComment(comment), versionSeen);
   }
 
   /**
@@ -589,8 +602,10 @@ export class LeaveRequestService {
     id: string,
     action: OverridingAction,
     justification: string,
+    /** NFR DAT 02, §8.1. LMS 326. */
+    versionSeen?: string | null,
   ): Promise<LeaveApproved> {
-    return this.decide(actor, id, action, requireAJustification(justification));
+    return this.decide(actor, id, action, requireAJustification(justification), versionSeen);
   }
 
   /**
@@ -609,6 +624,8 @@ export class LeaveRequestService {
     id: string,
     action: DecidingAction,
     comment: string | null,
+    /** NFR DAT 02, §8.1. What the screen deciding this was drawn from. LMS 326. */
+    versionSeen: string | null = null,
   ): Promise<LeaveApproved> {
     const request = await this.requests.findById(id);
 
@@ -638,6 +655,16 @@ export class LeaveRequestService {
     }
 
     const decisions = await this.decisions.forRequest(request.id);
+
+    /* NFR DAT 02, §8.1. Somebody answered this while it was being decided. LMS 326. Asked
+       here for the sentence, before the walk below can call it an impossible move, and again
+       inside the lock, where it binds. */
+    assertNobodyGotThereFirst({
+      request,
+      deskTheyStoodAt: request.awaitingApprovalFrom,
+      decisions,
+      versionSeen,
+    });
 
     /* FR 44. Which stage has not *decided*, rather than which has not approved. Asked again
        inside the lock, where the answer binds. */
@@ -679,6 +706,8 @@ export class LeaveRequestService {
       occupants,
       comment,
       overturns,
+      /** NFR DAT 02, §8.1. Carried into the lock, where the same question binds. LMS 326. */
+      versionSeen,
       reasonForTaking: reasonForApproval(type.name, request, request.days, outcome.by),
       reasonForGivingBack: reasonForRelease(type.name, request, request.days, 'REFUSED'),
     });

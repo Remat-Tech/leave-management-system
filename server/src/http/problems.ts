@@ -190,6 +190,18 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   /** FR 44. There is nothing on this request to reverse. LMS 318. */
   NothingToOverturn: 409,
 
+  /**
+   * NFR DAT 02, §8.1. Two approvers deciding at once, and this is the loser. LMS 326.
+   *
+   * The two below are the same race met at another door — leave withdrawn or approved out
+   * from under the decider — and both were reaching the browser as a five hundred.
+   */
+  LeaveAlreadyDecided: 409,
+  /** FR 26, §8.2. Ended once, by whoever got there first. LMS 306. */
+  LeaveAlreadySettled: 409,
+  /** §6. The request has moved somewhere this act does not follow from. LMS 314. */
+  LeaveCannotBeMoved: 409,
+
   /** FR 15, §5.6. Leave over leave already booked. */
   LeaveOverlapsAnother: 409,
   /** FR 14. And the same condition the quote shows as a warning. */
