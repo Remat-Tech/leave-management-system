@@ -14,6 +14,7 @@ import {
 } from '../../src/features/leave-request/attachment.js';
 import { DocumentationNotAttached } from '../../src/features/leave-request/leave-request.js';
 import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
+import { AttachmentLinkRepository } from '../../src/features/leave-request/attachment-link.db.js';
 import { AttachmentService } from '../../src/features/leave-request/attachment.service.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
@@ -95,6 +96,7 @@ beforeAll(async () => {
   const requestRepository = new LeaveRequestRepository(db);
   const organisation = new OrganisationRepository(db);
   const attachmentRepository = new AttachmentRepository(db);
+  const linkRepository = new AttachmentLinkRepository(db);
 
   balances = new BalanceService(new BalanceRepository(db), guard, employees, new Transactions(db));
   years = new LeaveYearService(yearRepository, guard);
@@ -123,6 +125,7 @@ beforeAll(async () => {
   attachments = new AttachmentService(
     guard,
     attachmentRepository,
+    linkRepository,
     requestRepository,
     employees,
     types,
@@ -135,6 +138,7 @@ beforeAll(async () => {
   unscanned = new AttachmentService(
     guard,
     attachmentRepository,
+    linkRepository,
     requestRepository,
     employees,
     types,
@@ -183,7 +187,7 @@ async function clear(): Promise<void> {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
+      'attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
       'leave_request_withdrawal, leave_request_draft, leave_request',
   );
 }

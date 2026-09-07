@@ -12,6 +12,7 @@ import {
   type Submitted,
 } from '../../api';
 import { days, inDays, sentenceCase } from '../../format';
+import { Evidence } from './Attachments';
 
 /**
  * Asking for leave, told the rules while you fill it in. FR 10, FR 11, FR 13, FR 17, FR 32f, LMS 403, LMS 307.
@@ -42,6 +43,14 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [reason, setReason] = useState('');
   /** FR 17, LMS 307. Answered about one period, so it is cleared whenever the period moves. */
   const [acknowledged, setAcknowledged] = useState(false);
+  /**
+   * FR 12, FR 13, LMS 311, LMS 407. What has been uploaded and not yet asked for leave with.
+   *
+   * Ids and never files: the bytes went to the server when they were chosen, so this holds
+   * what to *name* on submission. It is not cleared when the dates move, unlike the
+   * acknowledgement above — a certificate is about the person, not about the period.
+   */
+  const [evidence, setEvidence] = useState<string[]>([]);
 
   const [quote, setQuote] = useState<Quote | undefined>(undefined);
   const [quoteProblem, setQuoteProblem] = useState<string | undefined>(undefined);
@@ -145,8 +154,17 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
     setAsking(true);
     setRefusal(undefined);
 
-    /* FR 17, LMS 307. Sent as it stands: whether one was owed is the server's answer. */
-    askForLeave({ leaveTypeId, from, to, reason, acknowledgesShortNotice: acknowledged })
+    /* FR 17, LMS 307. Sent as it stands: whether one was owed is the server's answer. And
+       FR 13, LMS 311: the ids of what was uploaded, for the same reason — whether this kind
+       of leave needed one is not a question a browser answers. */
+    askForLeave({
+      leaveTypeId,
+      from,
+      to,
+      reason,
+      acknowledgesShortNotice: acknowledged,
+      evidence,
+    })
       .then((next) => {
         setSubmitted(next);
       })
@@ -161,7 +179,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
       .finally(() => {
         setAsking(false);
       });
-  }, [leaveTypeId, from, to, reason, acknowledged, onSignedOut]);
+  }, [leaveTypeId, from, to, reason, acknowledged, evidence, onSignedOut]);
 
   const startAgain = useCallback(() => {
     setSubmitted(undefined);
@@ -169,6 +187,9 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
     setTo('');
     setReason('');
     setAcknowledged(false);
+    /* The files that went on the last request went with it. What is waiting now is whatever
+       the panel reads back when it comes round again. FR 13, LMS 311. */
+    setEvidence([]);
     setQuote(undefined);
     setQuoteProblem(undefined);
     setRefusal(undefined);
@@ -307,6 +328,13 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
                 ? 'Whoever approves this will read what you write here.'
                 : `${sentenceCase(chosen.approvedBy)} will read what you write here.`}
             </p>
+
+            {/* FR 12, FR 13, LMS 407. Here rather than after submitting, because FR 13 is
+                answered *at* submission: a kind of leave that asks for a certificate refuses
+                a request that arrives without one. Shown for every kind, because anybody may
+                attach something — whether one is needed is in the rules above, written by
+                the server. */}
+            <Evidence disabled={asking} onChange={setEvidence} onSignedOut={onSignedOut} />
 
             {/* FR 17, LMS 307. On the left, because it is something to decide rather than
                 something the system is saying. Shown exactly when the server warns. */}

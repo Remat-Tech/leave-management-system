@@ -24,6 +24,7 @@ import type { ApprovalDelegationService } from '../features/leave-request/delega
 import type { RoleRepository } from '../features/role/role.db.js';
 import type { SignInAccountRepository } from '../features/sign-in/sign-in-account.db.js';
 import type { AttachmentRepository } from '../features/leave-request/attachment.db.js';
+import type { AttachmentLinkRepository } from '../features/leave-request/attachment-link.db.js';
 import { AttachmentService } from '../features/leave-request/attachment.service.js';
 import { attachmentRoutes } from '../features/leave-request/attachment.routes.js';
 import type { Scanner } from '../scanning/index.js';
@@ -69,6 +70,8 @@ export interface Application {
   drafts: LeaveRequestDraftRepository;
   /** FR 12. Certificates and supporting documents. LMS 310. */
   attachments: AttachmentRepository;
+  /** NFR SEC 04. The short-lived links they are fetched through, and who fetched them. LMS 407. */
+  attachmentLinks: AttachmentLinkRepository;
   /** NFR SEC 04. Where attachment bytes live, behind one interface. */
   storage: Storage;
   /** NFR SEC 07. */
@@ -215,6 +218,7 @@ export function buildApp(parts: Application): Express {
       attachments: new AttachmentService(
         parts.guard,
         parts.attachments,
+        parts.attachmentLinks,
         parts.requests,
         parts.employees,
         parts.types,

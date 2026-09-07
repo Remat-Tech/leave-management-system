@@ -9,6 +9,7 @@ import { EmployeeRepository } from './features/employee/employee.db.js';
 import { HolidayRepository } from './features/holiday/holiday.db.js';
 import { ApprovalDelegationRepository } from './features/leave-request/delegation.db.js';
 import { AttachmentRepository } from './features/leave-request/attachment.db.js';
+import { AttachmentLinkRepository } from './features/leave-request/attachment-link.db.js';
 import { LeaveDecisionRepository } from './features/leave-request/leave-decision.db.js';
 import { LeaveRequestDraftRepository } from './features/leave-request/draft.db.js';
 import { LeaveRoutingRepository } from './features/leave-request/routing.db.js';
@@ -67,6 +68,8 @@ const withdrawals = new WithdrawalRepository(db);
 const drafts = new LeaveRequestDraftRepository(db);
 /** FR 12, LMS 310. */
 const attachments = new AttachmentRepository(db);
+/** NFR SEC 04, LMS 407. */
+const attachmentLinks = new AttachmentLinkRepository(db);
 const balances = new BalanceRepository(db);
 /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
 const organisation = new OrganisationRepository(db);
@@ -121,6 +124,7 @@ const app = buildApp({
   withdrawals,
   drafts,
   attachments,
+  attachmentLinks,
   /* Both built once here, as the mailer is: the driver each resolves to is a deployment's
      decision, and nothing above them may know which one it got. NFR SEC 04, NFR SEC 07. */
   storage: createStorage(),

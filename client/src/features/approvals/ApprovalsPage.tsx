@@ -7,6 +7,7 @@ import {
   type TeamContext,
 } from '../../api';
 import { inDays, sentenceCase } from '../../format';
+import { AttachedFiles } from '../requests/Attachments';
 
 /** Everything waiting on me. FR 20, FR 40, FR 17, FR 18, FR 48, LMS 404. */
 export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
@@ -79,7 +80,7 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
       ) : (
         <ol className="requests">
           {queue.items.map((item) => (
-            <QueueCard key={item.requestId} item={item} />
+            <QueueCard key={item.requestId} item={item} onSignedOut={onSignedOut} />
           ))}
         </ol>
       )}
@@ -97,7 +98,7 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
  * `is-held` carries the colour for a request this approver may not decide. It is never the only
  * thing carrying that: the sentence beside it says so in words.
  */
-function QueueCard({ item }: { item: QueueItem }) {
+function QueueCard({ item, onSignedOut }: { item: QueueItem; onSignedOut: () => void }) {
   return (
     <li className={`card request queued${item.actionable ? '' : ' is-held'}`}>
       <div className="card-head">
@@ -170,6 +171,11 @@ function QueueCard({ item }: { item: QueueItem }) {
         <dt>Stage</dt>
         <dd>{item.stageInWords}</dd>
       </dl>
+
+      {/* FR 12, NFR SEC 04, LMS 407. The desk this is sitting on may open the certificate —
+          `readAttachment` is `read` widened by exactly that — and every open is recorded
+          against the approver's name. Shut until somebody decides to look. */}
+      <AttachedFiles requestId={item.requestId} onSignedOut={onSignedOut} />
     </li>
   );
 }

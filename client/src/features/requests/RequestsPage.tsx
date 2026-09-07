@@ -8,6 +8,7 @@ import {
   type Year,
 } from '../../api';
 import { inDays, moment, sentenceCase } from '../../format';
+import { AttachedFiles } from './Attachments';
 
 /** My request history. FR 54, LMS 402, FR 41, FR 39. */
 export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
@@ -81,7 +82,7 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
       ) : (
         <ol className="requests">
           {history.entries.map((entry) => (
-            <RequestCard key={entry.requestId} entry={entry} />
+            <RequestCard key={entry.requestId} entry={entry} onSignedOut={onSignedOut} />
           ))}
         </ol>
       )}
@@ -100,7 +101,7 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
  * the meaning: the same tag says the word, for the reason the stylesheet gives about one man
  * in twelve.
  */
-function RequestCard({ entry }: { entry: RequestEntry }) {
+function RequestCard({ entry, onSignedOut }: { entry: RequestEntry; onSignedOut: () => void }) {
   return (
     <li className={`card request is-${entry.status.toLowerCase()}`}>
       <div className="card-head">
@@ -137,6 +138,10 @@ function RequestCard({ entry }: { entry: RequestEntry }) {
       <p className={`progress${entry.agreed ? ' is-agreed' : ''}`}>{entry.progressInWords}</p>
 
       <Trail steps={entry.trail} />
+
+      {/* FR 12, NFR SEC 04, LMS 407. Shut, and asked for only when it is opened: a list of
+          filenames is itself information about somebody's health. */}
+      <AttachedFiles requestId={entry.requestId} onSignedOut={onSignedOut} />
 
       {/* Normally empty. A chain that has gained a desk since a request was approved is a
           real and legitimate state — LMS 316's `stagesMissing` — and saying so is better than

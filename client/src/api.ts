@@ -1002,15 +1002,15 @@ export async function rescanEvidence(attachmentId: string): Promise<Attachment> 
   return request<Attachment>('POST', `/api/evidence/${encodeURIComponent(attachmentId)}/scan`);
 }
 
-/** Where the browser fetches the bytes from. Refused unless the scan came back clean. */
-export function attachmentHref(requestId: string, attachmentId: string): string {
+/** Where one attachment is addressed for everything that is not its bytes. */
+function attachmentPath(requestId: string, attachmentId: string): string {
   return (
     `/api/requests/${encodeURIComponent(requestId)}/attachments/` + encodeURIComponent(attachmentId)
   );
 }
 
 export async function removeAttachment(requestId: string, attachmentId: string): Promise<void> {
-  await request<void>('DELETE', attachmentHref(requestId, attachmentId));
+  await request<void>('DELETE', attachmentPath(requestId, attachmentId));
 }
 
 /** Asks the scanner again about a file it never answered for. NFR SEC 07. */
@@ -1018,7 +1018,60 @@ export async function rescanAttachment(
   requestId: string,
   attachmentId: string,
 ): Promise<Attachment> {
-  return request<Attachment>('POST', `${attachmentHref(requestId, attachmentId)}/scan`);
+  return request<Attachment>('POST', `${attachmentPath(requestId, attachmentId)}/scan`);
+}
+
+/* ------------------------------------ fetching a certificate. NFR SEC 04, LMS 407 */
+
+/** An address the bytes may be fetched from, once, in the next two minutes. */
+export interface DownloadLink {
+  attachmentId: string;
+  filename: string;
+  contentType: AttachmentContentType;
+  sizeBytes: number;
+  /** A path on this origin. Spent by the first fetch. */
+  url: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+}
+
+/**
+ * Asks for a way in. NFR SEC 04, LMS 407.
+ *
+ * A POST because it writes: the server records who asked before it answers. Refused unless
+ * the scan came back clean, and refused for anybody with no standing over the request.
+ */
+export async function downloadLinkFor(
+  requestId: string,
+  attachmentId: string,
+): Promise<DownloadLink> {
+  return request<DownloadLink>('POST', `${attachmentPath(requestId, attachmentId)}/link`);
+}
+
+/**
+ * The file, through a link. NFR SEC 04, LMS 407.
+ *
+ * Two calls, and there is no one-call version: the bytes have no standing address. What
+ * comes back is held as a blob rather than navigated to, so that a refusal — a link somebody
+ * left open for five minutes, a standing that has since gone — arrives here as the server's
+ * own sentence and can be shown, instead of replacing the page with a browser error.
+ *
+ * The caller is handed the blob and the name, and decides what to do with them. Nothing here
+ * touches the document.
+ */
+export async function fetchAttachment(
+  requestId: string,
+  attachmentId: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const link = await downloadLinkFor(requestId, attachmentId);
+
+  const response = await fetch(link.url, { method: 'GET', credentials: 'same-origin' });
+
+  if (!response.ok) {
+    throw errorFrom(response.status, await response.json().catch(() => undefined));
+  }
+
+  return { blob: await response.blob(), filename: link.filename };
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {

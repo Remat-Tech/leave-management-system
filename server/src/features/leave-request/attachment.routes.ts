@@ -1,4 +1,4 @@
-/** Attachments on a request, over HTTP. FR 12, NFR SEC 04, NFR SEC 07. LMS 310. */
+/** Attachments on a request, over HTTP. FR 12, NFR SEC 04, NFR SEC 06, NFR SEC 07. LMS 310, LMS 407. */
 
 import express, { type Request, type Response, Router } from 'express';
 import { actorOf } from '../../http/identify.js';
@@ -6,6 +6,7 @@ import type {
   AttachmentService,
   AttachmentsOnARequest,
   AttachmentsWaiting,
+  IssuedDownloadLink,
   UploadedFile,
 } from './attachment.service.js';
 import {
@@ -141,33 +142,57 @@ export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
   });
 
   /**
-   * The file itself. NFR SEC 04, NFR SEC 07.
+   * Where the file may be fetched from for the next two minutes. NFR SEC 04, LMS 407.
    *
-   * Refused unless the scanner has called it clean. Sent as an octet stream with the
-   * sniffed type named separately, so that nothing a browser renders inline can be
-   * served from this origin.
+   * A POST, because it writes: a link is a row, and asking for one is itself an access
+   * that goes in the log. There is no GET here that hands back the bytes, and that absence
+   * is the story — a certificate has no standing address to copy, bookmark or leave in a
+   * browser's history.
    */
-  routes.get(
-    '/requests/:id/attachments/:attachmentId',
+  routes.post(
+    '/requests/:id/attachments/:attachmentId/link',
     (request: Request, response: Response, next) => {
       void attachments
-        .download(
+        .linkTo(
           actorOf(response),
           asString(request.params.id),
           asString(request.params.attachmentId),
         )
-        .then(({ attachment, content }) => {
-          response
-            .status(200)
-            .set('Content-Type', 'application/octet-stream')
-            .set('X-Content-Type-Options', 'nosniff')
-            .set('X-Attachment-Content-Type', attachment.contentType)
-            .set('Content-Disposition', dispositionFor(attachment.filename))
-            .send(content);
+        .then((issued) => {
+          response.status(201).set('Cache-Control', 'no-store').json(linkAsJson(issued));
         })
         .catch(next);
     },
   );
+
+  /**
+   * The file itself, through a link and nothing else. NFR SEC 04, NFR SEC 07, LMS 407.
+   *
+   * Behind `identify()` like everything else, so the token is never a credential on its own:
+   * it is spent once, lasts two minutes, and is refused for anybody but the person it was
+   * minted for. That matters because a token in a path is a token in an access log, and the
+   * answer to that is a token which is worthless by the time the log is written.
+   *
+   * Sent as an octet stream with the sniffed type named separately, so that nothing a
+   * browser renders inline can be served from this origin. `no-store` because the whole
+   * point is that no copy of this outlives the fetch.
+   */
+  routes.get('/attachments/downloads/:token', (request: Request, response: Response, next) => {
+    void attachments
+      .downloadVia(actorOf(response), asString(request.params.token))
+      .then(({ attachment, content }) => {
+        response
+          .status(200)
+          .set('Content-Type', 'application/octet-stream')
+          .set('X-Content-Type-Options', 'nosniff')
+          .set('X-Attachment-Content-Type', attachment.contentType)
+          .set('Content-Disposition', dispositionFor(attachment.filename))
+          .set('Cache-Control', 'no-store')
+          .set('Referrer-Policy', 'no-referrer')
+          .send(content);
+      })
+      .catch(next);
+  });
 
   /** Takes a file back off, while the request is still being decided. FR 12. */
   routes.delete(
@@ -281,6 +306,25 @@ function attachmentAsJson(attachment: LeaveRequestAttachment): unknown {
     downloadable: attachment.scanStatus === 'CLEAN',
     uploadedBy: attachment.uploadedByEmployeeId,
     uploadedAt: attachment.uploadedAt.toISOString(),
+  };
+}
+
+/**
+ * A link, as JSON. NFR SEC 04, LMS 407.
+ *
+ * `url` is a path rather than an absolute address, so nothing here decides what host this
+ * application answers on — and a link that named one would be a link that survives being
+ * pasted somewhere else, which is what this whole route exists to prevent.
+ */
+function linkAsJson(issued: IssuedDownloadLink): unknown {
+  return {
+    attachmentId: issued.attachment.id,
+    filename: issued.attachment.filename,
+    contentType: issued.attachment.contentType,
+    sizeBytes: issued.attachment.sizeBytes,
+    url: issued.url,
+    expiresAt: issued.expiresAt.toISOString(),
+    expiresInSeconds: issued.expiresInSeconds,
   };
 }
 

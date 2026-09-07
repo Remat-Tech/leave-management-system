@@ -72,7 +72,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Lapsing an unused event grant | | `HR_ADMIN` only |
 | A leave request | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | yourself, `HR_OFFICER`, `HR_ADMIN` — and only the person who asked may reword one |
 | A draft of one. FR 19 | the person planning it, and nobody else at all | the person planning it, and nobody else at all |
-| A certificate attached to one. FR 12 | whoever may read the request, plus the desk it is sitting on | yourself, `HR_OFFICER`, `HR_ADMIN` — never the line manager |
+| A certificate attached to one. FR 12 | whoever may read the request, plus the desk it is sitting on — through a link that expires, and every open is [written down](#who-opened-a-certificate-is-logged) | yourself, `HR_OFFICER`, `HR_ADMIN` — never the line manager |
 | Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
 | Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN`, or a colleague covering for one of them — never yourself |
 | Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
@@ -290,9 +290,12 @@ The reason is written and never said. `NotAuthorised.attempt` carries it for a
 caller that has to record it again; **nothing that reaches a screen may read it
 and turn it back into a message**, exactly as with `SignInRefused.reason`.
 
-Allowed attempts are not logged here. "Who read whose record" is a much larger
-question; what *changed* a record is the [audit log](#the-audit-log), which is a
-different table with a different guarantee.
+Allowed attempts are not logged here, with one exception. "Who read whose record"
+is a much larger question; what *changed* a record is the
+[audit log](#the-audit-log), which is a different table with a different
+guarantee. The exception is
+[opening a certificate](#who-opened-a-certificate-is-logged), which is the one
+read in this system worth keeping.
 
 The default driver writes one JSON line per denial to stderr. That is a stop-gap
 and the shape is the part that is right: a log line is rotated away and is not an
@@ -469,5 +472,56 @@ account, it is a reassurance.
 `user_role.granted_by` was deliberately never added. LMS 111 left it out and said
 why — it wanted an authenticated actor and a place to put it — and this is that
 place.
+
+---
+
+## Who opened a certificate is logged
+
+NFR SEC 04 and NFR SEC 06, LMS 407. The one read anywhere in this system that is
+written down, and the one exception to
+[allowed attempts are not logged](#denied-attempts-are-logged).
+
+The story is somebody's medical certificate, and the question it exists to be able
+to answer is "who has seen it". That is not a question the audit log can answer —
+`audit_log` records what *changed* a record, and reading one changes nothing, so
+there is nothing for NFR AUD 01's triggers to fire on. `attachment_access` is a
+different table for a different question, append only by the same pair of triggers
+and for the same reason.
+
+**There is no standing address for a file.** A certificate is fetched by asking for
+a link and then following it, and the link is a row: minted for one person, good
+for two minutes, and spent by the first fetch. So a copied URL, a bookmark, a
+browser history and a screen somebody photographed are all worth nothing a couple
+of minutes later — which is what "never publicly addressable" has to mean in a
+system where the address used to be `/api/requests/41/attachments/7` for ever.
+
+Four things hold it up, and each of them is doing separate work.
+
+**The token is never stored.** What the table holds is its SHA-256, so a backup, a
+support query or a leaked dump of `attachment_download_link` opens nothing.
+
+**The link is not a credential.** The fetch is behind `identify()` like everything
+else, and the link is refused for anybody but the person it was minted for. That
+matters because a token in a path is a token in an access log — and the answer to
+that is a token which is worthless by the time the log is written.
+
+**The policy is asked twice.** Once when the link is minted and again when it is
+followed, because a manager whose report moved to another team in between may no
+longer read the request, and a link that outlived the standing behind it would be
+exactly the casual availability this is against.
+
+**Spending it is the database's.** `redeemed_at` moves once, held by a trigger, so
+two fetches racing on one link hand the file to one of them.
+
+Every one of those answers is a row: `ISSUED` when somebody asks for a way in,
+`DOWNLOADED` when they get the bytes, and `EXPIRED`, `ALREADY_USED` or `REFUSED`
+with a sentence saying which. The one reach that is written down nowhere is a token
+naming no link at all — there is no file for it to be an access to.
+
+**The account outlives the file.** FR 12 lets the uploader take a certificate back
+off a request while it is being decided, and the unspent links for it go in the
+same statement. The log does not: `attachment_access` deliberately holds no foreign
+key to either, because "who saw my medical certificate", answered only for
+certificates still on the system, is not an answer.
 
 ---
