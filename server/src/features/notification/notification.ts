@@ -35,9 +35,21 @@ export const NOTICE_EVENTS = [
   'WITHDRAWAL_GRANTED',
   'LEAVE_AMENDED',
   'WITHDRAWAL_REFUSED',
+  /** The approver a request is still sitting on, chased daily. FR 50, FR 60, LMS 330. */
+  'STILL_WAITING',
 ] as const;
 
 export type NoticeEvent = (typeof NOTICE_EVENTS)[number];
+
+/**
+ * Whether this is the daily reminder rather than news of something that happened. FR 50, LMS 330.
+ *
+ * The one event ./reminder.ts composes: nothing has happened to the request, which is the
+ * whole of what it is about, so {@link noticeOf} has no branch for it.
+ */
+export function isAReminder(event: NoticeEvent): boolean {
+  return event === 'STILL_WAITING';
+}
 
 /**
  * The events after which a balance has days it did not have before. FR 47, LMS 324.
@@ -400,7 +412,7 @@ export function noticeOf(happened: WhatHappened): NewNotice {
           ],
         };
 
-      default:
+      case 'CANCELLED':
         return {
           subject: `Your ${typeName} for ${period} has been cancelled`,
           paragraphs: [
@@ -410,6 +422,14 @@ export function noticeOf(happened: WhatHappened): NewNotice {
             'If you were expecting this leave to happen, speak to HR.',
           ],
         };
+
+      /* FR 50, LMS 330. A reminder says nothing happened, so ./reminder.ts composes it and
+         the fall-through that would have made it a cancellation is refused here. */
+      default:
+        throw new InvalidNotice(
+          'event',
+          `${event} is not news of anything happening to a request, so it is not composed here.`,
+        );
     }
   })();
 
@@ -430,7 +450,7 @@ export function noticeOf(happened: WhatHappened): NewNotice {
  * decide the message is genuine — and a phishing message is much easier to write against a
  * system whose own emails end differently each time.
  */
-const SIGN_OFF = 'Remat Holdings Leave';
+export const SIGN_OFF = 'Remat Holdings Leave';
 
 /**
  * Checks a notice on its way to being written.
@@ -567,7 +587,7 @@ function possessive(desk: ApproverRole | null): string {
 }
 
 /** "6 days", "1 day". The pluralisation every message needs and none of them repeats. */
-function inDays(days: number): string {
+export function inDays(days: number): string {
   return `${days} ${days === 1 ? 'day' : 'days'}`;
 }
 

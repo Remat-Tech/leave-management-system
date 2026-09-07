@@ -80,11 +80,13 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Asking for agreed leave to be taken off the books. FR 47 | | the person whose leave it is, and nobody else |
 | Answering that ask, and putting the taken days back. FR 47 | | `HR_OFFICER`, `HR_ADMIN` — never the person who asked |
 | Handing your approvals to a colleague while away. FR 49 | either end of it, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | the approver alone — and ending one is theirs or HR's |
+| A notification. FR 59 | the person it was sent to, and nobody else at all | the person it was sent to marks it read |
+| Everything the company is waiting on, and chasing it. FR 50 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` — and the nightly job | the same, and a reminder decides nothing |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
 
-Twelve of those lines are decisions rather than defaults, and each is argued in the
+Fourteen of those lines are decisions rather than defaults, and each is argued in the
 policy file that holds it.
 
 **Withdrawing agreed leave is the one pair of rows where the ask is narrower than
@@ -125,6 +127,14 @@ direction to be wrong in when the approver cannot be reached — and being the
 the delegator's own leave: that is FR 48 laundered through a colleague, and it is
 refused in the policy, in the routing and by
 `leave_request_never_decided_for_the_requester` on every connection.
+
+**Chasing the company is nobody's own queue.** FR 50, LMS 330. The daily reminder
+reads every team's pending leave at once to work out who owes each answer, so it is
+the roles that already read every record rather than the desks that answer them —
+`theSystem` holds those, and HR can run it by hand when somebody says nobody has
+answered them. An approver's own waiting work is `queue`, decided by the desks they
+staff, and is untouched by this. Reading which chases have gone out is the same
+standing, because a reminder is a notice and a notice is one person's post.
 
 **A line manager sees their reports because of the record, never because of a
 role.** `employee.managerId` is read off the record in hand, so moving a
