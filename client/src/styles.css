@@ -1278,3 +1278,39 @@ textarea:disabled {
 .card .breakdown {
   overflow-x: auto;
 }
+
+/* ------------------------------------------------- who is away. FR 57, LMS 406 */
+
+/* Out right now, which is the question somebody opens this screen with. */
+.today {
+  margin: var(--gap-lg) 0;
+  padding: var(--gap);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.today h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.today p {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+}
+
+.today .who {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+/* The reader's own leave, so the calendar reads as a whole team rather than as other people. */
+.awaydays .tag.is-me {
+  border-style: dashed;
+}

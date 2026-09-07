@@ -4581,3 +4581,53 @@ a client that decided what to draw from its own standing is a second answer to a
 server owns. Somebody who manages nobody gets the server's sentence.
 
 ---
+
+### Who is away
+
+**Everybody can see who is off and when, and nobody can see what kind of leave it is or
+why.** FR 57, LMS 406. [My team](#my-team) answers the manager's question — *can I spare
+them that week, given what everybody has left* — and it does so with balances, leave types
+and request statuses on the screen. This is the same calendar with the private half taken
+out, and it is for the person who only needs to know that Abena is not in on Thursday.
+
+**The privacy rule is what is not wired up, rather than a filter somebody could forget.**
+`TeamCalendarService` is constructed in `http/app.ts` with the employee, leave request and
+leave year repositories, and no `LeaveTypeRepository` at all. `TeamCalendarFacts` carries no
+`LeaveType`, so `teamCalendarFor` cannot assemble a type name — it is not something the
+projection declines to send, it is something it has no way to know. The reason is a column on
+`leave_request` that the projection has no field for. Three tests hold the line: the domain's
+field list, the wire's, and a `JSON.stringify` over the whole answer looking for the reason
+that was typed into the fixture.
+
+| | Says | Held by |
+|---|---|---|
+| who is absent | names and dates, for the team you are on | `AwayDay.away`, `Colleague.absences` |
+| on which dates | ten characters, from the column to the screen | NFR DAT 03, no `new Date()` in the client |
+| type hidden | no leave type repository reaches this service | `TeamCalendarService`'s four arguments |
+| reason hidden | no field on `Absence` for one | `absenceAsJson`, written out field by field |
+| and nobody else's team | `/me/calendar` names the reader | `actor.employeeId`, off the verified cookie |
+
+**The team is your line manager and everybody who reports to them, yourself included.** The
+same definition [the approver queue's team context](#the-approver-queue) uses — whoever shares
+a line manager — with the manager themselves added, because a calendar whose manager's
+absences are invisible is not one anybody can plan a week around. The reader is on their own
+calendar, marked, so it reads as a whole team rather than as a list of other people. Nobody a
+colleague manages is on it: one level, one query, as FR 55 is.
+
+**Which leaves one person out, and it is the right one.** FR 04 permits exactly one employee
+with no line manager, so the Chief Executive is on nobody's team and has no team of their own
+here. `teamPolicy.calendar` refuses them openly, naming the reason, for the same argument
+`teamPolicy.read` refuses somebody who manages nobody: reporting to nobody is a fact about
+yourself, and an empty calendar and no calendar are different news.
+
+**Calendar days, never the days it cost them.** FR 24. A request that costs Abena four days
+because she works a four day week is still five days of the calendar, and it is the second
+figure a colleague is planning around. The first is her balance, and her balance is hers.
+
+**Whether it stands is on the row.** FR 41. Leave asked for and not yet decided is on the
+calendar, marked, because a date that might not happen is a different fact to plan around
+than one that will — and saying so discloses nothing about why the days were wanted. Refused
+and withdrawn leave is not on it at all: `liveOverlapping` is the read, as everywhere else.
+
+**And the screen is a tab like the others**, offered to everybody, for the reason
+[LMS 404](#the-approver-queue) gives. The one person it refuses gets the server's sentence.
