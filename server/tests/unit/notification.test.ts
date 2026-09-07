@@ -11,6 +11,7 @@ import {
   endingNews,
   givesTheDaysBack,
   InvalidNotice,
+  isAReminder,
   NOTICE_EVENTS,
   type NoticeEvent,
   noticeOf,
@@ -34,6 +35,9 @@ import {
  */
 
 const MARCH: { from: string; to: string } = { from: '2026-03-02', to: '2026-03-10' };
+
+/** Everything `noticeOf` composes: the reminder is ../unit/reminder.test.ts's. FR 50, LMS 330. */
+const NEWS_OF_SOMETHING = NOTICE_EVENTS.filter((event) => !isAReminder(event));
 
 const WHY_NOT = 'Two of the team are already away that week and the desk cannot be empty';
 
@@ -81,7 +85,7 @@ function happened(overrides: Partial<WhatHappened> = {}): WhatHappened {
 describe('the events somebody is told about', () => {
   /* FR 59's list, and LMS 318 brought the two the notification migration said were coming.
      See the CHECK in that migration, which says the same thing. */
-  it('are the fourteen FR 59 names that this system can actually produce', () => {
+  it('are the fifteen FR 59 names that this system can actually produce', () => {
     expect(NOTICE_EVENTS).toEqual([
       'SUBMITTED',
       'STAGE_APPROVED',
@@ -100,7 +104,17 @@ describe('the events somebody is told about', () => {
       'WITHDRAWAL_GRANTED',
       'LEAVE_AMENDED',
       'WITHDRAWAL_REFUSED',
+      /** FR 50, LMS 330. The daily chase, composed by ../../src/features/notification/reminder.ts. */
+      'STILL_WAITING',
     ]);
+  });
+
+  /* FR 50, LMS 330. The one event that is not news of anything happening, so `noticeOf`
+     refuses it rather than falling through to the branch below the one it is missing. */
+  it('and one of them is a reminder, which is composed elsewhere', () => {
+    expect(NOTICE_EVENTS.filter(isAReminder)).toEqual(['STILL_WAITING']);
+
+    expect(() => noticeOf(happened({ event: 'STILL_WAITING' }))).toThrow(InvalidNotice);
   });
 
   /* The two endings that are not decisions, and the two events they produce. */
@@ -139,7 +153,7 @@ describe('the events somebody is told about', () => {
 
   /* Nothing composes an empty message, whichever branch it took. */
   it('and every one of them composes something to say', () => {
-    for (const event of NOTICE_EVENTS) {
+    for (const event of NEWS_OF_SOMETHING) {
       const notice = noticeOf(
         happened({
           event,
@@ -161,7 +175,7 @@ describe('the events somebody is told about', () => {
   /* Every message names what kind of leave, when, and how much — because a person reading
      one has more than one request in flight and a subject line is all they see. */
   it('and every one of them names the leave, the dates and the day count', () => {
-    for (const event of NOTICE_EVENTS) {
+    for (const event of NEWS_OF_SOMETHING) {
       const notice = noticeOf(
         happened({
           event,
@@ -527,6 +541,14 @@ const MAY_NOTIFY = [
   'features/notification/notification.db.ts',
   'features/notification/notification.service.ts',
   'features/leave-request/leave-request.service.ts',
+  /**
+   * FR 50, LMS 330. The daily chase, which is the second thing that occasions a notice and
+   * the first that is not occasioned by anything happening.
+   *
+   * It sends through the same service and opens no transaction of its own, so the rule this
+   * file exists to hold is untouched: it reads what is waiting, and writes notices after.
+   */
+  'features/notification/reminder.job.ts',
   /**
    * The composition root, which constructs one and never calls it. LMS 403.
    *

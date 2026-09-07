@@ -4365,3 +4365,75 @@ account of why leave was refused is the comment, and ten requests refused for on
 carry that reason.
 
 ---
+
+### Reminding an approver every day
+
+**Every request sitting at a desk chases whoever it is sitting on, once a day, until somebody
+decides it.** FR 50, FR 60, §7.1, LMS 330. The story is written from the requester's side — "so
+that my request does not sit for a fortnight because somebody forgot" — and the message goes to
+the person who forgot, which makes it the first notice this system sends about **nothing having
+happened**.
+
+That is the whole design, and it is why the reminder is composed in `reminder.ts` rather than as
+a fifteenth branch of `noticeOf`. Every other event is news of a thing that committed:
+`WhatHappened` takes the request as it stands, the desk that decided and the balance the
+movement left behind, and each field is a fact read off what the door gave back. A reminder has
+no decision, no movement and no new figure. Composing it through a shape whose every field is
+"what just happened" would mean inventing values for all three. So `STILL_WAITING` is on
+`NOTICE_EVENTS` and in the CHECK — one table holds every notice, and the bell counts them all —
+and `noticeOf` refuses it by name rather than falling through to the branch below the one it is
+missing, which is how it would otherwise have arrived in somebody's mailbox as a cancellation.
+
+**Who is chased is the decide door's own answer, not a second one.** `everythingAwaitingADecision`
+reads every request whose `awaiting_approval_from` is set and resolves each through
+`whoCanDecide` — the same walk `approve` makes inside the balance lock. Three things fall out of
+that rather than being written again here: the requester is never chased about their own leave,
+because LMS 319 is read as a fact about the desk; both officers at a shared HR desk are chased,
+because FR 48d says a desk is people rather than a seat; and a delegate covering for an approver
+is chased alongside them, because FR 49 puts them at the desk for as long as the nomination
+runs. A reminder that named somebody who could not decide the request would be worse than no
+reminder at all.
+
+**A request nobody can decide is not chased.** `awaiting_approval_from` is null exactly when the
+status is not `SUBMITTED`, so an `UNROUTABLE` request is not in the read at all. That is
+deliberate and it is the one pending thing this story leaves alone: it is waiting on nobody, so
+there is nobody to remind, and [LMS 320](#routing-round-an-approver-who-cannot-decide) already
+alerts HR and FR 04's seat at the moment it strands. The run counts them and says so in its
+summary rather than silently sending nothing. Chasing HR daily about a stuck request is a story
+with a different recipient rule and it is not this one.
+
+**Once a day is held by the notices already written, not by a column.** `remindersSince` reads
+the reminders written since midnight on the day the run is for, and an approver already in that
+list is passed over. No `last_reminded_at` on the request, which was the obvious alternative and
+is wrong twice: it is one column for a set of people — two officers at one desk share it — and
+it would be a mutable field on a row the reminder is supposed not to touch. The consequence is
+that the job is safe to run again after a half-finished morning, which is the only recovery a
+notice that cannot be resent needs.
+
+| | Says | Held by |
+|---|---|---|
+| every pending item | a request at a desk is a request nobody has answered | `awaitingAnyDesk`, filtered on the desk rather than the status |
+| daily, until actioned | a decided request sits at no desk, so the next run finds it nowhere | `leave_request_waits_at_a_desk`, the same equivalence the queue reads |
+| never twice in a day | the notices already written are the record of who has been chased | `remindersSince`, and `notification_reminders_sent` |
+| it decides nothing | the only writes are a notice and an email | the job reaches no `BalanceService`, and the source-reading test in `notification.test.ts` keeps the seam |
+
+**Reminders never approve anything**, which is the third criterion and is a fact about what the
+job is wired to rather than a rule it obeys. `DailyApproverReminders` takes a
+`LeaveRequestService` for one read and a `NotificationService` for the send, and nothing else. It
+cannot reach a ledger, a balance or a transition, so there is no path by which a chase becomes a
+decision — and the message says so in its own last paragraph, because the reader is somebody who
+has just been told about a request and might reasonably wonder whether replying counts.
+
+**Standing to run it is nobody's own queue.** `chaseTheCompany` is every team's pending leave at
+once, so it is the roles that already read every record, and `theSystem` holds them. An
+approver's own waiting work is `queue` and is unchanged. HR can run it by hand, which is what
+somebody saying "nobody has answered me" actually asks for.
+
+**What is deliberately not here.** There is no schedule: this repository has four other `*.job.ts`
+classes and none of them is wired to a timer in `main.ts` either — when the deployment gains a
+scheduler, it gains all five at once. Nothing escalates: a request waiting a fortnight sends the
+same message on the fourteenth morning as on the first, said in the same words with a bigger
+number in it. And there is no way to turn one off, per person or per request, because the only
+thing that stops a reminder is deciding the request, which is the entire point.
+
+---

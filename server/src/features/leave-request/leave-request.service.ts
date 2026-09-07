@@ -1350,6 +1350,44 @@ export class LeaveRequestService {
     });
   }
 
+  /**
+   * Every request waiting at a desk, with who it is waiting on. FR 48, FR 49, FR 50, FR 60. LMS 330.
+   *
+   * The daily reminder's read, and the one place outside the approver queue that answers
+   * "whose answer is this waiting for". `whoCanDecide` is the same resolution the decide door
+   * makes, so nobody is chased about a request they could not decide — the requester is never
+   * at their own desk, and a delegate covering for an approver is. FR 49.
+   *
+   * Memoised per asker, because one person's three pending requests resolve the same desks.
+   */
+  async everythingAwaitingADecision(actor: Actor): Promise<AwaitingADecision[]> {
+    this.guard.enforce(leaveRequestPolicy.chaseTheCompany(actor));
+
+    const desksFor = new Map<string, WhoIsThere>();
+    const waiting: AwaitingADecision[] = [];
+
+    for (const request of await this.requests.awaitingAnyDesk()) {
+      const employee = await this.employeeFor(request.employeeId);
+      const type = await this.typeFor(request.leaveTypeId);
+
+      const desks = desksFor.get(employee.id) ?? (await this.whoCanDecide(employee));
+      desksFor.set(employee.id, desks);
+
+      /* Unreachable: `awaitingAnyDesk` filters on the desk being set. */
+      const desk = request.awaitingApprovalFrom;
+
+      waiting.push({
+        request,
+        employee,
+        typeName: type.name,
+        approvers:
+          desk === null ? [] : await this.employees.findAllById([...desks.occupants[desk]]),
+      });
+    }
+
+    return waiting;
+  }
+
   async decisionsFor(actor: Actor, id: string): Promise<LeaveDecision[]> {
     const request = await this.requests.findById(id);
 
@@ -1931,6 +1969,16 @@ export class LeaveRequestService {
  * stop being identical.
  */
 /** Who staffs each desk for one request, and who the `CEO` desk resolves to. FR 48b, FR 48c, LMS 320, LMS 321. */
+/** One request waiting at a desk, and who it is waiting on. FR 50, FR 60, LMS 330. */
+export interface AwaitingADecision {
+  request: LeaveRequest;
+  /** Whose leave it is, named in a message written to somebody else. */
+  employee: Employee;
+  typeName: string;
+  /** Who is at the desk it sits at: delegates included, the requester never. FR 48, FR 49. */
+  approvers: Employee[];
+}
+
 interface WhoIsThere {
   available: DesksAvailable;
   /** FR 48d, LMS 322. */

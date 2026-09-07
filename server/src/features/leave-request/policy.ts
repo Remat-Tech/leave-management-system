@@ -482,6 +482,23 @@ export const leaveRequestPolicy = {
   },
 
   /**
+   * Reading everything the company is waiting on, and who owes each answer. FR 50, FR 60, LMS 330.
+   *
+   * Nobody's own queue: it crosses every team, so it is the daily reminder's `theSystem` and
+   * the roles that already read every record. An approver's own is {@link queue}.
+   */
+  chaseTheCompany(actor: Actor): Decision {
+    return holdsAny(actor, ...READS_EVERY_RECORD)
+      ? about.allow(actor, 'chaseTheCompany', null)
+      : about.refuse(
+          actor,
+          'chaseTheCompany',
+          null,
+          'holds no role that reads every record, and this is every team’s pending leave',
+        );
+  },
+
+  /**
    * Sending a request nobody could decide back into its chain. FR 48b, §8.6a, LMS 320.
    *
    * HR's, and deliberately not the requester's: what the alert asks for is a change to the

@@ -154,6 +154,25 @@ export class LeaveRequestRepository {
   }
 
   /**
+   * Every request sitting at a desk, anywhere in the company, longest waiting first. FR 50, FR 60, LMS 330.
+   *
+   * Filtered on the desk rather than on the status, as {@link awaiting} is and for the same
+   * reason: `leave_request_waits_at_a_desk` makes the two an equivalence. A request nobody
+   * can decide has no desk, so it is not here — that is FR 48b's alert, not a reminder.
+   */
+  async awaitingAnyDesk(): Promise<LeaveRequest[]> {
+    const rows = await this.db
+      .selectFrom('leave_request')
+      .selectAll()
+      .where('awaiting_approval_from', 'is not', null)
+      .orderBy('submitted_at')
+      .orderBy('id')
+      .execute();
+
+    return rows.map(toRequest);
+  }
+
+  /**
    * Every request sitting at one of these desks. FR 20, FR 40, FR 38a, LMS 404.
    *
    * Filtered on the desk and not on the status: `leave_request_waits_at_a_desk` makes the two

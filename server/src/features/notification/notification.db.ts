@@ -4,6 +4,7 @@ import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';
 import type { NotificationTable } from '../../db/schema.js';
 import type { NewNotice, Notice, NoticeEvent } from './notification.js';
+import { REMINDER_EVENT, type ReminderSent } from './reminder.js';
 
 type NoticeRow = Selectable<NotificationTable>;
 
@@ -100,6 +101,26 @@ export class NotificationRepository {
       .executeTakeFirstOrThrow();
 
     return Number(row.unread);
+  }
+
+  /**
+   * Who has already been reminded about which request since then. FR 50, LMS 330.
+   *
+   * What stops a second run in one day chasing everybody twice. Read across everybody
+   * rather than per request, because the job asks it once a morning.
+   */
+  async remindersSince(since: Date): Promise<ReminderSent[]> {
+    const rows = await this.db
+      .selectFrom('notification')
+      .select(['employee_id', 'leave_request_id'])
+      .where('event', '=', REMINDER_EVENT)
+      .where('created_at', '>=', since)
+      .execute();
+
+    return rows.map((row) => ({
+      employeeId: row.employee_id,
+      leaveRequestId: row.leave_request_id,
+    }));
   }
 
   /** Everything one request has been told about, oldest first. */

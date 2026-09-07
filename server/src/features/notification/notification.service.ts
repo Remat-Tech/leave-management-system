@@ -13,9 +13,11 @@ import {
   NoticeNotFound,
   noticeOf,
 } from './notification.js';
+import { type ReminderSent, reminderOf } from './reminder.js';
 import type { Mailer } from '../../mail/mailer.js';
 import type { Mail } from '../../mail/transport.js';
 import type { NoticeListOptions, NotificationRepository } from './notification.db.js';
+import type { CalendarDate } from '../../shared/time.js';
 
 /** Everything the system needs to tell one person about one thing that happened. */
 export interface Telling {
@@ -37,6 +39,18 @@ export interface Telling {
   overturned?: { desk: ApproverRole; said: 'APPROVE' | 'REFUSE' } | null;
   /** FR 47. How many days came back, where that is not all of them. LMS 324. */
   daysBack?: number | null;
+}
+
+/** One approver chased about one request on one day. FR 50, FR 60, LMS 330. */
+export interface Reminding {
+  /** Who is being chased: somebody at the desk it sits at. FR 48, FR 49. */
+  approver: Employee;
+  /** Whose leave it is. */
+  employee: Employee;
+  request: LeaveRequest;
+  typeName: string;
+  /** The day the waiting is measured against. NFR DAT 03. */
+  asAt: CalendarDate;
 }
 
 /** What became of one telling. */
@@ -126,6 +140,41 @@ export class NotificationService {
     }
 
     return this.email(notice, reader.workEmail);
+  }
+
+  /**
+   * Reminds one approver that a request is still theirs to decide. FR 50, FR 60, LMS 330.
+   *
+   * The story's third criterion is what this does *not* do: it writes a notice and sends an
+   * email, and touches no request, no desk and no balance.
+   */
+  async remind(actor: Actor, reminding: Reminding): Promise<Told> {
+    this.guard.enforce(notificationPolicy.remind(actor));
+
+    const { approver, employee } = reminding;
+
+    const composed = reminderOf({
+      approver: { id: approver.id, firstName: approver.firstName },
+      employee: { name: `${employee.firstName} ${employee.lastName}` },
+      request: reminding.request,
+      typeName: reminding.typeName,
+      asAt: reminding.asAt,
+    });
+
+    const notice = await this.write(composed);
+
+    if (notice === null) {
+      return { notice: null, emailed: false, couldNotTell: 'the notice could not be written' };
+    }
+
+    return this.email(notice, approver.workEmail);
+  }
+
+  /** Who has already been reminded about which request since then. FR 50, LMS 330. */
+  async remindersSince(actor: Actor, since: Date): Promise<ReminderSent[]> {
+    this.guard.enforce(notificationPolicy.remind(actor));
+
+    return this.notices.remindersSince(since);
   }
 
   /** One person's notifications, newest first. FR 59. */
