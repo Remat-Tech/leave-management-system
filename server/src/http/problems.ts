@@ -85,7 +85,11 @@ export function problemFor(error: unknown): { status: number; body: Problem } {
    * would send somebody to check their link; answering 500 would send a developer to
    * check the logs. Neither is the person who can fix it.
    */
-  if (error.name === 'NoLeaveYearToShow' || error.name === 'NoLeaveYearForTheTeam') {
+  if (
+    error.name === 'NoLeaveYearToShow' ||
+    error.name === 'NoLeaveYearForTheTeam' ||
+    error.name === 'NoLeaveYearForTheCalendar'
+  ) {
     return { status: 409, body: { error: error.name, message: error.message } };
   }
 

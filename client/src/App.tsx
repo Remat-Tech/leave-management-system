@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { currentSession, type Me, signOut } from './api';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { BalancesPage } from './features/balances/BalancesPage';
+import { CalendarPage } from './features/calendar/CalendarPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
 import { RequestsPage } from './features/requests/RequestsPage';
 import { SignIn } from './features/session/SignIn';
 import { TeamPage } from './features/team/TeamPage';
 
-/** The application, and the places there are to go. LMS 401, LMS 402, LMS 403, LMS 404, LMS 405. */
+/** The application, and the places there are to go. LMS 401 to LMS 406. */
 
 /**
  * The places there are to go, and the labels on them.
@@ -25,11 +26,16 @@ import { TeamPage } from './features/team/TeamPage';
  *
  * **"My team" is offered on the same terms**, and for the same reason: whether somebody has a
  * report is the server's answer, and somebody who manages nobody gets its sentence. FR 55.
+ *
+ * **"Who is away" is everybody's**, and it is the peer half of the same calendar: dates and
+ * names, and no leave type or reason on the wire at all. FR 57.
  */
 const SCREENS = [
   { id: 'balances', label: 'My balances' },
   { id: 'ask', label: 'Ask for leave' },
   { id: 'requests', label: 'My requests' },
+  /** FR 57, LMS 406. Everybody's, and it names no private business. */
+  { id: 'calendar', label: 'Who is away' },
   { id: 'approvals', label: 'Waiting on me' },
   /** FR 55, FR 56, LMS 405. */
   { id: 'team', label: 'My team' },
@@ -112,6 +118,7 @@ export function App() {
       {screen === 'balances' ? <BalancesPage onSignedOut={forget} /> : null}
       {screen === 'ask' ? <NewRequestPage onSignedOut={forget} /> : null}
       {screen === 'requests' ? <RequestsPage onSignedOut={forget} /> : null}
+      {screen === 'calendar' ? <CalendarPage onSignedOut={forget} /> : null}
       {screen === 'approvals' ? <ApprovalsPage onSignedOut={forget} /> : null}
       {screen === 'team' ? <TeamPage onSignedOut={forget} /> : null}
     </>

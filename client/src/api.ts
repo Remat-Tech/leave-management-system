@@ -456,6 +456,76 @@ export interface Team {
   calendar: TeamCalendar;
 }
 
+/** ------------------------------------------ the team I am on. FR 57, LMS 406. */
+
+/**
+ * One absence on the team calendar. FR 57.
+ *
+ * Dates and how long, and that is the whole of it. There is no leave type here and no reason,
+ * because the server sends neither — see `myCalendar`.
+ */
+export interface Absence {
+  /** Ten characters. */
+  from: string;
+  to: string;
+  /** FR 24. Days off the calendar, not days charged. */
+  calendarDays: number;
+  /** FR 41. */
+  agreed: boolean;
+  inWords: string;
+}
+
+/** Somebody on the team calendar. FR 57. */
+export interface Colleague {
+  employeeId: string;
+  name: string;
+  jobTitle: string | null;
+  /** FR 06. */
+  employmentStatus: EmploymentStatus;
+  isMe: boolean;
+  /** The line manager everybody on the calendar shares. */
+  isTheManager: boolean;
+  awayToday: boolean;
+  inWords: string;
+  /** Soonest first. */
+  absences: Absence[];
+}
+
+/** One person away on one day. */
+export interface AwayOn {
+  employeeId: string;
+  name: string;
+  agreed: boolean;
+  isMe: boolean;
+}
+
+/** One day somebody is away. Days nobody is away are not sent. */
+export interface AwayDay {
+  /** Ten characters. */
+  date: string;
+  isEverybody: boolean;
+  away: AwayOn[];
+}
+
+/** Who is away and when, on the team I am on. FR 57. */
+export interface TeamAwayCalendar {
+  employeeId: string;
+  year: Year;
+  years: Year[];
+  from: string;
+  to: string;
+  /** How many the calendar covers, me included. */
+  size: number;
+  /** The most away on any one day. */
+  busiest: number;
+  inWords: string;
+  awayToday: AwayOn[];
+  /** The line manager first, then surname. */
+  colleagues: Colleague[];
+  /** Soonest first. */
+  days: AwayDay[];
+}
+
 /** ---------------------------------------- requests I have not finished. FR 19, LMS 302. */
 
 /** A field a draft may still be missing, in the order the form asks for them. */
@@ -644,6 +714,25 @@ export async function myTeam(leaveYearId?: string): Promise<Team> {
   const query = leaveYearId === undefined ? '' : `?leaveYearId=${encodeURIComponent(leaveYearId)}`;
 
   return request<Team>('GET', `/api/me/team${query}`);
+}
+
+/**
+ * Who is away on the team I am on, for one leave year. FR 57. LMS 406.
+ *
+ * `/me` names the *reader*, and there is no id to pass: the calendar is whoever shares their
+ * line manager, that manager included.
+ *
+ * **Leave type and reason are not missing from these types — they are not on the wire.** The
+ * service behind this route is handed no leave type repository at all, so a type name is not
+ * something the screen declines to draw; it is something the server cannot say.
+ *
+ * Refused with a 403 and the server's own sentence for the one employee who reports to
+ * nobody, and the screen shows that sentence.
+ */
+export async function myCalendar(leaveYearId?: string): Promise<TeamAwayCalendar> {
+  const query = leaveYearId === undefined ? '' : `?leaveYearId=${encodeURIComponent(leaveYearId)}`;
+
+  return request<TeamAwayCalendar>('GET', `/api/me/calendar${query}`);
 }
 
 /* ------------------------------------------ several at once. FR 51, LMS 328 */

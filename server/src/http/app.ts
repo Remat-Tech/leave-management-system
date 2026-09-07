@@ -31,6 +31,8 @@ import type { Storage } from '../storage/index.js';
 import { balanceRoutes } from '../features/balance/routes.js';
 import { teamRoutes } from '../features/team/routes.js';
 import { TeamService } from '../features/team/team.service.js';
+import { teamCalendarRoutes } from '../features/team/team-calendar.routes.js';
+import { TeamCalendarService } from '../features/team/team-calendar.service.js';
 import { identify } from './identify.js';
 import { answerProblems, type FailureLog } from './problems.js';
 import { requestRoutes } from '../features/leave-request/routes.js';
@@ -137,6 +139,15 @@ export function buildApp(parts: Application): Express {
         parts.types,
         parts.years,
       ),
+    }),
+  );
+
+  /* FR 57, LMS 406. The peer half of the same screen, and it is handed no leave type
+     repository: a type name cannot be sent by a service that never reads the table. */
+  app.use(
+    '/api',
+    teamCalendarRoutes({
+      calendar: new TeamCalendarService(parts.guard, parts.employees, parts.requests, parts.years),
     }),
   );
 
