@@ -469,6 +469,12 @@ export interface NotificationTable {
   read_at: ColumnType<Date | null, never, Date | null>;
   emailed_at: ColumnType<Date | null, never, Date | null>;
   email_failure: ColumnType<string | null, never, string | null>;
+  /** Sends made, delivered or not. LMS 331. */
+  email_attempts: ColumnType<number, never, number>;
+  /** When the next send is due, null where none is. LMS 331. */
+  email_next_attempt_at: ColumnType<Date | null, never, Date | null>;
+  /** When the last permitted attempt failed. LMS 331. */
+  email_gave_up_at: ColumnType<Date | null, never, Date | null>;
   created_at: Generated<Date>;
 }
 

@@ -89,8 +89,14 @@ export interface Notice extends NewNotice {
   readAt: Date | null;
   /** When the email left, or null where it has not. */
   emailedAt: Date | null;
-  /** Why it did not, in the transport's own words. */
+  /** Why the last attempt did not, in the transport's own words. */
   emailFailure: string | null;
+  /** Sends made, delivered or not. LMS 331. */
+  emailAttempts: number;
+  /** When the next send is due, null where none is. LMS 331. */
+  emailNextAttemptAt: Date | null;
+  /** When the last permitted attempt failed. LMS 331. */
+  emailGaveUpAt: Date | null;
   createdAt: Date;
 }
 

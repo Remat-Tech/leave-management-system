@@ -696,8 +696,9 @@ describe('the table itself', () => {
     ).rejects.toThrow(/never deleted/);
   });
 
-  /* A message is sent once, so what somebody received and when stays answerable. */
-  it('and refuses to record what became of the email twice', async () => {
+  /* A message is delivered once, so what somebody received and when stays answerable. LMS 331
+     lets the failure beside it be rewritten by a retry; the delivery itself never moves. */
+  it('and refuses to record the delivery twice', async () => {
     await submit();
 
     const [notice] = await noticesFor();
@@ -706,15 +707,47 @@ describe('the table itself', () => {
 
     await expect(
       admin.query('UPDATE notification SET emailed_at = now() WHERE id = $1', [notice.id]),
-    ).rejects.toThrow(/already recorded what became of its email/);
+    ).rejects.toThrow(/already been delivered/);
   });
 
-  /* The application may move three columns and no others, which is the grant rather than
+  /* And once it is delivered there is no further attempt to record. LMS 331. */
+  it('and refuses to reopen a delivery that has finished', async () => {
+    await submit();
+
+    const [notice] = await noticesFor();
+
+    await expect(
+      admin.query('UPDATE notification SET email_next_attempt_at = now() WHERE id = $1', [
+        notice.id,
+      ]),
+    ).rejects.toThrow(/finished being delivered/);
+  });
+
+  /* The backoff is measured from the count, so it is never wound back. LMS 331. */
+  it('and refuses to unmake an attempt', async () => {
+    const id = await submit();
+    mailer.failNext(new Error('SMTP is not answering.'));
+    await requests.withdraw(asThemselves(), id);
+
+    const notice = (await noticesFor()).find((one) => one.event === 'WITHDRAWN');
+
+    expect(notice?.emailAttempts).toBe(1);
+
+    await expect(
+      admin.query('UPDATE notification SET email_attempts = 0 WHERE id = $1', [notice?.id]),
+    ).rejects.toThrow(/never wound back/);
+  });
+
+  /* The application may move six columns and no others, which is the grant rather than
      the trigger — two layers, as the migration says. */
-  it('and lets the application move only the three columns it is granted', async () => {
+  it('and lets the application move only the columns it is granted', async () => {
     const { rows } = await admin.query<Record<string, boolean>>(
       `SELECT has_column_privilege('lms_app', 'notification', 'read_at', 'UPDATE')  AS read_at,
               has_column_privilege('lms_app', 'notification', 'emailed_at', 'UPDATE') AS emailed,
+              has_column_privilege('lms_app', 'notification', 'email_attempts', 'UPDATE')
+                                                                                    AS attempts,
+              has_column_privilege('lms_app', 'notification', 'email_next_attempt_at', 'UPDATE')
+                                                                                    AS due,
               has_column_privilege('lms_app', 'notification', 'body', 'UPDATE')     AS body,
               has_column_privilege('lms_app', 'notification', 'event', 'UPDATE')    AS event,
               has_table_privilege('lms_app', 'notification', 'DELETE')              AS del`,
@@ -723,6 +756,8 @@ describe('the table itself', () => {
     expect(rows[0]).toEqual({
       read_at: true,
       emailed: true,
+      attempts: true,
+      due: true,
       body: false,
       event: false,
       del: false,

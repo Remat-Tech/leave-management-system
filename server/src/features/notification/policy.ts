@@ -49,6 +49,25 @@ export const notificationPolicy = {
     );
   },
 
+  /**
+   * Draining the notices whose email did not send. FR 59, LMS 331.
+   *
+   * The company's post rather than one person's, so it is the same standing as the daily
+   * chase: `theSystem` runs it, and HR runs it by hand when the mail server comes back.
+   */
+  resend(actor: Actor): Decision {
+    if (holdsAny(actor, ...READS_EVERY_RECORD)) {
+      return about.allow(actor, 'resend');
+    }
+
+    return about.refuse(
+      actor,
+      'resend',
+      null,
+      'holds no role that sends the company’s undelivered post',
+    );
+  },
+
   /** Marking one read, or putting it back to unread. */
   markRead(actor: Actor, owner: NoticeOwner): Decision {
     if (isSelf(actor, owner.employeeId)) {

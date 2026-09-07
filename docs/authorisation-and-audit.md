@@ -82,6 +82,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Handing your approvals to a colleague while away. FR 49 | either end of it, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | the approver alone — and ending one is theirs or HR's |
 | A notification. FR 59 | the person it was sent to, and nobody else at all | the person it was sent to marks it read |
 | Everything the company is waiting on, and chasing it. FR 50 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` — and the nightly job | the same, and a reminder decides nothing |
+| Sending again what the mail server refused. FR 59 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` — and the job that drains it | the same, and a retry sends only what was already written |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
@@ -135,6 +136,14 @@ the roles that already read every record rather than the desks that answer them 
 answered them. An approver's own waiting work is `queue`, decided by the desks they
 staff, and is untouched by this. Reading which chases have gone out is the same
 standing, because a reminder is a notice and a notice is one person's post.
+
+**And draining the undelivered post is the same standing again.** FR 59, LMS 331.
+`resend` is every failed send across the company, so it is the roles that already
+read every record — `theSystem` runs it, and HR runs it by hand when the mail
+server comes back. The person a notice was written to cannot run it, which looks
+strict for somebody asking for their own message to be sent again and is not: the
+retry re-sends what is already written and composes nothing, so there is nothing
+in it for them that reading their own notifications does not already give.
 
 **A line manager sees their reports because of the record, never because of a
 role.** `employee.managerId` is read off the record in hand, so moving a

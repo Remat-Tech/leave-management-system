@@ -3,6 +3,7 @@
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';
 import type { NotificationTable } from '../../db/schema.js';
+import type { Undelivered } from './delivery.js';
 import type { NewNotice, Notice, NoticeEvent } from './notification.js';
 import { REMINDER_EVENT, type ReminderSent } from './reminder.js';
 
@@ -15,6 +16,18 @@ export interface NoticeListOptions {
   /** How many, newest first. */
   limit?: number;
 }
+
+/** What became of one attempt to send a notice. LMS 331. */
+export type EmailOutcome =
+  | { attempt: number; sentAt: Date }
+  | {
+      attempt: number;
+      failedBecause: string;
+      /** When to try again, null where that was the last attempt. */
+      tryAgainAt: Date | null;
+      /** The moment the attempt failed, stamped as the giving up where there is no next. */
+      at: Date;
+    };
 
 export class NotificationRepository {
   constructor(private readonly db: Kysely<Database>) {}
@@ -30,23 +43,86 @@ export class NotificationRepository {
     return toNotice(row);
   }
 
-  /** Stamps what became of the email. FR 59. */
-  async recordTheEmail(
-    id: string,
-    outcome: { sentAt: Date } | { failedBecause: string },
-  ): Promise<Notice | undefined> {
+  /** Stamps what became of one attempt at the email. FR 59, LMS 331. */
+  async recordTheEmail(id: string, outcome: EmailOutcome): Promise<Notice | undefined> {
     const row = await this.db
       .updateTable('notification')
       .set(
         'sentAt' in outcome
-          ? { emailed_at: outcome.sentAt }
-          : { email_failure: outcome.failedBecause },
+          ? {
+              emailed_at: outcome.sentAt,
+              email_attempts: outcome.attempt,
+              email_next_attempt_at: null,
+            }
+          : {
+              email_failure: outcome.failedBecause,
+              email_attempts: outcome.attempt,
+              email_next_attempt_at: outcome.tryAgainAt,
+              email_gave_up_at: outcome.tryAgainAt === null ? outcome.at : null,
+            },
       )
       .where('id', '=', id)
       .returningAll()
       .executeTakeFirst();
 
     return row === undefined ? undefined : toNotice(row);
+  }
+
+  /**
+   * Notices whose email is due another try, oldest due first. FR 59, LMS 331.
+   *
+   * The address is joined rather than stored on the notice, so a corrected work address is
+   * the one a retry goes to. Read only — {@link claimForAnotherTry} is what takes one.
+   */
+  async dueForAnotherTry(asAt: Date, limit: number): Promise<Undelivered[]> {
+    const rows = await this.db
+      .selectFrom('notification')
+      .innerJoin('employee', 'employee.id', 'notification.employee_id')
+      .selectAll('notification')
+      .select('employee.work_email as to')
+      .where('email_next_attempt_at', 'is not', null)
+      .where('email_next_attempt_at', '<=', asAt)
+      .orderBy('email_next_attempt_at')
+      .limit(limit)
+      .execute();
+
+    return rows.map(({ to, ...row }) => ({ notice: toNotice(row), to }));
+  }
+
+  /**
+   * Takes one due notice, counting the attempt and scheduling the one after it. LMS 331.
+   *
+   * Claimed before the send rather than after, so a process that dies mid-send leaves a
+   * notice that comes due again rather than one nobody will ever look at. `seenAttempts` is
+   * what makes two runs safe: the second finds the count already moved and gets nothing.
+   */
+  async claimForAnotherTry(
+    id: string,
+    seenAttempts: number,
+    tryAgainAt: Date | null,
+  ): Promise<Notice | undefined> {
+    const row = await this.db
+      .updateTable('notification')
+      .set({ email_attempts: seenAttempts + 1, email_next_attempt_at: tryAgainAt })
+      .where('id', '=', id)
+      .where('email_attempts', '=', seenAttempts)
+      .where('email_next_attempt_at', 'is not', null)
+      .returningAll()
+      .executeTakeFirst();
+
+    return row === undefined ? undefined : toNotice(row);
+  }
+
+  /** How many notices are waiting on another try. LMS 331. */
+  async howManyAreDue(asAt: Date): Promise<number> {
+    const row = await this.db
+      .selectFrom('notification')
+      .select(({ fn }) => fn.countAll<string>().as('due'))
+      .where('email_next_attempt_at', 'is not', null)
+      .where('email_next_attempt_at', '<=', asAt)
+      .executeTakeFirstOrThrow();
+
+    return Number(row.due);
   }
 
   /** Marks a notice read, or puts it back to unread. FR 59. */
@@ -158,6 +234,9 @@ function toNotice(row: NoticeRow): Notice {
     readAt: row.read_at,
     emailedAt: row.emailed_at,
     emailFailure: row.email_failure,
+    emailAttempts: row.email_attempts,
+    emailNextAttemptAt: row.email_next_attempt_at,
+    emailGaveUpAt: row.email_gave_up_at,
     createdAt: row.created_at,
   };
 }
