@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { currentSession, type Me, signOut } from './api';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { BalancesPage } from './features/balances/BalancesPage';
@@ -50,6 +50,7 @@ export function App() {
   const [asked, setAsked] = useState(false);
 
   const screen = useScreen();
+  const screens = useRef<HTMLElement | null>(null);
 
   const ask = useCallback(() => {
     currentSession()
@@ -67,6 +68,20 @@ export function App() {
   const forget = useCallback(() => {
     setMe(undefined);
   }, []);
+
+  /**
+   * Bring the tab you are on into view. LMS 408.
+   *
+   * The tabs scroll sideways on a phone, so a link to "My team" would otherwise land on a strip
+   * with nothing marked. Moves nothing where the strip is not scrolling. `block: 'nearest'`
+   * never scrolls the page — the bar is sticky, so only the strip has anywhere to go. `me` is a
+   * dependency because the bar exists only once there is somebody to draw it for.
+   */
+  useEffect(() => {
+    screens.current
+      ?.querySelector('[aria-current="page"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [screen, me]);
 
   if (!asked) {
     return null;
@@ -90,7 +105,7 @@ export function App() {
           {/* Anchors rather than buttons, which is the whole of what the router buys: a tab
               can be middle clicked, copied, bookmarked and gone back from, and none of that
               is behaviour this file has to write. */}
-          <nav className="screens" aria-label="Sections">
+          <nav className="screens" aria-label="Sections" ref={screens}>
             {SCREENS.map((one) => (
               <a
                 key={one.id}
