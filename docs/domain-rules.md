@@ -4521,3 +4521,63 @@ be sent again, because the message is already in their bell — the email is the
 record is the thing they were told.
 
 ---
+
+### My team
+
+**A manager sees their direct reports' balances, their booked leave, and the days more than one
+of them is off.** FR 55, FR 56, LMS 405. The story's "so that" is the whole design brief: *I can
+decide a request knowing who else is already away*. [The approver queue](#the-approver-queue)
+answers that one request at a time and only while a request is waiting; this is the standing
+view, and it is the screen somebody opens before the request arrives.
+
+**Direct reports only, and that is a query rather than a filter.**
+`EmployeeRepository.findReportsOf` is asked for one level, so a report who manages people of
+their own brings none of them here. Akosua manages Kofi, who manages three people: her team is
+Kofi. Nothing in `features/team/team.ts` removes the rest, because the rest is never read — which
+is the difference between a rule and a redaction.
+
+**Two gates, and each answers a different question.** `teamPolicy.read` says whether there is a
+team at all, names no subject, and is refused *openly*: whether somebody has a report is a fact
+about themselves, and an empty team and no team are different news. `ledgerPolicy.read` then
+bounds each row, asked of every report — so "direct reports only" is written once, in the rule
+that already lets a line manager open one report's balance screen, rather than restated here.
+
+**The balances are the same lines the person's own screen shows.** `linesFor` is called rather
+than a second projection written: FR 05 keeps maternity leave off a man's row here too, FR 32g's
+"a nought that means not yet" still says which kind of nought it is, and nothing is totalled
+across leave types on either screen.
+
+**Live leave only.** A refused or withdrawn request is not a booking and holds no days, so
+`LeaveRequestRepository.liveOverlapping` is the read — the same one the approver queue's team
+context uses, asked over the leave year instead of one request's span.
+
+**The calendar sends the days somebody is away and no others.** A year is three hundred and
+sixty-five rows of which a handful matter, and the ones that matter are the days with two names
+on them. `isClash` and `isEverybody` are on the row, so the screen marks them without deciding
+what a clash is.
+
+| | Says | Held by |
+|---|---|---|
+| direct reports only | one level, never the structure beneath | `findReportsOf([managerId])` |
+| and nobody else's team | `/me/team` names the manager, and there is no id to send | `actor.employeeId`, off the verified cookie |
+| refused where there is no team | openly, naming what the screen is for | `teamPolicy.read` |
+| each row is theirs to read | the rule the balance screen is already bound by | `ledgerPolicy.read`, per report |
+| balances read as their own do | one projection, not two | `linesFor` |
+| bookings are leave that stands | a refusal is not a booking | `liveOverlapping`, `LIVE_STATUSES` |
+| clashes are marked | the day more than one is away | `TeamDay.isClash`, `TeamCalendar.clashes` |
+
+**The year picker offers every year the company has defined**, rather than the years one
+employment covers as `/api/me/balances` does. A team is several people, and a picker whose
+contents changed as they joined and left would be telling the reader about the roster rather than
+about the calendar.
+
+**A leaver stays on the list, marked.** FR 06. They report to somebody until HR moves the line,
+their booked leave is still in the team calendar for the days before they went, and hiding the
+person while showing the absence would be the worse half of both answers.
+
+**And the screen is a tab like the others.** There is no flag on `/api/me` saying whether
+somebody manages anybody, for the reason [LMS 404](#the-approver-queue) gives about `canApprove`:
+a client that decided what to draw from its own standing is a second answer to a question the
+server owns. Somebody who manages nobody gets the server's sentence.
+
+---

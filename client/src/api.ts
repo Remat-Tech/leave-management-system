@@ -373,6 +373,89 @@ export interface ApproverQueue {
   items: QueueItem[];
 }
 
+/** ------------------------------------------------- my direct reports. FR 55, FR 56, LMS 405. */
+
+/** FR 06. A leaver still reports to somebody until HR moves the line. */
+export type EmploymentStatus = 'ACTIVE' | 'SUSPENDED' | 'TERMINATED';
+
+/** One piece of live leave a report holds. FR 56. */
+export interface TeamBooking {
+  requestId: string;
+  leaveTypeId: string;
+  typeName: string;
+  /** Ten characters. */
+  from: string;
+  to: string;
+  countingBasis: 'WORKING_DAYS' | 'CALENDAR_DAYS';
+  countingBasisLabel: string;
+  /** FR 11, FR 24. */
+  days: number;
+  calendarDays: number;
+  status: RequestStatus;
+  /** FR 41. */
+  agreed: boolean;
+  /** FR 38a. The desk it is sitting on, null once it is sitting nowhere. */
+  awaiting: Desk | null;
+  inWords: string;
+}
+
+/** One direct report. FR 55, FR 56. */
+export interface TeamMember {
+  employeeId: string;
+  name: string;
+  jobTitle: string | null;
+  employmentStatus: EmploymentStatus;
+  /** Days of live leave in the year shown, across every type. */
+  daysBooked: number;
+  awayToday: boolean;
+  inWords: string;
+  /** FR 55. The same lines their own balance screen shows. */
+  balances: BalanceLine[];
+  /** FR 56. Soonest first. */
+  booked: TeamBooking[];
+}
+
+/** One report away on one day. */
+export interface TeamAwayOn {
+  employeeId: string;
+  name: string;
+  requestId: string;
+  status: RequestStatus;
+  typeName: string;
+}
+
+/** One day somebody is away. Days nobody is away are not sent. */
+export interface TeamDay {
+  /** Ten characters. */
+  date: string;
+  /** More than one report away — the day a manager is looking for. */
+  isClash: boolean;
+  isEverybody: boolean;
+  away: TeamAwayOn[];
+}
+
+export interface TeamCalendar {
+  from: string;
+  to: string;
+  /** The most reports away on any one day. */
+  busiest: number;
+  clashes: number;
+  inWords: string;
+  /** Soonest first. */
+  days: TeamDay[];
+}
+
+export interface Team {
+  managerId: string;
+  year: Year;
+  years: Year[];
+  size: number;
+  inWords: string;
+  /** Surname first. */
+  members: TeamMember[];
+  calendar: TeamCalendar;
+}
+
 /** ---------------------------------------- requests I have not finished. FR 19, LMS 302. */
 
 /** A field a draft may still be missing, in the order the form asks for them. */
@@ -544,6 +627,23 @@ export async function quoteLeave(input: {
  */
 export async function myApprovals(): Promise<ApproverQueue> {
   return request<ApproverQueue>('GET', '/api/me/approvals');
+}
+
+/**
+ * The people who report to me, for one leave year. FR 55, FR 56. LMS 405.
+ *
+ * `/me` names the *manager* here, and there is no id to pass: the team is whoever reports to
+ * the session. Direct reports only — a manager two levels up sees their own reports and
+ * nobody below them, which is the server's query rather than a filter here.
+ *
+ * Refused with a 403 and the server's own sentence for somebody who manages nobody, and the
+ * screen shows that sentence. As with `/api/me/approvals`, there is deliberately no flag on
+ * `/api/me` to hide the tab in advance.
+ */
+export async function myTeam(leaveYearId?: string): Promise<Team> {
+  const query = leaveYearId === undefined ? '' : `?leaveYearId=${encodeURIComponent(leaveYearId)}`;
+
+  return request<Team>('GET', `/api/me/team${query}`);
 }
 
 /* ------------------------------------------ several at once. FR 51, LMS 328 */

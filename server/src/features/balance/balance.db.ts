@@ -68,6 +68,40 @@ export class BalanceRepository {
   }
 
   /**
+   * Every balance several people hold, in one statement. FR 55, LMS 405.
+   *
+   * {@link BalanceRepository.forEmployee} for a team, so a manager's screen asks once rather
+   * than once per report. Same ordering, and a key nothing has moved has no row here either.
+   */
+  async forEmployees(
+    employeeIds: readonly string[],
+    leaveYearId?: string,
+  ): Promise<LeaveBalance[]> {
+    if (employeeIds.length === 0) {
+      return [];
+    }
+
+    let query = this.db
+      .selectFrom('leave_balance')
+      .innerJoin('leave_type', 'leave_type.id', 'leave_balance.leave_type_id')
+      .innerJoin('leave_year', 'leave_year.id', 'leave_balance.leave_year_id')
+      .selectAll('leave_balance')
+      .where('leave_balance.employee_id', 'in', [...employeeIds]);
+
+    if (leaveYearId !== undefined) {
+      query = query.where('leave_balance.leave_year_id', '=', leaveYearId);
+    }
+
+    const rows = await query
+      .orderBy('leave_year.start_date')
+      .orderBy('leave_type.display_order')
+      .orderBy('leave_type.id')
+      .execute();
+
+    return rows.map(toBalance);
+  }
+
+  /**
    * Every balance this person has, oldest leave year first and in the order leave
    * types are shown in.
    *

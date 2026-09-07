@@ -1097,3 +1097,184 @@ textarea:disabled {
   gap: 0.2rem;
   font-variant-numeric: tabular-nums;
 }
+
+/* ------------------------------------------------------------ my team. LMS 405 */
+
+/**
+ * Who is away, and when. FR 56.
+ *
+ * A list of the days somebody is off rather than a grid of the whole year: the server sends
+ * only those days, and three hundred and sixty-five cells of which six matter is a picture
+ * that hides its own point. The days that matter are the ones with two names on them.
+ */
+.calendar {
+  margin: var(--gap-lg) 0;
+  padding: var(--gap);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.calendar-head h3 {
+  font-size: 1rem;
+}
+
+.calendar-head p {
+  margin: 0.25rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+.months {
+  list-style: none;
+  margin: var(--gap) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.months h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.awaydays {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.awaydays li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-small);
+  font-size: 0.875rem;
+}
+
+/* A day more than one of them is off. The word beside it is what carries the meaning; the
+   tint is a second copy of it for people who scan rather than read. */
+.awaydays li.is-clash {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.awaydays .when {
+  flex: 0 0 1.75rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.awaydays .who {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.awaydays .clash {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 0.8125rem;
+}
+
+/* Leave that has been agreed, as `--agreed` is used on the request cards. */
+.awaydays .tag.is-agreed {
+  color: var(--agreed);
+  border-color: color-mix(in srgb, var(--agreed) 40%, transparent);
+}
+
+/**
+ * What one report has left, one figure per kind of leave. FR 55.
+ *
+ * Nothing is totalled across the row, and there is deliberately nowhere for a total to go:
+ * twenty annual days and three sick days are not twenty-three of anything.
+ */
+.figures {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.figures li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  font-size: 0.8125rem;
+}
+
+.figures .what {
+  color: var(--ink-soft);
+}
+
+.figures .figure {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* §8.6b. Legitimately below nought on a type FR 32a lets go past its allowance. */
+.figures .figure.overdrawn {
+  color: var(--warn);
+}
+
+.figures .of {
+  color: var(--ink-faint);
+}
+
+.figures-table {
+  width: 100%;
+  margin-top: 0.5rem;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.figures-table th,
+.figures-table td {
+  padding: 0.35rem 0.5rem;
+  text-align: right;
+  border-bottom: 1px solid var(--line);
+}
+
+.figures-table thead th {
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+
+.figures-table tbody th {
+  text-align: left;
+  font-weight: 500;
+}
+
+/* What the figures on this line are, so that a nought says which kind of nought. FR 32g. */
+.figures-table tbody th small {
+  display: block;
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+.figures-table td.overdrawn {
+  color: var(--warn);
+}
+
+/* The table is the widest thing on a card, so it scrolls inside the disclosure rather than
+   pushing the page sideways. */
+.card .breakdown {
+  overflow-x: auto;
+}
