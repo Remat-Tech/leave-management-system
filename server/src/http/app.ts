@@ -29,6 +29,8 @@ import { attachmentRoutes } from '../features/leave-request/attachment.routes.js
 import type { Scanner } from '../scanning/index.js';
 import type { Storage } from '../storage/index.js';
 import { balanceRoutes } from '../features/balance/routes.js';
+import { teamRoutes } from '../features/team/routes.js';
+import { TeamService } from '../features/team/team.service.js';
 import { identify } from './identify.js';
 import { answerProblems, type FailureLog } from './problems.js';
 import { requestRoutes } from '../features/leave-request/routes.js';
@@ -116,6 +118,22 @@ export function buildApp(parts: Application): Express {
         parts.balances,
         parts.guard,
         parts.employees,
+        parts.types,
+        parts.years,
+      ),
+    }),
+  );
+
+  /* FR 55, FR 56, LMS 405. A read service built from repositories, as the two above are:
+     nothing a manager reads about their reports needs a transaction or a mailer. */
+  app.use(
+    '/api',
+    teamRoutes({
+      team: new TeamService(
+        parts.guard,
+        parts.employees,
+        parts.balances,
+        parts.requests,
         parts.types,
         parts.years,
       ),

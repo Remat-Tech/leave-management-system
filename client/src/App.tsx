@@ -5,8 +5,9 @@ import { BalancesPage } from './features/balances/BalancesPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
 import { RequestsPage } from './features/requests/RequestsPage';
 import { SignIn } from './features/session/SignIn';
+import { TeamPage } from './features/team/TeamPage';
 
-/** The application, and the places there are to go. LMS 401, LMS 402, LMS 403, LMS 404. */
+/** The application, and the places there are to go. LMS 401, LMS 402, LMS 403, LMS 404, LMS 405. */
 
 /**
  * The places there are to go, and the labels on them.
@@ -21,12 +22,17 @@ import { SignIn } from './features/session/SignIn';
  * what to draw from them, and the day the two disagree the server is right and the page has
  * been lying". So the tab is a link like the others, and somebody who approves nothing gets
  * the server's own sentence saying what an approver is. FR 40, NFR USA 03.
+ *
+ * **"My team" is offered on the same terms**, and for the same reason: whether somebody has a
+ * report is the server's answer, and somebody who manages nobody gets its sentence. FR 55.
  */
 const SCREENS = [
   { id: 'balances', label: 'My balances' },
   { id: 'ask', label: 'Ask for leave' },
   { id: 'requests', label: 'My requests' },
   { id: 'approvals', label: 'Waiting on me' },
+  /** FR 55, FR 56, LMS 405. */
+  { id: 'team', label: 'My team' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -107,6 +113,7 @@ export function App() {
       {screen === 'ask' ? <NewRequestPage onSignedOut={forget} /> : null}
       {screen === 'requests' ? <RequestsPage onSignedOut={forget} /> : null}
       {screen === 'approvals' ? <ApprovalsPage onSignedOut={forget} /> : null}
+      {screen === 'team' ? <TeamPage onSignedOut={forget} /> : null}
     </>
   );
 }
