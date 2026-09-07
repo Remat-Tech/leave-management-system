@@ -362,6 +362,38 @@ export interface LeaveRequestAttachmentTable {
   uploaded_at: Timestamp;
 }
 
+/** A short-lived address for one attachment's bytes. NFR SEC 04, NFR SEC 06, LMS 407. */
+export interface AttachmentDownloadLinkTable {
+  id: Generated<string>;
+  attachment_id: ColumnType<string, string, never>;
+  /** Who it was minted for. Never moved. */
+  issued_to_employee_id: ColumnType<string, string, never>;
+  /** SHA-256 of the token, never the token. */
+  token_digest: ColumnType<string, string, never>;
+  /** Stamped by the trigger off `now()`, never supplied. */
+  expires_at: Timestamp;
+  /** Spending it is the one update the row takes. */
+  redeemed_at: ColumnType<Date | null, never, Date | null>;
+  issued_by: ColumnType<string, never, never>;
+  issued_by_employee_id: ColumnType<string | null, never, never>;
+  issued_at: Timestamp;
+}
+
+/** One reach for a certificate, and what became of it. NFR SEC 04, LMS 407. */
+export interface AttachmentAccessTable {
+  id: Generated<string>;
+  /** Neither of these is a foreign key: the log outlives the file and the link. */
+  attachment_id: ColumnType<string, string, never>;
+  link_id: ColumnType<string, string, never>;
+  /** ISSUED | DOWNLOADED | EXPIRED | ALREADY_USED | REFUSED. */
+  outcome: ColumnType<string, string, never>;
+  /** NFR USA 03. */
+  because: ColumnType<string | null, string | null, never>;
+  accessed_by: ColumnType<string, never, never>;
+  accessed_by_employee_id: ColumnType<string | null, never, never>;
+  accessed_at: Timestamp;
+}
+
 /** What one approver said at one stage, and when. FR 39, FR 52, LMS 315, LMS 314. */
 export interface LeaveRequestDecisionTable {
   id: Generated<string>;
@@ -482,6 +514,9 @@ export interface Database {
   app_user: AppUserTable;
   /** FR 49, LMS 327. */
   approval_delegation: ApprovalDelegationTable;
+  /** NFR SEC 04, LMS 407. */
+  attachment_access: AttachmentAccessTable;
+  attachment_download_link: AttachmentDownloadLinkTable;
   audit_log: AuditLogTable;
   balances_that_disagree_with_the_ledger: BalanceDisagreementView;
   department: DepartmentTable;

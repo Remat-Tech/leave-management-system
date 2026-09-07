@@ -1,5 +1,5 @@
 /**
- * Attaching evidence to a request. FR 12, FR 13, NFR SEC 04, NFR SEC 07. LMS 310.
+ * Attaching evidence to a request, and letting somebody who may read it fetch it. FR 12, FR 13, NFR SEC 04, NFR SEC 06, NFR SEC 07. LMS 310, LMS 407.
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -18,6 +18,17 @@ import { type ScanResult, type Scanner, ScannerUnavailable } from '../../scannin
 import { desksHandedTo, leaveRequestPolicy } from './policy.js';
 import type { ApprovalDelegationService } from './delegation.service.js';
 import type { AttachmentRepository } from './attachment.db.js';
+import type { AttachmentLinkRepository } from './attachment-link.db.js';
+import {
+  type AccessOutcome,
+  type DownloadLink,
+  DownloadLinkNotUsable,
+  digestOf,
+  downloadPathFor,
+  newDownloadToken,
+  secondsLeft,
+  whyNotUsable,
+} from './attachment-link.js';
 import {
   AttachmentIsInfected,
   AttachmentNotFound,
@@ -60,6 +71,15 @@ export interface AttachmentContent {
   content: Buffer;
 }
 
+/** Where one person may fetch one file, for the next two minutes. NFR SEC 04, LMS 407. */
+export interface IssuedDownloadLink {
+  attachment: LeaveRequestAttachment;
+  /** The only address the bytes have. It is spent by the first fetch. */
+  url: string;
+  expiresAt: Date;
+  expiresInSeconds: number;
+}
+
 /** What arrives at the door. The content type sent is recorded and never believed. */
 export interface UploadedFile {
   filename: unknown;
@@ -73,6 +93,8 @@ export class AttachmentService {
     /* NFR SEC 02. Required rather than defaulted; see ../../auth/policy.ts. */
     private readonly guard: Guard,
     private readonly attachments: AttachmentRepository,
+    /** NFR SEC 04, LMS 407. The links a file is fetched through, and who fetched it. */
+    private readonly links: AttachmentLinkRepository,
     private readonly requests: LeaveRequestRepository,
     /** Whose leave it is, which a request id cannot say by itself. */
     private readonly employees: EmployeeRepository,
@@ -284,16 +306,21 @@ export class AttachmentService {
   }
 
   /**
-   * The bytes, for somebody who may read the request. NFR SEC 04, NFR SEC 07.
+   * An address the bytes can be fetched from, for the next two minutes. NFR SEC 04, LMS 407.
    *
-   * Refused for anything not `CLEAN`: an unscanned file is not handed to an approver on
-   * the grounds that it is probably fine.
+   * The whole of "never publicly addressable": there is no standing URL for a certificate,
+   * so nothing survives being copied out of a browser's history, a chat window or somebody's
+   * screen. What is handed back is minted here, for this person, and is spent by the first
+   * fetch — see {@link AttachmentService.downloadVia}, which asks the policy again anyway.
+   *
+   * Refused for anything not `CLEAN`, as the download was: an unscanned file is not handed
+   * to an approver on the grounds that it is probably fine. NFR SEC 07.
    */
-  async download(
+  async linkTo(
     actor: Actor,
     leaveRequestId: string,
     attachmentId: string,
-  ): Promise<AttachmentContent> {
+  ): Promise<IssuedDownloadLink> {
     const { request } = await this.readable(actor, leaveRequestId);
     const attachment = await this.onThisRequest(request, attachmentId);
 
@@ -301,7 +328,107 @@ export class AttachmentService {
       throw new AttachmentNotScanned(attachment);
     }
 
-    return { attachment, content: await this.storage.get(attachment.storageKey) };
+    const token = newDownloadToken();
+
+    const link = await this.links.issue(attributionOf(actor), {
+      attachmentId: attachment.id,
+      issuedToEmployeeId: whoIsAsking(actor),
+      tokenDigest: digestOf(token),
+    });
+
+    /** The story's fourth criterion: asking for a way in is itself an access. */
+    await this.wroteDown(actor, link, 'ISSUED', null);
+
+    return {
+      attachment,
+      url: downloadPathFor(token),
+      expiresAt: link.expiresAt,
+      expiresInSeconds: secondsLeft(link),
+    };
+  }
+
+  /**
+   * The bytes, for a link that is still good. NFR SEC 04, NFR SEC 07, LMS 407.
+   *
+   * A link is not standing on its own. It has to be unspent, unexpired and presented by the
+   * person it was minted for — and the policy is asked **again**, here, because a manager
+   * whose report moved to another team between minting and fetching may no longer read the
+   * request, and a link that outlived the standing behind it would be exactly the casual
+   * availability the story is against.
+   *
+   * Every one of those answers is written down, refusals included. The one that is not is a
+   * token naming no link at all: there is no file for it to be an access to.
+   */
+  async downloadVia(actor: Actor, token: string): Promise<AttachmentContent> {
+    const link = await this.links.byDigest(digestOf(asToken(token)));
+
+    if (link === undefined) {
+      throw new DownloadLinkNotUsable(null);
+    }
+
+    const attachment = await this.attachments.findById(link.attachmentId);
+
+    if (attachment === undefined || attachment.leaveRequestId === null) {
+      /* Unreachable both ways: a removed file takes its links with it, so there would have
+         been nothing to find above, and a file on a request never comes back off one.
+         Answered rather than asserted, because the alternative is a five hundred. */
+      await this.wroteDown(actor, link, 'REFUSED', 'the file the link named is not on a request');
+      throw new DownloadLinkNotUsable('REFUSED');
+    }
+
+    const unusable = whyNotUsable(link, actor.employeeId);
+
+    if (unusable !== null) {
+      await this.wroteDown(actor, link, unusable.outcome, unusable.because);
+      throw new DownloadLinkNotUsable(unusable.outcome);
+    }
+
+    try {
+      await this.readable(actor, attachment.leaveRequestId);
+    } catch (error) {
+      await this.wroteDown(
+        actor,
+        link,
+        'REFUSED',
+        'the link was still good and the standing behind it was not',
+      );
+      throw error;
+    }
+
+    if (attachment.scanStatus !== 'CLEAN') {
+      /* The scanner answered after the link was minted, which is the one way a `CLEAN` file
+         becomes an infected one between the two calls. */
+      await this.wroteDown(actor, link, 'REFUSED', 'the file was not clean when it was asked for');
+      throw new AttachmentNotScanned(attachment);
+    }
+
+    /* Spent before the bytes are read, so that two fetches racing on one link hand the file
+       to one of them. The loser changed nothing. */
+    if ((await this.links.spend(link.id)) === undefined) {
+      await this.wroteDown(actor, link, 'ALREADY_USED', 'the link had already been used');
+      throw new DownloadLinkNotUsable('ALREADY_USED');
+    }
+
+    const content = await this.storage.get(attachment.storageKey);
+
+    await this.wroteDown(actor, link, 'DOWNLOADED', null);
+
+    return { attachment, content };
+  }
+
+  /** Who reached for this file and what came of it. NFR SEC 04, LMS 407. */
+  private async wroteDown(
+    actor: Actor,
+    link: DownloadLink,
+    outcome: AccessOutcome,
+    because: string | null,
+  ): Promise<void> {
+    await this.links.record(attributionOf(actor), {
+      attachmentId: link.attachmentId,
+      linkId: link.id,
+      outcome,
+      because,
+    });
   }
 
   /**
@@ -528,6 +655,33 @@ function waitingInWords(attached: number, usable: number): string {
           ` viruses and cannot count until that is done.`
     }`
   );
+}
+
+/**
+ * The person a link is minted for. NFR SEC 04, LMS 407.
+ *
+ * A link is issued *to somebody*, so an actor with nobody behind it has nothing to issue one
+ * to. `theSystem()` reads every record and is nobody, which is right for a job and wrong for
+ * a certificate — a bug rather than a refusal, as `employeeIdOf` in ./attachment.routes.ts is.
+ */
+function whoIsAsking(actor: Actor): string {
+  if (actor.employeeId === null) {
+    throw new Error(
+      'A download link was asked for by an actor with no employee behind it. Links are ' +
+        'issued to a person, and there is nobody here to issue one to. NFR SEC 04.',
+    );
+  }
+
+  return actor.employeeId;
+}
+
+/** The token as it arrived. Whether it names anything is the lookup's answer, not this one's. */
+function asToken(token: unknown): string {
+  if (typeof token !== 'string' || token.trim() === '') {
+    throw new DownloadLinkNotUsable(null);
+  }
+
+  return token.trim();
 }
 
 function requireId(id: unknown, field: string): string {

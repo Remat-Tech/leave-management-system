@@ -10,6 +10,7 @@ import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { calendarDateIn } from '../../src/shared/time.js';
 import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
+import { AttachmentLinkRepository } from '../../src/features/leave-request/attachment-link.db.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
@@ -121,6 +122,7 @@ beforeAll(async () => {
     drafts: new LeaveRequestDraftRepository(db),
     /** FR 12, LMS 310. */
     attachments: new AttachmentRepository(db),
+    attachmentLinks: new AttachmentLinkRepository(db),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
     accounts,
@@ -178,7 +180,7 @@ async function clear(): Promise<void> {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
+      'attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
       'leave_request_withdrawal, leave_request_draft, leave_request',
   );
 }
@@ -235,6 +237,13 @@ function upload(
 
 function get(path: string, employeeId: string): Promise<Response> {
   return fetch(`${origin}${path}`, { headers: { cookie: cookieFor(employeeId) } });
+}
+
+function post(path: string, employeeId: string): Promise<Response> {
+  return fetch(`${origin}${path}`, {
+    method: 'POST',
+    headers: { cookie: cookieFor(employeeId) },
+  });
 }
 
 /* ------------------------------------------------------------------------ the routes */
@@ -336,7 +345,33 @@ describe('reading it back over HTTP', () => {
     });
   });
 
-  it('sends the bytes back as an attachment nothing renders inline', async () => {
+  /* NFR SEC 04, LMS 407. Two calls, and the second address did not exist before the first. */
+  it('sends the bytes back through a link, as an attachment nothing renders inline', async () => {
+    const requestId = await aRequest();
+
+    const attached = (await (
+      await upload(requestId, people.officer, A_PDF, 'sick note.pdf')
+    ).json()) as { attachmentId: string };
+
+    const link = (await (
+      await post(
+        `/api/requests/${requestId}/attachments/${attached.attachmentId}/link`,
+        people.officer,
+      )
+    ).json()) as { url: string };
+
+    const response = await get(link.url, people.officer);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/octet-stream');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('content-disposition')).toContain('attachment;');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(A_PDF);
+  });
+
+  /* The address the file used to have. Its absence is the story. NFR SEC 04, LMS 407. */
+  it('and there is no standing address the bytes can be fetched from', async () => {
     const requestId = await aRequest();
 
     const attached = (await (
@@ -348,11 +383,7 @@ describe('reading it back over HTTP', () => {
       people.officer,
     );
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toBe('application/octet-stream');
-    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
-    expect(response.headers.get('content-disposition')).toContain('attachment;');
-    expect(Buffer.from(await response.arrayBuffer())).toEqual(A_PDF);
+    expect(response.status).toBe(404);
   });
 
   it('and refuses somebody with no standing over the request', async () => {

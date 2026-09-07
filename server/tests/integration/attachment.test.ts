@@ -19,6 +19,7 @@ import {
   TooManyAttachments,
 } from '../../src/features/leave-request/attachment.js';
 import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
+import { AttachmentLinkRepository } from '../../src/features/leave-request/attachment-link.db.js';
 import { AttachmentService } from '../../src/features/leave-request/attachment.service.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
@@ -96,6 +97,7 @@ beforeAll(async () => {
   const requestRepository = new LeaveRequestRepository(db);
   const organisation = new OrganisationRepository(db);
   const attachmentRepository = new AttachmentRepository(db);
+  const linkRepository = new AttachmentLinkRepository(db);
 
   balances = new BalanceService(new BalanceRepository(db), guard, employees, new Transactions(db));
   years = new LeaveYearService(yearRepository, guard);
@@ -125,6 +127,7 @@ beforeAll(async () => {
   attachments = new AttachmentService(
     guard,
     attachmentRepository,
+    linkRepository,
     requestRepository,
     employees,
     types,
@@ -137,6 +140,7 @@ beforeAll(async () => {
   unscanned = new AttachmentService(
     guard,
     attachmentRepository,
+    linkRepository,
     requestRepository,
     employees,
     types,
@@ -176,7 +180,7 @@ async function clear(): Promise<void> {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
+      'attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
       'leave_request_withdrawal, leave_request_draft, leave_request',
   );
 }
@@ -215,6 +219,22 @@ function asAStranger() {
 
 function asAnHrOfficer() {
   return signedInAs(people.hrOfficer, { roles: ['EMPLOYEE', 'HR_OFFICER'], isManager: false });
+}
+
+/**
+ * The two calls a fetch takes since LMS 407: mint a link, then spend it. NFR SEC 04.
+ *
+ * There is no third way to the bytes. ./attachment-link.test.ts is what proves the link's own
+ * rules; this is here so the tests below can go on being about the file.
+ */
+async function fetchThroughALink(
+  actor: ReturnType<typeof asTheEmployee>,
+  requestId: string,
+  attachmentId: string,
+) {
+  const { url } = await attachments.linkTo(actor, requestId, attachmentId);
+
+  return attachments.downloadVia(actor, url.slice(url.lastIndexOf('/') + 1));
 }
 
 /** A submitted request of the employee's, sitting with their line manager. */
@@ -424,7 +444,9 @@ describe('the scan', () => {
 
     const attached = await unscanned.attach(asTheEmployee(), request.id, aFile());
 
-    await expect(attachments.download(asTheEmployee(), request.id, attached.id)).rejects.toThrow(
+    /* Refused at the link rather than at the fetch, which is earlier: there is no address
+       for an unscanned file to be at. NFR SEC 04, LMS 407. */
+    await expect(attachments.linkTo(asTheEmployee(), request.id, attached.id)).rejects.toThrow(
       AttachmentNotScanned,
     );
   });
@@ -437,7 +459,7 @@ describe('the scan', () => {
     const scanned = await attachments.rescan(asTheEmployee(), request.id, attached.id);
 
     expect(scanned.scanStatus).toBe('CLEAN');
-    expect((await attachments.download(asTheEmployee(), request.id, attached.id)).content).toEqual(
+    expect((await fetchThroughALink(asTheEmployee(), request.id, attached.id)).content).toEqual(
       A_PDF,
     );
   });
@@ -523,7 +545,7 @@ describe('reading what is attached', () => {
 
     const attached = await attachments.attach(asTheEmployee(), request.id, aFile());
 
-    const { content } = await attachments.download(asTheEmployee(), request.id, attached.id);
+    const { content } = await fetchThroughALink(asTheEmployee(), request.id, attached.id);
 
     expect(content).toEqual(A_PDF);
   });
@@ -573,7 +595,7 @@ describe('reading what is attached', () => {
     const attached = await attachments.attach(asTheEmployee(), first.id, aFile());
 
     await expect(
-      attachments.download(asTheEmployee(), second.request.id, attached.id),
+      attachments.linkTo(asTheEmployee(), second.request.id, attached.id),
     ).rejects.toThrow(AttachmentNotFound);
   });
 });

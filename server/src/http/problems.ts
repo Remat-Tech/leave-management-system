@@ -262,6 +262,16 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   AttachmentNotScanned: 409,
   /** FR 12. The request has moved past the point evidence goes on or comes off. LMS 310. */
   AttachmentsAreClosed: 409,
+  /**
+   * NFR SEC 04. Spent, expired, somebody else's, or never issued at all. LMS 407.
+   *
+   * 410 rather than the two statuses the note above argues for, and the same 410 for all
+   * four: a link is a thing that is supposed to stop working, so a person who followed one
+   * from ten minutes ago is told to press download again rather than sent to check the
+   * address. All four share it because telling them apart would tell somebody working
+   * through addresses which of their guesses had once been real.
+   */
+  DownloadLinkNotUsable: 410,
   /** FR 13. The leave was allowed through on this file; a replacement is the fix. LMS 311. */
   DocumentationCannotBeRemoved: 409,
   /** §8.9. */

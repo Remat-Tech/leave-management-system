@@ -18,6 +18,7 @@ import { LeaveRequestRepository } from '../../src/features/leave-request/leave-r
 import { LeaveRoutingRepository } from '../../src/features/leave-request/routing.db.js';
 import { LeaveRequestDraftRepository } from '../../src/features/leave-request/draft.db.js';
 import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
+import { AttachmentLinkRepository } from '../../src/features/leave-request/attachment-link.db.js';
 import { SignatureScanner } from '../../src/scanning/signature-scanner.js';
 import { InMemoryStorage } from '../support/in-memory-storage.js';
 import { WithdrawalRepository } from '../../src/features/leave-request/withdrawal.db.js';
@@ -152,6 +153,7 @@ beforeAll(async () => {
     /** FR 19, LMS 302. */
     drafts: new LeaveRequestDraftRepository(db),
     attachments: new AttachmentRepository(db),
+    attachmentLinks: new AttachmentLinkRepository(db),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
     accounts,
@@ -178,7 +180,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
   );
   await restoreYears();
 
@@ -199,7 +201,7 @@ afterAll(async () => {
 
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
   );
   await restoreYears();
 
