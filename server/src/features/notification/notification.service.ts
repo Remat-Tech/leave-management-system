@@ -14,9 +14,16 @@ import {
   noticeOf,
 } from './notification.js';
 import { type ReminderSent, reminderOf } from './reminder.js';
+import {
+  DRAIN_LIMIT,
+  type DeliveryRun,
+  nextAttemptAfter,
+  type Redelivered,
+  type Undelivered,
+} from './delivery.js';
 import type { Mailer } from '../../mail/mailer.js';
 import type { Mail } from '../../mail/transport.js';
-import type { NoticeListOptions, NotificationRepository } from './notification.db.js';
+import type { EmailOutcome, NoticeListOptions, NotificationRepository } from './notification.db.js';
 import type { CalendarDate } from '../../shared/time.js';
 
 /** Everything the system needs to tell one person about one thing that happened. */
@@ -61,6 +68,10 @@ export interface Told {
   emailed: boolean;
   /** What went wrong, in the failing component's own words. */
   couldNotTell: string | null;
+  /** FR 59, LMS 331. When the send will be tried again, null where it will not be. */
+  tryingAgainAt: Date | null;
+  /** LMS 331. True where nothing more will be attempted and it never arrived. */
+  gaveUp: boolean;
 }
 
 /** A notice that could not be delivered, as the log wants it. */
@@ -72,6 +83,10 @@ export interface UndeliveredNotice {
   /** Which half failed: writing the notice down, or sending the email. */
   stage: 'write' | 'email';
   because: string;
+  /** LMS 331. Which send this was, and zero where the notice was never written. */
+  attempt: number;
+  /** LMS 331. When the next is due, null where there is not one. */
+  tryingAgainAt: Date | null;
 }
 
 /** Where a notice that did not arrive is recorded. */
@@ -92,11 +107,17 @@ export function undeliveredToStderr(): NoticeLog {
           notice: failure.event,
           stage: failure.stage,
           because: failure.because,
+          /** LMS 331. What tells an operator a hiccup apart from a mailbox that is gone. */
+          attempt: failure.attempt,
+          tryingAgainAt: failure.tryingAgainAt?.toISOString() ?? null,
         }),
       );
     },
   };
 }
+
+/** The send a notice gets at the moment it is written. LMS 331. */
+const FIRST_ATTEMPT = 1;
 
 export class NotificationService {
   constructor(
@@ -136,10 +157,10 @@ export class NotificationService {
     const notice = await this.write(composed);
 
     if (notice === null) {
-      return { notice: null, emailed: false, couldNotTell: 'the notice could not be written' };
+      return nothingWasWritten();
     }
 
-    return this.email(notice, reader.workEmail);
+    return this.email(notice, reader.workEmail, FIRST_ATTEMPT, new Date());
   }
 
   /**
@@ -164,10 +185,78 @@ export class NotificationService {
     const notice = await this.write(composed);
 
     if (notice === null) {
-      return { notice: null, emailed: false, couldNotTell: 'the notice could not be written' };
+      return nothingWasWritten();
     }
 
-    return this.email(notice, approver.workEmail);
+    return this.email(notice, approver.workEmail, FIRST_ATTEMPT, new Date());
+  }
+
+  /**
+   * Sends again everything whose email did not go and is due another try. FR 59, LMS 331.
+   *
+   * The story's second criterion is what this does *not* do: it opens no transaction, moves
+   * no day and touches no request. A notice is claimed, sent and stamped, and a mail server
+   * that is still down leaves the leave record exactly as it found it.
+   */
+  async retryWhatFailed(
+    actor: Actor,
+    asAt: Date = new Date(),
+    limit: number = DRAIN_LIMIT,
+  ): Promise<DeliveryRun> {
+    this.guard.enforce(notificationPolicy.resend(actor));
+
+    const ranAt = new Date();
+    const due = await this.notices.dueForAnotherTry(asAt, limit);
+
+    const attempted: Redelivered[] = [];
+    let claimedElsewhere = 0;
+
+    for (const waiting of due) {
+      const sent = await this.sendAgain(waiting, asAt);
+
+      if (sent === null) {
+        claimedElsewhere += 1;
+        continue;
+      }
+
+      attempted.push(sent);
+    }
+
+    return {
+      ranAt,
+      due: await this.notices.howManyAreDue(asAt),
+      attempted,
+      claimedElsewhere,
+    };
+  }
+
+  /** One retry: claim the attempt, then make it. Null where another run got there first. */
+  private async sendAgain(waiting: Undelivered, asAt: Date): Promise<Redelivered | null> {
+    const { notice, to } = waiting;
+    const attempt = notice.emailAttempts + 1;
+
+    /* Claimed before the send, so a process that dies mid-send leaves a notice that comes
+       due again rather than one nobody looks at. */
+    const claimed = await this.notices.claimForAnotherTry(
+      notice.id,
+      notice.emailAttempts,
+      nextAttemptAfter(attempt, asAt),
+    );
+
+    if (claimed === undefined) {
+      return null;
+    }
+
+    const told = await this.email(claimed, to, attempt, asAt);
+
+    return {
+      noticeId: notice.id,
+      employeeId: notice.employeeId,
+      attempt,
+      emailed: told.emailed,
+      tryingAgainAt: told.tryingAgainAt,
+      gaveUp: told.gaveUp,
+    };
   }
 
   /** Who has already been reminded about which request since then. FR 50, LMS 330. */
@@ -248,47 +337,60 @@ export class NotificationService {
         event: composed.event,
         stage: 'write',
         because: becauseOf(error),
+        /* Nothing was written, so there is no row to try again from. LMS 331. */
+        attempt: 0,
+        tryingAgainAt: null,
       });
 
       return null;
     }
   }
 
-  /** Sends it, and stamps what became of that on the row either way. */
-  private async email(notice: Notice, to: string): Promise<Told> {
+  /**
+   * Sends it, and stamps what became of that attempt on the row either way. FR 59, LMS 331.
+   *
+   * The one send path. A first attempt and a sixth are the same code, so the backoff, the
+   * record and the log cannot drift apart between them — and it never throws, because by the
+   * time it runs the leave has already been decided.
+   */
+  private async email(notice: Notice, to: string, attempt: number, at: Date): Promise<Told> {
     try {
       await this.mailer.send(noticeEmail(to, notice));
     } catch (error) {
       const because = becauseOf(error);
+      const tryAgainAt = nextAttemptAfter(attempt, at);
 
       this.log.record({
-        at: new Date(),
+        at,
         employeeId: notice.employeeId,
         leaveRequestId: notice.leaveRequestId,
         event: notice.event,
         stage: 'email',
         because,
+        attempt,
+        tryingAgainAt: tryAgainAt,
       });
 
       return {
-        notice: await this.stamp(notice, { failedBecause: because }),
+        notice: await this.stamp(notice, { attempt, failedBecause: because, tryAgainAt, at }),
         emailed: false,
         couldNotTell: because,
+        tryingAgainAt: tryAgainAt,
+        gaveUp: tryAgainAt === null,
       };
     }
 
     return {
-      notice: await this.stamp(notice, { sentAt: new Date() }),
+      notice: await this.stamp(notice, { attempt, sentAt: at }),
       emailed: true,
       couldNotTell: null,
+      tryingAgainAt: null,
+      gaveUp: false,
     };
   }
 
-  /** Records the send's outcome, and gives the notice back whether or not that worked. */
-  private async stamp(
-    notice: Notice,
-    outcome: { sentAt: Date } | { failedBecause: string },
-  ): Promise<Notice> {
+  /** Records the attempt's outcome, and gives the notice back whether or not that worked. */
+  private async stamp(notice: Notice, outcome: EmailOutcome): Promise<Notice> {
     try {
       return (await this.notices.recordTheEmail(notice.id, outcome)) ?? notice;
     } catch {
@@ -305,4 +407,15 @@ export function noticeEmail(to: string, notice: Notice): Mail {
 /** What went wrong, in words, from something that may not be an `Error`. */
 function becauseOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** No row, so nothing to retry from. The one failure LMS 331's backoff cannot reach. */
+function nothingWasWritten(): Told {
+  return {
+    notice: null,
+    emailed: false,
+    couldNotTell: 'the notice could not be written',
+    tryingAgainAt: null,
+    gaveUp: true,
+  };
 }

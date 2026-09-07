@@ -550,6 +550,13 @@ const MAY_NOTIFY = [
    */
   'features/notification/reminder.job.ts',
   /**
+   * FR 59, LMS 331. The retry, which is the third thing that occasions a send.
+   *
+   * It occasions no new notice at all — it re-sends rows that are already written — and like
+   * the chase it goes through the same service and opens no transaction of its own.
+   */
+  'features/notification/delivery.job.ts',
+  /**
    * The composition root, which constructs one and never calls it. LMS 403.
    *
    * A different permission from the four above and it is worth keeping the distinction: those

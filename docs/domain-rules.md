@@ -4437,3 +4437,87 @@ number in it. And there is no way to turn one off, per person or per request, be
 thing that stops a reminder is deciding the request, which is the entire point.
 
 ---
+
+### Retrying a notification that did not send
+
+**A send the mail server refused is tried again, further apart each time, until it arrives or
+until there is no point.** FR 59, §7.1, LMS 331. The story is the employee's — "so that a mail
+server hiccup does not mean I am never told my leave was approved" — and the thing it fixes is
+one line in [LMS 329](#telling-somebody-what-happened-to-their-leave), which recorded the failure
+and stopped: *"a process that dies between the COMMIT and the notice loses the notice. That is
+the right side to be wrong on."* It still is. What was never right was losing the ones that did
+get written.
+
+**The notice row is the outbox.** No new table. It already held what was said and what became of
+the email, and what it lacked was when to try again, which is three columns: `email_attempts`,
+`email_next_attempt_at` and `email_gave_up_at`. That answer was written down in the notification
+migration before there was anything to answer — "an outbox written inside the transaction and
+drained by a job" — and the only part of it this story declines is *inside the transaction*,
+which is the other criterion and is discussed below.
+
+A row is therefore in exactly one of four states, and the CHECK constraints permit no fifth:
+
+| | `emailed_at` | `email_failure` | `next_attempt_at` | `gave_up_at` |
+|---|---|---|---|---|
+| not attempted | — | — | — | — |
+| delivered | set | whatever it took | — | — |
+| waiting for another try | — | set | set | — |
+| given up on | — | set | — | set |
+
+**`email_failure` stops being the opposite of `emailed_at`.** The two used to be exclusive —
+`notification_email_went_or_did_not` — and a notice that fails twice and arrives on the third
+try makes that constraint false. It is dropped, and what replaces it is `emailed_at` meaning
+delivered and the failure beside it meaning *this is what it took*. Clearing the failure on
+success was the alternative and it throws away the answer to the only question anybody asks
+afterwards, which is why the email was late.
+
+**One send path, so the first attempt and the sixth cannot drift apart.** `tell`, `remind` and
+the retry all end in the same private `email()`: it sends, computes the backoff, records the
+outcome and writes the log line. There is no second sender that a future change could update on
+its own — which is the same argument `noticeOf` makes about there being one composer for two
+channels.
+
+**The wait is deterministic and there is no jitter.** A minute, then five, then twenty-five, and
+so on by five, six attempts in all — a little over thirteen hours, so a mail server that goes
+down after work still delivers before the next morning. Jitter is what you add when many senders
+come back at once, and there is one job draining one queue through one mailer a message at a
+time, so there is nothing to spread out. Six and then it stops: a notice retried for ever is a
+mailbox that no longer exists being written to for ever, and `email_gave_up_at` is where an
+operator finds the person who was genuinely never told.
+
+**The attempt is claimed before the send, not after it.** `claimForAnotherTry` moves the count
+and schedules the following attempt in one statement, guarded on the count it read. Two things
+fall out of that and both matter:
+
+* two runs at once cannot both send, because the second finds the count already moved and takes
+  nothing — no transaction, no `SELECT ... FOR UPDATE`, and so nothing that would put the
+  notification repository inside a transaction it must never be in;
+* a run that dies between claiming and sending leaves a notice that comes due again rather than
+  one nobody will ever look at, which is why the claim schedules the next attempt forward
+  instead of clearing the due time.
+
+| | Says | Held by |
+|---|---|---|
+| retried | a failed send leaves the row due rather than finished | `email_next_attempt_at`, and `notification_due_for_another_try` |
+| with backoff | each wait is longer than the one before | `nextAttemptAfter`, and the claim that writes it before the send |
+| and not for ever | six attempts, then the row says so | `ATTEMPTS_ALLOWED`, `email_gave_up_at`, `notification_giving_up_is_the_end` |
+| once between two runs | the count moves before the send, and moves once | `claimForAnotherTry`, guarded on the count it read |
+| never rolls anything back | the only writes are the notice's own columns | `UndeliveredNotices` holds a `NotificationService` and nothing else |
+
+**A mail failure never rolls back a business transaction**, which is the second criterion and is
+a fact about what the job is wired to rather than a rule it obeys. `UndeliveredNotices` takes a
+`NotificationService` and nothing else — no balance, no ledger, no transition — so there is no
+path by which a refused email undoes an approval. The seam that keeps it that way is the
+source-reading test in `notification.test.ts`, which now names `delivery.job.ts` among the files
+allowed to send at all, and it is the same seam LMS 329 put there: the send is *after* the
+commit, so there is no transaction left for it to fail.
+
+**What is deliberately not here.** There is no schedule, for the reason
+[LMS 330](#reminding-an-approver-every-day) gives — nothing in this repository is wired to a
+timer, and when the deployment gains a scheduler it gains every job at once. Nothing is retried
+that was never written: a notice the database refused has no row to try again from, and that
+remains the one failure the backoff cannot reach. And a person cannot ask for their own notice to
+be sent again, because the message is already in their bell — the email is the copy, and the
+record is the thing they were told.
+
+---
