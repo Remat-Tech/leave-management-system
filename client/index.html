@@ -2,7 +2,14 @@
 <html lang="en-GB">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      LMS 408. `viewport-fit=cover` paints to the edge of a notched phone; `.page` and
+      `.topbar-inner` add `env(safe-area-inset-*)` so nothing readable lands under the notch.
+
+      No `maximum-scale` and no `user-scalable=no`: pinch zoom stays. The usual reason for
+      turning it off — iOS zooming on a focused input under 16px — is fixed in styles.css.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!--
       No indexing, ever. This is an internal system behind a login and every page of it is
       somebody's leave record.
