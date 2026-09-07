@@ -563,9 +563,8 @@ describe('reading what is attached', () => {
     const second = await requests.submit(asTheEmployee(), {
       employeeId: people.officer,
       leaveTypeId: annualId,
-      /* A full calendar week, so the span holds working days whatever day the suite runs on. */
       from: daysFromToday(40),
-      to: daysFromToday(44),
+      to: daysFromToday(41),
       reason: 'Another week',
       acknowledgesShortNotice: true,
     });
