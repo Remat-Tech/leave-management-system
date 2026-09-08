@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { type BalanceLine, isNotSignedIn, myBalances, type Statement, type Year } from '../../api';
 import { days, sentenceCase, signed } from '../../format';
+import { Icon, iconForLeaveType } from '../../Icon';
 
 /** My balances. FR 53, LMS 401, FR 32g. */
-export function BalancesPage({ onSignedOut }: { onSignedOut: () => void }) {
+export function BalancesPage({
+  onSignedOut,
+  yearId,
+  onYears,
+}: {
+  onSignedOut: () => void;
+  /** LMS 409. The year the picker in the bar is showing. */
+  yearId: string | undefined;
+  onYears: (years: Year[], showing: string) => void;
+}) {
   const [statement, setStatement] = useState<Statement | undefined>(undefined);
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -15,6 +25,7 @@ export function BalancesPage({ onSignedOut }: { onSignedOut: () => void }) {
       myBalances(leaveYearId)
         .then((next) => {
           setStatement(next);
+          onYears(next.years, next.year.id);
           setProblem(undefined);
         })
         .catch((error: unknown) => {
@@ -30,12 +41,12 @@ export function BalancesPage({ onSignedOut }: { onSignedOut: () => void }) {
           setLoading(false);
         });
     },
-    [onSignedOut],
+    [onSignedOut, onYears],
   );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    load(yearId);
+  }, [load, yearId]);
 
   if (statement === undefined) {
     return (
@@ -46,18 +57,12 @@ export function BalancesPage({ onSignedOut }: { onSignedOut: () => void }) {
   return (
     <div className="page">
       <div className="pagehead">
-        <div>
-          <h2>Your leave in {statement.year.label}</h2>
-          <p>
-            {statement.year.startDate} to {statement.year.endDate}
-            {statement.year.isClosed ? ' · this year has been closed' : ''}
-          </p>
-        </div>
-
-        <YearPicker years={statement.years} showing={statement.year} busy={loading} onPick={load} />
+        <p className="muted">
+          {statement.year.label} · {statement.year.startDate} to {statement.year.endDate}
+          {statement.year.isClosed ? ' · this year has been closed' : ''}
+        </p>
       </div>
 
-      {}
       {problem === undefined ? null : <p className="notice">{problem}</p>}
 
       <ul className="cards">
@@ -82,39 +87,45 @@ function BalanceCard({ line }: { line: BalanceLine }) {
   return (
     <li className={`card${awaitingAnOccasion || !line.stillOffered ? ' dormant' : ''}`}>
       <div className="card-head">
+        {/* LMS 409. The kind of leave, as a mark as well as a name. */}
+        <span className="chip">
+          <Icon name={iconForLeaveType(line.name)} />
+        </span>
+
         <h3>{line.name}</h3>
 
         <div className="tags">
           {line.isPaid ? null : <span className="tag">Unpaid</span>}
           {line.stillOffered ? null : <span className="tag">No longer offered</span>}
+          {awaitingAnOccasion ? <span className="tag">Dormant</span> : null}
         </div>
       </div>
 
-      {awaitingAnOccasion ? (
-        <p className="headline-note">{sentenceCase(line.allowanceInWords)}</p>
-      ) : (
-        <>
-          <div className={`headline${overdrawn ? ' overdrawn' : ''}`}>
-            <span className="figure">{days(line.available)}</span>
-            <span className="of">
-              {line.available === 1 ? 'day' : 'days'} available
-              {line.owed > 0 ? ` of ${days(line.owed)}` : ''}
-            </span>
-          </div>
+      {/* Every card the same shape, whatever the type. FR 32g: a nought on a type granted per
+          occasion means "not yet" rather than "none left", and the Dormant badge above and
+          the sentence in the disclosure below are what say which. */}
+      <div className={`headline${overdrawn ? ' overdrawn' : ''}`}>
+        <span className="figure">{days(line.available)}</span>
+        <span className="of">
+          {line.owed > 0 ? `of ${days(line.owed)} ` : ''}
+          {line.owed === 1 ? 'day' : 'days'}
+        </span>
+      </div>
 
-          {overdrawn ? (
-            <p className="headline-note overdrawn">
-              Overdrawn by {days(Math.abs(line.available))}. This type allows it — going past the
-              allowance asks for a certificate rather than refusing the leave.
-            </p>
-          ) : null}
+      {overdrawn ? (
+        <p className="headline-note overdrawn">
+          Overdrawn by {days(Math.abs(line.available))}. This type allows it — going past the
+          allowance asks for a certificate rather than refusing the leave.
+        </p>
+      ) : null}
 
-          <Meter line={line} />
-        </>
-      )}
+      <Meter line={line} />
 
       <details className="breakdown">
         <summary>How this adds up</summary>
+
+        {/* FR 32g. What kind of allowance this is, so the figures above have a basis. */}
+        <p className="muted">{sentenceCase(line.allowanceInWords)}</p>
 
         <dl>
           <dt>Entitled</dt>
@@ -141,7 +152,10 @@ function BalanceCard({ line }: { line: BalanceLine }) {
           explanation of what a basis means belongs on the request quote, where somebody is
           about to commit to a fortnight; here it is a label, because six of them repeated
           under six cards is noise that crowds out the figures. */}
-      <p className="rules">{line.countingBasisLabel}</p>
+      <p className="rules">
+        <Icon name="balances" />
+        {line.countingBasisLabel}
+      </p>
     </li>
   );
 }
@@ -163,11 +177,10 @@ function Meter({ line }: { line: BalanceLine }) {
      no meaningful denominator, and the bar is simply not drawn. */
   const total = line.owed;
 
-  if (total <= 0 || line.available < 0) {
-    return null;
-  }
-
-  const share = (figure: number): string => `${String(Math.max(0, (figure / total) * 100))}%`;
+  /* Nought granted is a real state and not a missing one, so the track is still drawn: a card
+     that dropped its bar was a hole in a row of cards that all had one. */
+  const share = (figure: number): string =>
+    total <= 0 ? '0%' : `${String(Math.min(100, Math.max(0, (figure / total) * 100)))}%`;
 
   return (
     <>
@@ -189,55 +202,14 @@ function Meter({ line }: { line: BalanceLine }) {
         <span>
           <i className="swatch is-pending" /> {days(line.pending)} pending
         </span>
-        <span>
-          <i className="swatch is-left" /> {days(line.available)} left
+        {/* §8.6b. Below nought is legitimate on a type FR 32a lets go past its allowance, and
+            the word beside the figure is what says so. */}
+        <span className={line.available < 0 ? 'overdrawn' : undefined}>
+          <i className={`swatch ${line.available < 0 ? 'is-over' : 'is-left'}`} />{' '}
+          {days(line.available)} left
         </span>
       </div>
     </>
-  );
-}
-
-/**
- * The year picker. The story's second criterion.
- *
- * A plain `<select>` of the years the server said are this person's. There is no rule here
- * about which years those are — a joiner does not get the year before they arrived and a
- * leaver does not get the year after they went — because that is decided in
- * `server/src/domain/balance-statement.ts` against employment dates this client has never
- * seen.
- *
- * Labelled rather than placeholder-ed, because a placeholder disappears once a value is
- * chosen and a screen reader user then has an unlabelled control.
- */
-function YearPicker({
-  years,
-  showing,
-  busy,
-  onPick,
-}: {
-  years: Year[];
-  showing: Year;
-  busy: boolean;
-  onPick: (leaveYearId: string) => void;
-}) {
-  return (
-    <label>
-      Leave year
-      <select
-        value={showing.id}
-        disabled={busy || years.length < 2}
-        onChange={(event) => {
-          onPick(event.target.value);
-        }}
-      >
-        {years.map((year) => (
-          <option key={year.id} value={year.id}>
-            {year.label}
-            {year.isClosed ? ' (closed)' : ''}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 
@@ -246,10 +218,6 @@ function YearPicker({
 function Skeletons() {
   return (
     <>
-      <div className="pagehead">
-        <h2>Your leave</h2>
-      </div>
-
       <ul className="cards">
         {[0, 1, 2, 3, 4, 5].map((one) => (
           <li key={one} className="skeleton" />

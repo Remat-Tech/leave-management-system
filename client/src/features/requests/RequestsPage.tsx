@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  type Desk,
   type History,
   isNotSignedIn,
   myRequests,
@@ -8,6 +9,7 @@ import {
   type Year,
 } from '../../api';
 import { inDays, moment, sentenceCase } from '../../format';
+import { Icon, iconForLeaveType } from '../../Icon';
 import { AttachedFiles } from './Attachments';
 
 /** My request history. FR 54, LMS 402, FR 41, FR 39. */
@@ -54,23 +56,18 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
   return (
     <div className="page">
       <div className="pagehead">
-        <div>
-          <h2>
-            {history.year === null
-              ? 'Everything you have asked for'
-              : `Your leave requests in ${history.year.label}`}
-          </h2>
-          <p>{counted(history)}</p>
-        </div>
+        <p className="muted">{counted(history)}</p>
 
-        <YearFilter
-          years={history.years}
-          showing={history.year}
-          busy={loading}
-          onPick={(leaveYearId) => {
-            load(leaveYearId);
-          }}
-        />
+        <div className="controls">
+          <YearFilter
+            years={history.years}
+            showing={history.year}
+            busy={loading}
+            onPick={(leaveYearId) => {
+              load(leaveYearId);
+            }}
+          />
+        </div>
       </div>
 
       {/* A history is already on screen, so a failure to load a *different* year is a notice
@@ -104,56 +101,87 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
 function RequestCard({ entry, onSignedOut }: { entry: RequestEntry; onSignedOut: () => void }) {
   return (
     <li className={`card request is-${entry.status.toLowerCase()}`}>
-      <div className="card-head">
-        <h3>
-          {entry.from} to {entry.to}
-        </h3>
+      {/* LMS 409. What was asked for on the left, how it got where it is on the right — so
+          the account of a decision sits beside the thing decided rather than under it. */}
+      <div className="asked-and-answered">
+        <div className="asked-for">
+          <div className="card-head">
+            <span className="chip">
+              <Icon name={iconForLeaveType(entry.typeName)} />
+            </span>
 
-        <div className="tags">
-          <span className={`tag status is-${entry.status.toLowerCase()}`}>
-            {sentenceCase(entry.statusInWords)}
-          </span>
+            <h3>
+              {entry.from} to {entry.to}
+            </h3>
+
+            <div className="tags">
+              <span className={`tag status is-${entry.status.toLowerCase()}`}>
+                {sentenceCase(entry.statusInWords)}
+              </span>
+            </div>
+          </div>
+
+          <p className="request-what">
+            <strong>{entry.typeName}</strong>
+            {' · '}
+            {inDays(entry.days)}
+            {/* FR 24. The two figures differ whenever a weekend or a public holiday falls
+                inside the period, and the difference is the single thing people query about a
+                day count. Said only when it is true, because "7 days, 7 days off" is noise. */}
+            {entry.calendarDays === entry.days
+              ? ''
+              : ` charged, ${inDays(entry.calendarDays)} away`}
+            {' · '}
+            {entry.countingBasisLabel.toLowerCase()}
+          </p>
+
+          {/* What they said when they asked. Quoted, because it is somebody's own words and an
+              approver decided on them — the same reason the comments are quoted. Nothing at
+              all where the type asked for none. FR 10. */}
+          {entry.reason === null ? null : <blockquote className="said">{entry.reason}</blockquote>}
+
+          {/* FR 38a. Which desk it went to first, which is what somebody chasing it needs. */}
+          {entry.chain.length === 0 ? null : (
+            <p className="wentto">
+              Went to: <strong>{deskLabel(entry.chain[0])}</strong>
+            </p>
+          )}
+
+          {/* FR 41. The one sentence a person acts on, and it says what has happened before it
+              says what has not. Server-composed; see the module note. */}
+          <p className={`progress${entry.agreed ? ' is-agreed' : ''}`}>{entry.progressInWords}</p>
+
+          {/* FR 12, NFR SEC 04, LMS 407. Shut, and asked for only when it is opened: a list of
+              filenames is itself information about somebody's health. */}
+          <AttachedFiles requestId={entry.requestId} onSignedOut={onSignedOut} />
+
+          {/* Normally empty. A chain that has gained a desk since a request was approved is a
+              real and legitimate state — LMS 316's `stagesMissing` — and saying so is better
+              than a screen that quietly implies somebody signed who never did. */}
+          {entry.agreed && entry.stagesMissing.length > 0 ? (
+            <p className="muted">
+              This was agreed under an earlier approval policy. The chain for this kind of leave has
+              changed since.
+            </p>
+          ) : null}
         </div>
+
+        <Trail steps={entry.trail} />
       </div>
-
-      <p className="request-what">
-        <strong>{entry.typeName}</strong>
-        {' · '}
-        {inDays(entry.days)}
-        {/* FR 24. The two figures differ whenever a weekend or a public holiday falls inside
-            the period, and the difference is the single thing people query about a day count.
-            Said only when it is true, because "7 days, 7 days off" is noise. */}
-        {entry.calendarDays === entry.days ? '' : ` charged, ${inDays(entry.calendarDays)} away`}
-        {' · '}
-        {entry.countingBasisLabel.toLowerCase()}
-      </p>
-
-      {/* What they said when they asked. Quoted, because it is somebody's own words and an
-          approver decided on them — the same reason the comments below are quoted. Nothing
-          at all where the type asked for none. FR 10. */}
-      {entry.reason === null ? null : <blockquote className="said">{entry.reason}</blockquote>}
-
-      {/* FR 41. The one sentence a person acts on, and it says what has happened before it
-          says what has not. Server-composed; see the module note. */}
-      <p className={`progress${entry.agreed ? ' is-agreed' : ''}`}>{entry.progressInWords}</p>
-
-      <Trail steps={entry.trail} />
-
-      {/* FR 12, NFR SEC 04, LMS 407. Shut, and asked for only when it is opened: a list of
-          filenames is itself information about somebody's health. */}
-      <AttachedFiles requestId={entry.requestId} onSignedOut={onSignedOut} />
-
-      {/* Normally empty. A chain that has gained a desk since a request was approved is a
-          real and legitimate state — LMS 316's `stagesMissing` — and saying so is better than
-          a screen that quietly implies somebody signed who never did. */}
-      {entry.agreed && entry.stagesMissing.length > 0 ? (
-        <p className="muted">
-          This was agreed under an earlier approval policy. The chain for this kind of leave has
-          changed since.
-        </p>
-      ) : null}
     </li>
   );
+}
+
+/** A desk, in the words somebody says. FR 38a. */
+function deskLabel(desk: Desk): string {
+  switch (desk) {
+    case 'MANAGER':
+      return 'Your line manager';
+    case 'HR':
+      return 'HR';
+    default:
+      return 'The Chief Executive';
+  }
 }
 
 /**
@@ -272,10 +300,6 @@ function Nothing({ year }: { year: Year | null }) {
 function Skeletons() {
   return (
     <>
-      <div className="pagehead">
-        <h2>Your leave requests</h2>
-      </div>
-
       <ol className="requests">
         {[0, 1, 2].map((one) => (
           <li key={one} className="skeleton is-tall" />

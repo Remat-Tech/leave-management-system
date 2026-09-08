@@ -9,6 +9,7 @@ import { Guard } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
@@ -40,12 +41,15 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * The team calendar, over HTTP. FR 57, LMS 406.
+ * The team calendar, over HTTP. FR 57, LMS 406, LMS 409.
  *
- * Four claims:
+ * Five claims:
  *
- *   **The calendar is the team the reader is on.** Whoever shares their line manager, that
- *   manager included — and never the people a colleague of theirs manages.
+ *   **The calendar is the reader's department.** LMS 409 made the department the scope, so a
+ *   colleague two reporting lines away is on it and somebody in Finance is not.
+ *
+ *   **Looking past your own department is HR's.** Everybody else is refused, and refused
+ *   rather than quietly narrowed to their own.
  *
  *   **Leave type and reason never leave the server.** The claim the story turns on, asserted
  *   on the wire rather than in the domain, because the wire is what a colleague can read.
@@ -118,6 +122,7 @@ beforeAll(async () => {
     }),
     balances: cached,
     employees,
+    departments: new DepartmentRepository(db),
     types,
     years,
     requests: leaveRequests,
@@ -180,52 +185,47 @@ afterAll(async () => {
   await admin?.end();
 });
 
-describe('who is on the calendar, FR 57', () => {
+describe('who is on the calendar, FR 57, LMS 409', () => {
   it('needs a session like everything else behind the line', async () => {
     expect((await fetch(`${origin}/api/me/calendar`)).status).toBe(401);
   });
 
-  /* Adwoa reports to Kofi, with Abena and Kojo. Kofi is on it because a team whose
-     manager's absences are invisible is not a calendar anybody can plan a week around. */
-  it('is everybody sharing the reader’s line manager, the manager included', async () => {
+  /**
+   * Operations, whole. Yaw, Akosua, Kofi, Adwoa, Abena and Kojo, across four reporting
+   * levels — which is the point of LMS 409: cover is arranged inside a department rather
+   * than inside a reporting line, so the calendar is drawn the way cover is arranged.
+   */
+  it('is everybody in the reader’s department, the reader included', async () => {
     const calendar = await calendarFor(people.officer);
 
     expect(calendar.employeeId).toBe(people.officer);
-    expect(calendar.size).toBe(4);
-    expect(calendar.colleagues.map((one) => one.name)).toEqual([
+    expect(calendar.department?.name).toBe('Operations');
+    expect(calendar.size).toBe(6);
+    expect(calendar.colleagues.map((one) => one.name).sort()).toEqual([
+      'Abena Sarpong',
+      'Adwoa Frimpong',
+      'Akosua Darko',
       'Kofi Boateng',
       'Kojo Antwi',
-      'Adwoa Frimpong',
-      'Abena Sarpong',
+      'Yaw Boateng',
     ]);
     expect(colleagueOf(calendar, people.officer).isMe).toBe(true);
     expect(colleagueOf(calendar, people.teamLead).isTheManager).toBe(true);
   });
 
-  /**
-   * The claim a peer calendar could most easily get wrong.
-   *
-   * Kofi reports to Akosua and manages three people. His calendar is Akosua and himself —
-   * the team he is *on* — and the three below him are on his `/api/me/team` screen instead.
-   */
-  it('and never the people a colleague manages', async () => {
-    const calendar = await calendarFor(people.teamLead);
+  /* The claim the scope turns on. Efe is the finance manager and Adwoa is in Operations. */
+  it('and never somebody in another department', async () => {
+    const calendar = await calendarFor(people.officer);
 
-    expect(calendar.colleagues.map((one) => one.employeeId)).toEqual([
-      people.opsManager,
-      people.teamLead,
-    ]);
-    expect(calendar.colleagues.map((one) => one.employeeId)).not.toContain(people.officer);
+    expect(calendar.colleagues.map((one) => one.employeeId)).not.toContain(people.financeManager);
   });
 
-  /* FR 04's one seat. Kwame reports to nobody, so there is no team he is on. */
-  it('and refuses the one employee who reports to nobody, saying why', async () => {
-    const response = await get('/api/me/calendar', { cookie: mintSession(people.ceo, SECRET) });
+  /* FR 04's one seat is no longer a refusal: Kwame is in Executive like anybody else. */
+  it('and draws the employee who reports to nobody their own department', async () => {
+    const calendar = await calendarFor(people.ceo);
 
-    expect(response.status).toBe(403);
-    expect(((await response.json()) as { message: string }).message).toContain(
-      'not recorded as reporting to anybody',
-    );
+    expect(calendar.department?.name).toBe('Executive');
+    expect(calendar.colleagues.map((one) => one.employeeId)).toEqual([people.ceo]);
   });
 
   /* FR 06. Kojo left in July and is still on the line until HR moves it. */
@@ -236,14 +236,84 @@ describe('who is on the calendar, FR 57', () => {
     expect(kojo.inWords).toContain('They have left');
   });
 
-  /* `/me` names the reader. Kofi's calendar is two people and Adwoa's is four, so a route
+  /* `/me` names the reader. Kwame's calendar is one person and Adwoa's is six, so a route
      that read the parameter would answer visibly differently. */
   it('and a query parameter naming somebody else changes nothing', async () => {
-    const response = await get(`/api/me/calendar?employeeId=${people.teamLead}`, {
+    const response = await get(`/api/me/calendar?employeeId=${people.ceo}`, {
       cookie: mintSession(people.officer, SECRET),
     });
 
-    expect(((await response.json()) as JsonCalendar).colleagues).toHaveLength(4);
+    expect(((await response.json()) as JsonCalendar).colleagues).toHaveLength(6);
+  });
+});
+
+describe('which department, LMS 409', () => {
+  /* Everybody else gets their own department and is told it is the only one they may name. */
+  it('offers a colleague their own department and no choice about it', async () => {
+    const calendar = await calendarFor(people.officer);
+
+    expect(calendar.canChooseDepartment).toBe(false);
+    expect(calendar.departments.map((one) => one.name)).toEqual(['Operations']);
+  });
+
+  it('and refuses them another department, saying whose that is', async () => {
+    const response = await get(`/api/me/calendar?departmentId=${await departmentIdOf('Finance')}`, {
+      cookie: mintSession(people.officer, SECRET),
+    });
+
+    expect(response.status).toBe(403);
+    expect(((await response.json()) as { message: string }).message).toContain(
+      'Looking across departments is for HR',
+    );
+  });
+
+  /* Asking for the one they are already in is the ordinary screen, not an attempt at another. */
+  it('and lets them name their own department without refusing them', async () => {
+    const calendar = await calendarFor(
+      people.officer,
+      `?departmentId=${await departmentIdOf('Operations')}`,
+    );
+
+    expect(calendar.department?.name).toBe('Operations');
+  });
+
+  /* HR reads every record, so HR reads every department and may pick one. */
+  it('lets HR pick any department', async () => {
+    const calendar = await calendarFor(
+      people.hrOfficer,
+      `?departmentId=${await departmentIdOf('Finance')}`,
+    );
+
+    expect(calendar.canChooseDepartment).toBe(true);
+    expect(calendar.department?.name).toBe('Finance');
+    expect(calendar.colleagues.map((one) => one.employeeId)).toEqual([people.financeManager]);
+    expect(calendar.departments.map((one) => one.name)).toContain('Operations');
+  });
+
+  /* The empty string is HR asking for all of them at once. */
+  it('and lets HR ask for every department at once', async () => {
+    const calendar = await calendarFor(people.hrOfficer, '?departmentId=');
+
+    expect(calendar.department).toBeNull();
+    expect(calendar.inWords).toContain('in every department');
+    expect(calendar.colleagues.map((one) => one.employeeId)).toContain(people.financeManager);
+    expect(calendar.colleagues.map((one) => one.employeeId)).toContain(people.officer);
+  });
+
+  /* Which department a colleague is in, so the rows have a heading to sit under. */
+  it('and names the department each colleague is in', async () => {
+    const calendar = await calendarFor(people.hrOfficer, '?departmentId=');
+
+    expect(colleagueOf(calendar, people.financeManager).department?.name).toBe('Finance');
+    expect(colleagueOf(calendar, people.officer).department?.name).toBe('Operations');
+  });
+
+  it('and a department id nobody has is a 404', async () => {
+    const response = await get('/api/me/calendar?departmentId=999999', {
+      cookie: mintSession(people.hrOfficer, SECRET),
+    });
+
+    expect(response.status).toBe(404);
   });
 });
 
@@ -434,10 +504,16 @@ interface JsonAbsence {
   inWords: string;
 }
 
+interface JsonDepartment {
+  id: string;
+  name: string;
+}
+
 interface JsonColleague {
   employeeId: string;
   name: string;
   jobTitle: string | null;
+  department: JsonDepartment | null;
   employmentStatus: string;
   isMe: boolean;
   isTheManager: boolean;
@@ -450,6 +526,9 @@ interface JsonCalendar {
   employeeId: string;
   year: { id: string; label: string; startDate: string; endDate: string };
   years: { id: string; label: string }[];
+  department: JsonDepartment | null;
+  departments: JsonDepartment[];
+  canChooseDepartment: boolean;
   from: string;
   to: string;
   size: number;
@@ -545,6 +624,15 @@ function grant(employeeId: string, leaveTypeId: string, days: number, leaveYearI
     days,
     reason: 'Entitlement for the year',
   });
+}
+
+/** LMS 409. The department the seed gave that name. */
+async function departmentIdOf(name: string): Promise<string> {
+  const { rows } = await admin.query<{ id: string }>('SELECT id FROM department WHERE name = $1', [
+    name,
+  ]);
+
+  return rows[0].id;
 }
 
 async function yearIdOf(label: string): Promise<string> {

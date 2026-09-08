@@ -1,8 +1,15 @@
-/** The team calendar, over HTTP. FR 57, LMS 406, NFR DAT 03. */
+/** The team calendar, over HTTP. FR 57, LMS 406, LMS 409, NFR DAT 03. */
 
 import { type Request, type Response, Router } from 'express';
 import type { LeaveYear } from '../leave-year/leave-year.js';
-import type { Absence, AwayDay, AwayOn, Colleague, TeamCalendarView } from './team-calendar.js';
+import type {
+  Absence,
+  AwayDay,
+  AwayOn,
+  Colleague,
+  DepartmentOnTheCalendar,
+  TeamCalendarView,
+} from './team-calendar.js';
 import type { TeamCalendarService } from './team-calendar.service.js';
 import { actorOf } from '../../http/identify.js';
 
@@ -14,10 +21,11 @@ export function teamCalendarRoutes({ calendar }: TeamCalendarRoutes): Router {
   const routes = Router();
 
   /**
-   * Who is away, on the team I am on. FR 57.
+   * Who is away, in the department I am in. FR 57, LMS 409.
    *
-   * `/me` names the *reader*, and there is no id to supply: the calendar is whoever shares
-   * their line manager. Somebody else's team cannot be asked for.
+   * `/me` names the *reader*, and there is no employee id to supply. `departmentId` is the one
+   * thing that may be asked for, and asking for another department is HR's — the service
+   * refuses it for everybody else rather than the route deciding.
    */
   routes.get('/me/calendar', (request: Request, response: Response, next) => {
     const actor = actorOf(response);
@@ -28,7 +36,10 @@ export function teamCalendarRoutes({ calendar }: TeamCalendarRoutes): Router {
     }
 
     void calendar
-      .forEmployee(actor, actor.employeeId, { leaveYearId: oneYearIn(request) })
+      .forEmployee(actor, actor.employeeId, {
+        leaveYearId: oneYearIn(request),
+        departmentId: oneDepartmentIn(request),
+      })
       .then((view) => {
         response.json(calendarAsJson(view));
       })
@@ -46,6 +57,19 @@ function oneYearIn(request: Request): string | undefined {
 }
 
 /**
+ * The department asked for. LMS 409.
+ *
+ * The empty string is kept rather than dropped, because it is what "every department" is
+ * asked for with — and it is `undefined`, the parameter not being there at all, that means
+ * the reader's own.
+ */
+function oneDepartmentIn(request: Request): string | undefined {
+  const value = request.query.departmentId;
+
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
  * The whole answer, field by field.
  *
  * Written out rather than sent whole, so that a field added to the domain reaches a colleague
@@ -56,6 +80,10 @@ function calendarAsJson(view: TeamCalendarView): unknown {
     employeeId: view.employeeId,
     year: yearAsJson(view.year),
     years: view.years.map(yearAsJson),
+    /** LMS 409. Null where every department is being shown at once. */
+    department: departmentAsJson(view.department),
+    departments: view.departments.map(departmentAsJson),
+    canChooseDepartment: view.canChooseDepartment,
     from: view.from,
     to: view.to,
     size: view.size,
@@ -83,6 +111,8 @@ function colleagueAsJson(colleague: Colleague): unknown {
     employeeId: colleague.employeeId,
     name: colleague.name,
     jobTitle: colleague.jobTitle,
+    /** LMS 409. The heading they sit under where the calendar spans more than one. */
+    department: departmentAsJson(colleague.department),
     /** FR 06. */
     employmentStatus: colleague.employmentStatus,
     isMe: colleague.isMe,
@@ -112,6 +142,11 @@ function dayAsJson(day: AwayDay): unknown {
     isEverybody: day.isEverybody,
     away: day.away.map(awayAsJson),
   };
+}
+
+/** A department, written out for the same reason everything else here is. LMS 409. */
+function departmentAsJson(department: DepartmentOnTheCalendar | null): unknown {
+  return department === null ? null : { id: department.id, name: department.name };
 }
 
 function awayAsJson(one: AwayOn): unknown {

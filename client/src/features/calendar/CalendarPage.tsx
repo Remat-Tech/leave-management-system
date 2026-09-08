@@ -1,34 +1,58 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   type Absence,
-  type AwayDay,
   type AwayOn,
   type Colleague,
+  type DepartmentOnTheCalendar,
+  EVERY_DEPARTMENT,
   isNotSignedIn,
   myCalendar,
+  myTeam,
+  type Team,
   type TeamAwayCalendar,
+  type TeamMember,
   type Year,
 } from '../../api';
 import { inDays } from '../../format';
+import { Icon } from '../../Icon';
+import { Reports } from '../team/Reports';
+import { Month, nameOf, step } from './Month';
 
 /**
- * Who is away and when, on the team I am on. FR 57, LMS 406.
+ * Who is away, in a department. FR 55, FR 56, FR 57, LMS 406, LMS 409.
  *
- * Dates and names, and nothing else. There is no leave type on this screen and no reason,
- * because neither is on the wire — `api.ts` says why.
+ * Dates and names for everybody; a report's balances and bookings for their own manager, out
+ * of `/api/me/team`, which is the only call that may name a leave type.
  */
-export function CalendarPage({ onSignedOut }: { onSignedOut: () => void }) {
+export function CalendarPage({
+  onSignedOut,
+  yearId,
+  onYears,
+}: {
+  onSignedOut: () => void;
+  /** LMS 409. The year the picker in the bar is showing. */
+  yearId: string | undefined;
+  onYears: (years: Year[], showing: string) => void;
+}) {
   const [calendar, setCalendar] = useState<TeamAwayCalendar | undefined>(undefined);
+  const [team, setTeam] = useState<Team | undefined>(undefined);
+  const [month, setMonth] = useState<string | undefined>(undefined);
+
+  /** LMS 409. Held here rather than read back off the answer, so changing the year in the bar
+      does not quietly reset an HR reader's department back to their own. */
+  const [departmentId, setDepartmentId] = useState<string | undefined>(undefined);
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(
-    (leaveYearId?: string) => {
+    (leaveYearId?: string, departmentId?: string) => {
       setLoading(true);
 
-      myCalendar(leaveYearId)
+      myCalendar(leaveYearId, departmentId)
         .then((next) => {
           setCalendar(next);
+          setMonth(openingMonth(next));
+          onYears(next.years, next.year.id);
           setProblem(undefined);
         })
         .catch((error: unknown) => {
@@ -43,42 +67,47 @@ export function CalendarPage({ onSignedOut }: { onSignedOut: () => void }) {
         .finally(() => {
           setLoading(false);
         });
+
+      /* FR 55. Refused for anybody who manages nobody, which is not a fault: the extra the
+         cards carry is simply not there for them. */
+      myTeam(leaveYearId)
+        .then(setTeam)
+        .catch(() => {
+          setTeam(undefined);
+        });
     },
-    [onSignedOut],
+    [onSignedOut, onYears],
   );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    load(yearId, departmentId);
+  }, [load, yearId, departmentId]);
 
-  /* Usually a refusal rather than a fault: the tab is offered to everybody, and the one
-     employee who reports to nobody lands on the server's sentence saying so. */
   if (calendar === undefined) {
     return (
-      <div className="page">
-        {loading ? (
-          <Skeletons />
-        ) : (
-          <>
-            <div className="pagehead">
-              <h2>Who is away</h2>
-            </div>
-            <p className="notice">{problem}</p>
-          </>
-        )}
-      </div>
+      <div className="page">{loading ? <Skeletons /> : <p className="notice">{problem}</p>}</div>
     );
   }
+
+  const reports = new Map(team?.members.map((one) => [one.employeeId, one]) ?? []);
+  const showing = month ?? openingMonth(calendar);
 
   return (
     <div className="page">
       <div className="pagehead">
-        <div>
-          <h2>Who is away in {calendar.year.label}</h2>
-          <p>{calendar.inWords}</p>
-        </div>
+        <p className="muted">{calendar.inWords}</p>
 
-        <YearPicker years={calendar.years} showing={calendar.year} busy={loading} onPick={load} />
+        <div className="controls">
+          {/* LMS 409. HR only — everybody else gets their own department and no picker. */}
+          {calendar.canChooseDepartment ? (
+            <DepartmentPicker
+              departments={calendar.departments}
+              showing={calendar.department}
+              busy={loading}
+              onPick={setDepartmentId}
+            />
+          ) : null}
+        </div>
       </div>
 
       {problem === undefined ? null : <p className="notice">{problem}</p>}
@@ -87,37 +116,81 @@ export function CalendarPage({ onSignedOut }: { onSignedOut: () => void }) {
 
       <section className="calendar">
         <div className="calendar-head">
-          <h3>The days somebody is off</h3>
-          <p>
-            {calendar.days.length === 0
-              ? `Nothing is booked between ${calendar.from} and ${calendar.to}.`
-              : `${String(calendar.days.length)} days, and at most ${String(calendar.busiest)} of you away at once.`}
-          </p>
+          <h3>{calendar.department?.name ?? 'Every department'}</h3>
+
+          <div className="month-steps">
+            <Step
+              to={step(showing, -1, calendar.from, calendar.to)}
+              label="Previous month"
+              mark="‹"
+              onPick={setMonth}
+            />
+            <span className="month-name">{nameOf(showing)}</span>
+            <Step
+              to={step(showing, 1, calendar.from, calendar.to)}
+              label="Next month"
+              mark="›"
+              onPick={setMonth}
+            />
+          </div>
+
+          <p>{summaryOf(calendar)}</p>
         </div>
 
-        {calendar.days.length === 0 ? null : (
-          <ol className="months">
-            {monthsOf(calendar.days).map((month) => (
-              <li key={month.key}>
-                <h4>{month.label}</h4>
-
-                <ul className="awaydays">
-                  {month.days.map((day) => (
-                    <Day key={day.date} day={day} />
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ol>
-        )}
+        <Month
+          month={showing}
+          days={calendar.days}
+          colleagues={calendar.colleagues}
+          today={todayInWholeDays()}
+        />
       </section>
+
+      {/* FR 57. What this screen deliberately does not say, said. */}
+      <p className="footnote">
+        <Icon name="info" />
+        Only the dates are shown. Leave type and reason are not on this screen at all — just who is
+        away and when.
+      </p>
 
       <ol className="requests">
         {calendar.colleagues.map((colleague) => (
-          <ColleagueCard key={colleague.employeeId} colleague={colleague} />
+          <ColleagueCard
+            key={colleague.employeeId}
+            colleague={colleague}
+            report={reports.get(colleague.employeeId)}
+            named={calendar.department === null}
+          />
         ))}
       </ol>
     </div>
+  );
+}
+
+/** One step through the year. Absent at either end rather than disabled and unexplained. */
+function Step({
+  to,
+  label,
+  mark,
+  onPick,
+}: {
+  to: string | undefined;
+  label: string;
+  mark: string;
+  onPick: (month: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={to === undefined}
+      onClick={() => {
+        if (to !== undefined) {
+          onPick(to);
+        }
+      }}
+    >
+      <span aria-hidden="true">{mark}</span>
+    </button>
   );
 }
 
@@ -125,15 +198,28 @@ export function CalendarPage({ onSignedOut }: { onSignedOut: () => void }) {
 function Today({ away, size }: { away: AwayOn[]; size: number }) {
   return (
     <section className="today">
-      <h3>Away today</h3>
+      <span className="chip">
+        <Icon name="people" />
+      </span>
 
-      {away.length === 0 ? (
-        <p className="muted">All {String(size)} of you are in.</p>
-      ) : (
+      <div className="today-said">
+        <h3>Away today</h3>
+        <p className="muted">
+          {away.length === 0
+            ? `All ${String(size)} of you are in.`
+            : `${String(away.length)} ${away.length === 1 ? 'person is' : 'people are'} off today`}
+        </p>
+      </div>
+
+      {away.length === 0 ? null : (
         <ul className="who">
           {away.map((one) => (
             <li key={one.employeeId}>
               <span className={`tag${one.agreed ? ' is-agreed' : ''}`}>
+                {/* No photograph on the record, so initials. */}
+                <i className="initials" aria-hidden="true">
+                  {initialsOf(one.name)}
+                </i>
                 {one.name}
                 {one.isMe ? ' (you)' : ''}
               </span>
@@ -145,35 +231,29 @@ function Today({ away, size }: { away: AwayOn[]; size: number }) {
   );
 }
 
-function Day({ day }: { day: AwayDay }) {
-  return (
-    <li className={day.away.length > 1 ? 'is-clash' : undefined}>
-      <span className="when">{dayOfMonth(day.date)}</span>
+/** Two letters, standing in for a photograph the record does not hold. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
 
-      <span className="who">
-        {day.away.map((one) => (
-          <span
-            key={one.employeeId}
-            className={`tag${one.agreed ? ' is-agreed' : ''}${one.isMe ? ' is-me' : ''}`}
-          >
-            {one.isMe ? 'You' : one.name}
-            {one.agreed ? '' : ' (asked for)'}
-          </span>
-        ))}
-      </span>
-
-      {/* Colour is not what says this, and neither is the border. */}
-      {day.away.length > 1 ? (
-        <span className="clash">
-          {day.isEverybody ? 'everybody' : `${String(day.away.length)} away`}
-        </span>
-      ) : null}
-    </li>
-  );
+  return `${parts[0]?.charAt(0) ?? ''}${parts.length > 1 ? parts[parts.length - 1].charAt(0) : ''}`.toUpperCase();
 }
 
-/** One person on the calendar, and the dates they are off. FR 57. */
-function ColleagueCard({ colleague }: { colleague: Colleague }) {
+/**
+ * One person on the calendar. FR 57, and FR 55 and FR 56 where they report to the reader.
+ *
+ * `report` is the manager's own answer from `/api/me/team`; without one the card is dates and
+ * names, which is the whole of what a peer may read.
+ */
+function ColleagueCard({
+  colleague,
+  report,
+  named,
+}: {
+  colleague: Colleague;
+  report: TeamMember | undefined;
+  /** LMS 409. Whether the department is worth saying, which it is across all of them. */
+  named: boolean;
+}) {
   const left = colleague.employmentStatus === 'TERMINATED';
 
   return (
@@ -186,6 +266,7 @@ function ColleagueCard({ colleague }: { colleague: Colleague }) {
 
         <div className="tags">
           {colleague.isTheManager ? <span className="tag">Your line manager</span> : null}
+          {report === undefined ? null : <span className="tag">Reports to you</span>}
           {colleague.awayToday ? <span className="tag flag">Away today</span> : null}
           {left ? <span className="tag">Has left</span> : null}
         </div>
@@ -193,16 +274,21 @@ function ColleagueCard({ colleague }: { colleague: Colleague }) {
 
       <p className="request-what">
         {colleague.jobTitle === null ? 'No job title on the record' : colleague.jobTitle}
+        {named && colleague.department !== null ? ` · ${colleague.department.name}` : ''}
       </p>
 
       <p className="muted">{colleague.inWords}</p>
 
-      {colleague.absences.length === 0 ? null : (
-        <ul className="away">
-          {colleague.absences.map((absence) => (
-            <AbsenceRow key={`${absence.from}-${absence.to}`} absence={absence} />
-          ))}
-        </ul>
+      {report === undefined ? (
+        colleague.absences.length === 0 ? null : (
+          <ul className="away">
+            {colleague.absences.map((absence) => (
+              <AbsenceRow key={`${absence.from}-${absence.to}`} absence={absence} />
+            ))}
+          </ul>
+        )
+      ) : (
+        <Reports member={report} />
       )}
     </li>
   );
@@ -223,32 +309,32 @@ function AbsenceRow({ absence }: { absence: Absence }) {
   );
 }
 
-/** The year picker, as the team screen's. */
-function YearPicker({
-  years,
+/** LMS 409. HR's filter. Labelled rather than placeholder-ed, as the year picker is. */
+function DepartmentPicker({
+  departments,
   showing,
   busy,
   onPick,
 }: {
-  years: Year[];
-  showing: Year;
+  departments: DepartmentOnTheCalendar[];
+  showing: DepartmentOnTheCalendar | null;
   busy: boolean;
-  onPick: (leaveYearId: string) => void;
+  onPick: (departmentId: string) => void;
 }) {
   return (
     <label>
-      Leave year
+      Department
       <select
-        value={showing.id}
-        disabled={busy || years.length < 2}
+        value={showing?.id ?? EVERY_DEPARTMENT}
+        disabled={busy}
         onChange={(event) => {
           onPick(event.target.value);
         }}
       >
-        {years.map((year) => (
-          <option key={year.id} value={year.id}>
-            {year.label}
-            {year.isClosed ? ' (closed)' : ''}
+        <option value={EVERY_DEPARTMENT}>Every department</option>
+        {departments.map((department) => (
+          <option key={department.id} value={department.id}>
+            {department.name}
           </option>
         ))}
       </select>
@@ -258,66 +344,44 @@ function YearPicker({
 
 /* ------------------------------------------------------------------------- the calendar */
 
-const MONTHS = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
+/** The month covering today, or the first of the year where today is outside it. */
+function openingMonth(calendar: TeamAwayCalendar): string {
+  const today = todayInWholeDays();
 
-/**
- * The away days grouped under the month they fall in.
- *
- * Sliced out of the ten characters rather than parsed, for the reason `api.ts` gives: a
- * calendar date is never handed to `new Date()`.
- */
-function monthsOf(days: AwayDay[]): { key: string; label: string; days: AwayDay[] }[] {
-  const grouped: { key: string; label: string; days: AwayDay[] }[] = [];
-
-  for (const day of days) {
-    const key = day.date.slice(0, 7);
-    const last = grouped.at(-1);
-
-    if (last?.key === key) {
-      last.days.push(day);
-    } else {
-      grouped.push({
-        key,
-        label: `${MONTHS[Number(day.date.slice(5, 7)) - 1] ?? key} ${day.date.slice(0, 4)}`,
-        days: [day],
-      });
-    }
-  }
-
-  return grouped;
+  return today >= calendar.from && today <= calendar.to
+    ? today.slice(0, 7)
+    : calendar.from.slice(0, 7);
 }
 
-/** The day of the month, off the same ten characters and for the same reason. */
-function dayOfMonth(date: string): string {
-  return String(Number(date.slice(8, 10)));
+/**
+ * Today, ten characters, in the reader's own zone.
+ *
+ * The only date this file makes rather than receives, and it is deliberately local: "today"
+ * on a wall calendar is the reader's Tuesday, not UTC's.
+ */
+function todayInWholeDays(): string {
+  const now = new Date();
+
+  return (
+    `${String(now.getFullYear()).padStart(4, '0')}-` +
+    `${String(now.getMonth() + 1).padStart(2, '0')}-` +
+    `${String(now.getDate()).padStart(2, '0')}`
+  );
+}
+
+function summaryOf(calendar: TeamAwayCalendar): string {
+  return calendar.days.length === 0
+    ? `Nothing is booked between ${calendar.from} and ${calendar.to}.`
+    : `${String(calendar.days.length)} days in ${calendar.year.label} have somebody away, and at most ${String(calendar.busiest)} at once.`;
 }
 
 /* The shape of the answer while it is on its way. */
 function Skeletons() {
   return (
-    <>
-      <div className="pagehead">
-        <h2>Who is away</h2>
-      </div>
-
-      <ol className="requests">
-        {[0, 1, 2].map((one) => (
-          <li key={one} className="skeleton is-tall" />
-        ))}
-      </ol>
-    </>
+    <ol className="requests">
+      {[0, 1, 2].map((one) => (
+        <li key={one} className="skeleton is-tall" />
+      ))}
+    </ol>
   );
 }

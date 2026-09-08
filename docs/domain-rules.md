@@ -3508,11 +3508,13 @@ the screen untouched, and `client/src/api.ts` never hands one to `new Date()`. N
 leave year runs to a day rather than to an instant, and converting one in a browser is how the
 last day of the year becomes the second to last for anybody west of Greenwich.
 
-**The client uses no company colours**, on purpose. LMS 409 brings the brand and the component
-library is still "to be confirmed with the designer"; the stylesheet is CSS system colours and
-the browser's own font stack, which means it follows the reader's light or dark setting for
-nothing. Inventing a palette now would not merely look wrong — it would get signed off, and the
-tokens would arrive too late to matter.
+**The client wears the company's colours**, as of LMS 409. The five in the brand guidelines are
+`--brand-*` in `styles.css` and appear nowhere else in it: every rule reaches for a semantic
+token — `--accent`, `--ink`, `--line` — that the brand block assigns, so a repaint is an edit to
+the top of one file. Sora carries headings and figures and Montserrat the running text, which is
+the division the guidelines draw. The dark theme redefines the neutral end only: both brand
+blues are legible on either ground, which is the point of picking them from a palette rather
+than inventing them.
 
 ### My request history
 
@@ -4530,6 +4532,11 @@ decide a request knowing who else is already away*. [The approver queue](#the-ap
 answers that one request at a time and only while a request is waiting; this is the standing
 view, and it is the screen somebody opens before the request arrives.
 
+**It is no longer a screen of its own.** LMS 409. `/api/me/team` is unchanged and everything
+below still holds; what changed is where a person reads it — inside their report's card on
+[Who is away](#who-is-away), because two screens drawing the same calendar over different
+people is a screen somebody learns not to trust.
+
 **Direct reports only, and that is a query rather than a filter.**
 `EmployeeRepository.findReportsOf` is asked for one level, so a report who manages people of
 their own brings none of them here. Akosua manages Kofi, who manages three people: her team is
@@ -4585,10 +4592,11 @@ server owns. Somebody who manages nobody gets the server's sentence.
 ### Who is away
 
 **Everybody can see who is off and when, and nobody can see what kind of leave it is or
-why.** FR 57, LMS 406. [My team](#my-team) answers the manager's question — *can I spare
-them that week, given what everybody has left* — and it does so with balances, leave types
-and request statuses on the screen. This is the same calendar with the private half taken
-out, and it is for the person who only needs to know that Abena is not in on Thursday.
+why.** FR 57, LMS 406, LMS 409. [My team](#my-team) was a second screen drawing the same
+calendar over a different set of people; LMS 409 folded it into this one. A colleague reads
+dates and names, and the manager of the person being read gets the balances and booked leave
+FR 55 and FR 56 put on the old screen — out of `/api/me/team`, which is still the only call
+that may name a leave type.
 
 **The privacy rule is what is not wired up, rather than a filter somebody could forget.**
 `TeamCalendarService` is constructed in `http/app.ts` with the employee, leave request and
@@ -4601,24 +4609,31 @@ that was typed into the fixture.
 
 | | Says | Held by |
 |---|---|---|
-| who is absent | names and dates, for the team you are on | `AwayDay.away`, `Colleague.absences` |
+| who is absent | names and dates, for the department you are in | `AwayDay.away`, `Colleague.absences` |
 | on which dates | ten characters, from the column to the screen | NFR DAT 03, no `new Date()` in the client |
-| type hidden | no leave type repository reaches this service | `TeamCalendarService`'s four arguments |
+| type hidden | no leave type repository reaches this service | `TeamCalendarService`'s five arguments |
 | reason hidden | no field on `Absence` for one | `absenceAsJson`, written out field by field |
-| and nobody else's team | `/me/calendar` names the reader | `actor.employeeId`, off the verified cookie |
+| and nobody else's department | `/me/calendar` names the reader | `actor.employeeId`, off the verified cookie |
+| unless they are HR | asking for another is guarded, not filtered | `teamPolicy.everyDepartment` |
 
-**The team is your line manager and everybody who reports to them, yourself included.** The
-same definition [the approver queue's team context](#the-approver-queue) uses — whoever shares
-a line manager — with the manager themselves added, because a calendar whose manager's
-absences are invisible is not one anybody can plan a week around. The reader is on their own
-calendar, marked, so it reads as a whole team rather than as a list of other people. Nobody a
-colleague manages is on it: one level, one query, as FR 55 is.
+**The calendar is your department.** LMS 409 replaced "whoever shares my line manager" with
+it, because cover is arranged inside a department rather than inside a reporting line: Adwoa
+plans a week around the six people in Operations, across four reporting levels, and not around
+the three who happen to share her team lead. `EmployeeRepository.findInDepartment` is the read,
+so somebody in Finance is never fetched rather than filtered out.
 
-**Which leaves one person out, and it is the right one.** FR 04 permits exactly one employee
-with no line manager, so the Chief Executive is on nobody's team and has no team of their own
-here. `teamPolicy.calendar` refuses them openly, naming the reason, for the same argument
-`teamPolicy.read` refuses somebody who manages nobody: reporting to nobody is a fact about
-yourself, and an empty calendar and no calendar are different news.
+**And it leaves nobody out.** `employee.department_id` is NOT NULL, so every reader is in their
+own answer — the Chief Executive included, who under the old scope had no calendar at all
+because FR 04 leaves them reporting to nobody. `teamPolicy.calendar` still refuses an empty
+department, so a record naming one with nobody in it says what went wrong rather than drawing
+an empty month.
+
+**Looking past your own department is HR's.** `teamPolicy.everyDepartment` allows
+`READS_EVERY_RECORD` and refuses everybody else openly — which departments exist is no secret,
+and who is away inside one is. HR may name any department or ask for all of them at once, and
+`departmentId` carries the three cases: absent is the reader's own, an id is that one, and the
+empty string is every one of them. A colleague asking for a department that is not theirs is
+refused rather than quietly narrowed to their own.
 
 **Calendar days, never the days it cost them.** FR 24. A request that costs Abena four days
 because she works a four day week is still five days of the calendar, and it is the second
@@ -4630,4 +4645,5 @@ than one that will — and saying so discloses nothing about why the days were w
 and withdrawn leave is not on it at all: `liveOverlapping` is the read, as everywhere else.
 
 **And the screen is a tab like the others**, offered to everybody, for the reason
-[LMS 404](#the-approver-queue) gives. The one person it refuses gets the server's sentence.
+[LMS 404](#the-approver-queue) gives. It is now the only calendar: "My team" is not a tab, and
+what was only on it is drawn inside the card of anybody who reports to the reader.

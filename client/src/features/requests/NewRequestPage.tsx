@@ -12,7 +12,18 @@ import {
   type Submitted,
 } from '../../api';
 import { days, inDays, sentenceCase } from '../../format';
+import { Icon, iconForLeaveType } from '../../Icon';
 import { Evidence } from './Attachments';
+
+/**
+ * How long a reason may be.
+ *
+ * A cap the browser holds and the database does not: `leave_request.reason` is TEXT with only
+ * a not-blank CHECK on it. It is here because the design asks for a counter and a counter needs
+ * a denominator — it refuses nothing the server would have taken. Move it into a migration and
+ * the validator if it is ever a rule rather than a courtesy.
+ */
+const REASON_LIMIT = 500;
 
 /**
  * Asking for leave, told the rules while you fill it in. FR 10, FR 11, FR 13, FR 17, FR 32f, LMS 403, LMS 307.
@@ -216,12 +227,9 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
   return (
     <div className="page">
       <div className="pagehead">
-        <div>
-          <h2>Ask for leave</h2>
-          <p>
-            Choose the kind of leave first — what it asks of you is shown before you pick any dates.
-          </p>
-        </div>
+        <p className="muted">
+          Choose the kind of leave first — what it asks of you is shown before you pick any dates.
+        </p>
       </div>
 
       {form.types.length === 0 ? (
@@ -235,6 +243,8 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
               ask();
             }}
           >
+            <h2 className="panel-title">Leave details</h2>
+
             <label>
               Kind of leave
               <select
@@ -312,7 +322,8 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
               {chosen?.reasonRequired === false ? 'Why (optional)' : 'Why'}
               <textarea
                 value={reason}
-                rows={3}
+                rows={4}
+                maxLength={REASON_LIMIT}
                 disabled={asking}
                 required={chosen === undefined || chosen.reasonRequired}
                 placeholder={placeholderFor(chosen)}
@@ -320,6 +331,11 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
                   setReason(event.target.value);
                 }}
               />
+              {/* `aria-hidden`: `maxLength` already tells a screen reader, and a count read
+                  out on every keystroke is unusable. */}
+              <small className="counter" aria-hidden="true">
+                {String(reason.length)}/{String(REASON_LIMIT)}
+              </small>
             </label>
 
             {/* Who will read it, rather than repeating whether it is needed. */}
@@ -350,16 +366,17 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
                   }}
                 />
                 <span>
-                  This is short notice. I understand the approvers may push back, and I have not
-                  planned around it being agreed.
+                  <strong>This is a short notice request.</strong>I understand the approvers may
+                  push back, and I have not planned around it being agreed.
                 </span>
               </label>
             )}
 
             {refusal === undefined ? null : <p className="notice">{refusal}</p>}
 
-            <button type="submit" className="primary" disabled={asking}>
+            <button type="submit" className="primary is-big" disabled={asking}>
               {asking ? 'Asking…' : 'Ask for this leave'}
+              <Icon name="ask" />
             </button>
           </form>
 
@@ -485,10 +502,21 @@ function Cost({
     /* `aria-busy` while a newer count is on its way, so the figure on screen is announced as
        stale rather than silently replaced under somebody reading it. */
     <aside className="cost" aria-busy={pricing}>
+      <h2 className="summary-title">Leave summary</h2>
+
       <div className="card">
-        <div className="headline">
-          <span className="figure">{days(quote.days)}</span>
-          <span className="of">{quote.days === 1 ? 'day' : 'days'} of leave</span>
+        <div className="summary-head">
+          <span className="chip">
+            <Icon name={iconForLeaveType(type?.name ?? '')} />
+          </span>
+
+          <div>
+            <p className="summary-what">{type?.name ?? 'Leave'}</p>
+            <div className="headline">
+              <span className="figure">{days(quote.days)}</span>
+              <span className="of">{quote.days === 1 ? 'day' : 'days'} of leave</span>
+            </div>
+          </div>
         </div>
 
         {/* FR 24. The two figures differ whenever a weekend or a public holiday falls inside
@@ -502,25 +530,53 @@ function Cost({
         {/* NFR USA 03. "Nine days off cost you seven" is an assertion; this is the reason,
             and it is what stops somebody querying the figure. */}
         {quote.free.length === 0 ? null : (
-          <ul className="free">
-            {quote.free.map((day) => (
-              <li key={day.date}>{day.inWords}</li>
-            ))}
-          </ul>
+          <section className="summary-part">
+            <h3>
+              <Icon name="balances" />
+              No cost on
+            </h3>
+            <ul className="free">
+              {quote.free.map((day) => (
+                <li key={day.date}>{day.inWords}</li>
+              ))}
+            </ul>
+          </section>
         )}
 
-        <dl className="standing">
-          <dt>You have</dt>
-          <dd>{inDays(quote.availableNow)}</dd>
-          <dt>After this</dt>
-          <dd className={quote.availableAfter < 0 ? 'overdrawn' : undefined}>
-            {inDays(quote.availableAfter)}
-          </dd>
-        </dl>
+        <section className="summary-part">
+          <h3>
+            <Icon name="balances" />
+            Leave period
+          </h3>
+          <p className="period">
+            <span>
+              {quote.from} to {quote.to}
+            </span>
+            <strong>{inDays(quote.calendarDays)}</strong>
+          </p>
+        </section>
+
+        <section className="summary-part">
+          <h3>
+            <Icon name="balances" />
+            What it leaves you
+          </h3>
+          <dl className="standing">
+            <dt>You have</dt>
+            <dd>{inDays(quote.availableNow)}</dd>
+            <dt>After this</dt>
+            <dd className={quote.availableAfter < 0 ? 'overdrawn' : undefined}>
+              {inDays(quote.availableAfter)}
+            </dd>
+          </dl>
+        </section>
 
         {/* FR 38a. Said here as well as in the rules, because by now it is about this
             request rather than about the kind of leave. */}
-        <p className="rules">Goes to {quote.approvedBy}.</p>
+        <p className="rules">
+          <Icon name="stage" />
+          Goes to {quote.approvedBy}.
+        </p>
       </div>
 
       {quote.warnings.map((warning) => (
@@ -617,10 +673,6 @@ function NothingToAskFor() {
 function Skeleton() {
   return (
     <>
-      <div className="pagehead">
-        <h2>Ask for leave</h2>
-      </div>
-
       <div className="asking">
         <div className="skeleton is-tall" />
         <div className="skeleton" />

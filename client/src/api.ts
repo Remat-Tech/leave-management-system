@@ -475,15 +475,23 @@ export interface Absence {
   inWords: string;
 }
 
+/** A department, as the calendar names one. LMS 409. */
+export interface DepartmentOnTheCalendar {
+  id: string;
+  name: string;
+}
+
 /** Somebody on the team calendar. FR 57. */
 export interface Colleague {
   employeeId: string;
   name: string;
   jobTitle: string | null;
+  /** LMS 409. The heading they sit under where the calendar spans more than one. */
+  department: DepartmentOnTheCalendar | null;
   /** FR 06. */
   employmentStatus: EmploymentStatus;
   isMe: boolean;
-  /** The line manager everybody on the calendar shares. */
+  /** The reader's own line manager, where they are in this department too. */
   isTheManager: boolean;
   awayToday: boolean;
   inWords: string;
@@ -507,11 +515,17 @@ export interface AwayDay {
   away: AwayOn[];
 }
 
-/** Who is away and when, on the team I am on. FR 57. */
+/** Who is away and when, in the department I am in. FR 57, LMS 409. */
 export interface TeamAwayCalendar {
   employeeId: string;
   year: Year;
   years: Year[];
+  /** LMS 409. The department being shown, or null where every one of them is, at once. */
+  department: DepartmentOnTheCalendar | null;
+  /** LMS 409. What may be asked for. Only my own, unless I am HR. */
+  departments: DepartmentOnTheCalendar[];
+  /** LMS 409. Whether the picker is a choice or a label. */
+  canChooseDepartment: boolean;
   from: string;
   to: string;
   /** How many the calendar covers, me included. */
@@ -717,23 +731,43 @@ export async function myTeam(leaveYearId?: string): Promise<Team> {
 }
 
 /**
- * Who is away on the team I am on, for one leave year. FR 57. LMS 406.
+ * Who is away in a department, for one leave year. FR 57, LMS 406, LMS 409.
  *
- * `/me` names the *reader*, and there is no id to pass: the calendar is whoever shares their
- * line manager, that manager included.
+ * `/me` names the *reader*, and there is no employee id to pass: the calendar is the
+ * department they are in.
+ *
+ * **`departmentId` is three values rather than two.** Left out, it is the reader's own;
+ * an id asks for that department, which is HR's to ask; and the empty string asks for every
+ * department at once, which is also HR's. `EVERY_DEPARTMENT` is that empty string, named,
+ * because `myCalendar(year, '')` reads like a bug at every call site.
  *
  * **Leave type and reason are not missing from these types — they are not on the wire.** The
  * service behind this route is handed no leave type repository at all, so a type name is not
  * something the screen declines to draw; it is something the server cannot say.
- *
- * Refused with a 403 and the server's own sentence for the one employee who reports to
- * nobody, and the screen shows that sentence.
  */
-export async function myCalendar(leaveYearId?: string): Promise<TeamAwayCalendar> {
-  const query = leaveYearId === undefined ? '' : `?leaveYearId=${encodeURIComponent(leaveYearId)}`;
+export async function myCalendar(
+  leaveYearId?: string,
+  departmentId?: string,
+): Promise<TeamAwayCalendar> {
+  const query = new URLSearchParams();
 
-  return request<TeamAwayCalendar>('GET', `/api/me/calendar${query}`);
+  if (leaveYearId !== undefined) {
+    query.set('leaveYearId', leaveYearId);
+  }
+
+  /* Set even when empty, because the empty string is what asks for every department and
+     leaving the parameter out asks for the reader's own. */
+  if (departmentId !== undefined) {
+    query.set('departmentId', departmentId);
+  }
+
+  const asked = query.toString();
+
+  return request<TeamAwayCalendar>('GET', `/api/me/calendar${asked === '' ? '' : `?${asked}`}`);
 }
+
+/** What `departmentId` is when the calendar is being asked for every department. LMS 409. */
+export const EVERY_DEPARTMENT = '';
 
 /* ------------------------------------------ several at once. FR 51, LMS 328 */
 

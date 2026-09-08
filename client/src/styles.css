@@ -1,89 +1,165 @@
 /**
- * The stylesheet, and what it deliberately does not decide.
+ * The stylesheet. LMS 409 brought the brand; it lives in the two token blocks below.
  *
- * **No company colours.** LMS 409 brings the brand, and the README's stack table says the
- * component library is "to be confirmed with the designer" and must "accept company fonts
- * and colours as tokens". So everything below is either a neutral grey, a shade derived
- * from the reader's own text colour, or the operating system's accent — and every one of
- * them is a custom property on `:root`. When the brand arrives it is a change to the two
- * token blocks and to nothing else.
+ * The brand guidelines' five colours are `--brand-*` and appear nowhere else — every rule
+ * reaches for a semantic token instead, so a repaint is an edit to the top of this file.
+ * Primary #020202 and #006AFE; secondary #A0A0A0, #FFFFFF and #1FC0FF, used sparingly.
+ * Sora for headings and figures, Montserrat for running text.
  *
- * That restraint is not timidity. A palette invented now would not merely look wrong; it
- * would get signed off, and the real tokens would arrive too late to matter.
- *
- * **Two themes, for free.** The tokens are redefined under `prefers-color-scheme: dark`,
- * so the page follows whatever the reader has already chosen rather than asserting a white
- * background at somebody working in the evening.
- *
- * **Colour never carries meaning on its own.** An overdrawn balance is red *and* says
- * "overdrawn"; the usage bar is a colour *and* has a legend with the figures written out.
- * NFR USA 03, and the reason is that roughly one man in twelve cannot tell the first two
- * of those apart.
- *
- * **One layout, told how to bend.** LMS 408, NFR USA 01. No phone stylesheet and no phone
- * markup — the same cards and the same form, with a few places told what to do when there is
- * less room. Breakpoints are in `rem` so they follow the reader's text size.
+ * Colour never carries meaning alone: every one of them has a word beside it. NFR USA 03.
+ * One layout told how to bend rather than a phone stylesheet. LMS 408, NFR USA 01.
  */
 
+/**
+ * Sora, the company's primary typeface. LMS 409.
+ *
+ * Served from `client/public/fonts` rather than fetched from Google: this is an internal
+ * system behind a login, and a font request told Google the IP of everybody signing in to it.
+ * Four weights, latin only, about 96 KB in all.
+ *
+ * `swap` so a slow font never leaves the page blank, and the stack behind it is the reader's
+ * own system font — which is what they see if the files fail to load at all.
+ */
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/sora-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/sora-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/sora-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/sora-700.woff2') format('woff2');
+}
+
 :root {
-  /* Neutrals. A plain grey ramp, placeholder until LMS 409. */
-  --page: #f6f7f9;
-  --card: #ffffff;
-  --ink: #14181f;
-  --ink-soft: #4a5262;
-  --ink-faint: #6b7383;
-  --line: #e3e6eb;
-  --line-strong: #ccd1d9;
+  /* ---------------------------------------------- the brand, and the only place it is named */
+  --brand-black: #020202;
+  --brand-blue: #006afe;
+  --brand-sky: #1fc0ff;
+  --brand-grey: #a0a0a0;
+  --brand-white: #ffffff;
 
-  /* The one colour with a job. `AccentColor` is the reader's own OS accent where the
-     browser supports it, and a neutral slate where it does not. */
-  --accent: #3d5afe;
-  --accent: AccentColor;
-  --accent-ink: #ffffff;
-  --accent-ink: AccentColorText;
+  /* Neutrals, mixed from the brand black rather than picked, so the greys are the company's
+     black diluted and not a second, slightly different hue nobody signed off. */
+  --page: color-mix(in srgb, var(--brand-black) 3%, #f7f9fc);
+  --card: var(--brand-white);
+  --ink: var(--brand-black);
+  --ink-soft: color-mix(in srgb, var(--brand-black) 62%, var(--brand-white));
+  --ink-faint: color-mix(in srgb, var(--brand-black) 45%, var(--brand-white));
+  --line: color-mix(in srgb, var(--brand-black) 9%, var(--brand-white));
+  --line-strong: color-mix(in srgb, var(--brand-black) 17%, var(--brand-white));
 
-  /* The three states a balance bar shows. Distinguishable in greyscale as well as in
-     colour, because the legend beside them is what actually carries the meaning. */
-  --taken: color-mix(in srgb, var(--accent) 85%, black);
-  --pending: color-mix(in srgb, var(--accent) 45%, white);
-  --left: #dfe3ea;
+  /* The one colour with a job, and it is the company's. The OS accent used to stand here
+     because there was no brand to use; there is one now. */
+  --accent: var(--brand-blue);
+  --accent-ink: var(--brand-white);
+  --accent-soft: color-mix(in srgb, var(--brand-blue) 8%, var(--brand-white));
+
+  /* The dark rail down the side, which is the brand black at full strength. */
+  --rail: var(--brand-black);
+  --rail-ink: var(--brand-white);
+  --rail-ink-soft: var(--brand-grey);
+
+  /* The three states a balance bar shows. Both blues are the brand's, which is what makes
+     "taken" and "pending" one family rather than two decisions. */
+  --taken: var(--brand-blue);
+  --pending: var(--brand-sky);
+  --left: color-mix(in srgb, var(--brand-black) 10%, var(--brand-white));
   --warn: #b3261e;
 
-  /* Leave that has been agreed. Derived from the accent rather than being a fourth hue,
-     for the reason the block above is grey: the brand arrives with LMS 409 and a green
-     invented here would get signed off. It never carries meaning on its own — the tag
-     beside it says the word. */
-  --agreed: color-mix(in srgb, var(--accent) 85%, black);
+  /* Agreed. The brand has no green, so this is the one colour on the screen that is not in
+     the guidelines — it is here because a status pill that said "approved" in blue would be
+     the same colour as "submitted", and the pill's whole job is telling those two apart. */
+  --go: #1e8e3e;
+  --go-ink: #14672c;
+
+  /* Leave that has been agreed. Still derived from the accent rather than being a green: the
+     brand has two blues and no green, and the tag beside it says the word. */
+  --agreed: color-mix(in srgb, var(--brand-blue) 88%, var(--brand-black));
+
+  /* Who is who on the away calendar. LMS 409. Assigned in order and wrapping after ten; the
+     legend is what says whose is whose. */
+  --who-0: var(--brand-blue);
+  --who-1: var(--brand-sky);
+  --who-2: #7a5af8;
+  --who-3: #00a39b;
+  --who-4: #e8590c;
+  --who-5: #c2255c;
+  --who-6: #2b8a3e;
+  --who-7: #8d6e00;
+  --who-8: #0b4a8f;
+  --who-9: #6d7580;
+
+  /**
+   * Sora, everywhere.
+   *
+   * The guidelines name a secondary face for running text — Founders Grotesk, or Area Normal —
+   * and neither is in this repository, both being licensed. Rather than substitute a third
+   * typeface nobody signed off, the whole interface is set in the primary one. `--face-text`
+   * stays a separate token so the day those files arrive is a one line change here.
+   */
+  --face-heading: 'Sora', system-ui, sans-serif;
+  --face-text: 'Sora', system-ui, sans-serif;
 
   --radius: 14px;
   --radius-small: 8px;
-  --shadow: 0 1px 2px rgb(20 24 31 / 6%), 0 4px 16px rgb(20 24 31 / 4%);
+  --shadow: 0 1px 2px rgb(2 2 2 / 5%), 0 6px 20px rgb(2 2 2 / 5%);
 
   --gap: 1rem;
   --gap-lg: 1.5rem;
+
+  /* The width of the rail, so the bar above it and the pages beside it agree on one figure. */
+  --rail-width: 15.5rem;
 
   color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --page: #0e1116;
-    --card: #171b22;
-    --ink: #e8eaee;
-    --ink-soft: #a8b0bd;
-    --ink-faint: #838c9a;
-    --line: #262c36;
-    --line-strong: #333a46;
+    /* Only the neutral end moves. Both brand blues are legible on either ground, which is why
+       they are the same two tokens in both themes rather than a light pair and a dark pair. */
+    --page: #0b0d11;
+    --card: #14171d;
+    --ink: #eef0f4;
+    --ink-soft: color-mix(in srgb, var(--brand-white) 68%, var(--brand-black));
+    --ink-faint: var(--brand-grey);
+    --line: #232830;
+    --line-strong: #323844;
 
-    --left: #262c36;
-    --pending: color-mix(in srgb, var(--accent) 45%, black);
+    --accent-soft: color-mix(in srgb, var(--brand-blue) 14%, #14171d);
+
+    /* The rail is already the brand black; against a near black page it needs an edge, which
+       `.sidebar` draws rather than this lightening the black the brand specified. */
+    --left: #232830;
     --warn: #f2b8b5;
+    --go-ink: #6ddb8e;
 
-    /* Lightened rather than darkened, because it is read against `--card` at #171b22 and
-       the light theme's mix would fail contrast there. */
-    --agreed: color-mix(in srgb, var(--accent) 35%, white);
+    /* Lightened rather than darkened, because it is read against `--card` and the light
+       theme's mix would fail contrast there. */
+    --agreed: color-mix(in srgb, var(--brand-blue) 45%, var(--brand-white));
 
-    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 4px 16px rgb(0 0 0 / 24%);
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 20px rgb(0 0 0 / 28%);
   }
 }
 
@@ -95,7 +171,7 @@ body {
   margin: 0;
   background: var(--page);
   color: var(--ink);
-  font-family: system-ui, sans-serif;
+  font-family: var(--face-text);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 
@@ -105,16 +181,20 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* LMS 409. The primary face carries every heading and, below, every figure. */
 h1,
 h2,
-h3 {
+h3,
+h4 {
   margin: 0;
+  font-family: var(--face-heading);
   line-height: 1.25;
 }
 
 h1 {
-  font-size: 1.375rem;
-  letter-spacing: -0.01em;
+  font-size: 1.625rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 /* Never remove an outline without replacing it. Keyboard users are the whole reason it is
@@ -125,52 +205,155 @@ h1 {
   border-radius: 4px;
 }
 
-/* -------------------------------------------------------------------- page furniture */
+/* ------------------------------------------------------------ the shell. LMS 408, LMS 409 */
+
+/* A dark rail down the side, in the brand black, and the work beside it. LMS 409. Grid
+   rather than fixed, so below 56rem the column collapses into LMS 408's top strip. */
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+  background: var(--rail);
+  color: var(--rail-ink);
+  padding: var(--gap-lg) var(--gap) var(--gap-lg) calc(var(--gap) + env(safe-area-inset-left));
+  /* Against a near black page in the dark theme the rail would otherwise have no edge. */
+  border-right: 1px solid color-mix(in srgb, var(--brand-white) 8%, transparent);
+}
+
+/* The wordmark: the name in the primary face, and the half of it that is blue. */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: inherit;
+  font-family: var(--face-heading);
+  font-size: 1.0625rem;
+  letter-spacing: -0.02em;
+}
+
+.logo-mark {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 0.55rem;
+  background: var(--brand-blue);
+  color: var(--brand-white);
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.logo-word b {
+  font-weight: 700;
+}
+
+.logo-word i {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--brand-blue);
+}
+
+/* The company line, at the foot of the rail. `margin-top: auto` puts it there whatever the
+   number of tabs above it. */
+.motto {
+  margin: auto 0 0;
+  font-family: var(--face-heading);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--rail-ink-soft);
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 /* LMS 408. The gap plus whatever the phone says is unusable on that edge — nought everywhere
    but a notched phone on its side. */
 .page {
-  max-width: 78rem;
+  width: 100%;
+  max-width: 90rem;
   margin: 0 auto;
-  padding: 0 calc(var(--gap) + env(safe-area-inset-right)) max(4rem, env(safe-area-inset-bottom))
-    calc(var(--gap) + env(safe-area-inset-left));
+  padding: 0 calc(var(--gap-lg) + env(safe-area-inset-right)) max(4rem, env(safe-area-inset-bottom))
+    calc(var(--gap-lg) + env(safe-area-inset-left));
 }
 
 .topbar {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: color-mix(in srgb, var(--page) 88%, transparent);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
 
 .topbar-inner {
-  max-width: 78rem;
+  max-width: 90rem;
   margin: 0 auto;
-  padding: 0.875rem calc(var(--gap) + env(safe-area-inset-right)) 0.875rem
-    calc(var(--gap) + env(safe-area-inset-left));
+  padding: 0.875rem calc(var(--gap-lg) + env(safe-area-inset-right)) 0.875rem
+    calc(var(--gap-lg) + env(safe-area-inset-left));
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--gap);
 }
 
-.brand {
-  display: flex;
-  align-items: baseline;
-  gap: 0.625rem;
+/* The screen you are on, as the page's heading. The rail says which tab; this says it in
+   words, and it is the one `h1` on the page. */
+.topbar h1 {
   min-width: 0;
-}
-
-/* The name beside it ellipses; this breaking to two lines just makes the bar taller. */
-.brand h1 {
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.brand small {
-  color: var(--ink-faint);
+/* LMS 409. The leave year, in the bar, on the screens a year decides the contents of. */
+.year select {
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.4rem 0.6rem;
+}
+
+/** Who is signed in. Initials in the brand blue, and the name beside them. */
+.whoami {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.avatar {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--face-heading);
+  font-weight: 600;
   font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+}
+
+.whoami-name {
+  font-size: 0.875rem;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -185,6 +368,23 @@ h1 {
   padding: var(--gap-lg) 0 var(--gap);
 }
 
+/* Takes the room that is left rather than the whole row, so the pickers sit beside it. */
+.pagehead > .muted {
+  flex: 1 1 28rem;
+  margin: 0;
+  max-width: 80ch;
+}
+
+/* The controls at the top of a screen — the leave year, and the department where there is a
+   choice of one. Right aligned, so the sentence on the left keeps the width it needs. */
+.pagehead .controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--gap);
+  margin-left: auto;
+}
+
 .pagehead p {
   margin: 0.25rem 0 0;
   color: var(--ink-faint);
@@ -194,6 +394,23 @@ h1 {
 .muted {
   color: var(--ink-faint);
   font-size: 0.875rem;
+}
+
+/* How many, as a figure the eye finds before it reads the sentence. */
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  margin-right: 0.5rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--face-heading);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  vertical-align: middle;
 }
 
 /* ------------------------------------------------------------------------- controls */
@@ -266,8 +483,20 @@ button:hover:not(:disabled) {
   background: var(--line);
 }
 
+/* Signing out, in the top bar. The company blue, because it is the one thing up there that
+   does something. */
+.topbar .linkish {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.topbar .linkish:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 /**
- * The three screens, in the top bar. LMS 402, LMS 403.
+ * The screens, down the rail. LMS 402, LMS 403, LMS 409.
  *
  * **Anchors since the third screen arrived**, which is what LMS 402 said would happen: it left
  * these as buttons "because there are no addresses yet" and named the story that would bring
@@ -284,18 +513,20 @@ button:hover:not(:disabled) {
  */
 .screens {
   display: flex;
-  gap: 0.25rem;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
 .screen-tab {
   /* Keeps the label centred once the tab is given a fingertip's height. LMS 408. */
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  gap: 0.7rem;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--ink-soft);
-  border-radius: 999px;
-  padding: 0.35rem 0.75rem;
+  color: var(--rail-ink-soft);
+  border-radius: var(--radius-small);
+  padding: 0.55rem 0.75rem;
   font: inherit;
   font-size: 0.875rem;
   font-weight: 500;
@@ -304,25 +535,37 @@ button:hover:not(:disabled) {
   cursor: pointer;
 }
 
+/* Drawn in `currentColor`, so an icon is never a third thing to recolour when a tab changes
+   state — and it is `aria-hidden`, because the label beside it already says the word. */
+.screen-tab svg {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
 .screen-tab:hover {
-  color: var(--ink);
-  background: var(--line);
-  border-color: transparent;
+  color: var(--rail-ink);
+  background: color-mix(in srgb, var(--brand-white) 8%, transparent);
 }
 
 .screen-tab[aria-current='page'] {
-  color: var(--ink);
-  background: var(--card);
-  border-color: var(--line-strong);
+  color: var(--accent-ink);
+  background: var(--accent);
   font-weight: 600;
 }
 
 /* ---------------------------------------------------------------------- the cards */
 
-/* `min(19rem, 100%)`: a bare 19rem minimum cannot shrink, so a 320px phone scrolls sideways. */
+/**
+ * Four across on a laptop, and fewer as the window narrows.
+ *
+ * `min(16.5rem, 100%)`: a bare 16.5rem minimum cannot shrink, so a 320px phone would scroll
+ * sideways. The figure is what lets four fit beside the rail at 1512px — the width most of
+ * this company works at — rather than three and a column of nothing.
+ */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(19rem, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(16.5rem, 100%), 1fr));
   gap: var(--gap);
   list-style: none;
   margin: 0;
@@ -334,10 +577,10 @@ button:hover:not(:disabled) {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: var(--gap-lg);
+  padding: var(--gap);
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
+  gap: 0.875rem;
 }
 
 /* A type nothing has been granted in yet, and a retired one. Quieter rather than hidden:
@@ -349,20 +592,49 @@ button:hover:not(:disabled) {
 
 .card-head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.65rem;
 }
 
 .card-head h3 {
-  font-size: 1rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.0625rem;
+  /* `break-word`, not `anywhere`: "Compassionate" wrapping mid-word is worse than two lines. */
+  overflow-wrap: break-word;
+}
+
+/* LMS 409. The mark on a card: a rounded square, tinted with the accent rather than filled
+   with it, so it reads as a label on the card and not as a button. */
+.chip {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  border-radius: 0.65rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.chip svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* A dormant or retired type: the mark goes quiet with the rest of the card. */
+.card.dormant .chip {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink-faint);
 }
 
 .tags {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   gap: 0.25rem;
   justify-content: flex-end;
+  margin-left: auto;
 }
 
 .tag {
@@ -386,16 +658,18 @@ button:hover:not(:disabled) {
 }
 
 .headline .figure {
+  font-family: var(--face-heading);
   font-size: 2.75rem;
-  font-weight: 650;
-  letter-spacing: -0.03em;
+  font-weight: 700;
+  letter-spacing: -0.04em;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
 .headline .of {
   color: var(--ink-faint);
-  font-size: 0.875rem;
+  font-size: 1rem;
+  font-weight: 500;
 }
 
 .headline.overdrawn .figure {
@@ -424,7 +698,7 @@ button:hover:not(:disabled) {
  */
 .meter {
   display: flex;
-  height: 0.5rem;
+  height: 0.55rem;
   border-radius: 999px;
   overflow: hidden;
   background: var(--left);
@@ -458,9 +732,9 @@ button:hover:not(:disabled) {
 }
 
 .swatch {
-  width: 0.6rem;
-  height: 0.6rem;
-  border-radius: 3px;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
   flex: none;
 }
 
@@ -477,6 +751,16 @@ button:hover:not(:disabled) {
   border: 1px solid var(--line-strong);
 }
 
+/* §8.6b. Overdrawn, which the word beside it also says. */
+.swatch.is-over {
+  background: var(--warn);
+}
+
+.legend .overdrawn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
 /* ------------------------------------------------------------------- the breakdown */
 
 /**
@@ -490,6 +774,57 @@ button:hover:not(:disabled) {
 .breakdown {
   border-top: 1px solid var(--line);
   padding-top: 0.75rem;
+}
+
+/* FR 12, LMS 407. The documents on a request, as a bar rather than a line of text: it is a
+   thing to press, and the mark says what is behind it before anybody presses. */
+.attachments {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  padding: 0;
+}
+
+.attachments > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.875rem;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.attachments > summary::before {
+  content: '';
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  background: currentColor;
+  /* A paperclip, as a mask, so it takes the colour of the text beside it. */
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 11.5 12 19.5a5 5 0 0 1-7-7l8.5-8.5a3.4 3.4 0 0 1 5 5L10 17.5a1.8 1.8 0 0 1-2.5-2.5l8-8'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.attachments > summary::after {
+  content: '›';
+  margin-left: auto;
+  transform: rotate(90deg);
+  color: var(--ink-faint);
+}
+
+.attachments[open] > summary::after {
+  transform: rotate(-90deg);
+}
+
+.attachments > summary::-webkit-details-marker {
+  display: none;
+}
+
+.attachments .files,
+.attachments > .muted,
+.attachments > .notice {
+  margin: 0 0.875rem 0.75rem;
 }
 
 .breakdown summary {
@@ -511,6 +846,10 @@ button:hover:not(:disabled) {
 
 .breakdown[open] summary::before {
   content: '▾ ';
+}
+
+.breakdown > .muted {
+  margin: 0.75rem 0 0;
 }
 
 .breakdown dl {
@@ -545,12 +884,21 @@ button:hover:not(:disabled) {
  * than the sentence: see BalancesPage.tsx.
  */
 .rules {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   font-size: 0.8125rem;
   color: var(--ink-faint);
   text-align: left;
   margin: auto 0 0;
   padding-top: 0.75rem;
   border-top: 1px solid var(--line);
+}
+
+.rules svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
 }
 
 /* -------------------------------------------------------------- the request history */
@@ -592,19 +940,36 @@ button:hover:not(:disabled) {
 
 /* The status, said in a word. The colour is never the only thing saying it — the tag
    contains the word itself, which is the rule the file header sets out. */
+/**
+ * A status, filled rather than outlined. NFR USA 03.
+ *
+ * The word is inside the pill, so the colour is a second copy of it and never the only one —
+ * which is what lets a green be used here at all.
+ */
+.tag.status {
+  border: none;
+  padding: 0.2rem 0.6rem;
+}
+
 .tag.status.is-approved {
-  color: var(--agreed);
-  border-color: color-mix(in srgb, var(--agreed) 40%, transparent);
+  background: color-mix(in srgb, var(--go) 14%, var(--card));
+  color: var(--go-ink);
 }
 
 .tag.status.is-refused {
+  background: color-mix(in srgb, var(--warn) 12%, var(--card));
   color: var(--warn);
-  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
 }
 
 .tag.status.is-submitted {
-  color: var(--ink-soft);
-  border-color: var(--ink-faint);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tag.status.is-withdrawn,
+.tag.status.is-cancelled {
+  background: color-mix(in srgb, var(--ink) 6%, var(--card));
+  color: var(--ink-faint);
 }
 
 /* Nobody can decide it. FR 48b. Warned rather than refused, because the leave is not turned
@@ -629,12 +994,26 @@ button:hover:not(:disabled) {
  */
 .said {
   margin: 0;
-  padding: 0.15rem 0 0.15rem 0.875rem;
-  border-left: 2px solid var(--line-strong);
+  padding: 0.6rem 0.875rem;
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--ink) 4%, var(--card));
   color: var(--ink-soft);
   font-size: 0.9375rem;
+  font-style: italic;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* FR 38a. Where it went first. */
+.wentto {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink-faint);
+}
+
+.wentto strong {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* FR 41. The sentence a person acts on, so it is the weight of one. */
@@ -646,6 +1025,41 @@ button:hover:not(:disabled) {
 
 .progress.is-agreed {
   color: var(--agreed);
+}
+
+/* LMS 409. What was asked for, and beside it how it got where it is. */
+.asked-and-answered {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--gap-lg);
+  align-items: start;
+}
+
+.asked-for {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+/* The trail is the second column, set off by a rule rather than a box: it is the same card. */
+.asked-and-answered .trail {
+  padding-left: var(--gap-lg);
+  border-left: 1px solid var(--line);
+}
+
+/* A history is read down, so the two columns stack rather than shrink. */
+@media (max-width: 60rem) {
+  .asked-and-answered {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .asked-and-answered .trail {
+    padding-left: 0;
+    padding-top: var(--gap);
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
 }
 
 /* --------------------------------------------------------------------- the trail */
@@ -682,7 +1096,9 @@ button:hover:not(:disabled) {
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
-  background: var(--ink-faint);
+  /* A step that happened, in the company blue — the same mark the approver's chain uses, so
+     "this is done" reads the same on both screens. */
+  background: var(--accent);
 }
 
 /* The rail joining one mark to the next, stopping at the last. */
@@ -955,15 +1371,129 @@ textarea:disabled {
 
 .acknowledge input {
   flex: none;
-  width: 1rem;
-  height: 1rem;
-  margin-top: 0.15rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.1rem;
   padding: 0;
   accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.acknowledge span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.acknowledge strong {
+  font-weight: 600;
+}
+
+.acknowledge span :not(strong) {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
 }
 
 .asked .progress {
   font-size: 1.0625rem;
+}
+
+/* LMS 409. A panel's own heading. */
+.summary-title,
+.panel-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.panel-title {
+  margin-bottom: 0.25rem;
+}
+
+.summary-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.summary-what {
+  margin: 0 0 0.1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.summary-head .headline .figure {
+  font-size: 2rem;
+}
+
+/* One fact of the summary: a small heading with its mark, and the figures under it. */
+.summary-part {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.summary-part h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.summary-part h3 svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+.summary-part .standing {
+  padding-top: 0;
+  border-top: none;
+}
+
+/* The span it covers, and how long that is. FR 24: days away, not days charged. */
+.period {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.period strong {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* How much has been written, sitting under the corner of the box it counts. */
+.counter {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+}
+
+/* The press that commits a fortnight. Full width and taller than an ordinary button, with
+   the mark after the words rather than before: it is where the sentence is going. */
+.primary.is-big {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+}
+
+.primary svg {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 /* --------------------------------------------------------------------- notices */
@@ -1130,100 +1660,695 @@ textarea:disabled {
   font-variant-numeric: tabular-nums;
 }
 
-/* ------------------------------------------------------------ my team. LMS 405 */
+/* ------------------------------------ deciding, in the queue. FR 39, FR 51, LMS 409 */
 
-/**
- * Who is away, and when. FR 56.
- *
- * A list of the days somebody is off rather than a grid of the whole year: the server sends
- * only those days, and three hundred and sixty-five cells of which six matter is a picture
- * that hides its own point. The days that matter are the ones with two names on them.
- */
-.calendar {
-  margin: var(--gap-lg) 0;
-  padding: var(--gap);
+/* Clearing the queue in one press. Sticks under the bar so it is still reachable at the
+   bottom of a long queue, which is where somebody actually finishes deciding. */
+.bulkbar {
+  position: sticky;
+  top: 4.25rem;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+  padding: 0.75rem var(--gap);
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 
+.bulkbar .primary {
+  margin-left: auto;
+}
+
+.pick {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+/* The brand blue in the box itself rather than a drawn replacement: the native control keeps
+   its keyboard behaviour and its indeterminate state, which a div cannot have. */
+.pick input,
+.pickbox {
+  flex: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Who is asking on the left, what they are asking for on the right. */
+.asking-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.asking-who {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.asking-who .pickbox {
+  margin-top: 0.3rem;
+}
+
+.asking-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.asking-name h3 {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 1.0625rem;
+}
+
+.asking-name h3 small {
+  font-family: var(--face-text);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.asking-name .tags {
+  margin-left: 0;
+  justify-content: flex-start;
+}
+
+/* The dates, right aligned, because that is where a scanning eye looks for them. */
+.asking-what {
+  text-align: right;
+  min-width: 0;
+}
+
+.asking-what .when {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.asking-what .when svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--ink-faint);
+}
+
+.asking-what .muted {
+  margin: 0.15rem 0 0;
+}
+
+/* FR 48, §8.6a. A request this desk may not decide, said as a panel of its own. */
+.held {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem var(--gap);
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--ink) 4%, var(--card));
+}
+
+.held h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink);
+}
+
+.held h4 svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--ink-faint);
+}
+
+.held p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+/** The four columns a decision is made across. FR 39. */
+.deciding {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 15rem);
+  gap: var(--gap) var(--gap-lg);
+  padding-top: var(--gap);
+  border-top: 1px solid var(--line);
+}
+
+.fact h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.fact h4 svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+.fact p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.fact p.figure {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-family: var(--face-heading);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.fact p.figure small {
+  font-family: var(--face-text);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.fact p.figure.overdrawn,
+.fact p.overdrawn {
+  color: var(--warn);
+}
+
+.fact p.small {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+}
+
+.fact .away {
+  margin-top: 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+/* FR 38a. The chain, as a rail with a mark per desk — the same shape the history screen's
+   trail uses, so a stage means the same thing on both screens. */
+.chain {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+}
+
+.chain li {
+  position: relative;
+  padding-left: 1.1rem;
+  color: var(--ink-soft);
+}
+
+.chain li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.4rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.chain li.is-done::before {
+  background: var(--accent);
+}
+
+/* The desk being asked now. Ringed rather than merely filled, because "signed" and "sitting
+   here" are the two states somebody is actually reading for. */
+.chain li.is-here::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.chain li.is-here {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.chain small {
+  display: block;
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+/** Approve, refuse, and the comment FR 39 wants with a refusal. */
+.decide {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.decide-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.decide-buttons button {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.decide-buttons svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+/* A refusal, in the one red this stylesheet has. Outlined rather than filled: refusing is not
+   the ordinary press, and two solid buttons side by side say they are equals. */
+.danger {
+  background: var(--card);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line-strong));
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warn) 8%, var(--card));
+  border-color: var(--warn);
+}
+
+/* The comment box, with the send mark sitting inside it. */
+.comment {
+  position: relative;
+  display: block;
+}
+
+.comment input {
+  width: 100%;
+  padding-right: 2.25rem;
+}
+
+.comment svg {
+  position: absolute;
+  right: 0.7rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+
+.decide .muted {
+  font-size: 0.75rem;
+}
+
+/* Said to a screen reader and to nobody else. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Below 68rem the four columns are two, then one: a decision read three words to a line is
+   not a decision anybody makes confidently. */
+@media (max-width: 68rem) {
+  .deciding {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 44rem) {
+  .deciding {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ------------------------------------------ who is away. FR 57, LMS 406, LMS 409 */
+
+/**
+ * A month at a time, with a stripe per person. LMS 409.
+ *
+ * A lane holds its row across the whole month, so a stretch of leave draws as one line. The
+ * cell is never filled in: a filled day says "spoken for", and the truth is "one of nine is
+ * out". Legend and `aria-label` carry the names. NFR USA 03.
+ */
+.calendar {
+  margin: var(--gap-lg) 0;
+  padding: var(--gap-lg);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.calendar-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem var(--gap);
+}
+
 .calendar-head h3 {
-  font-size: 1rem;
+  font-size: 1.125rem;
 }
 
 .calendar-head p {
+  flex-basis: 100%;
   margin: 0.25rem 0 0;
   color: var(--ink-soft);
   font-size: 0.875rem;
 }
 
-.months {
-  list-style: none;
-  margin: var(--gap) 0 0;
-  padding: 0;
+/* Which month, and the two steps either side of it. */
+.month-steps {
   display: flex;
-  flex-direction: column;
-  gap: var(--gap);
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
 }
 
-.months h4 {
-  margin: 0 0 0.4rem;
-  font-size: 0.75rem;
+.month-steps button {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: var(--radius-small);
+  color: var(--ink-soft);
+}
+
+/* The month being shown, as a heading rather than as a label on the buttons. */
+.month-name {
+  font-family: var(--face-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  min-width: 8.5rem;
+  text-align: center;
+}
+
+/* Seven columns, Monday first. No gap: two consecutive days off have to touch. */
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin-top: var(--gap);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  overflow: hidden;
+}
+
+.weekday {
+  padding: 0.5rem 0.4rem;
+  background: color-mix(in srgb, var(--ink) 3%, var(--card));
+  border-bottom: 1px solid var(--line);
+  font-family: var(--face-heading);
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-align: center;
   color: var(--ink-faint);
 }
 
-.awaydays {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.day {
+  min-height: 5.25rem;
+  padding: 0.35rem 0.35rem 0.45rem;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.3rem;
 }
 
-.awaydays li {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-small);
-  font-size: 0.875rem;
+/* The seventh in a row and the last row: no outer rule, the container draws that. */
+.day:nth-child(7n) {
+  border-right: none;
 }
 
-/* A day more than one of them is off. The word beside it is what carries the meaning; the
-   tint is a second copy of it for people who scan rather than read. */
-.awaydays li.is-clash {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  box-shadow: inset 2px 0 0 var(--accent);
+.day.is-last-week {
+  border-bottom: none;
 }
 
-.awaydays .when {
-  flex: 0 0 1.75rem;
-  text-align: right;
+/* Days either side of the month, so the weeks are whole. Present and plainly not this month:
+   dropping them would shift a Monday under a Thursday. */
+.day.is-outside {
+  background: color-mix(in srgb, var(--ink) 2%, var(--card));
+}
+
+.day.is-outside .day-number {
+  color: var(--line-strong);
+}
+
+/* Saturday and Sunday. Nothing is asserted about whether they are working days — a work
+   pattern is per person, FR 23 — this is only the shape of the week. */
+.day.is-weekend {
+  background: color-mix(in srgb, var(--ink) 2%, var(--card));
+}
+
+.day-number {
+  /* Column flex would otherwise stretch the today pill to the width of the cell. */
+  align-self: flex-start;
+  font-family: var(--face-heading);
+  font-size: 0.75rem;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--ink-faint);
 }
 
-.awaydays .who {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
+/* Today, marked in the company blue: the one cell somebody looks for first. */
+.day.is-today .day-number {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 
-.awaydays .clash {
-  margin-left: auto;
-  color: var(--accent);
+/* One row per person away in this month, empty rows included: collapse them and a stripe
+   moves up whenever the name above it is in. */
+.lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Bleeds sideways so two adjacent days join with no seam, and stops short of the rule
+     under the cell rather than sitting on it. */
+  margin: auto -0.35rem 0;
+}
+
+.lane {
+  height: 4px;
+}
+
+.lane.is-away {
+  background: var(--who);
+}
+
+/* Asked for and not yet decided. FR 41. Striped rather than a second colour, so it is the
+   same person's line either way and the difference is its texture. */
+.lane.is-asked {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--who) 0 3px,
+    color-mix(in srgb, var(--who) 35%, transparent) 3px 6px
+  );
+}
+
+/* More people away that day than there are lanes drawn for. The count is a word, not a
+   colour, and the cell's label names everybody regardless. */
+.day-more {
+  align-self: flex-end;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+
+/* Whose colour is whose. LMS 409, NFR USA 03. Only those away in the month being shown. */
+.who-legend {
+  list-style: none;
+  margin: var(--gap) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
   font-size: 0.8125rem;
 }
 
+.who-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.who-swatch {
+  flex: none;
+  width: 0.85rem;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--who);
+}
+
+/* The reader's own line. Named as well as marked, because "(you)" is what actually says it. */
+.who-legend li.is-me {
+  font-weight: 600;
+}
+
+/* Nothing booked in the month being shown, which is an answer rather than a blank. */
+.month-empty {
+  margin: var(--gap) 0 0;
+  font-size: 0.875rem;
+  color: var(--ink-faint);
+}
+
+/* Who else is away. The sentence above it already says the count; this is for scanning the
+   dates, so the figures are tabular. */
+.away {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Out right now, which is the question somebody opens this screen with. */
+.today {
+  margin: var(--gap-lg) 0;
+  padding: var(--gap);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem var(--gap);
+}
+
+.today .chip {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+.today-said h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+}
+
+.today-said p {
+  margin: 0.1rem 0 0;
+  font-size: 0.875rem;
+}
+
+.today .who {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* A name, with the initials standing where a photograph would be. */
+.today .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem 0.2rem 0.2rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.initials {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--face-heading);
+  font-size: 0.625rem;
+  font-weight: 600;
+  font-style: normal;
+}
+
+/* What a screen deliberately does not say, said under it. */
+.footnote {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: var(--gap) 0 var(--gap-lg);
+  padding: 0.75rem var(--gap);
+  border-radius: var(--radius-small);
+  background: var(--accent-soft);
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.footnote svg {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: 0.1rem;
+  color: var(--accent);
+}
+
 /* Leave that has been agreed, as `--agreed` is used on the request cards. */
-.awaydays .tag.is-agreed {
+.tag.is-agreed {
   color: var(--agreed);
   border-color: color-mix(in srgb, var(--agreed) 40%, transparent);
+}
+
+/* The reader's own leave, so the calendar reads as a whole team rather than as other people. */
+.tag.is-me {
+  border-style: dashed;
 }
 
 /**
@@ -1243,7 +2368,7 @@ textarea:disabled {
 
 .figures li {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.35rem;
   padding: 0.3rem 0.6rem;
   border: 1px solid var(--line);
@@ -1251,12 +2376,20 @@ textarea:disabled {
   font-size: 0.8125rem;
 }
 
+.figures svg {
+  flex: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--accent);
+}
+
 .figures .what {
   color: var(--ink-soft);
 }
 
 .figures .figure {
-  font-weight: 650;
+  font-family: var(--face-heading);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1311,42 +2444,6 @@ textarea:disabled {
   overflow-x: auto;
 }
 
-/* ------------------------------------------------- who is away. FR 57, LMS 406 */
-
-/* Out right now, which is the question somebody opens this screen with. */
-.today {
-  margin: var(--gap-lg) 0;
-  padding: var(--gap);
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-.today h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.today p {
-  margin: 0.25rem 0 0;
-  font-size: 0.875rem;
-}
-
-.today .who {
-  list-style: none;
-  margin: 0.5rem 0 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-
-/* The reader's own leave, so the calendar reads as a whole team rather than as other people. */
-.awaydays .tag.is-me {
-  border-style: dashed;
-}
-
 /* ---------------------------------------- certificates. FR 12, NFR SEC 04, LMS 407 */
 
 /**
@@ -1395,35 +2492,110 @@ textarea:disabled {
   gap: 0.4rem;
 }
 
-.evidence input[type='file'] {
-  font-size: 0.875rem;
+/**
+ * LMS 409. The zone a file is dropped on.
+ *
+ * The input is stretched over the whole box rather than sitting beside it, so the drop target
+ * and the thing that looks like one are the same element — a file input already accepts a
+ * dropped file, which is what makes this real drag and drop rather than the look of it.
+ */
+.dropzone {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.875rem;
+  padding: var(--gap);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--ink) 1.5%, var(--card));
+  cursor: pointer;
+}
+
+.dropzone:hover,
+.dropzone:focus-within {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Transparent rather than hidden: a `display: none` input is not a drop target. */
+.dropzone input[type='file'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dropzone-mark {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: 0.65rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.dropzone-mark svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.dropzone-said {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.dropzone-said strong {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.dropzone-said small {
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
 }
 
 /* ------------------------------------------------------- on a phone. LMS 408, NFR USA 01 */
 
-/* Six tabs, a name and a button want ~63rem. Below 56rem the bar is two rows and the tabs
-   scroll sideways; wrapping them instead would cost a quarter of a phone screen. `App.tsx`
-   scrolls the current one into view. */
+/* The rail lies down. LMS 408, LMS 409. Wordmark on the first row, tabs scrolling sideways
+   under it, motto dropped — it is the decorative part and this is where room runs out. */
 @media (max-width: 56rem) {
-  .topbar-inner {
-    flex-wrap: wrap;
-    padding-bottom: 0;
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  /* Basis 0 rather than `auto`: flex wraps on base sizes before it shrinks anything, so a
-     basis of the name's full width put "Sign out" on a third row. */
-  .brand {
-    flex: 1 1 0;
+  .sidebar {
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem var(--gap);
+    padding: 0.75rem calc(var(--gap) + env(safe-area-inset-right)) 0
+      calc(var(--gap) + env(safe-area-inset-left));
+    border-right: none;
+  }
+
+  .motto {
+    display: none;
   }
 
   .screens {
-    /* Last, so the sign out button stays on the first row rather than being pushed to a third. */
-    order: 1;
+    flex-direction: row;
+    gap: 0.25rem;
+    /* Its own row under the wordmark, and it takes the whole of it. */
     flex-basis: 100%;
     /* Bleeds to the screen edge so the strip reads as scrollable rather than as clipped. */
     margin: 0 calc((var(--gap) + env(safe-area-inset-right)) * -1) 0
       calc((var(--gap) + env(safe-area-inset-left)) * -1);
-    padding: 0.375rem calc(var(--gap) + env(safe-area-inset-right)) 0.75rem
+    padding: 0 calc(var(--gap) + env(safe-area-inset-right)) 0.75rem
       calc(var(--gap) + env(safe-area-inset-left));
     overflow-x: auto;
     /* Stops a sideways flick at the end of the strip turning into a browser back gesture. */
@@ -1446,6 +2618,17 @@ textarea:disabled {
       transparent 100%
     );
   }
+
+  .screen-tab {
+    border-radius: 999px;
+    padding: 0.4rem 0.7rem;
+  }
+
+  .page,
+  .topbar-inner {
+    padding-right: calc(var(--gap) + env(safe-area-inset-right));
+    padding-left: calc(var(--gap) + env(safe-area-inset-left));
+  }
 }
 
 /* A phone held upright. `--gap-lg` is every card and panel's padding, so the token is most
@@ -1456,11 +2639,19 @@ textarea:disabled {
   }
 
   /* A title in a bar, not a headline. Buys width back for the name beside it. */
-  .brand h1 {
+  .topbar h1 {
     font-size: 1.125rem;
   }
 
-  /* The year picker, full width rather than a select stranded on its own row. */
+  /* The name goes and the initials stay: a circle is the part that is still legible at this
+     width, and the name is on every other screen in the application anyway. */
+  .whoami-name {
+    display: none;
+  }
+
+  /* The pickers, full width rather than a select stranded on its own row. */
+  .pagehead .controls,
+  .pagehead .controls label,
   .pagehead > label {
     flex: 1 0 100%;
   }
@@ -1474,12 +2665,20 @@ textarea:disabled {
     justify-content: flex-start;
   }
 
-  .awaydays li {
-    flex-wrap: wrap;
+  /* The grid keeps its seven columns — a week that reflowed would not be a week — so the
+     cells lose their height instead and the stripes carry the month on their own. */
+  .day {
+    min-height: 3.5rem;
+    padding: 0.25rem 0.2rem 0.35rem;
   }
 
-  .awaydays .clash {
-    margin-left: 0;
+  .lanes {
+    margin: auto -0.2rem 0;
+  }
+
+  .month-name {
+    min-width: 6.5rem;
+    font-size: 0.9375rem;
   }
 }
 
