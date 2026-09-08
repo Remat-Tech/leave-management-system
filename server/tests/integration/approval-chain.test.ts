@@ -210,7 +210,7 @@ describe('the chains of FR 38a, which is the story', () => {
 
   /* §4.3.1 says it of both unpaid types: "Decided by HR and the Chief
      Executive." No manager stage on either, which is the part worth asserting
-     rather than assuming — unpaid leave is not a request a line manager signs off
+     rather than assuming — unpaid leave is not a request a manager signs off
      and HR confirms, it is an arrangement with the company. */
   it('leave the manager out of the unpaid chains altogether', async () => {
     for (const code of ['UNPAID', 'MAT_EXT_UNPAID']) {

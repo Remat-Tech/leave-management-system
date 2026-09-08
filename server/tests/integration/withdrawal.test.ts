@@ -451,7 +451,7 @@ describe('HR agreeing before the leave has started', () => {
       acknowledgesShortNotice: true,
     });
 
-    /* FR 48d, LMS 322. The head of HR is this officer's line manager and the whole of the HR
+    /* FR 48d, LMS 322. The head of HR is this officer's manager and the whole of the HR
        desk once she is out of it, so the second stage falls to the Chief Executive rather
        than back to the hand that signed the first. */
     await requests.approve(asTheHeadOfHr(), request.id);
@@ -590,9 +590,9 @@ describe('HR turning the ask down', () => {
     });
   });
 
-  /* HR's, and never the line manager's: what is being unwound is an approval the whole
+  /* HR's, and never the manager's: what is being unwound is an approval the whole
      chain gave, and the days have already left the balance. */
-  it('and is HR’s to answer, not the line manager’s', async () => {
+  it('and is HR’s to answer, not the manager’s', async () => {
     const id = await anApprovedRequest(...nextFortnight());
 
     await requests.askToWithdraw(asTheEmployee(), id, 'The wedding is off');

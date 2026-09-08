@@ -32,7 +32,7 @@ export class RequestHistoryService {
     /** NFR SEC 02. */
     private readonly guard: Guard,
     /**
-     * The employee record, for two facts and no more: who their line manager is, which the policy decides on, and that the person exists at all.
+     * The employee record, for two facts and no more: who their manager is, which the policy decides on, and that the person exists at all.
      */
     private readonly employees: EmployeeRepository,
     /** For each request's type name and its approval chain as it stands. */
@@ -108,7 +108,7 @@ export class RequestHistoryService {
   }
 }
 
-/** Whose requests these are, and who their line manager is. */
+/** Whose requests these are, and who their manager is. */
 function ownerOf(employee: Employee): BalanceOwner {
   return { employeeId: employee.id, managerId: employee.managerId };
 }

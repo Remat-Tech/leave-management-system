@@ -224,7 +224,7 @@ describe('a delegate at the desk', () => {
     { approverId: KOFI, roles: ['EMPLOYEE'] as RoleCode[], isManager: true },
   ];
 
-  /** Adwoa's request, standing at her line manager Kofi's desk. */
+  /** Adwoa's request, standing at her manager Kofi's desk. */
   function adwoasRequest(standingIn = desksHandedTo(person(ESI), YAW, coveringForKofi)) {
     return {
       employeeId: ADWOA,
@@ -308,7 +308,7 @@ describe('whose approvals a decision answered', () => {
     expect(answeredOnBehalfOf(esi, 'MANAGER', atTheDesk(esi))).toBeNull();
   });
 
-  it('and names the line manager where that is the desk being covered', () => {
+  it('and names the manager where that is the desk being covered', () => {
     const forKofi = [{ approverId: KOFI, roles: ['EMPLOYEE'] as RoleCode[], isManager: true }];
     const esi = person(ESI);
 

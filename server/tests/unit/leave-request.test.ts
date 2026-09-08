@@ -854,7 +854,7 @@ describe('what a request has to say', () => {
    * first criterion.
    *
    * The chain goes in and the desk comes out, and the desk is the front of whatever list
-   * was handed over. That is the whole criterion: annual leave starts with the line manager
+   * was handed over. That is the whole criterion: annual leave starts with the manager
    * and unpaid leave starts with HR because those are what their chains say, and nothing on
    * this path knows which type is which. Design principle 5 — the README's version is "if
    * either appears as an `if` on a type code, that is a bug".
@@ -1745,7 +1745,7 @@ describe('where this story stops', () => {
       chain,
       decidedAlready: [],
       decider: 'efua',
-      skipped: [{ stage: 'MANAGER', routedTo: 'HR', because: 'no line manager' }],
+      skipped: [{ stage: 'MANAGER', routedTo: 'HR', because: 'no manager' }],
       available: { MANAGER: 'NOBODY_STAFFS_IT', HR: 'CAN_DECIDE', CEO: 'CAN_DECIDE' },
       occupants: { MANAGER: [], HR: ['efua'], CEO: ['kofi'] },
     });

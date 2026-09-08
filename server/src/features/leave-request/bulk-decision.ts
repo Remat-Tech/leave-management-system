@@ -41,7 +41,7 @@ export class NotABulkAction extends Error {
   constructor(value: unknown) {
     super(
       `A queue is cleared by approving or turning down, and ${String(value)} is neither. ` +
-        'Overturning a line manager’s decision is reasoned about one request at a time, so ' +
+        'Overturning a manager’s decision is reasoned about one request at a time, so ' +
         'it has no batch: the justification FR 44 asks for is about that request and not ' +
         'about the ten beside it. FR 51.',
     );

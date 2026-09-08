@@ -241,7 +241,7 @@ describe('counting and approval', () => {
       'Goes to HR then the Chief Executive.',
     );
     expect(said(stored({ approvalChain: ['MANAGER', 'HR'] }), 'APPROVAL')).toBe(
-      'Goes to your line manager then HR.',
+      'Goes to your manager then HR.',
     );
   });
 

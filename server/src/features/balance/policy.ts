@@ -15,7 +15,7 @@ const about = policyFor('ledger');
 /** Whose balance this is, as the caller has established it. */
 export interface BalanceOwner {
   employeeId: string;
-  /** Their line manager, or null. */
+  /** Their manager, or null. */
   managerId: string | null;
 }
 
@@ -51,7 +51,7 @@ export const ledgerPolicy = {
       actor,
       'read',
       owner.employeeId,
-      'not their balance, not their line manager, and holds no role that reads everybody',
+      'not their balance, not their manager, and holds no role that reads everybody',
     );
   },
 
@@ -118,7 +118,7 @@ export const ledgerPolicy = {
       actor,
       'commit',
       owner.employeeId,
-      'not their line manager, not an approver this leave is routed to, not covering for ' +
+      'not their manager, not an approver this leave is routed to, not covering for ' +
         'one, and holds no role that reads everybody',
       APPROVAL_IS_SOMEBODY_ELSE,
     );
@@ -203,7 +203,7 @@ export const ledgerPolicy = {
   /**
    * Putting back days that were already taken, when agreed leave comes off the books. FR 47, §10, LMS 324.
    *
-   * Narrower than {@link ledgerPolicy.release}: neither the employee nor their line manager
+   * Narrower than {@link ledgerPolicy.release}: neither the employee nor their manager
    * may reverse a `DEDUCTION`. Both HR desks, unlike {@link ledgerPolicy.adjust} — the figure
    * is the calendar's rather than somebody's judgement.
    */
@@ -217,7 +217,7 @@ export const ledgerPolicy = {
           'holds no role that maintains leave for the company',
           'Leave that has been agreed has already come out of a balance, and putting those ' +
             'days back is HR’s answer to somebody asking for it — not the person’s own, ' +
-            'and not their line manager’s. Ask for it to be taken off the books, and HR ' +
+            'and not their manager’s. Ask for it to be taken off the books, and HR ' +
             'will answer. FR 47.',
         );
   },
@@ -236,7 +236,7 @@ export const ledgerPolicy = {
       actor,
       'release',
       owner.employeeId,
-      'not their balance, not their line manager, and holds no role that reads everybody',
+      'not their balance, not their manager, and holds no role that reads everybody',
       'Held days are given back by the person who asked for the leave, by their line ' +
         'manager, or by HR.',
     );

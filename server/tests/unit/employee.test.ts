@@ -301,7 +301,7 @@ describe('the department, LMS 105', () => {
   });
 
   it('has no null to mean anybody is outside the teams', () => {
-    /* Unlike the line manager, where null is the head of the organisation and is
+    /* Unlike the manager, where null is the head of the organisation and is
        a real thing to say. Nobody is outside the departments, including them, so
        there is no meaning to give null and it is refused with everything else
        that is not an id. */
@@ -341,7 +341,7 @@ describe('the department, LMS 105', () => {
   });
 });
 
-describe('the line manager, FR 02 and FR 04', () => {
+describe('the manager, FR 02 and FR 04', () => {
   /**
    * Only the half of the rule that needs nothing but the record in hand. Whether
    * the id is anybody, whether they have left, and whether somebody else is
@@ -396,13 +396,13 @@ describe('the line manager, FR 02 and FR 04', () => {
     });
   });
 
-  it('refuses an employee as their own line manager', () => {
+  it('refuses an employee as their own manager', () => {
     // employee_not_own_manager says the same at the database. It is said here so
     // the refusal names the box rather than the constraint.
     const error = refusal(() => validateEmployeeChanges({ managerId: STORED.id }, STORED, DOMAINS));
 
     expect(error.field).toBe('managerId');
-    expect(error.message).toMatch(/their own line manager/);
+    expect(error.message).toMatch(/their own manager/);
   });
 
   it('lets the head of the organisation go on being it', () => {
@@ -558,7 +558,7 @@ describe('the standing check on reporting lines, FR 02 and FR 04', () => {
     expect(warnAboutReportingLines(SOUND)).toEqual([]);
   });
 
-  it('warns when a second record has no line manager, and names them both', () => {
+  it('warns when a second record has no manager, and names them both', () => {
     const warnings = warnAboutReportingLines({ ...SOUND, rootless: [CEO, REPORT] });
 
     expect(warnings).toHaveLength(1);

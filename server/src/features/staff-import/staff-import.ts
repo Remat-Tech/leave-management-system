@@ -161,7 +161,7 @@ export interface DraftRow {
   /** The department's name, as the file spells it. */
   department: string;
   /**
-   * The line manager's employee number, or `null` for the head of the
+   * The manager's employee number, or `null` for the head of the
    * organisation. FR 02 and FR 04.
    *
    * `null` here is a blank cell in a column that exists, which is the one place
@@ -185,7 +185,7 @@ export interface DraftRow {
 export interface CurrentRow {
   employee: Employee;
   departmentName: string;
-  /** The line manager's employee number, or null for the head of the organisation. */
+  /** The manager's employee number, or null for the head of the organisation. */
   managerNumber: string | null;
   workPatternName: string;
 }
@@ -207,7 +207,7 @@ export interface PlannedCreate {
   /**
    * Everything but the reporting line, with the references resolved to ids.
    *
-   * The line manager is missing on purpose and is {@link managerNumber} instead.
+   * The manager is missing on purpose and is {@link managerNumber} instead.
    * A manager who is themselves a row in the same file has no id yet — they do
    * not exist — so the id cannot be settled until the write, when the rows are
    * done in an order that puts a manager before their reports.
@@ -665,7 +665,7 @@ export function findManagerCycles(managerOf: ReadonlyMap<string, string | null>)
  *
  * What this order cannot do is succeed the head of the organisation, and nothing
  * else can either. Promoting the incoming head first leaves two employees with no
- * line manager, which `employee_one_root` refuses immediately, being an index
+ * manager, which `employee_one_root` refuses immediately, being an index
  * rather than a deferred trigger; demoting the outgoing one first points them at
  * somebody who is still below them, which is the loop the walk refuses. The
  * README says the same thing about `EmployeeService`, which is why a

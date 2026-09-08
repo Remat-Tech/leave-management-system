@@ -1,5 +1,6 @@
-/** Who is away and when, for a colleague rather than a manager. FR 57, LMS 406. */
+/** Who is away and when, across a department. FR 57, LMS 406, LMS 409. */
 
+import type { Department } from '../department/department.js';
 import type { Employee, EmploymentStatus } from '../employee/employee.js';
 import type { LeaveRequest } from '../leave-request/leave-request.js';
 import type { LeaveYear } from '../leave-year/leave-year.js';
@@ -33,16 +34,24 @@ export interface Absence {
   inWords: string;
 }
 
+/** A department, as the calendar names one. LMS 409. */
+export interface DepartmentOnTheCalendar {
+  id: string;
+  name: string;
+}
+
 /** Somebody on the calendar. FR 57. */
 export interface Colleague {
   employeeId: string;
   name: string;
   jobTitle: string | null;
+  /** LMS 409. The heading a colleague sits under where the calendar spans more than one. */
+  department: DepartmentOnTheCalendar | null;
   /** FR 06. A leaver is still on the line until HR moves it. */
   employmentStatus: EmploymentStatus;
   /** The reader. */
   isMe: boolean;
-  /** The line manager everybody here shares. */
+  /** The reader's own manager, where they are in this department too. */
   isTheManager: boolean;
   awayToday: boolean;
   /** Soonest first. */
@@ -67,12 +76,18 @@ export interface AwayDay {
   isEverybody: boolean;
 }
 
-/** The team calendar, for one leave year. FR 57, LMS 406. */
+/** The team calendar, for one leave year. FR 57, LMS 406, LMS 409. */
 export interface TeamCalendarView {
   /** The reader. */
   employeeId: string;
   year: LeaveYear;
   years: LeaveYear[];
+  /** LMS 409. The department being shown, or null for every one of them at once. */
+  department: DepartmentOnTheCalendar | null;
+  /** LMS 409. The departments that may be asked for. Only the reader's own, unless HR. */
+  departments: DepartmentOnTheCalendar[];
+  /** LMS 409. Whether the picker is a choice or a label. */
+  canChooseDepartment: boolean;
   from: CalendarDate;
   to: CalendarDate;
   /** How many the calendar covers, the reader included. */
@@ -92,10 +107,16 @@ export interface TeamCalendarView {
 /** Everything the calendar is assembled from, all of it read by the caller. */
 export interface TeamCalendarFacts {
   reader: Employee;
-  /** The reader, their line manager, and everybody else reporting to them. */
+  /** Everybody in the department being shown, or in every department where none is. */
   team: readonly Employee[];
   year: LeaveYear;
   years: readonly LeaveYear[];
+  /** LMS 409. The department being shown, or null for all of them at once. */
+  showing: Department | null;
+  /** LMS 409. The departments this reader may ask for. */
+  departments: readonly Department[];
+  /** LMS 409. Whether `departments` is a choice or a label. */
+  canChooseDepartment: boolean;
   /** The team's live leave in this year, from `LeaveRequestRepository.liveOverlapping`. */
   leave: readonly LeaveRequest[];
   /** NFR DAT 03. */
@@ -103,7 +124,7 @@ export interface TeamCalendarFacts {
 }
 
 /**
- * The calendar, from the facts the service gathered. FR 57, LMS 406.
+ * The calendar, from the facts the service gathered. FR 57, LMS 406, LMS 409.
  *
  * **Dates and names, and nothing else.** No leave type reaches this function and no reason
  * ever could: `TeamCalendarFacts` carries no `LeaveType`, so a type name is not something
@@ -112,9 +133,11 @@ export interface TeamCalendarFacts {
  * **Live leave only.** A refused or withdrawn request is not an absence.
  */
 export function teamCalendarFor(facts: TeamCalendarFacts): TeamCalendarView {
+  const named = new Map(facts.departments.map((one) => [one.id, plainly(one)]));
+
   const colleagues = [...facts.team]
     .sort(byManagerThenName(facts.reader.managerId))
-    .map((person) => colleagueFor(person, facts));
+    .map((person) => colleagueFor(person, facts, named));
 
   const days = daysOf(colleagues, facts);
   const busiest = days.reduce((most, day) => Math.max(most, day.away.length), 0);
@@ -124,6 +147,9 @@ export function teamCalendarFor(facts: TeamCalendarFacts): TeamCalendarView {
     employeeId: facts.reader.id,
     year: facts.year,
     years: [...facts.years],
+    department: facts.showing === null ? null : plainly(facts.showing),
+    departments: facts.departments.map(plainly),
+    canChooseDepartment: facts.canChooseDepartment,
     from: facts.year.startDate,
     to: facts.year.endDate,
     size: colleagues.length,
@@ -131,12 +157,16 @@ export function teamCalendarFor(facts: TeamCalendarFacts): TeamCalendarView {
     days,
     busiest,
     awayToday,
-    inWords: calendarInWords(colleagues, days, awayToday, busiest, facts.year),
+    inWords: calendarInWords(colleagues, days, awayToday, busiest, facts),
   };
 }
 
 /** One person on the calendar, with their dates. */
-function colleagueFor(person: Employee, facts: TeamCalendarFacts): Colleague {
+function colleagueFor(
+  person: Employee,
+  facts: TeamCalendarFacts,
+  named: ReadonlyMap<string, DepartmentOnTheCalendar>,
+): Colleague {
   const absences = facts.leave
     .filter((request) => request.employeeId === person.id)
     .sort(bySoonest)
@@ -149,6 +179,7 @@ function colleagueFor(person: Employee, facts: TeamCalendarFacts): Colleague {
     employeeId: person.id,
     name: nameOf(person),
     jobTitle: person.jobTitle,
+    department: named.get(person.departmentId) ?? null,
     employmentStatus: person.employmentStatus,
     isMe,
     isTheManager: person.id === facts.reader.managerId,
@@ -156,6 +187,11 @@ function colleagueFor(person: Employee, facts: TeamCalendarFacts): Colleague {
     absences,
     inWords: colleagueInWords(person, isMe, absences, awayToday, facts.year),
   };
+}
+
+/** A department as the wire carries one: an id and a name, and no row behind it. */
+function plainly(department: Department): DepartmentOnTheCalendar {
+  return { id: department.id, name: department.name };
 }
 
 /** FR 57. The span and how long it is, and no field the type or the reason could reach. */
@@ -214,18 +250,31 @@ function calendarInWords(
   awayDays: readonly AwayDay[],
   awayToday: readonly AwayOn[],
   busiest: number,
-  year: LeaveYear,
+  facts: TeamCalendarFacts,
 ): string {
+  const year = facts.year;
+
+  /* LMS 409. Named, because the same screen answers for one department or for all of them and
+     a count with no scope on it is a figure somebody will read as the whole company. "Your
+     department" only where it is: an HR officer reading Finance is not in Finance. */
+  const scope =
+    facts.showing === null
+      ? 'every department'
+      : facts.showing.id === facts.reader.departmentId
+        ? `${facts.showing.name}, your department`
+        : facts.showing.name;
+
   const privacy =
     'It shows who is away and on which dates, and nothing about what kind of leave it ' +
     'is or why.';
 
   if (colleagues.length === 0) {
-    return `There is nobody on your team calendar. ${privacy}`;
+    return `There is nobody on this calendar. ${privacy}`;
   }
 
   const counted =
-    `${people(colleagues.length)} on this calendar, you included, and ` +
+    `${people(colleagues.length)} in ${scope}` +
+    (colleagues.some((one) => one.isMe) ? ', you included, and ' : ', and ') +
     `${awayToday.length === 0 ? 'none of them is' : `${String(awayToday.length)} ${awayToday.length === 1 ? 'is' : 'are'}`} ` +
     'away today.';
 
@@ -267,7 +316,7 @@ function colleagueInWords(
 
 /* --------------------------------------------------------------------------- helpers */
 
-/** The shared line manager first, then surname, forename, employee number. */
+/** The shared manager first, then surname, forename, employee number. */
 function byManagerThenName(managerId: string | null) {
   return (left: Employee, right: Employee): number => {
     if ((left.id === managerId) !== (right.id === managerId)) {

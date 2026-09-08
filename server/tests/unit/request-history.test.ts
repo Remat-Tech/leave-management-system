@@ -50,7 +50,7 @@ import {
  *   dropped.
  *
  *   **And it says what has *not* happened.** The stages nobody has been asked yet are on the
- *   trail, because "approved by your line manager" shown as the last word is the exact
+ *   trail, because "approved by your manager" shown as the last word is the exact
  *   misreading FR 41 exists to prevent.
  *
  *   **Newest first**, which is the reverse of the calendar order the repository hands back.
@@ -183,7 +183,7 @@ describe('the trail', () => {
       desk: 'MANAGER',
       by: 'Ama Mensah',
       comment: null,
-      inWords: 'Approved by your line manager.',
+      inWords: 'Approved by your manager.',
     });
 
     expect(steps[2]).toMatchObject({
@@ -221,7 +221,7 @@ describe('the trail', () => {
    * FR 52. The desk a refusal was made *at* is not the desk the person belongs to.
    *
    * `TRANSITIONS` admits HR to the `REFUSE` row whichever desk a request is sitting on, so
-   * "turned down at your line manager's stage" by an HR Officer is a real sentence — and the
+   * "turned down at your manager's stage" by an HR Officer is a real sentence — and the
    * manager reading it can see the decision was not theirs.
    */
   it('names the stage a refusal was made at rather than the person’s own desk', () => {
@@ -237,7 +237,7 @@ describe('the trail', () => {
       }),
     ]);
 
-    expect(steps[1].inWords).toBe('Turned down at your line manager’s stage.');
+    expect(steps[1].inWords).toBe('Turned down at your manager’s stage.');
     expect(steps[1].by).toBe('Kofi Boateng');
   });
 

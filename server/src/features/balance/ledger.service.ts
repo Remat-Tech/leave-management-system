@@ -31,7 +31,7 @@ export class LedgerService {
     private readonly entries: LedgerRepository,
     /** NFR SEC 02. */
     private readonly guard: Guard,
-    /** The employee records, for one question only: who is this person's line manager. FR 55. */
+    /** The employee records, for one question only: who is this person's manager. FR 55. */
     private readonly employees: EmployeeRepository,
   ) {}
 
@@ -66,7 +66,7 @@ export class LedgerService {
     this.guard.enforce(ledgerPolicy.read(actor, await this.ownerOf(employeeId)));
   }
 
-  /** Whose balance this is, and who their line manager is. */
+  /** Whose balance this is, and who their manager is. */
   private async ownerOf(employeeId: string): Promise<BalanceOwner> {
     const employee: Employee | undefined = await this.employees.findById(employeeId);
 

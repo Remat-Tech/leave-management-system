@@ -703,7 +703,7 @@ function aRequest(employeeId: string): NewLeaveRequest {
   };
 }
 
-/** Adwoa, five levels down, whose line manager is Kofi in the fixtures. */
+/** Adwoa, five levels down, whose manager is Kofi in the fixtures. */
 function asTheOfficer() {
   return signedInAs(people.officer, { roles: ['EMPLOYEE'], isManager: false });
 }

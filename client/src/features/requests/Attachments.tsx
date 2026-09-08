@@ -13,6 +13,7 @@ import {
   MAX_ATTACHMENTS_PER_REQUEST,
   rescanEvidence,
 } from '../../api';
+import { Icon } from '../../Icon';
 
 /**
  * Uploading a certificate, and reading one back. FR 12, FR 13, NFR SEC 04, NFR SEC 07. LMS 407.
@@ -76,12 +77,15 @@ export function AttachedFiles({
 
   return (
     <details
-      className="breakdown attachments"
+      className="attachments"
       onToggle={(event) => {
         setOpened(event.currentTarget.open);
       }}
     >
-      <summary>Documents on this request</summary>
+      <summary>
+        Attachments
+        {held === undefined ? '' : ` (${String(held.attachments.length)})`}
+      </summary>
 
       {problem === undefined ? null : <p className="notice">{problem}</p>}
 
@@ -247,8 +251,10 @@ export function Evidence({
 
   return (
     <div className="evidence">
-      <label>
-        Supporting document
+      {/* LMS 409. A drop zone rather than a bare button, and the input is the zone rather than
+          something beside it: a file input already accepts a dropped file, so stretching one
+          over the box buys real drag and drop without a drag handler to keep correct. */}
+      <label className="dropzone">
         <input
           type="file"
           disabled={disabled || busy || held.length >= MAX_ATTACHMENTS_PER_REQUEST}
@@ -265,15 +271,22 @@ export function Evidence({
             }
           }}
         />
-      </label>
 
-      {/* FR 12. The caps, said before somebody picks a file rather than after. The server
-          holds both, and `accept` above narrows the picker and enforces nothing: what a file
-          is, is read from the bytes. NFR SEC 07. */}
-      <p className="muted">
-        PDF, JPG, PNG or DOCX, up to {megabytes(MAX_ATTACHMENT_BYTES)} each and{' '}
-        {MAX_ATTACHMENTS_PER_REQUEST} in all. It goes on the request as you ask for the leave.
-      </p>
+        <span className="dropzone-mark" aria-hidden="true">
+          <Icon name="upload" />
+        </span>
+
+        <span className="dropzone-said">
+          <strong>{busy ? 'Uploading…' : 'Drop a file here, or click to choose one'}</strong>
+          {/* FR 12. The caps, said before somebody picks a file rather than after. The server
+              holds both, and `accept` narrows the picker and enforces nothing: what a file
+              is, is read from the bytes. NFR SEC 07. */}
+          <small>
+            PDF, JPG, PNG or DOCX, up to {megabytes(MAX_ATTACHMENT_BYTES)} each and{' '}
+            {MAX_ATTACHMENTS_PER_REQUEST} in all.
+          </small>
+        </span>
+      </label>
 
       {problem === undefined ? null : <p className="notice">{problem}</p>}
 

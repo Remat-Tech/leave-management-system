@@ -205,7 +205,7 @@ function aRequest(employeeId: string): NewLeaveRequest {
   };
 }
 
-/** Adwoa, five levels down, whose line manager is Kofi in the fixtures. */
+/** Adwoa, five levels down, whose manager is Kofi in the fixtures. */
 function asTheOfficer() {
   return signedInAs(people.officer, { roles: ['EMPLOYEE'], isManager: false });
 }
@@ -226,7 +226,7 @@ async function reportsTo(employeeId: string, managerId: string) {
   return employees.update(asTheHeadOfHr(), employeeId, { managerId });
 }
 
-/** What is waiting on one line manager, which is the queue the story is about. FR 40. */
+/** What is waiting on one manager, which is the queue the story is about. FR 40. */
 async function waitingOn(managerId: string): Promise<string[]> {
   const rows = await new LeaveRequestRepository(db).awaiting({
     desks: ['MANAGER'],
@@ -240,7 +240,7 @@ async function waitingOn(managerId: string): Promise<string[]> {
 
 /* --------------------------------------------------- the request follows. FR 07 */
 
-describe('a request waiting on a line manager who is replaced', () => {
+describe('a request waiting on a manager who is replaced', () => {
   beforeEach(async () => {
     await twentyDaysFor(people.officer);
   });
@@ -302,7 +302,7 @@ describe('a request waiting on a line manager who is replaced', () => {
       movedFrom: 'MANAGER',
       movedTo: 'MANAGER',
     });
-    expect(handover.because).toContain('line manager changed');
+    expect(handover.because).toContain('manager changed');
     /* Stamped by the trigger from the transaction's actor, never by the writer. */
     expect(handover.recordedBy).not.toBe('not named by the writer');
     expect(handover.recordedAt).toBeInstanceOf(Date);
@@ -379,7 +379,7 @@ describe('a request a stage has already decided', () => {
 
 /* ------------------------- a new manager who has already decided it. FR 48b, FR 48d */
 
-describe('a request whose new line manager has already decided it', () => {
+describe('a request whose new manager has already decided it', () => {
   beforeEach(async () => {
     /* HR first, then the manager, so that the desk the line moves is the second stage. */
     await annualLeaveGoesTo('HR', 'MANAGER');
@@ -389,7 +389,7 @@ describe('a request whose new line manager has already decided it', () => {
   /**
    * A line moving decides nothing, which is the boundary this case is here to hold.
    *
-   * Ama decided at the HR stage and is then made Adwoa's line manager, so every stage of the
+   * Ama decided at the HR stage and is then made Adwoa's manager, so every stage of the
    * chain has now been answered by one hand — the state LMS 322 calls a single approver, and
    * the state the walk reaches by *deciding* rather than by a record being edited. Reaching
    * it this way must not approve the leave: nobody said yes to the second stage.
@@ -433,7 +433,7 @@ describe('a request that stopped because nobody could decide it', () => {
     );
     await twentyDaysFor(people.officer);
 
-    /* Adwoa's line manager has left, so the desk her request starts at is unstaffed. */
+    /* Adwoa's manager has left, so the desk her request starts at is unstaffed. */
     await admin.query(
       "UPDATE employee SET employment_status = 'TERMINATED', exit_date = '2026-01-31' " +
         'WHERE id = $1',

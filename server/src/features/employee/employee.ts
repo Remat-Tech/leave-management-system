@@ -102,7 +102,7 @@ export class EmployeeNotFound extends Error {
 }
 
 /**
- * A line manager who is nobody.
+ * A manager who is nobody.
  *
  * Separate from {@link EmployeeNotFound} because the two are different problems
  * wearing the same words: there, the record being edited does not exist; here it
@@ -120,7 +120,7 @@ export class ManagerNotFound extends Error {
 }
 
 /**
- * A line manager who has left.
+ * A manager who has left.
  *
  * Routing a request to somebody who left in July is the same black hole as
  * routing it nowhere, which is what FR 02 exists to close. This is refused when
@@ -135,14 +135,14 @@ export class ManagerHasLeft extends Error {
     super(
       `${manager.firstName} ${manager.lastName} left on ` +
         `${manager.exitDate ?? 'a date that was not recorded'} and cannot be anybody's ` +
-        `line manager. A request routed to them would have nowhere to go.`,
+        `manager. A request routed to them would have nowhere to go.`,
     );
     this.name = 'ManagerHasLeft';
     this.managerId = manager.id;
   }
 }
 
-/** A second employee with no line manager. FR 04. */
+/** A second employee with no manager. FR 04. */
 export class SecondRootEmployee extends Error {
   /** The employee already recorded without a manager, where one could be identified. */
   readonly existingRootId: string | null;
@@ -151,9 +151,9 @@ export class SecondRootEmployee extends Error {
     super(
       existing
         ? `${existing.firstName} ${existing.lastName} (${existing.employeeNumber}) is ` +
-            `already the one employee recorded without a line manager. Give this ` +
+            `already the one employee recorded without a manager. Give this ` +
             `record a manager, or move ${existing.firstName}'s reporting line first.`
-        : 'Somebody is already recorded without a line manager, and exactly one may ' +
+        : 'Somebody is already recorded without a manager, and exactly one may ' +
             'be. Give this record a manager.',
     );
     this.name = 'SecondRootEmployee';
@@ -181,7 +181,7 @@ function describeCycle(loop: readonly Employee[]): string {
 
   if (manager === undefined || employee === undefined) {
     return (
-      'That line manager would close a loop in the reporting lines. A request ' +
+      'That manager would close a loop in the reporting lines. A request ' +
       'walking up it would go round for ever and reach nobody.'
     );
   }
@@ -191,7 +191,7 @@ function describeCycle(loop: readonly Employee[]): string {
 
   return (
     `${fullName(manager)} already reports to ${fullName(employee)}${through}. ` +
-    `Making them ${employee.firstName}'s line manager would close the loop, and a ` +
+    `Making them ${employee.firstName}'s manager would close the loop, and a ` +
     `request walking up it would reach nobody.`
   );
 }
@@ -338,8 +338,7 @@ export function validateEmployeeChanges(
     if (managerId !== null && managerId === current.id) {
       throw new InvalidEmployee(
         'managerId',
-        'An employee cannot be their own line manager. Their requests would be ' +
-          'theirs to approve.',
+        'An employee cannot be their own manager. Their requests would be ' + 'theirs to approve.',
       );
     }
 
@@ -472,7 +471,7 @@ export function noLeaveFollows(): LeaveThatFollows {
 export interface ReportingLines {
   /** How many employee records there are at all, leavers included. */
   total: number;
-  /** Everybody recorded with no line manager. FR 04 permits exactly one. */
+  /** Everybody recorded with no manager. FR 04 permits exactly one. */
   rootless: Employee[];
   /** Everybody still here whose recorded manager has left. */
   reportingToLeavers: { employee: Employee; manager: Employee }[];
@@ -511,7 +510,7 @@ export function warnAboutReportingLines(lines: ReportingLines): ReportingLineWar
     warnings.push({
       code: 'NO_ROOT',
       message:
-        'Every employee has a line manager and none is the head of the organisation, ' +
+        'Every employee has a manager and none is the head of the organisation, ' +
         'so somewhere a reporting line loops back on itself. No upward walk can ' +
         'terminate, which means no request can be routed.',
       employeeIds: [],
@@ -527,7 +526,7 @@ export function warnAboutReportingLines(lines: ReportingLines): ReportingLineWar
     warnings.push({
       code: 'SECOND_ROOT',
       message:
-        `${lines.rootless.length} employees are recorded with no line manager, and ` +
+        `${lines.rootless.length} employees are recorded with no manager, and ` +
         `exactly one may be: ${lines.rootless.map(fullName).join(', ')}. All but the ` +
         `head of the organisation need one, or their requests have nowhere to go.`,
       employeeIds: lines.rootless.map((employee) => employee.id),
@@ -609,7 +608,7 @@ function normaliseWorkEmail(value: string | undefined, domains: string[]): strin
 /**
  * The team they are in. LMS 105.
  *
- * Simpler than the line manager reference below, because there is no exception
+ * Simpler than the manager reference below, because there is no exception
  * to make room for. Nobody is outside the organisation chart the way the head of
  * it is outside the reporting lines, so there is no meaning to give `null` and it
  * is refused along with everything else that is not an id.
@@ -673,7 +672,7 @@ function requireWorkPatternReference(value: string | null | undefined): string {
 }
 
 /**
- * The line manager reference, or a deliberate statement that there is none.
+ * The manager reference, or a deliberate statement that there is none.
  *
  * Three inputs, three different meanings, and keeping them apart is most of the
  * story:
@@ -696,7 +695,7 @@ function requireManagerReference(value: string | null | undefined): string | nul
   if (value === undefined) {
     throw new InvalidEmployee(
       'managerId',
-      'Every employee has a line manager, so that their requests have somewhere to ' +
+      'Every employee has a manager, so that their requests have somewhere to ' +
         'go. If this is the head of the organisation, say so with a managerId of ' +
         'null rather than by leaving it out.',
     );
@@ -709,8 +708,7 @@ function requireManagerReference(value: string | null | undefined): string | nul
   if (typeof value !== 'string' || value.trim() === '') {
     throw new InvalidEmployee(
       'managerId',
-      'managerId must be the id of the line manager, or null for the head of the ' +
-        'organisation.',
+      'managerId must be the id of the manager, or null for the head of the ' + 'organisation.',
     );
   }
 

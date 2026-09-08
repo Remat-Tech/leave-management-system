@@ -177,7 +177,7 @@ describe('an employee record', () => {
     expect(employeePolicy.read(ama, hers).allowed).toBe(true);
   });
 
-  it('is readable by their line manager, from the record and not from a role', () => {
+  it('is readable by their manager, from the record and not from a role', () => {
     /* The story's third criterion cashed in. Akosua holds no role at all; she is
        an approver because the record in hand names her. */
     const akosua = manager('akosua');
@@ -267,7 +267,7 @@ describe('changing an employee record', () => {
   });
 
   it('says which rule refused, but only to somebody who can already see the record', () => {
-    /* The two kinds of refusal, and the reason there are two. A line manager
+    /* The two kinds of refusal, and the reason there are two. A manager
        looking at their report is told what the rule is; a stranger is not told
        that there is a record at all. */
     const akosua = manager('akosua');
@@ -716,7 +716,7 @@ describe('assigning roles', () => {
     expect(rolePolicy.read(hrAdmin, 'kojo').allowed).toBe(true);
   });
 
-  it('does not let a line manager see what their report holds', () => {
+  it('does not let a manager see what their report holds', () => {
     // Routing an approval needs to know somebody is a report. It does not need
     // to know they are also an HR Administrator.
     expect(rolePolicy.read(manager('akosua'), 'kojo').allowed).toBe(false);
@@ -805,7 +805,7 @@ describe('the audit log', () => {
     expect(auditPolicy.forEmployee(employee('ama'), hers).allowed).toBe(true);
   });
 
-  it('gives a line manager the same standing over a report that they have over the record', () => {
+  it('gives a manager the same standing over a report that they have over the record', () => {
     const akosua = manager('akosua');
 
     expect(auditPolicy.forEmployee(akosua, record('kojo', 'akosua')).allowed).toBe(true);
@@ -833,7 +833,7 @@ describe('the audit log', () => {
 
   it('keeps the history of a login and its roles narrower than the record', () => {
     /* When a password was reset and who gave somebody HR powers is the material
-       of an investigation, not of approving leave. A line manager is deliberately
+       of an investigation, not of approving leave. A manager is deliberately
        not here even though they may read the record's history. */
     const akosua = manager('akosua');
 
@@ -880,10 +880,10 @@ describe('the audit log', () => {
  *
  * The two worth reading closely are `commit`, which is the only refusal in this
  * system aimed at somebody's own record on purpose, and `reserve`, which is the only
- * place a line manager's standing over a report does *not* carry.
+ * place a manager's standing over a report does *not* carry.
  */
 describe('moving a balance, FR 26 and LMS 212', () => {
-  /** Ama's balance. Akosua is her line manager. */
+  /** Ama's balance. Akosua is her manager. */
   /** FR 49, LMS 327. Nobody is covering for anybody unless a case says so. */
   const hers = { employeeId: 'ama', managerId: 'akosua', standingIn: [] };
 
@@ -1052,14 +1052,14 @@ describe('moving a balance, FR 26 and LMS 212', () => {
     });
 
     /**
-     * And a line manager's is the one standing that does not carry here.
+     * And a manager's is the one standing that does not carry here.
      *
      * They may read the balance, because deciding a request needs it, and they may
      * approve. Asking for leave on somebody's behalf is not a thing anybody has
      * asked for, and a manager who could reserve a report's days could quietly
      * reduce what that person may book without approving anything.
      */
-    it('and not their line manager’s', () => {
+    it('and not their manager’s', () => {
       expect(ledgerPolicy.read(manager('akosua'), hers).allowed).toBe(true);
       expect(ledgerPolicy.reserve(manager('akosua'), hers).allowed).toBe(false);
     });
@@ -1081,7 +1081,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       expect(refusal.told).toMatch(/approver/);
     });
 
-    it('is their line manager’s, and anybody who reads every record', () => {
+    it('is their manager’s, and anybody who reads every record', () => {
       expect(ledgerPolicy.commit(manager('akosua'), hers).allowed).toBe(true);
 
       for (const [code, roles] of EACH_ROLE) {
@@ -1233,7 +1233,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
     });
 
     /**
-     * And never by their line manager, which is the one place their standing over a
+     * And never by their manager, which is the one place their standing over a
      * report does not carry.
      *
      * The same rule `ledgerPolicy.reserve` holds and for the same reason: a manager who
@@ -1242,7 +1242,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
      * no — is what would quietly stop being true if somebody widened this to the three
      * standings the read has.
      */
-    it('and never by their line manager, who may nonetheless read it', () => {
+    it('and never by their manager, who may nonetheless read it', () => {
       expect(leaveRequestPolicy.read(manager('akosua'), hers).allowed).toBe(true);
       expect(leaveRequestPolicy.submit(manager('akosua'), hers).allowed).toBe(false);
       expect(leaveRequestPolicy.submit(manager('akosua'), hers).told).toMatch(/FR 18/);
@@ -1313,7 +1313,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
      * FR 19, LMS 302.
      *
      * The one rule here that does not widen outwards from the person. `read` above admits
-     * the line manager and every role that reads every record, because a request is a thing
+     * the manager and every role that reads every record, because a request is a thing
      * that happened and they have standing towards it; a draft is leave nobody has asked
      * for, so there is no request for a manager to be the manager of.
      */
@@ -1335,7 +1335,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
      *
      * Their own included, which is the reading FR 18 supports: what is reserved to HR is
      * *entering the record*, and the leave still goes to somebody else's desk to be decided.
-     * The line manager is refused, unlike every other thing that can be done to a report's
+     * The manager is refused, unlike every other thing that can be done to a report's
      * request — recording an exception to a policy is not a supervision job.
      */
     it('and leave past its backdating window is entered by HR, their own included', () => {
@@ -1409,7 +1409,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
            read and nobody's own queue. */
         'chaseTheCompany',
         /* FR 44, LMS 318. `decide` dispatches on the verb, and `override` is the two verbs
-           that disagree with a line manager. */
+           that disagree with a manager. */
         'decide',
         /* FR 19, LMS 302. The narrowest rule here: the person planning the leave and nobody
            else, where every other read widens outwards to the manager and to HR. */
@@ -1445,7 +1445,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
      * refused. Both write a valid RELEASE and a record of something that did not happen.
      */
     it('and the three endings are decided by three different desks', () => {
-      /* Ama asked for the leave and Akosua is her line manager. */
+      /* Ama asked for the leave and Akosua is her manager. */
       const ama = employee('ama');
       const akosua = manager('akosua');
 
@@ -1502,7 +1502,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         return { ...hers, awaiting, chiefExecutiveId: 'yaw' };
       }
 
-      it('is the line manager’s while it is sitting with the manager', () => {
+      it('is the manager’s while it is sitting with the manager', () => {
         expect(leaveRequestPolicy.approve(manager('akosua'), at('MANAGER')).allowed).toBe(true);
       });
 
@@ -1532,7 +1532,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
 
       /* And the manager has no standing at the HR stage either. The chain is a sequence and
          each desk answers for its own stage. */
-      it('and not the line manager’s once it has moved past them', () => {
+      it('and not the manager’s once it has moved past them', () => {
         expect(leaveRequestPolicy.approve(manager('akosua'), at('HR')).allowed).toBe(false);
       });
 
@@ -1541,7 +1541,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        *
        * Nobody holds a role that says Chief Executive — the leave-type-approval-chain
        * migration is emphatic that turning the three desks into three role codes is the trap
-       * — so the desk resolves to the one employee with no line manager, and holding every
+       * — so the desk resolves to the one employee with no manager, and holding every
        * role in the system is not standing at it.
        */
       it('and is the Chief Executive’s at the CEO desk, by who they are rather than what they hold', () => {

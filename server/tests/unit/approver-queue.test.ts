@@ -47,7 +47,7 @@ const YAA = person({ id: 'yaa', firstName: 'Yaa', lastName: 'Owusu', managerId: 
 /** An HR Officer, who staffs the `HR` desk and manages nobody. */
 const ESI = person({ id: 'esi', firstName: 'Esi', lastName: 'Darko', managerId: 'ama' });
 
-/** FR 04. The one employee with no line manager, which is the `CEO` desk. */
+/** FR 04. The one employee with no manager, which is the `CEO` desk. */
 const AMA = person({ id: 'ama', firstName: 'Ama', lastName: 'Mensah', managerId: null });
 
 const PEOPLE = [KOFI, ADWOA, KWAME, YAA, ESI, AMA];
@@ -235,7 +235,7 @@ describe('who else is away', () => {
     expect(item.team.away).toEqual([]);
   });
 
-  /* §4.3.1, FR 32h. The Chief Executive decides unpaid leave and is nobody's line manager. */
+  /* §4.3.1, FR 32h. The Chief Executive decides unpaid leave and is nobody's manager. */
   it('withholds names from an approver with no standing to read that person', () => {
     const [item] = queueOf({
       approverId: AMA.id,
@@ -256,7 +256,7 @@ describe('who else is away', () => {
     expect(item.team.inWords).toBe('1 of the 2 others on this team is away over these dates.');
   });
 
-  /* FR 04's one employee has no line manager, so no team. */
+  /* FR 04's one employee has no manager, so no team. */
   it('says so where the person is on no team at all', () => {
     const [item] = queueOf({
       requests: [
@@ -405,9 +405,9 @@ describe('where each request has got to', () => {
 
     expect(item.approvedBy).toEqual(['MANAGER']);
     expect(item.stageInWords).toBe(
-      'Already approved by Adwoa Frimpong’s line manager. Yours is the last approval it needs.',
+      'Already approved by Adwoa Frimpong’s manager. Yours is the last approval it needs.',
     );
-    expect(item.stageInWords).not.toContain('your line manager');
+    expect(item.stageInWords).not.toContain('your manager');
   });
 
   it('says who comes after this desk where somebody does', () => {

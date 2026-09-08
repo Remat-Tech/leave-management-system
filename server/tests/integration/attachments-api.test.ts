@@ -12,6 +12,7 @@ import { calendarDateIn } from '../../src/shared/time.js';
 import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
 import { AttachmentLinkRepository } from '../../src/features/leave-request/attachment-link.db.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
@@ -112,6 +113,7 @@ beforeAll(async () => {
     }),
     balances: new BalanceRepository(db),
     employees,
+    departments: new DepartmentRepository(db),
     types,
     years: yearRepository,
     requests: requestRepository,

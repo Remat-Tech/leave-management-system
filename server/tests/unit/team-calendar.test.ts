@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Actor, signedInAs } from '../../src/auth/actor.js';
+import type { Department } from '../../src/features/department/department.js';
 import type { Employee } from '../../src/features/employee/employee.js';
 import type { LeaveRequest } from '../../src/features/leave-request/leave-request.js';
 import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
@@ -10,35 +11,57 @@ import {
   teamCalendarFor,
 } from '../../src/features/team/team-calendar.js';
 
-/** Who is away and when, as rules. FR 57, LMS 406. */
+/** Who is away and when, as rules. FR 57, LMS 406, LMS 409. */
 
 const YEAR_2026 = year('2026', '2026-01-01', '2026-12-31');
 
-/** Kofi leads the team. Adwoa, Abena and Kojo report to him; Adwoa is reading. */
+const OPERATIONS = department('ops', 'Operations');
+const FINANCE = department('finance', 'Finance');
+
+/** Operations. Kofi leads it; Adwoa, Abena and Kojo report to him, and Adwoa is reading. */
 const KOFI = person({ id: 'kofi', firstName: 'Kofi', lastName: 'Boateng', managerId: 'akosua' });
 const ADWOA = person({ id: 'adwoa', firstName: 'Adwoa', lastName: 'Frimpong', managerId: 'kofi' });
 const ABENA = person({ id: 'abena', firstName: 'Abena', lastName: 'Sarpong', managerId: 'kofi' });
 const KOJO = person({ id: 'kojo', firstName: 'Kojo', lastName: 'Antwi', managerId: 'kofi' });
 
-/** Adwoa's own report, one level below her. Not on the team she is on. */
-const YAA = person({ id: 'yaa', firstName: 'Yaa', lastName: 'Owusu', managerId: 'adwoa' });
+/** Finance, and so on nobody's calendar but Finance's — and on HR's, which is every one. */
+const EFE = person({
+  id: 'efe',
+  firstName: 'Efe',
+  lastName: 'Danquah',
+  managerId: 'kwame',
+  departmentId: FINANCE.id,
+});
 
 describe('who may look at a team calendar', () => {
-  it('admits somebody on a team', () => {
+  it('admits somebody with a department to draw', () => {
     expect(teamPolicy.calendar(asAdwoa(), 4).allowed).toBe(true);
   });
 
-  /* FR 04's one seat. Refused openly, because reporting to nobody is a fact about yourself. */
-  it('and refuses somebody who reports to nobody, saying why', () => {
+  /* `employee.department_id` is NOT NULL, so this refuses nobody in practice. It is here so
+     that a query coming back empty says what went wrong rather than drawing nothing. */
+  it('and refuses an empty department, saying why', () => {
     const decision = teamPolicy.calendar(asAdwoa(), 0);
 
     expect(decision.allowed).toBe(false);
-    expect(decision.told).toContain('not recorded as reporting to anybody');
+    expect(decision.told).toContain('the people in your department');
+  });
+
+  /* LMS 409. HR reads every record, so HR reads every department. */
+  it('and lets HR look past their own department', () => {
+    expect(teamPolicy.everyDepartment(asEfua()).allowed).toBe(true);
+  });
+
+  it('and refuses everybody else, saying whose it is', () => {
+    const decision = teamPolicy.everyDepartment(asAdwoa());
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.told).toContain('Looking across departments is for HR');
   });
 });
 
-describe('who is on the calendar, FR 57', () => {
-  it('is everybody sharing the line manager, the manager and the reader included', () => {
+describe('who is on the calendar, FR 57, LMS 409', () => {
+  it('is everybody in the department, the reader included', () => {
     expect(calendarOf({}).colleagues.map((one) => one.name)).toEqual([
       'Kofi Boateng',
       'Kojo Antwi',
@@ -47,7 +70,7 @@ describe('who is on the calendar, FR 57', () => {
     ]);
   });
 
-  it('and marks the reader and the manager rather than leaving either off', () => {
+  it('and marks the reader and their manager rather than leaving either off', () => {
     const calendar = calendarOf({});
 
     expect(colleague(calendar, ADWOA.id).isMe).toBe(true);
@@ -55,9 +78,31 @@ describe('who is on the calendar, FR 57', () => {
     expect(calendar.size).toBe(4);
   });
 
-  /* Yaa reports to Adwoa. One level, one query — she is never read rather than filtered out. */
-  it('and never somebody a colleague manages', () => {
-    expect(calendarOf({}).colleagues.map((one) => one.employeeId)).not.toContain(YAA.id);
+  /* The scope is the department, so the screen says which one it is drawing. */
+  it('and names the department it is showing', () => {
+    const calendar = calendarOf({});
+
+    expect(calendar.department?.name).toBe('Operations');
+    expect(calendar.inWords).toContain('4 people in Operations, your department');
+  });
+
+  /* LMS 409. HR reading every department at once, which is the one case with no department. */
+  it('and says so where every department is being shown at once', () => {
+    const calendar = calendarOf({
+      team: [KOFI, ADWOA, ABENA, KOJO, EFE],
+      showing: null,
+      departments: [OPERATIONS, FINANCE],
+      canChooseDepartment: true,
+    });
+
+    expect(calendar.department).toBeNull();
+    expect(calendar.inWords).toContain('5 people in every department');
+    expect(colleague(calendar, EFE.id).department?.name).toBe('Finance');
+  });
+
+  /* Somebody in another department is never read rather than filtered out here. */
+  it('and never somebody in another department', () => {
+    expect(calendarOf({}).colleagues.map((one) => one.employeeId)).not.toContain(EFE.id);
   });
 
   /* FR 06. Still on the line until HR moves it, and hiding the person while showing the
@@ -231,10 +276,24 @@ function calendarOf(facts: Partial<TeamCalendarFacts>): TeamCalendarView {
     team: [KOFI, ADWOA, ABENA, KOJO],
     year: YEAR_2026,
     years: [YEAR_2026],
+    showing: OPERATIONS,
+    departments: [OPERATIONS],
+    canChooseDepartment: false,
     leave: [],
     today: '2026-06-01',
     ...facts,
   });
+}
+
+function department(id: string, name: string): Department {
+  return {
+    id,
+    name,
+    parentId: null,
+    isActive: true,
+    createdAt: new Date('2024-01-01T00:00:00Z'),
+    updatedAt: new Date('2024-01-01T00:00:00Z'),
+  };
 }
 
 function colleague(calendar: TeamCalendarView, employeeId: string) {
@@ -249,6 +308,11 @@ function colleague(calendar: TeamCalendarView, employeeId: string) {
 
 function asAdwoa(): Actor {
   return signedInAs(ADWOA.id, { roles: ['EMPLOYEE'], isManager: false });
+}
+
+/** Efua Owusu, the HR officer, who reads every record and so every department. LMS 409. */
+function asEfua(): Actor {
+  return signedInAs('efua', { roles: ['EMPLOYEE', 'HR_OFFICER'], isManager: false });
 }
 
 function booking(changes: Partial<LeaveRequest>): LeaveRequest {
@@ -276,13 +340,15 @@ function booking(changes: Partial<LeaveRequest>): LeaveRequest {
   };
 }
 
-function person(input: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'managerId'>): Employee {
+function person(
+  input: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'managerId'> & { departmentId?: string },
+): Employee {
   return {
     ...input,
     employeeNumber: `EMP-${input.id}`,
     workEmail: `${input.firstName.toLowerCase()}@rematholdings.com`,
     jobTitle: null,
-    departmentId: '1',
+    departmentId: input.departmentId ?? OPERATIONS.id,
     workPatternId: '1',
     startDate: '2024-01-01',
     exitDate: null,

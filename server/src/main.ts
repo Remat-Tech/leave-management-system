@@ -5,6 +5,7 @@ import { Guard } from './auth/policy.js';
 import { createDatabase } from './db/index.js';
 import { createMailer } from './mail/mailer.js';
 import { BalanceRepository } from './features/balance/balance.db.js';
+import { DepartmentRepository } from './features/department/department.db.js';
 import { EmployeeRepository } from './features/employee/employee.db.js';
 import { HolidayRepository } from './features/holiday/holiday.db.js';
 import { ApprovalDelegationRepository } from './features/leave-request/delegation.db.js';
@@ -54,6 +55,8 @@ const db = createDatabase();
 const guard = new Guard();
 
 const employees = new EmployeeRepository(db);
+/** FR 57, LMS 409. */
+const departments = new DepartmentRepository(db);
 const accounts = new SignInAccountRepository(db);
 const roles = new RoleRepository(db);
 const types = new LeaveTypeRepository(db);
@@ -115,6 +118,7 @@ const app = buildApp({
   signIn: new SignInService(accounts, employees, roles, mailer, guard),
   balances,
   employees,
+  departments,
   types,
   years,
   requests,

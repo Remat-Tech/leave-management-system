@@ -174,7 +174,7 @@ export class LeaveEventService {
    *
    * The read a balance screen makes to put "for the birth on 4 March" beside a figure,
    * and the read a dispute makes. Decided by exactly the rule that decides who may read
-   * the balance — `ledgerPolicy.read`, which is yours, your line manager's, or a role
+   * the balance — `ledgerPolicy.read`, which is yours, your manager's, or a role
    * that reads everybody — because an event is the reason a figure is what it is, and
    * standing to see one without the other would be standing to see half an explanation.
    */

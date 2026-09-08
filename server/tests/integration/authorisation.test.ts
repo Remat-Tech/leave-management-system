@@ -289,7 +289,7 @@ describe('a colleague guessing at records', () => {
   });
 });
 
-describe('a line manager', () => {
+describe('a manager', () => {
   beforeEach(async () => {
     await withPasswords(people.teamLead);
   });

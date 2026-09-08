@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { currentSession, type Me, signOut } from './api';
+import { currentSession, type Me, signOut, type Year } from './api';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { BalancesPage } from './features/balances/BalancesPage';
 import { CalendarPage } from './features/calendar/CalendarPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
 import { RequestsPage } from './features/requests/RequestsPage';
 import { SignIn } from './features/session/SignIn';
-import { TeamPage } from './features/team/TeamPage';
+import { Icon } from './Icon';
 
-/** The application, and the places there are to go. LMS 401 to LMS 406. */
+/** The application, and the places there are to go. LMS 401 to LMS 406, LMS 409. */
 
 /**
  * The places there are to go, and the labels on them.
@@ -24,30 +24,45 @@ import { TeamPage } from './features/team/TeamPage';
  * been lying". So the tab is a link like the others, and somebody who approves nothing gets
  * the server's own sentence saying what an approver is. FR 40, NFR USA 03.
  *
- * **"My team" is offered on the same terms**, and for the same reason: whether somebody has a
- * report is the server's answer, and somebody who manages nobody gets its sentence. FR 55.
- *
- * **"Who is away" is everybody's**, and it is the peer half of the same calendar: dates and
- * names, and no leave type or reason on the wire at all. FR 57.
+ * **"My team" is not a tab any more.** LMS 409. It drew the same calendar as "Who is away"
+ * over different people. What was only on it, FR 55 and FR 56, is on "Who is away" now.
  */
 const SCREENS = [
-  { id: 'balances', label: 'My balances' },
-  { id: 'ask', label: 'Ask for leave' },
-  { id: 'requests', label: 'My requests' },
-  /** FR 57, LMS 406. Everybody's, and it names no private business. */
-  { id: 'calendar', label: 'Who is away' },
-  { id: 'approvals', label: 'Waiting on me' },
-  /** FR 55, FR 56, LMS 405. */
-  { id: 'team', label: 'My team' },
+  { id: 'balances', label: 'My balances', icon: 'balances' },
+  { id: 'ask', label: 'Ask for leave', icon: 'ask' },
+  { id: 'requests', label: 'My requests', icon: 'requests' },
+  /** FR 55, FR 56, FR 57, LMS 406, LMS 409. Everybody's, scoped to a department. */
+  { id: 'calendar', label: 'Who is away', icon: 'calendar' },
+  { id: 'approvals', label: 'Waiting on me', icon: 'approvals' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
+
+/** The screens a leave year decides the contents of, and so the ones the picker appears on. */
+const YEAR_SCOPED = new Set<Screen>(['balances', 'calendar']);
 
 const DEFAULT_SCREEN: Screen = 'balances';
 
 export function App() {
   const [me, setMe] = useState<Me | undefined>(undefined);
   const [asked, setAsked] = useState(false);
+
+  /**
+   * The leave year, held here rather than on each screen. LMS 409.
+   *
+   * The years come *up* from whichever year-scoped screen loaded last rather than being
+   * fetched here: there is no endpoint that answers "which years are mine" on its own, and
+   * inventing a request for one would be a second answer to a question the screens already
+   * have. `yearId` going the other way is what makes the picker in the bar the same control
+   * on both screens.
+   */
+  const [years, setYears] = useState<Year[]>([]);
+  const [yearId, setYearId] = useState<string | undefined>(undefined);
+
+  const yearsKnown = useCallback((offered: Year[], showing: string) => {
+    setYears(offered);
+    setYearId((was) => was ?? showing);
+  }, []);
 
   const screen = useScreen();
   const screens = useRef<HTMLElement | null>(null);
@@ -72,7 +87,7 @@ export function App() {
   /**
    * Bring the tab you are on into view. LMS 408.
    *
-   * The tabs scroll sideways on a phone, so a link to "My team" would otherwise land on a strip
+   * The tabs scroll sideways on a phone, so a link to "Waiting on me" would land on a strip
    * with nothing marked. Moves nothing where the strip is not scrolling. `block: 'nearest'`
    * never scrolls the page — the bar is sticky, so only the strip has anywhere to go. `me` is a
    * dependency because the bar exists only once there is somebody to draw it for.
@@ -91,53 +106,107 @@ export function App() {
     return <SignIn onSignedIn={ask} />;
   }
 
+  const here = SCREENS.find((one) => one.id === screen) ?? SCREENS[0];
+
   return (
-    <>
-      <header className="topbar">
-        <div className="topbar-inner">
-          <div className="brand">
-            <h1>My leave</h1>
-            <small>
-              {me.firstName} {me.lastName}
-            </small>
-          </div>
+    <div className="shell">
+      {/* LMS 409. The company rail: the wordmark, the screens, and the company line. */}
+      <header className="sidebar">
+        <a className="logo" href={`#/${DEFAULT_SCREEN}`}>
+          <span className="logo-mark" aria-hidden="true">
+            R
+          </span>
+          <span className="logo-word">
+            <b>Remat</b>
+            <i>Holdings</i>
+          </span>
+        </a>
 
-          {/* Anchors rather than buttons, which is the whole of what the router buys: a tab
-              can be middle clicked, copied, bookmarked and gone back from, and none of that
-              is behaviour this file has to write. */}
-          <nav className="screens" aria-label="Sections" ref={screens}>
-            {SCREENS.map((one) => (
-              <a
-                key={one.id}
-                href={`#/${one.id}`}
-                className="screen-tab"
-                aria-current={screen === one.id ? 'page' : undefined}
-              >
-                {one.label}
-              </a>
-            ))}
-          </nav>
-
-          <button
-            type="button"
-            className="linkish"
-            onClick={() => {
-              void signOut().finally(forget);
-            }}
-          >
-            Sign out
-          </button>
-        </div>
+        {/* Anchors rather than buttons, which is the whole of what the router buys: a tab
+            can be middle clicked, copied, bookmarked and gone back from, and none of that
+            is behaviour this file has to write. */}
+        <nav className="screens" aria-label="Sections" ref={screens}>
+          {SCREENS.map((one) => (
+            <a
+              key={one.id}
+              href={`#/${one.id}`}
+              className="screen-tab"
+              aria-current={screen === one.id ? 'page' : undefined}
+            >
+              <Icon name={one.icon} />
+              {one.label}
+            </a>
+          ))}
+        </nav>
       </header>
 
-      {screen === 'balances' ? <BalancesPage onSignedOut={forget} /> : null}
-      {screen === 'ask' ? <NewRequestPage onSignedOut={forget} /> : null}
-      {screen === 'requests' ? <RequestsPage onSignedOut={forget} /> : null}
-      {screen === 'calendar' ? <CalendarPage onSignedOut={forget} /> : null}
-      {screen === 'approvals' ? <ApprovalsPage onSignedOut={forget} /> : null}
-      {screen === 'team' ? <TeamPage onSignedOut={forget} /> : null}
-    </>
+      <div className="main">
+        <div className="topbar">
+          <div className="topbar-inner">
+            {/* The screen you are on, as the page's heading. The rail says which tab is lit;
+                this is the one `h1`, and it is what a screen reader lands on. */}
+            <h1>{here.label}</h1>
+
+            {/* LMS 409. Only on the screens it means something on: a picker over "Ask for
+                leave" would be a control that changes nothing. */}
+            {YEAR_SCOPED.has(screen) && years.length > 0 ? (
+              <label className="year">
+                <span className="visually-hidden">Leave year</span>
+                <select
+                  value={yearId ?? ''}
+                  disabled={years.length < 2}
+                  onChange={(event) => {
+                    setYearId(event.target.value);
+                  }}
+                >
+                  {years.map((year) => (
+                    <option key={year.id} value={year.id}>
+                      {year.label}
+                      {year.isClosed ? ' (closed)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            <p className="whoami">
+              <span className="avatar" aria-hidden="true">
+                {initialsOf(me)}
+              </span>
+              <span className="whoami-name">
+                {me.firstName} {me.lastName}
+              </span>
+            </p>
+
+            <button
+              type="button"
+              className="linkish"
+              onClick={() => {
+                void signOut().finally(forget);
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+
+        {screen === 'balances' ? (
+          <BalancesPage onSignedOut={forget} yearId={yearId} onYears={yearsKnown} />
+        ) : null}
+        {screen === 'ask' ? <NewRequestPage onSignedOut={forget} /> : null}
+        {screen === 'requests' ? <RequestsPage onSignedOut={forget} /> : null}
+        {screen === 'calendar' ? (
+          <CalendarPage onSignedOut={forget} yearId={yearId} onYears={yearsKnown} />
+        ) : null}
+        {screen === 'approvals' ? <ApprovalsPage onSignedOut={forget} /> : null}
+      </div>
+    </div>
   );
+}
+
+/** The two letters in the circle. LMS 409. `aria-hidden`; the name is beside it. */
+function initialsOf(me: Me): string {
+  return `${me.firstName.charAt(0)}${me.lastName.charAt(0)}`.toUpperCase();
 }
 
 /**

@@ -34,7 +34,7 @@ export class BalanceStatementService {
     /** NFR SEC 02. */
     private readonly guard: Guard,
     /**
-     * The employee record, for three facts and no more: who their line manager is, which the policy decides on, and the two dates that say which leave ye… FR 05.
+     * The employee record, for three facts and no more: who their manager is, which the policy decides on, and the two dates that say which leave ye… FR 05.
      */
     private readonly employees: EmployeeRepository,
     private readonly types: LeaveTypeRepository,
@@ -123,7 +123,7 @@ export class BalanceStatementService {
   }
 }
 
-/** Whose balances these are, and who their line manager is. */
+/** Whose balances these are, and who their manager is. */
 function ownerOf(employee: Employee): BalanceOwner {
   return { employeeId: employee.id, managerId: employee.managerId };
 }

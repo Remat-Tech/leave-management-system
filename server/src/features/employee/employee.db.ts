@@ -168,6 +168,18 @@ export class EmployeeRepository {
     return rows.map(toEmployee);
   }
 
+  /** Everybody in a department, leavers included, in employee number order. FR 57, LMS 409. */
+  async findInDepartment(departmentId: string): Promise<Employee[]> {
+    const rows = await this.db
+      .selectFrom('employee')
+      .selectAll()
+      .where('department_id', '=', departmentId)
+      .orderBy('employee_number')
+      .execute();
+
+    return rows.map(toEmployee);
+  }
+
   /**
    * Everybody reporting to any of these managers, in employee number order. FR 02, LMS 404.
    *
@@ -203,7 +215,7 @@ export class EmployeeRepository {
     return Number(row.reports);
   }
 
-  /** The employee with no line manager, if there is one. FR 04. */
+  /** The employee with no manager, if there is one. FR 04. */
   async findRoot(): Promise<Employee | undefined> {
     const row = await this.db
       .selectFrom('employee')

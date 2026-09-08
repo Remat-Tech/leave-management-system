@@ -41,7 +41,7 @@ export class TeamService {
    * One manager's direct reports, for one leave year. FR 55, FR 56, LMS 405.
    *
    * Two gates. `teamPolicy.read` says whether there is a team at all, and `ledgerPolicy.read`
-   * bounds each row — the same rule that lets a line manager open one report's balance
+   * bounds each row — the same rule that lets a manager open one report's balance
    * screen, asked here of every row rather than restated as "direct reports only".
    *
    * Four reads for the whole screen, whatever the size of the team.
@@ -126,7 +126,7 @@ export class TeamService {
   }
 }
 
-/** Whose balances these are, and who their line manager is. */
+/** Whose balances these are, and who their manager is. */
 function ownerOf(employee: Employee): BalanceOwner {
   return { employeeId: employee.id, managerId: employee.managerId };
 }

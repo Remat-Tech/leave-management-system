@@ -9,6 +9,7 @@ import { RequestFormService } from '../features/leave-request/request-form.servi
 import { RequestHistoryService } from '../features/leave-request/request-history.service.js';
 import type { SignInService } from '../features/sign-in/sign-in.service.js';
 import type { BalanceRepository } from '../features/balance/balance.db.js';
+import type { DepartmentRepository } from '../features/department/department.db.js';
 import type { EmployeeRepository } from '../features/employee/employee.db.js';
 import { LeaveRequestDraftService } from '../features/leave-request/draft.service.js';
 import type { LeaveRequestDraftRepository } from '../features/leave-request/draft.db.js';
@@ -46,6 +47,8 @@ export interface Application {
   signIn: SignInService;
   balances: BalanceRepository;
   employees: EmployeeRepository;
+  /** FR 57, LMS 409. What the away calendar is scoped to, and what HR filters it by. */
+  departments: DepartmentRepository;
   types: LeaveTypeRepository;
   years: LeaveYearRepository;
   /** FR 54. */
@@ -145,12 +148,19 @@ export function buildApp(parts: Application): Express {
     }),
   );
 
-  /* FR 57, LMS 406. The peer half of the same screen, and it is handed no leave type
-     repository: a type name cannot be sent by a service that never reads the table. */
+  /* FR 57, LMS 406, LMS 409. Everybody's screen, scoped to a department, and it is handed no
+     leave type repository: a type name cannot be sent by a service that never reads the
+     table. */
   app.use(
     '/api',
     teamCalendarRoutes({
-      calendar: new TeamCalendarService(parts.guard, parts.employees, parts.requests, parts.years),
+      calendar: new TeamCalendarService(
+        parts.guard,
+        parts.employees,
+        parts.requests,
+        parts.years,
+        parts.departments,
+      ),
     }),
   );
 

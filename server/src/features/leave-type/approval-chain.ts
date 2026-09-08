@@ -269,7 +269,7 @@ export function chainInWords(chain: readonly ApproverRole[]): string {
 export function deskInWords(role: ApproverRole): string {
   switch (role) {
     case 'MANAGER':
-      return 'your line manager';
+      return 'your manager';
     case 'HR':
       return 'HR';
     default:
@@ -284,13 +284,13 @@ export function deskInWords(role: ApproverRole): string {
  * an approver queue is the first screen here that describes somebody else's request. Only
  * `MANAGER` differs, because it is the one desk that resolves through a relationship; a copy of
  * that switch beside a `<span>` is how a queue comes to say "their manager" where an email says
- * "your line manager" about the same signature.
+ * "your manager" about the same signature.
  *
  * `whose` is a possessive from {@link possessively}, and a name rather than a pronoun: the
  * record carries a gender for FR 05 and nothing else.
  */
 export function deskInWordsAbout(role: ApproverRole, whose: string): string {
-  return role === 'MANAGER' ? `${whose} line manager` : deskInWords(role);
+  return role === 'MANAGER' ? `${whose} manager` : deskInWords(role);
 }
 
 /** A chain said about somebody else, as {@link chainInWords} says it to them. LMS 404. */

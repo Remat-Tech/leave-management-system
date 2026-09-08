@@ -25,6 +25,86 @@ export function sentenceCase(sentence: string): string {
 }
 
 /**
+ * Where a request stands, as the one word that goes in a pill. LMS 409.
+ *
+ * **Not the server's `statusInWords`**, which is a sentence — "waiting to be decided" — written
+ * to be read mid-paragraph. It still says what it says wherever there is room for a sentence;
+ * this is the label on a pill, where a sentence wraps to three lines and stops being scannable.
+ *
+ * Presentation of an enum the wire already carries, not a rule: nothing is decided from it, and
+ * a status this does not know falls back to the server's own words rather than to a guess.
+ */
+export function statusLabel(status: string, inWords: string): string {
+  switch (status) {
+    case 'SUBMITTED':
+      return 'Submitted';
+    case 'APPROVED':
+      return 'Approved';
+    case 'REFUSED':
+      return 'Refused';
+    case 'WITHDRAWN':
+      return 'Withdrawn';
+    case 'CANCELLED':
+      return 'Cancelled';
+    /** FR 48b. Nobody could be found to decide it, which is not a word anybody would guess. */
+    case 'UNROUTABLE':
+      return 'Nobody to approve';
+    default:
+      return sentenceCase(inWords);
+  }
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * A calendar date, as a person writes one. LMS 409.
+ *
+ * **Read off the ten characters, never parsed.** `2026-05-12` becomes `12 May 2026` by slicing
+ * and a lookup — `new Date()` is not called here and must not be, for the reason {@link moment}
+ * sets out: a calendar date carries no zone, and converting one is how the last day of a leave
+ * year becomes the second to last west of Greenwich. NFR DAT 03.
+ *
+ * Anything that is not ten characters of the expected shape comes back as itself.
+ */
+export function day(iso: string): string {
+  const month = MONTHS[Number(iso.slice(5, 7)) - 1];
+  const dayOfMonth = Number(iso.slice(8, 10));
+
+  return month === undefined || Number.isNaN(dayOfMonth) || dayOfMonth === 0
+    ? iso
+    : `${String(dayOfMonth)} ${month} ${iso.slice(0, 4)}`;
+}
+
+/**
+ * Two of them as one period, with whatever they share said once.
+ *
+ * "12–16 May 2026" rather than "12 May 2026 to 16 May 2026". The month and the year are the
+ * same fact twice, and a column of these is read by its numbers.
+ */
+export function period(from: string, to: string): string {
+  const first = day(from);
+  const last = day(to);
+
+  if (from === to) {
+    return first;
+  }
+
+  /* Fell back to the raw ten characters, so neither may be taken apart. */
+  if (first === from || last === to) {
+    return `${from} to ${to}`;
+  }
+
+  const sameYear = from.slice(0, 4) === to.slice(0, 4);
+  const sameMonth = sameYear && from.slice(5, 7) === to.slice(5, 7);
+
+  if (sameMonth) {
+    return `${String(Number(from.slice(8, 10)))}–${last}`;
+  }
+
+  return sameYear ? `${first.slice(0, first.lastIndexOf(' '))} – ${last}` : `${first} – ${last}`;
+}
+
+/**
  * An instant, in the reader's own time zone.
  *
  * **The one place this client converts anything, and the only kind of value it may be done

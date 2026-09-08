@@ -316,7 +316,7 @@ function asAColleague() {
   return signedInAs(people.engineer, { roles: ['EMPLOYEE'], isManager: false });
 }
 
-/** FR 04. The one employee with no line manager, which is what the `CEO` desk resolves to. */
+/** FR 04. The one employee with no manager, which is what the `CEO` desk resolves to. */
 function asChiefExecutive() {
   return signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
 }
@@ -324,7 +324,7 @@ function asChiefExecutive() {
 /**
  * A rejection that actually ends the request. FR 44, §7.2. LMS 318.
  *
- * A line manager's no carries the request on to HR rather than ending it, so a test that
+ * A manager's no carries the request on to HR rather than ending it, so a test that
  * wants a `REFUSED` row has to walk the chain to the desk that decides it finally. Annual
  * leave goes manager then HR, so that desk is HR's.
  *
@@ -829,7 +829,7 @@ describe('leave recorded after it was taken', () => {
    *
    * FR 18 reserves *entering the record* to HR and says nothing about deciding it. So the
    * request starts at the first desk of its type's chain like any other, holds its days like
-   * any other, and Adwoa's line manager answers it — HR entering it is not HR approving it.
+   * any other, and Adwoa's manager answers it — HR entering it is not HR approving it.
    */
   it('and is decided at the ordinary desk, holding its days like anything else', async () => {
     const submitted = await requests.submit(
@@ -1938,7 +1938,7 @@ describe('withdrawing, refusing and cancelling', () => {
      since LMS 212 and these are the methods that took it up. */
   it.each([
     ['withdrawn by the person who asked', 'WITHDRAWN', () => asThemselves()],
-    ['refused by their line manager', 'REFUSED', () => asTheirManager()],
+    ['refused by their manager', 'REFUSED', () => asTheirManager()],
     ['cancelled by HR', 'CANCELLED', () => asOfficer()],
   ] as const)('and is %s', async (_what, status, who) => {
     const { request } = await requests.submit(asThemselves(), aRequest());
@@ -2362,7 +2362,7 @@ describe('routing a request to its approvers', () => {
     }
   });
 
-  /* Kwame Asante, the one employee with no line manager. FR 04. */
+  /* Kwame Asante, the one employee with no manager. FR 04. */
   function asTheChiefExecutive() {
     return signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
   }
@@ -2474,7 +2474,7 @@ describe('routing a request to its approvers', () => {
    * The story's third criterion. FR 32h, §4.3.1 — "Decided by HR and the Chief Executive".
    *
    * Two things are asserted and the second is the one that matters: unpaid leave reaches HR
-   * and then the Chief Executive, **and the line manager is not a stage on it at all**. A
+   * and then the Chief Executive, **and the manager is not a stage on it at all**. A
    * chain that merely put HR first would still let a manager sign off unpaid leave, which is
    * an arrangement with the company rather than a team's business.
    */
@@ -2495,7 +2495,7 @@ describe('routing a request to its approvers', () => {
     expect(approved.entry?.entryType).toBe('DEDUCTION');
   });
 
-  it('and never lets the line manager approve it, at either stage', async () => {
+  it('and never lets the manager approve it, at either stage', async () => {
     const unpaid = aRequest({ leaveTypeId: unpaidId, from: '2026-05-04', to: '2026-05-08' });
     const { request } = await requests.submit(asThemselves(), unpaid);
 
@@ -2524,7 +2524,7 @@ describe('routing a request to its approvers', () => {
 
   /* ------------------------------------------------- who may, at each stage */
 
-  it('is the line manager while it sits with them, and not HR reaching past', async () => {
+  it('is the manager while it sits with them, and not HR reaching past', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
     await expect(requests.approve(asOfficer(), request.id)).rejects.toBeInstanceOf(NotAuthorised);
@@ -2896,13 +2896,13 @@ describe('who may ask for leave, and who may see it', () => {
   });
 
   /**
-   * And not their line manager, which is the one place their standing does not carry.
+   * And not their manager, which is the one place their standing does not carry.
    *
    * A manager who could ask for leave on somebody's behalf could reduce what that
    * person may book without ever approving anything. They may read it; approving it is
    * the next story's.
    */
-  it('and never their line manager, nor a colleague', async () => {
+  it('and never their manager, nor a colleague', async () => {
     for (const who of [asTheirManager(), asAColleague()]) {
       await expect(requests.submit(who, aRequest())).rejects.toBeInstanceOf(NotAuthorised);
     }
@@ -3187,7 +3187,7 @@ describe('the decision at a stage', () => {
     );
   });
 
-  /* ------------------------------------------ overturning a line manager, FR 44 */
+  /* ------------------------------------------ overturning a manager, FR 44 */
 
   /**
    * HR overturns a rejection, the leave stands, and both sentences survive. FR 44, §7.2. LMS 318.
@@ -3268,7 +3268,7 @@ describe('the decision at a stage', () => {
    * And an override naming another request's decision is refused by the database. FR 44.
    *
    * The check a foreign key cannot make. Without it an override on Kofi's leave could name
-   * the refusal on Ama's, and every screen reading "reversed the line manager's decision"
+   * the refusal on Ama's, and every screen reading "reversed the manager's decision"
    * would be reading somebody else's sentence out to the wrong person.
    */
   it('and one that names another request’s decision is refused, on every connection', async () => {
@@ -3625,7 +3625,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
    * And the person is told it is not agreed, in a sentence that says so first.
    *
    * The story's "so that". A screen showing the newest decision would say "approved by your
-   * line manager", which is true and is the exact belief this story is written against.
+   * manager", which is true and is the exact belief this story is written against.
    */
   it('tells the person it is not theirs to take until every stage has agreed', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
@@ -3942,7 +3942,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
     await admin.query('COMMIT');
   }
 
-  /* Kwame Asante, the one employee with no line manager. FR 04. */
+  /* Kwame Asante, the one employee with no manager. FR 04. */
   function asTheChiefExecutive() {
     return signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
   }
@@ -4551,7 +4551,7 @@ describe('a request decided by the person who asked for it', () => {
     throw new Error('Expected the call to be refused, and it was not.');
   }
 
-  /** Ama Mensah, Head of HR. Efua's colleague, and her line manager. */
+  /** Ama Mensah, Head of HR. Efua's colleague, and her manager. */
   function asTheHeadOfHr() {
     return signedInAs(people.headOfHr, {
       roles: ['EMPLOYEE', 'HR_ADMIN', 'HR_OFFICER'],
@@ -4818,7 +4818,7 @@ describe('taking back a request nobody has approved yet', () => {
   /* It is the employee's own act. A manager who does not want the leave to happen refuses it,
      which is a decision with a reason on the record — emptying somebody's calendar without
      one is the thing `withdraw` deliberately does not let them do. */
-  it('is the employee’s own, and not their line manager’s', async () => {
+  it('is the employee’s own, and not their manager’s', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
 
     await expect(requests.withdraw(asTheirManager(), request.id)).rejects.toThrow(NotAuthorised);

@@ -9,6 +9,7 @@ import { Guard } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
@@ -53,7 +54,7 @@ const testDatabaseUrl = await databaseForThisFile();
 
 const SECRET = 'a-test-signing-secret-of-at-least-32-chars';
 
-/** FR 39. What a line manager writes when they turn leave down. */
+/** FR 39. What a manager writes when they turn leave down. */
 const WHY_NOT = 'Two of the team are already away that week and the desk cannot be empty';
 
 const system = theSystem('approver queue integration fixtures');
@@ -117,6 +118,7 @@ beforeAll(async () => {
     }),
     balances: new BalanceRepository(db),
     employees,
+    departments: new DepartmentRepository(db),
     types,
     years,
     requests: requestRepository,
@@ -323,7 +325,7 @@ describe('what a manager sees', () => {
     const view = await rejectionsFor(people.teamLead);
 
     expect(view.items).toEqual([]);
-    expect(view.inWords).toContain('No line manager has turned anything down');
+    expect(view.inWords).toContain('No manager has turned anything down');
   });
 
   /* FR 38a. Approved at the manager stage, the same request is now HR's. */
@@ -339,7 +341,7 @@ describe('what a manager sees', () => {
     expect(idsOf(queue)).toEqual([id]);
     expect(itemOf(queue, id).desk).toBe('HR');
     expect(itemOf(queue, id).approvedBy).toEqual(['MANAGER']);
-    expect(itemOf(queue, id).stageInWords).toContain('Adwoa Frimpong’s line manager');
+    expect(itemOf(queue, id).stageInWords).toContain('Adwoa Frimpong’s manager');
   });
 
   it('puts the leave that starts soonest first', async () => {
@@ -483,7 +485,7 @@ describe('an approver’s own request', () => {
 });
 
 describe('the Chief Executive’s desk', () => {
-  /* §4.3.1, FR 32h. Kwame is nobody's line manager and holds no role. */
+  /* §4.3.1, FR 32h. Kwame is nobody's manager and holds no role. */
   it('sees unpaid leave routed to it, with the team counted and unnamed', async () => {
     const id = await aRequest({ employeeId: people.officer, leaveTypeId: unpaidId });
 
@@ -516,7 +518,7 @@ describe('the wire', () => {
       /** FR 49, LMS 327. Whose approvals this row is answered under. */
       'answeringFor',
       'approvedBy',
-      /* FR 44, LMS 318. Which of the two buttons would be overruling the line manager, so a
+      /* FR 44, LMS 318. Which of the two buttons would be overruling the manager, so a
          screen asks for the justification before the press rather than after the refusal. */
       'approvingIs',
       'asker',
@@ -533,7 +535,7 @@ describe('the wire', () => {
       'lateEntryReason',
       'leaveTypeId',
       'leaveYearId',
-      /** FR 44. What the line manager said, and why, where they have decided. */
+      /** FR 44. What the manager said, and why, where they have decided. */
       'managersDecision',
       'notActionableBecause',
       'noticeGivenDays',
@@ -633,7 +635,7 @@ async function queueFor(employeeId: string): Promise<JsonQueue> {
   return (await response.json()) as JsonQueue;
 }
 
-/** The same queue, narrowed to what a line manager turned down. FR 44, §7.2. LMS 318. */
+/** The same queue, narrowed to what a manager turned down. FR 44, §7.2. LMS 318. */
 async function rejectionsFor(employeeId: string): Promise<JsonQueue> {
   const response = await get('/api/me/approvals/rejections', employeeId);
 

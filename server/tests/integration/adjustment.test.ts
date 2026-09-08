@@ -498,7 +498,7 @@ describe('who may move a balance by hand, FR 37 and §10', () => {
     );
   });
 
-  it('nor a line manager, nor the person whose balance it is', async () => {
+  it('nor a manager, nor the person whose balance it is', async () => {
     await expect(balances.adjust(asTheirManager(), anAdjustment(3))).rejects.toBeInstanceOf(
       NotAuthorised,
     );

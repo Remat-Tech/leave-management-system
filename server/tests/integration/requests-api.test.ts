@@ -9,6 +9,7 @@ import { Guard } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
@@ -149,6 +150,7 @@ beforeAll(async () => {
     }),
     balances: new BalanceRepository(db),
     employees,
+    departments: new DepartmentRepository(db),
     types,
     years,
     requests: requestRepository,
@@ -431,10 +433,10 @@ describe('how each was decided', () => {
    * FR 44, §7.2. The trail says which decision stood, and why. LMS 318.
    *
    * The story's "so that": the reason stays visible for ever. A trail reading "Approved by
-   * HR" under "Turned down at your line manager's stage" would leave the person to work out
+   * HR" under "Turned down at your manager's stage" would leave the person to work out
    * which one counted, so an override is its own kind of step and says what it reversed.
    */
-  it('and says so when HR overturned the line manager, with the reason on it', async () => {
+  it('and says so when HR overturned the manager, with the reason on it', async () => {
     const id = await aRequest();
 
     await requests.refuse(asTheirManager(), id, WHY_NOT);

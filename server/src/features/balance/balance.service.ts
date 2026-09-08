@@ -147,7 +147,7 @@ export interface RequestToSettle {
 /** What `LeaveRequestService` supplies to decide one. FR 38a, FR 40, FR 44, LMS 314, LMS 318. */
 export interface RequestToDecide {
   request: LeaveRequest;
-  /** Which way this desk went, and whether it overrules the line manager. FR 44. */
+  /** Which way this desk went, and whether it overrules the manager. FR 44. */
   action: DecidingAction;
   /** FR 38a. */
   chain: readonly ApproverRole[];
@@ -165,7 +165,7 @@ export interface RequestToDecide {
   reasonForGivingBack: string;
   /** FR 39, FR 44. Mandatory on a refusal and on either override; optional on an approval. */
   comment: string | null;
-  /** FR 44. The line manager's decision an override reverses, and null otherwise. */
+  /** FR 44. The manager's decision an override reverses, and null otherwise. */
   overturns: string | null;
   /**
    * NFR DAT 02, §8.1. The version of the request the deciding screen was drawn from. LMS 326.
@@ -266,7 +266,7 @@ export class BalanceService {
     private readonly balances: BalanceRepository,
     /** NFR SEC 02. */
     private readonly guard: Guard,
-    /** The employee records, for one question only: who is this person's line manager. */
+    /** The employee records, for one question only: who is this person's manager. */
     private readonly employees: EmployeeRepository,
     /** Where a movement is written. LMS 212. */
     private readonly transactions: Transactions,
@@ -1391,7 +1391,7 @@ export class BalanceService {
   }
 
   /**
-   * Whose balance this is, and who their line manager is.
+   * Whose balance this is, and who their manager is.
    *
    * {@link EmployeeNotFound} for an id that is nobody, raised before any policy
    * decision because there is no balance to have standing towards, and — for the four

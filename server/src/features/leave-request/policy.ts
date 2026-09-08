@@ -286,7 +286,7 @@ function mayMove(
     : about.refuseOpenly(actor, said, subject.employeeId, words.because, words.told);
 }
 
-/** Said openly to everybody it refuses, including a line manager. */
+/** Said openly to everybody it refuses, including a manager. */
 const ASKING_IS_YOURS =
   'Leave is asked for by the person taking it, or entered by HR on their behalf where ' +
   'somebody was away and could not ask. A manager approves leave rather than ' +
@@ -375,7 +375,7 @@ export const leaveRequestPolicy = {
       actor,
       'read',
       owner.employeeId,
-      'not their leave, not their line manager, and holds no role that reads everybody',
+      'not their leave, not their manager, and holds no role that reads everybody',
     );
   },
 
@@ -420,19 +420,19 @@ export const leaveRequestPolicy = {
       because: 'is not the approver this request is currently waiting on',
       told:
         'Leave is approved by each desk in its type’s approval chain, in order, and ' +
-        'this request is not waiting on you. Most kinds of leave go to the line manager ' +
+        'this request is not waiting on you. Most kinds of leave go to the manager ' +
         'and then to HR; unpaid leave goes to HR and then to the Chief Executive. FR 38a.',
     });
   },
 
   /**
-   * Overturning a line manager's decision, which is a decision at this desk like any other. FR 44, §7.2, LMS 318.
+   * Overturning a manager's decision, which is a decision at this desk like any other. FR 44, §7.2, LMS 318.
    */
   override(actor: Actor, action: OverridingAction, subject: RequestAtADesk): Decision {
     return mayMove(actor, subject, action, {
       because: 'is not the approver this request is currently waiting on',
       told:
-        'A line manager’s decision is overturned by the next desk the request goes to, ' +
+        'A manager’s decision is overturned by the next desk the request goes to, ' +
         'and this request is not waiting on you. It is the same standing as approving or ' +
         'refusing it — an override is an ordinary decision that happens to disagree with ' +
         'an earlier stage. FR 44.',
@@ -460,7 +460,7 @@ export const leaveRequestPolicy = {
    * It is the whole of the disclosure gate, because the rows are defined by it — a desk this
    * person answers, `MANAGER` narrowed to their own reports. A per-row `read` on top would
    * refuse the one approver §4.3.1 names: FR 32h routes unpaid leave to the Chief Executive,
-   * who is nobody's line manager and holds no role. Being the desk is its own reason to be
+   * who is nobody's manager and holds no role. Being the desk is its own reason to be
    * looking, which is the seam `LeaveRequestService.approve` argues.
    *
    * Refused openly, because whether somebody manages a report is a fact about themselves — and
@@ -475,7 +475,7 @@ export const leaveRequestPolicy = {
           null,
           'has nobody reporting to them and staffs no approver desk',
           'An approver queue holds the requests waiting on you. Leave is approved by the ' +
-            'line manager it was addressed to, by HR, or by the Chief Executive — so this ' +
+            'manager it was addressed to, by HR, or by the Chief Executive — so this ' +
             'screen belongs to somebody with a report, an HR role, or FR 04’s seat. Your own ' +
             'requests and what became of them are on your leave pages. FR 38a.',
         );
@@ -535,7 +535,7 @@ export const leaveRequestPolicy = {
    * Answering one of those asks, whichever way it goes. FR 47, §6, §10, LMS 324.
    *
    * One rule for all three, because which of them applies is `grantingAction`'s answer rather
-   * than the desk's. HR's, and never the line manager's.
+   * than the desk's. HR's, and never the manager's.
    */
   answerAWithdrawal(actor: Actor, action: WithdrawalAnswer, owner: BalanceOwner): Decision {
     return mayMove(actor, owner, action, {
@@ -543,7 +543,7 @@ export const leaveRequestPolicy = {
       told:
         'An ask to take agreed leave off the books is answered by HR. The days are spent ' +
         'rather than held, so putting them back is a correction to a balance rather than a ' +
-        'decision at a desk — a line manager approves leave and does not unspend it. FR 47.',
+        'decision at a desk — a manager approves leave and does not unspend it. FR 47.',
     });
   },
 
@@ -551,7 +551,7 @@ export const leaveRequestPolicy = {
    * Reading, editing, discarding or submitting a draft. FR 19, §10., LMS 302.
    *
    * The narrowest rule in this file: the person planning the leave and nobody else. Not
-   * their line manager and not a role that reads every record, which `read` above admits —
+   * their manager and not a role that reads every record, which `read` above admits —
    * a draft is leave nobody has asked for, so there is no request for a manager to be the
    * manager of and no record for a reader to read.
    *
@@ -573,7 +573,7 @@ export const leaveRequestPolicy = {
    * Attaching evidence to a request, or taking it back off. FR 12, LMS 310.
    *
    * The standings `submit` carries: the person whose leave it is, or HR entering the
-   * record for somebody who could not. Not the line manager — an approver asks for a
+   * record for somebody who could not. Not the manager — an approver asks for a
    * certificate rather than supplying one.
    */
   attach(actor: Actor, owner: BalanceOwner): Decision {
@@ -596,7 +596,7 @@ export const leaveRequestPolicy = {
    *
    * {@link read} widened by the desk the request is sitting on, which is the seam
    * {@link queue} already argues: FR 32h sends unpaid leave to the Chief Executive, who
-   * is nobody's line manager and holds no role, and an approver who cannot open the
+   * is nobody's manager and holds no role, and an approver who cannot open the
    * certificate cannot decide on it.
    */
   readAttachment(actor: Actor, subject: RequestAtADesk): Decision {

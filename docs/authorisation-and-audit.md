@@ -53,29 +53,29 @@ impossible to forget: a call that does not answer "who is this" does not compile
 
 | | Reads | Writes |
 |---|---|---|
-| Employee records | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_OFFICER`, `HR_ADMIN` |
+| Employee records | yourself, your manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_OFFICER`, `HR_ADMIN` |
 | Searching people by number or address | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | The organisation chart | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Departments and working patterns | anybody signed in | `HR_ADMIN` |
 | Leave types and the rules they carry | anybody signed in | `HR_ADMIN` |
 | A company or department entitlement figure | anybody signed in | `HR_ADMIN` |
 | An entitlement figure naming a person | that person, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` |
-| What one person is entitled to | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | — |
+| What one person is entitled to | yourself, your manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | — |
 | The whole list of entitlement figures | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | A headcount on either | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | The public holiday calendar | anybody signed in | `HR_OFFICER`, `HR_ADMIN` |
-| Every movement in one person's balance | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` only, for an adjustment |
+| Every movement in one person's balance | yourself, your manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` only, for an adjustment |
 | Every balance in the company, checked against the ledger | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Granting a year's entitlement | | `HR_ADMIN` only |
 | Carrying last year's unused days forward | | `HR_ADMIN` only |
 | Recording an event and granting what it brings | | `HR_OFFICER`, `HR_ADMIN` |
 | Lapsing an unused event grant | | `HR_ADMIN` only |
-| A leave request | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | yourself, `HR_OFFICER`, `HR_ADMIN` — and only the person who asked may reword one |
+| A leave request | yourself, your manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | yourself, `HR_OFFICER`, `HR_ADMIN` — and only the person who asked may reword one |
 | A draft of one. FR 19 | the person planning it, and nobody else at all | the person planning it, and nobody else at all |
-| A certificate attached to one. FR 12 | whoever may read the request, plus the desk it is sitting on — through a link that expires, and every open is [written down](#who-opened-a-certificate-is-logged) | yourself, `HR_OFFICER`, `HR_ADMIN` — never the line manager |
+| A certificate attached to one. FR 12 | whoever may read the request, plus the desk it is sitting on — through a link that expires, and every open is [written down](#who-opened-a-certificate-is-logged) | yourself, `HR_OFFICER`, `HR_ADMIN` — never the manager |
 | Holding days for leave you are asking for | | yourself, `HR_OFFICER`, `HR_ADMIN` |
-| Approving held days into taken days | | your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN`, or a colleague covering for one of them — never yourself |
-| Giving held days back | | yourself, your line manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
+| Approving held days into taken days | | your manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN`, or a colleague covering for one of them — never yourself |
+| Giving held days back | | yourself, your manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` |
 | Sending a request nobody could decide back to an approver. FR 48b | | `HR_OFFICER`, `HR_ADMIN` — never the person who asked |
 | Asking for agreed leave to be taken off the books. FR 47 | | the person whose leave it is, and nobody else |
 | Answering that ask, and putting the taken days back. FR 47 | | `HR_OFFICER`, `HR_ADMIN` — never the person who asked |
@@ -98,7 +98,7 @@ put one desk on both sides of a conversation that exists to have two. The line
 manager is on neither row: the days have already left the balance, and putting
 them back is a correction rather than a decision at a desk.
 
-**A draft is the one row the line manager and HR are both kept out of.** FR 19,
+**A draft is the one row the manager and HR are both kept out of.** FR 19,
 LMS 302. Every other read in the table above widens from the person outwards —
 their manager, then a role that reads every record — because a request is a thing
 that happened and the people around it have standing towards it. A draft is not:
@@ -111,7 +111,7 @@ in that act, and a draft HR left behind would be planning the person never did.
 **An attachment is the one row where reading is wider than the request it hangs
 on.** FR 12, LMS 310. Every other read here widens outwards from the person by
 relationship or by role, and neither reaches FR 04's seat: the Chief Executive is
-nobody's line manager and holds no role, so `read` refuses them the unpaid leave
+nobody's manager and holds no role, so `read` refuses them the unpaid leave
 §4.3.1 sends them to decide. That was tolerable while the desk only needed the
 dates, which the approver queue supplies by being the desk. It is not tolerable
 for the certificate the decision turns on, so `readAttachment` is `read` widened
@@ -145,7 +145,7 @@ strict for somebody asking for their own message to be sent again and is not: th
 retry re-sends what is already written and composes nothing, so there is nothing
 in it for them that reading their own notifications does not already give.
 
-**A line manager sees their reports because of the record, never because of a
+**A manager sees their reports because of the record, never because of a
 role.** `employee.managerId` is read off the record in hand, so moving a
 reporting line moves the answer with it and there is nothing to keep in step.
 Direct reports only — a skip level read is a different power nobody has asked
@@ -219,7 +219,7 @@ published calendar.
 
 **The three movements a leave request causes are three decisions, not one.** LMS 212.
 Asking for leave is yours, and HR's on your behalf where FR 18 says somebody was off
-sick and could not ask; a line manager is deliberately not on it, and it is the one
+sick and could not ask; a manager is deliberately not on it, and it is the one
 place their standing over a report does not carry — a manager who could reserve a
 report's days could quietly reduce what that person may book without approving
 anything. Approving is the mirror image: their manager's or HR's, and **never the
@@ -234,10 +234,10 @@ of anybody moving it is the narrower question: have you any standing here at all
 
 **A request is read by three people, asked for by two, and reworded by one.** LMS 301,
 and the three widths are the decision. Reading follows the balance exactly — yours, your
-line manager's, or a role that reads everybody — because a request is *why* a figure is
+manager's, or a role that reads everybody — because a request is *why* a figure is
 what it is, and standing to see one without the other is standing to see half an
 explanation. Asking is narrower: yours, and HR's on your behalf under FR 18, and
-deliberately not your line manager's, for the reason `ledgerPolicy.reserve` gives about
+deliberately not your manager's, for the reason `ledgerPolicy.reserve` gives about
 somebody who could reduce what you may book without ever approving anything. Rewording
 is narrower still and is the author's alone, which is the one place in this system where
 being able to create something does not carry the right to edit it — the reason is the
@@ -268,7 +268,7 @@ mistyped id a five second problem. Everybody else gets one sentence whatever the
 type.
 
 **A refusal aimed at somebody who can see the record but may not do that to it
-says what the rule is.** A line manager who has just read their report's record
+says what the rule is.** A manager who has just read their report's record
 and then tries to change it is told "employee records are changed by HR", which
 discloses nothing they did not have. It is the same distinction the sign in door
 makes — vague until something is proved, specific once it is.
@@ -460,7 +460,7 @@ record could ask for its history instead and be handed several copies of it.
 
 | | Who |
 |---|---|
-| One employee record's history | yourself, your line manager, HR — the same standing as reading the record |
+| One employee record's history | yourself, your manager, HR — the same standing as reading the record |
 | A login's and roles' history | yourself, `HR_ADMIN`, `SYS_ADMIN` |
 | A team's or a working pattern's history | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | The whole log | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |

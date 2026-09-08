@@ -9,6 +9,7 @@ import { Guard } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
+import { DepartmentRepository } from '../../src/features/department/department.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
@@ -120,6 +121,7 @@ beforeAll(async () => {
     }),
     balances: cached,
     employees,
+    departments: new DepartmentRepository(db),
     types,
     years,
     requests: leaveRequests,

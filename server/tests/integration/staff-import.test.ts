@@ -273,14 +273,14 @@ describe('the dry run', () => {
     expect(plan.rejected[0].field).toBe('workEmail');
   });
 
-  it('refuses a row whose line manager is nobody', async () => {
+  it('refuses a row whose manager is nobody', async () => {
     const plan = await imports.dryRun(system, fileOf(JOINER.replace(',RH-0010,', ',RH-9999,')));
 
     expect(plan.rejected[0].field).toBe('manager');
     expect(plan.rejected[0].reason).toContain('RH-9999');
   });
 
-  it('refuses a row whose line manager has left', async () => {
+  it('refuses a row whose manager has left', async () => {
     // Kojo Antwi left in July. A request routed to him has nowhere to go.
     const plan = await imports.dryRun(system, fileOf(JOINER.replace(',RH-0010,', ',RH-0013,')));
 
@@ -288,7 +288,7 @@ describe('the dry run', () => {
     expect(plan.rejected[0].reason).toContain('2026-07-31');
   });
 
-  it('refuses a second employee with no line manager, and names the one there is', async () => {
+  it('refuses a second employee with no manager, and names the one there is', async () => {
     const plan = await imports.dryRun(system, fileOf(JOINER.replace(',RH-0010,', ',,')));
 
     expect(plan.rejected[0].field).toBe('manager');
@@ -348,10 +348,10 @@ describe('cycle detection during the import', () => {
     expect(plan.rejected[0].reason).toContain('RH-0007');
   });
 
-  it('refuses somebody recorded as their own line manager', async () => {
+  it('refuses somebody recorded as their own manager', async () => {
     const plan = await imports.dryRun(system, fileOf(JOINER.replace(',RH-0010,', ',RH-0100,')));
 
-    expect(plan.rejected[0].reason).toContain('their own line manager');
+    expect(plan.rejected[0].reason).toContain('their own manager');
   });
 
   it('allows and writes a restructure whose final state is a good tree', async () => {
@@ -536,7 +536,7 @@ describe('confirming the dry run', () => {
     expect(await employees.byNumber(system, 'RH-0101')).toBeUndefined();
   });
 
-  it('does not import somebody whose line manager was on a row that was rejected', async () => {
+  it('does not import somebody whose manager was on a row that was rejected', async () => {
     /* The cascade. A joiner reporting to a joiner further up the file is the
        ordinary case at go live; if that row is refused, the manager this one
        names is never going to exist, and importing the rest anyway would get
@@ -552,8 +552,8 @@ describe('confirming the dry run', () => {
     const plan = await imports.dryRun(system, source);
 
     expect(summarise(plan).rejected).toBe(3);
-    expect(plan.rejected[1].reason).toContain('RH-0101 is the line manager');
-    expect(plan.rejected[2].reason).toContain('RH-0102 is the line manager');
+    expect(plan.rejected[1].reason).toContain('RH-0101 is the manager');
+    expect(plan.rejected[2].reason).toContain('RH-0102 is the manager');
 
     const outcome = await imports.confirm(system, source, plan.fingerprint, {
       withoutTheRejectedRows: true,
@@ -688,7 +688,7 @@ describe('going live from an empty table', () => {
         'Operations Team Lead',
       'RH-0003,Yaw,Boateng,yaw.boateng@rematholdings.com,Operations,RH-0001,2017-01-09,' +
         'Director of Operations',
-      // The one person with no line manager. FR 04.
+      // The one person with no manager. FR 04.
       'RH-0001,Kwame,Asante,kwame.asante@rematholdings.com,Executive,,2014-02-03,' +
         'Chief Executive Officer',
     );
@@ -761,7 +761,7 @@ describe('going live from an empty table', () => {
 
   it('refuses to succeed the head of the organisation, and says what to do instead', async () => {
     /* FR 03 and FR 04 between them leave no order that works one record at a
-       time: promoting first leaves two employees with no line manager, which
+       time: promoting first leaves two employees with no manager, which
        employee_one_root refuses immediately, and demoting first points the
        outgoing head at somebody still below them, which EmployeeService refuses
        as a loop. The README says the same about succeedHead(), which is wanted

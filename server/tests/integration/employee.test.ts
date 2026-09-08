@@ -50,7 +50,7 @@ import { Guard, NotAuthorised } from '../../src/auth/policy.js';
  * are compared without regard to case, that a value outside a permitted list
  * cannot be stored whatever wrote it, that a record cannot be deleted by the
  * role the application connects as, that exactly one employee can be recorded
- * without a line manager, that no reporting line loops — including when the
+ * without a manager, that no reporting line loops — including when the
  * change arrives as a bulk import that no service ever saw — and that everybody
  * is in a department.
  *
@@ -109,7 +109,7 @@ const JOINER_FIELDS = {
 /**
  * A joiner in Operations, reporting to Kofi Boateng.
  *
- * Rebuilt each test rather than declared once, because a line manager and a
+ * Rebuilt each test rather than declared once, because a manager and a
  * department are both part of what a record is now and both ids have to belong
  * to rows the seed actually created. The seed truncates with RESTART IDENTITY,
  * so they are read back rather than written down as numbers that would be
@@ -401,7 +401,7 @@ describe('maintaining a record', () => {
   });
 });
 
-describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
+describe('each employee has exactly one manager, FR 02 and FR 04', () => {
   describe('recording the line', () => {
     it('stores who somebody reports to and reads it back', async () => {
       const created = await employees.create(system, JOINER);
@@ -442,7 +442,7 @@ describe('each employee has exactly one line manager, FR 02 and FR 04', () => {
       expect(moved.departmentId).toBe(created.departmentId);
     });
 
-    it('refuses an employee as their own line manager', async () => {
+    it('refuses an employee as their own manager', async () => {
       const created = await employees.create(system, JOINER);
 
       await expect(
@@ -660,7 +660,7 @@ describe('every employee is in one department, LMS 105', () => {
     const moved = await employees.update(system, created.id, { departmentId: audit.id });
 
     expect(moved.departmentId).toBe(audit.id);
-    // The move is the only thing that moved. Their line manager is unchanged,
+    // The move is the only thing that moved. Their manager is unchanged,
     // because reporting to somebody and sitting in a team are different facts.
     expect(moved.managerId).toBe(people.teamLead);
   });
@@ -767,7 +767,7 @@ describe('every employee works some week, FR 23 and LMS 106', () => {
   }
 
   it('gives a joiner the standard week when nobody names one', async () => {
-    /* The asymmetry with the line manager, which is required explicitly: there is
+    /* The asymmetry with the manager, which is required explicitly: there is
        no right answer to "who does this person report to" and there is one to
        "which week do they work". */
     const created = await employees.create(system, JOINER);
