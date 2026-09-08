@@ -10,17 +10,21 @@ import {
 } from '../../api';
 import { inDays, moment, period, sentenceCase, statusLabel } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
+import { Notice, type Problem, problemFrom } from '../../problem';
 import { AttachedFiles } from './Attachments';
 
 /** My request history. FR 54, LMS 402, FR 41, FR 39. */
 export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [history, setHistory] = useState<History | undefined>(undefined);
-  const [problem, setProblem] = useState<string | undefined>(undefined);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  /** LMS 410. What "try again" would ask for, which is the year that failed and not the first. */
+  const [showing, setShowing] = useState<string | undefined>(undefined);
 
   const load = useCallback(
     (leaveYearId?: string) => {
       setLoading(true);
+      setShowing(leaveYearId);
 
       myRequests(leaveYearId)
         .then((next) => {
@@ -33,8 +37,8 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
             return;
           }
 
-          /** The server's own sentence, verbatim. NFR USA 03. */
-          setProblem(error instanceof Error ? error.message : 'Something went wrong.');
+          /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
+          setProblem(problemFrom(error));
         })
         .finally(() => {
           setLoading(false);
@@ -47,9 +51,19 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
     load();
   }, [load]);
 
+  const again = () => {
+    load(showing);
+  };
+
   if (history === undefined) {
     return (
-      <div className="page">{loading ? <Skeletons /> : <p className="notice">{problem}</p>}</div>
+      <div className="page">
+        {loading ? (
+          <Skeletons />
+        ) : problem === undefined ? null : (
+          <Notice problem={problem} retrying={loading} onRetry={again} />
+        )}
+      </div>
     );
   }
 
@@ -72,7 +86,9 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
 
       {/* A history is already on screen, so a failure to load a *different* year is a notice
           above it rather than a blank page — what they were reading is still true. */}
-      {problem === undefined ? null : <p className="notice">{problem}</p>}
+      {problem === undefined ? null : (
+        <Notice problem={problem} retrying={loading} onRetry={again} />
+      )}
 
       {history.entries.length === 0 ? (
         <Nothing year={history.year} />

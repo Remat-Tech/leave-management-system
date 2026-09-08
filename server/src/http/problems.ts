@@ -145,8 +145,8 @@ export function problemInABatch(
  * The refusals a leave request can meet, and the status each is answered with. LMS 403.
  *
  * Every one of these is a well formed request that a rule says no to. Without this table they
- * fall through to {@link unexpected} and reach the browser as "Something went wrong. It has
- * been logged." — which is the exact failure LMS 403 is written against, because each of them
+ * fall through to {@link unexpected} and reach the browser as "Something went wrong at our
+ * end" — which is the exact failure LMS 403 is written against, because each of them
  * already carries the sentence that tells somebody what to do instead. `LeaveCrossesAYearEnd`
  * names the two dates to submit; `NotEnoughDays` names how many days could be asked for;
  * `TooLateToRecord` names who can still enter it. Throwing that away and logging a stack
@@ -306,12 +306,29 @@ export function answerProblems(log: FailureLog = failuresToStderr()) {
   };
 }
 
+/**
+ * The one refusal nobody wrote a sentence for, and so the one that has to be written here.
+ * LMS 410.
+ *
+ * Every other message in this file is the domain's — it knows what went wrong and says what to
+ * do about it. This one is a fault, and what the person reading it can do is bounded: they
+ * cannot fix it and they should not be asked to. So the sentence says the two true things
+ * there are — it is ours and it is recorded — and then the two acts that are actually theirs:
+ * try again, and tell IT when. "It has been logged" on its own was neither, and a person who
+ * read it had nothing to do but guess whether pressing the button again was safe.
+ *
+ * It deliberately does not promise that nothing was saved. A five hundred can be thrown after
+ * a write as easily as before one, and a reassurance this handler cannot check is worse than
+ * no reassurance: it is the sentence that stops somebody looking.
+ */
 function unexpected(): { status: number; body: Problem } {
   return {
     status: 500,
     body: {
       error: 'Unexpected',
-      message: 'Something went wrong. It has been logged.',
+      message:
+        'Something went wrong at our end, and it has been logged. Try again in a minute — ' +
+        'and if it keeps happening, tell IT roughly when you tried, so they can find it.',
     },
   };
 }

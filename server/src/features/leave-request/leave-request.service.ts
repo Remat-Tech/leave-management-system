@@ -72,6 +72,7 @@ import {
   LeaveRequestNotFound,
   LeaveOverlapsAnother,
   type NewLeaveRequest,
+  NotEnoughDays,
   NothingLeftToGiveBack,
   noticeGiven,
   NothingToOverturn,
@@ -114,12 +115,14 @@ import type { LeaveRequestListOptions, LeaveRequestRepository } from './leave-re
 import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
 import type { OrganisationRepository } from '../organisation/organisation.db.js';
+import { BalanceOverdrawn } from '../balance/balance.js';
 import type {
   BalanceService,
   LeaveApproved,
   LeaveReleased,
   LeaveRequested,
   LeaveRerouted,
+  RequestToSubmit,
   WithdrawalAnswered,
   WithdrawalAsked,
 } from '../balance/balance.service.js';
@@ -434,7 +437,7 @@ export class LeaveRequestService {
       available,
     });
 
-    const submitted = await this.balances.reserveForRequest(actor, {
+    const submitted = await this.reserve(actor, type, period, {
       request,
       reason: reasonForReservation(type.name, period, count.days),
       /* FR 13, LMS 311. The files go onto the request in the same transaction as the row,
@@ -468,6 +471,37 @@ export class LeaveRequestService {
     });
 
     return submitted;
+  }
+
+  /**
+   * Holds the days, and says the lock's refusal in the submission's words. FR 14, LMS 410.
+   *
+   * `daysToReserve` is still the check that binds — see {@link assertTheDaysAreThere} — and
+   * nothing here weakens it. What changes is who the refusal is addressed to. Inside the lock
+   * there is a number of days and a balance and no leave at all, so {@link BalanceOverdrawn}
+   * says "That is 6 days against a balance of 3": the right sentence for the ledger, and one a
+   * person at a form can do nothing with. {@link NotEnoughDays} is the same fact with the type
+   * and the period in hand, so it names the kind of leave, the figure left and the number to
+   * ask for instead — which is what the person who lost the race needs and what the person who
+   * was refused a moment earlier already got.
+   *
+   * Only this path translates. The door keeps its own refusal for every other caller.
+   */
+  private async reserve(
+    actor: Actor,
+    type: LeaveType,
+    period: LeavePeriod,
+    submission: RequestToSubmit,
+  ): Promise<LeaveRequested> {
+    try {
+      return await this.balances.reserveForRequest(actor, submission);
+    } catch (error) {
+      if (error instanceof BalanceOverdrawn) {
+        throw new NotEnoughDays(type, period, error.requested, error.available);
+      }
+
+      throw error;
+    }
   }
 
   /**

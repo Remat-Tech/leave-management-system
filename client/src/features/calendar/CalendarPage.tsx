@@ -15,6 +15,7 @@ import {
 } from '../../api';
 import { inDays, period } from '../../format';
 import { Icon } from '../../Icon';
+import { Notice, type Problem, problemFrom } from '../../problem';
 import { Reports } from '../team/Reports';
 import { Month, nameOf, step } from './Month';
 
@@ -41,7 +42,7 @@ export function CalendarPage({
   /** LMS 409. Held here rather than read back off the answer, so changing the year in the bar
       does not quietly reset an HR reader's department back to their own. */
   const [departmentId, setDepartmentId] = useState<string | undefined>(undefined);
-  const [problem, setProblem] = useState<string | undefined>(undefined);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(
@@ -61,8 +62,8 @@ export function CalendarPage({
             return;
           }
 
-          /** The server's own sentence, verbatim. NFR USA 03. */
-          setProblem(error instanceof Error ? error.message : 'Something went wrong.');
+          /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
+          setProblem(problemFrom(error));
         })
         .finally(() => {
           setLoading(false);
@@ -83,9 +84,19 @@ export function CalendarPage({
     load(yearId, departmentId);
   }, [load, yearId, departmentId]);
 
+  const again = () => {
+    load(yearId, departmentId);
+  };
+
   if (calendar === undefined) {
     return (
-      <div className="page">{loading ? <Skeletons /> : <p className="notice">{problem}</p>}</div>
+      <div className="page">
+        {loading ? (
+          <Skeletons />
+        ) : problem === undefined ? null : (
+          <Notice problem={problem} retrying={loading} onRetry={again} />
+        )}
+      </div>
     );
   }
 
@@ -110,7 +121,9 @@ export function CalendarPage({
         </div>
       </div>
 
-      {problem === undefined ? null : <p className="notice">{problem}</p>}
+      {problem === undefined ? null : (
+        <Notice problem={problem} retrying={loading} onRetry={again} />
+      )}
 
       <Today away={calendar.awayToday} size={calendar.size} />
 
