@@ -84,7 +84,7 @@ export class RequestFormService {
   }
 }
 
-/** Whose form this is, and who their line manager is. */
+/** Whose form this is, and who their manager is. */
 function ownerOf(employee: Employee): BalanceOwner {
   return { employeeId: employee.id, managerId: employee.managerId };
 }

@@ -47,7 +47,7 @@ describe('a reporting line that moved', () => {
   it('carried nothing where the manager is the one already on the record', () => {
     expect(lineMoved({ employeeId: 'adwoa', from: 'kofi', to: 'kofi' })).toBe(false);
     expect(lineMoved({ employeeId: 'adwoa', from: 'kofi', to: 'akosua' })).toBe(true);
-    /** FR 04. Gaining a line manager and losing one are both moves. */
+    /** FR 04. Gaining a manager and losing one are both moves. */
     expect(lineMoved({ employeeId: 'adwoa', from: null, to: 'akosua' })).toBe(true);
     expect(lineMoved({ employeeId: 'adwoa', from: 'kofi', to: null })).toBe(true);
   });
@@ -77,7 +77,7 @@ describe('the requests a moved line carries', () => {
    * it would re-ask a question somebody has answered and put their name on a stage they are
    * no longer at.
    */
-  it('and leaves alone every request no longer waiting on a line manager', () => {
+  it('and leaves alone every request no longer waiting on a manager', () => {
     const elsewhere = [
       aRequestIn('SUBMITTED', 'HR'),
       aRequestIn('SUBMITTED', 'CEO'),
@@ -132,7 +132,7 @@ describe('the handover recorded', () => {
     );
 
     expect(recorded).toMatchObject({ movedFrom: 'MANAGER', movedTo: null, to: null });
-    expect(recorded.because).toContain('no longer has a line manager');
+    expect(recorded.because).toContain('no longer has a manager');
     expect(recorded.because).toContain('stopped there');
   });
 

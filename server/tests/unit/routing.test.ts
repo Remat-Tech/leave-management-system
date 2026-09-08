@@ -112,7 +112,7 @@ describe('a chain every desk can answer', () => {
 /**
  * The Chief Executive's own annual leave. FR 04, FR 48b's first criterion.
  *
- * The case the story is named for: FR 04 leaves exactly one employee without a line manager,
+ * The case the story is named for: FR 04 leaves exactly one employee without a manager,
  * so their ordinary requests have a first stage nobody staffs.
  */
 describe('a manager stage nobody can answer', () => {
@@ -126,7 +126,7 @@ describe('a manager stage nobody can answer', () => {
         {
           stage: 'MANAGER',
           routedTo: 'HR',
-          because: expect.stringContaining('no line manager') as string,
+          because: expect.stringContaining('no manager') as string,
         },
       ],
     });
@@ -192,8 +192,8 @@ describe('an HR stage only the requester staffs', () => {
     });
   });
 
-  /* Their annual leave still goes to their own line manager first: only the empty stage moves. */
-  it('and their annual leave still starts with their line manager', () => {
+  /* Their annual leave still goes to their own manager first: only the empty stage moves. */
+  it('and their annual leave still starts with their manager', () => {
     expect(route(ORDINARY, loneHr)).toEqual({ kind: 'DESK', desk: 'MANAGER', skips: [] });
     expect(route(ORDINARY, loneHr, ['MANAGER'])).toMatchObject({ kind: 'DESK', desk: 'CEO' });
   });
@@ -293,7 +293,7 @@ describe('a stage with neither its desk nor its stand-in', () => {
 /**
  * The single approver exception. FR 48d, LMS 322.
  *
- * Ama is Kofi's line manager and holds an HR role, so his annual leave has two stages with
+ * Ama is Kofi's manager and holds an HR role, so his annual leave has two stages with
  * one person at both. LMS 320 asked her twice; this asks somebody else, and where the company
  * has nobody else it says on the record that one approver decided it.
  */
@@ -405,13 +405,13 @@ describe('a stage its own people have already decided', () => {
 /**
  * The one thing carried rather than recomputed. FR 48b, LMS 316's discipline.
  *
- * A manager's stage skipped on Monday because the requester had no line manager is a stage
+ * A manager's stage skipped on Monday because the requester had no manager is a stage
  * that has had its turn. Somebody appointed on Wednesday does not send a request that is
  * already with HR back down.
  */
 describe('a skip already recorded', () => {
   const skipped: SkippedStage[] = [
-    { stage: 'MANAGER', routedTo: 'HR', because: 'they had no line manager' },
+    { stage: 'MANAGER', routedTo: 'HR', because: 'they had no manager' },
   ];
 
   it('is not undone by the desk being staffed afterwards', () => {

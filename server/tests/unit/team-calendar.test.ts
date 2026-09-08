@@ -70,7 +70,7 @@ describe('who is on the calendar, FR 57, LMS 409', () => {
     ]);
   });
 
-  it('and marks the reader and their line manager rather than leaving either off', () => {
+  it('and marks the reader and their manager rather than leaving either off', () => {
     const calendar = calendarOf({});
 
     expect(colleague(calendar, ADWOA.id).isMe).toBe(true);

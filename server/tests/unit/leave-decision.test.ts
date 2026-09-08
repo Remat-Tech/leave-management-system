@@ -79,7 +79,7 @@ describe('the verbs that are a decision at a desk', () => {
   /* FR 44, LMS 318. And the two that reverse somebody else's decision are the two that ask
      for a justification. An override recorded as an approval with a flag beside it would
      read as an approval in every query that forgot the flag. */
-  it('and the two that reverse a line manager are their own values', () => {
+  it('and the two that reverse a manager are their own values', () => {
     expect([...OVERRIDING_ACTIONS]).toEqual(['OVERTURN_REJECTION', 'OVERTURN_APPROVAL']);
 
     for (const action of OVERRIDING_ACTIONS) {
@@ -320,7 +320,7 @@ describe('the desks that have approved a request', () => {
   });
 });
 
-/* ------------------------------------------ overturning a line manager, FR 44 */
+/* ------------------------------------------ overturning a manager, FR 44 */
 
 /**
  * What an override has to say, and what it has to be reversing. FR 44, §7.2. LMS 318.
@@ -328,7 +328,7 @@ describe('the desks that have approved a request', () => {
  * The story's second and fourth criteria are both here: a justification in writing, and a
  * decision value of its own rather than a flag on an approval.
  */
-describe('overturning a line manager’s decision', () => {
+describe('overturning a manager’s decision', () => {
   const anOverride = {
     leaveRequestId: '41',
     action: 'OVERTURN_REJECTION' as const,
@@ -395,10 +395,10 @@ describe('overturning a line manager’s decision', () => {
 });
 
 /**
- * Which verb would be overruling the line manager. FR 44, §7.2. LMS 318.
+ * Which verb would be overruling the manager. FR 44, §7.2. LMS 318.
  *
  * The pairing that makes the justification unavoidable rather than offered: a desk about to
- * decide the opposite way to the line manager is overruling them whether the button it
+ * decide the opposite way to the manager is overruling them whether the button it
  * pressed said so or not.
  */
 describe('the override a plain verb would have to be', () => {
@@ -430,20 +430,20 @@ describe('the override a plain verb would have to be', () => {
   });
 
   /**
-   * And nothing where no line manager has decided, which is the case that would otherwise
+   * And nothing where no manager has decided, which is the case that would otherwise
    * demand a justification of the first desk to look at a request.
    *
    * A chain with no manager stage is the ordinary version of this — unpaid leave goes HR
    * then the Chief Executive, §4.3.1 — so HR deciding one has nobody to overrule.
    */
-  it('and nothing where no line manager has decided at all', () => {
+  it('and nothing where no manager has decided at all', () => {
     expect(overrideRequiredFor('APPROVE', [])).toBeNull();
     expect(overrideRequiredFor('REFUSE', [])).toBeNull();
   });
 
-  /* And it reads the line manager's stage rather than any earlier disagreement. HR
+  /* And it reads the manager's stage rather than any earlier disagreement. HR
      overruling the Chief Executive is not FR 44's subject. */
-  it('and it reads the line manager’s stage and no other', () => {
+  it('and it reads the manager’s stage and no other', () => {
     const chiefExecutive: LeaveDecision = { ...managers('REFUSE'), onBehalfOf: 'CEO' };
 
     expect(overrideRequiredFor('APPROVE', [chiefExecutive])).toBeNull();

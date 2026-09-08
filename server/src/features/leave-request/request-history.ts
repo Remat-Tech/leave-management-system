@@ -8,6 +8,7 @@ import {
   desksThatApproved,
   desksThatRefused,
   isAnOverride,
+  saysYes,
   type LeaveDecision,
 } from './leave-decision.js';
 import {
@@ -32,7 +33,7 @@ import type { CalendarDate } from '../../shared/time.js';
 export const TRAIL_STEPS = [
   'ASKED',
   'DECIDED',
-  /** A decision that reversed the line manager's. FR 44, §7.2, LMS 318. */
+  /** A decision that reversed the manager's. FR 44, §7.2, LMS 318. */
   'OVERTURNED',
   'ENDED',
   /** An ask for agreed leave to come off the books, or HR's answer. FR 47, LMS 324. */
@@ -47,6 +48,14 @@ export interface TrailStep {
   kind: TrailStepKind;
   /** FR 52. */
   desk: ApproverRole | null;
+  /**
+   * Whether this step said yes, for the steps that said anything. LMS 409.
+   *
+   * Null on everything that is not a decision. It carries what `inWords` already says, as a
+   * field rather than a sentence, so a screen can label a step "Approved" in a pill without
+   * parsing English — which is the only way a short label can keep the one fact that matters.
+   */
+  agreed: boolean | null;
   /** FR 39. */
   comment: string | null;
   /** FR 52. */
@@ -164,7 +173,7 @@ export function whoDecided(decision: LeaveDecision, deciders: Deciders): string 
  * One decision, in the words the person whose leave it is reads. FR 39, FR 44. LMS 318.
  *
  * An override says what it reversed, because that is the sentence FR 44 asks to keep: a
- * trail reading "Approved by HR" under "Turned down at your line manager's stage" leaves the
+ * trail reading "Approved by HR" under "Turned down at your manager's stage" leaves the
  * reader to work out which one stood.
  */
 function decisionInWords(decision: LeaveDecision): string {
@@ -182,7 +191,7 @@ function decisionInWords(decision: LeaveDecision): string {
   }
 }
 
-/** A phrase that starts a sentence. "HR" is already there; "your line manager" is not. */
+/** A phrase that starts a sentence. "HR" is already there; "your manager" is not. */
 function sentenceCase(words: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
@@ -200,6 +209,7 @@ export function trailFor(
     {
       kind: 'ASKED',
       desk: null,
+      agreed: null,
       comment: null,
       by: null,
       at: request.submittedAt,
@@ -213,6 +223,7 @@ export function trailFor(
          rather than as an approval that happens to carry a comment. LMS 318. */
       kind: isAnOverride(decision.action) ? 'OVERTURNED' : 'DECIDED',
       desk: decision.onBehalfOf,
+      agreed: saysYes(decision.action),
       comment: decision.comment,
       by: whoDecided(decision, deciders),
       at: decision.decidedAt,
@@ -226,6 +237,7 @@ export function trailFor(
     steps.push({
       kind: 'WITHDRAWAL',
       desk: null,
+      agreed: null,
       comment: withdrawal.reason,
       by: whoWroteIt(withdrawal, deciders),
       at: withdrawal.recordedAt,
@@ -247,6 +259,7 @@ export function trailFor(
     steps.push({
       kind: 'ENDED',
       desk: null,
+      agreed: null,
       comment: null,
       by: null,
       at: null,
@@ -266,6 +279,7 @@ function stillToAsk(progress: ApprovalProgress): TrailStep[] {
   return progress.stillToApprove.map((desk) => ({
     kind: 'STILL_TO_ASK' as const,
     desk,
+    agreed: null,
     comment: null,
     by: null,
     at: null,

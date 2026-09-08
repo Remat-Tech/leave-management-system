@@ -241,7 +241,7 @@ export class StillNobodyToDecideIt extends Error {
 }
 
 /**
- * An override with no line manager's decision under it to reverse. FR 44, §7.2. LMS 318.
+ * An override with no manager's decision under it to reverse. FR 44, §7.2. LMS 318.
  *
  * Told apart from {@link LeaveCannotBeMoved} because the request may be sitting in exactly
  * the right place and still have nothing to overturn — leave nobody has decided yet, or
@@ -251,18 +251,18 @@ export class NothingToOverturn extends Error {
   /** FR 44. */
   readonly code = 'NOTHING_TO_OVERTURN';
   readonly leaveRequestId: string;
-  /** What the line manager actually said, where they have said anything. */
+  /** What the manager actually said, where they have said anything. */
   readonly managerSaid: DecidingAction | null;
 
   constructor(request: LeaveRequest, action: RequestAction, managerSaid: DecidingAction | null) {
     const wanted = action === 'OVERTURN_REJECTION' ? 'turned down' : 'approved';
 
     super(
-      `An override reverses a line manager’s decision, and this leave has not been ` +
+      `An override reverses a manager’s decision, and this leave has not been ` +
         `${wanted} by one. ${
           managerSaid === null
-            ? 'No line manager has decided it.'
-            : 'Their line manager decided it the same way you are about to.'
+            ? 'No manager has decided it.'
+            : 'Their manager decided it the same way you are about to.'
         } Decide it as you would any other request. FR 44.`,
     );
     this.name = 'NothingToOverturn';
@@ -272,7 +272,7 @@ export class NothingToOverturn extends Error {
 }
 
 /**
- * A plain decision that would silently contradict a line manager. FR 44, §7.2. LMS 318.
+ * A plain decision that would silently contradict a manager. FR 44, §7.2. LMS 318.
  *
  * The refusal that makes "written justification mandatory" mean something. Approving leave
  * a manager turned down, or turning down leave a manager agreed to, is an override whether
@@ -288,7 +288,7 @@ export class OverrulingNeedsAnOverride extends Error {
 
   constructor(request: LeaveRequest, instead: RequestAction) {
     super(
-      `This leave has already been decided the other way by the line manager, so ` +
+      `This leave has already been decided the other way by the manager, so ` +
         `${actionInWords(instead)} rather than deciding it afresh. Overturning a ` +
         `manager’s decision is recorded as what it is and asks for a justification in ` +
         `writing, which is what they and the person who asked for the leave will read. ` +
@@ -324,9 +324,9 @@ export const REQUEST_ACTIONS = [
   'REFUSE',
   'CANCEL',
   'APPROVE',
-  /** HR reversing a line manager's rejection. FR 44, §7.2, LMS 318. */
+  /** HR reversing a manager's rejection. FR 44, §7.2, LMS 318. */
   'OVERTURN_REJECTION',
-  /** HR reversing a line manager's approval. FR 44, §7.2, LMS 318. */
+  /** HR reversing a manager's approval. FR 44, §7.2, LMS 318. */
   'OVERTURN_APPROVAL',
   /**
    * Sending a request nobody could decide back into its chain. FR 48b, §8.6a, LMS 320.
@@ -524,7 +524,7 @@ export const TRANSITIONS: readonly Transition[] = [
      refusal and hands the request on, exactly as an approval does — both are decisions,
      and neither is the answer until every stage has given one.
 
-     Narrowed to `THE_DESK_IT_IS_WITH` by LMS 318, from the line manager and HR alike.
+     Narrowed to `THE_DESK_IT_IS_WITH` by LMS 318, from the manager and HR alike.
      A refusal now advances the chain, so one made away from the desk would mark a stage
      decided by somebody who was never asked. Unwinding a request that should not be on
      the books is still HR's, and is `CANCEL`. */
@@ -541,7 +541,7 @@ export const TRANSITIONS: readonly Transition[] = [
      is where it reads the destination from.
 
      One standing, and it is the narrowest in the table: not HR by virtue of being HR, and
-     not the line manager by virtue of the reporting line, but whoever is at the desk this
+     not the manager by virtue of the reporting line, but whoever is at the desk this
      request is actually waiting on. A chain that does not name the manager does not admit
      the manager, which is the whole of the third criterion. */
   { from: 'SUBMITTED', action: 'APPROVE', to: 'APPROVED', by: ['THE_DESK_IT_IS_WITH'] },
@@ -553,7 +553,7 @@ export const TRANSITIONS: readonly Transition[] = [
      is decided by it, which is why it leaves a request being decided still being decided. */
   { from: 'SUBMITTED', action: 'ROUTE', to: 'SUBMITTED', by: ['LEAVE_ADMINISTRATION'] },
 
-  /* The same two verbs said over a line manager who decided otherwise. FR 44, §7.2. LMS 318.
+  /* The same two verbs said over a manager who decided otherwise. FR 44, §7.2. LMS 318.
 
      An override is an ordinary decision at the desk the request is sitting on, and the
      only thing that distinguishes it is that an earlier stage said the opposite. It is a
@@ -829,7 +829,7 @@ export interface DecisionAtADesk {
  * Where a decision leaves the request: on to the next desk, decided, or nowhere. FR 38, FR 38a, FR 40, FR 41, FR 42, FR 44, FR 48b, §6., §7.2, §8.6a, LMS 314, LMS 316, LMS 318, LMS 320.
  *
  * One walk for all four deciding verbs. What ends a request is the chain running out of
- * desks, not which way this desk went — so a line manager's rejection carries the request on
+ * desks, not which way this desk went — so a manager's rejection carries the request on
  * to HR exactly as their approval would, and the last stage to decide is the one whose verb
  * the request lands on.
  *
@@ -2421,7 +2421,7 @@ export function inWordsSettled(status: RequestStatus): string {
  *
  * Here rather than at the one call site because {@link chainInWords} makes the same
  * sentence about approvers and the two should read alike — a refusal that says "withdraw,
- * refuse, cancel" beside one that says "your line manager then HR" is two voices in one
+ * refuse, cancel" beside one that says "your manager then HR" is two voices in one
  * screen.
  */
 function listOf(words: readonly string[]): string {
@@ -2532,7 +2532,7 @@ export function validateNewLeaveRequest(input: {
  * The desk a new request starts at. FR 38, FR 38a, FR 48b. LMS 314, LMS 320.
  *
  * Read off the chain and nowhere else, which is the whole criterion: annual leave starts
- * with the line manager because its chain starts with `MANAGER`, and unpaid leave starts
+ * with the manager because its chain starts with `MANAGER`, and unpaid leave starts
  * with HR because its chain starts with `HR` — not because anything here knows which type
  * is which. Design principle 5.
  *

@@ -214,7 +214,7 @@ function aFile(content = A_PDF, filename = 'certificate.pdf') {
   return { filename, content, claimedContentType: 'application/octet-stream' };
 }
 
-/** A submitted request of the employee's, sitting with their line manager. */
+/** A submitted request of the employee's, sitting with their manager. */
 async function aRequest() {
   const submitted = await requests.submit(asTheEmployee(), {
     employeeId: people.officer,

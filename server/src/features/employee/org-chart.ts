@@ -13,7 +13,7 @@ export interface OrgChartNode {
 export const ROOT_STANDINGS = [
   /** FR 04. */
   'HEAD_OF_THE_ORGANISATION',
-  /** A second record with no line manager. FR 04. */
+  /** A second record with no manager. FR 04. */
   'SECOND_HEAD',
   /** Their manager is not among the records this chart was built from. */
   'MANAGER_NOT_ON_THE_CHART',
@@ -263,7 +263,7 @@ function concernAbout(employee: Employee, standing: RootStanding): string | null
       return null;
     case 'SECOND_HEAD':
       return (
-        `${who} is recorded with no line manager, and only the head of the ` +
+        `${who} is recorded with no manager, and only the head of the ` +
         `organisation may be. Everybody drawn below them is in the same position: ` +
         `no request from any of them can be routed upward past ${fullName(employee)}. FR 04.`
       );

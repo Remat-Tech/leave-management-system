@@ -150,7 +150,7 @@ beforeEach(async () => {
 
   annualId = (await admin.query("SELECT id FROM leave_type WHERE code = 'ANNUAL'")).rows[0].id;
 
-  /* Annual leave's chain as the migration wrote it: the line manager, then HR. */
+  /* Annual leave's chain as the migration wrote it: the manager, then HR. */
   await admin.query('BEGIN');
   await admin.query('DELETE FROM leave_type_approval_step WHERE leave_type_id = $1', [annualId]);
   await admin.query('SELECT ensure_statutory_approval_chains()');
@@ -217,7 +217,7 @@ async function remindersFor(employeeId: string) {
 /* -------------------------------------------------- every pending item, every day */
 
 describe('a request waiting at a desk chases the person it is waiting on', () => {
-  it('reminds the line manager, on both channels', async () => {
+  it('reminds the manager, on both channels', async () => {
     const id = await submit();
     mailer.clear();
 

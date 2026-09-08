@@ -249,7 +249,7 @@ describe('whether the leave is theirs to take', () => {
       }),
     );
 
-    expect(notice.subject).toBe('Your line manager approved your Annual Leave — it still needs HR');
+    expect(notice.subject).toBe('Your manager approved your Annual Leave — it still needs HR');
     expect(notice.body).toContain('do not book anything on it');
     expect(notice.body).toContain('It has gone on to HR.');
     expect(notice.body).not.toContain('yours to take');
@@ -291,7 +291,7 @@ describe('whether the leave is theirs to take', () => {
     const notice = noticeOf(happened({ event: 'SUBMITTED' }));
 
     expect(notice.subject).toContain('has been submitted');
-    expect(notice.body).toContain('It is now with your line manager.');
+    expect(notice.body).toContain('It is now with your manager.');
     expect(notice.body).toContain('not agreed yet, so do not book anything on it');
     expect(notice.body).toContain('being held while it is decided');
   });
@@ -316,7 +316,7 @@ describe('the three endings', () => {
       'Your Annual Leave for 2 March 2026 to 10 March 2026 was turned down',
     );
     expect(notice.body).toContain(WHY_NOT);
-    expect(notice.body).toContain("turned down at the line manager's stage");
+    expect(notice.body).toContain("turned down at the manager's stage");
     expect(notice.body).toContain('The 6 days are back in your balance.');
     expect(notice.body).toContain('You have 20 days to book.');
     expect(notice.body).toContain('ask for it again');
@@ -407,7 +407,7 @@ describe('the words themselves', () => {
     expect(notice.body).not.toContain('1 days');
   });
 
-  /* "your line manager has approved" opening a sentence reads as a typo. */
+  /* "your manager has approved" opening a sentence reads as a typo. */
   it('and a desk opening a sentence is capitalised', () => {
     const notice = noticeOf(
       happened({
@@ -417,7 +417,7 @@ describe('the words themselves', () => {
       }),
     );
 
-    expect(notice.body.startsWith('Hello Adwoa,\n\nYour line manager has approved')).toBe(true);
+    expect(notice.body.startsWith('Hello Adwoa,\n\nYour manager has approved')).toBe(true);
   });
 
   /* An approver who said something has it shown; one who said nothing produces no empty

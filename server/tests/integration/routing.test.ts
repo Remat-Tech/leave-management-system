@@ -42,7 +42,7 @@ import { delegationService } from '../support/delegations.js';
  * ../unit/routing.test.ts proves the walk, which is pure. What needs a server is everything
  * the walk cannot claim on its own:
  *
- *   **Who each desk resolves to comes off real rows.** The line manager is a reporting line,
+ *   **Who each desk resolves to comes off real rows.** The manager is a reporting line,
  *   HR is two granted roles, and the Chief Executive is a setting — FR 48c, LMS 321 — so the
  *   whole point of the story is which *people* those three are today, and that is a database
  *   question.
@@ -200,7 +200,7 @@ function aRequest(employeeId: string): NewLeaveRequest {
   };
 }
 
-/** Whoever `organisation_setting` names, who in the fixtures also has no line manager. FR 48c. */
+/** Whoever `organisation_setting` names, who in the fixtures also has no manager. FR 48c. */
 function asTheChiefExecutive() {
   return signedInAs(people.ceo, { roles: ['EMPLOYEE'], isManager: true });
 }
@@ -256,7 +256,7 @@ describe('a request whose manager stage has nobody at it', () => {
 
     expect(rest).toEqual([]);
     expect(skip).toMatchObject({ stage: 'MANAGER', routedTo: 'HR' });
-    expect(skip.because).toContain('no line manager');
+    expect(skip.because).toContain('no manager');
     /* Stamped by the trigger from the transaction's actor, never by the writer. */
     expect(skip.recordedBy).not.toBe('not named by the writer');
     expect(skip.recordedAt).toBeInstanceOf(Date);
@@ -332,7 +332,7 @@ describe('a request whose HR stage only the requester staffs', () => {
   it('is settled by the manager alone where the stand-in is that same person', async () => {
     const { request } = await requests.submit(asTheHeadOfHr(), aRequest(people.headOfHr));
 
-    /* Her own line manager is the Chief Executive, so the first stage is ordinary. */
+    /* Her own manager is the Chief Executive, so the first stage is ordinary. */
     expect(request.awaitingApprovalFrom).toBe('MANAGER');
 
     const decided = await requests.approve(asTheChiefExecutive(), request.id);
@@ -437,14 +437,14 @@ describe('who the CEO desk resolves to', () => {
     await annualLeaveGoesTo('CEO');
   });
 
-  it('is whoever the organisation names, not whoever has no line manager', async () => {
+  it('is whoever the organisation names, not whoever has no manager', async () => {
     await admin.query('UPDATE organisation_setting SET ceo_employee_id = $1', [people.opsDirector]);
 
     const { request } = await requests.submit(asAnOfficerAsking(), aRequest(people.officer));
 
     expect(request.awaitingApprovalFrom).toBe('CEO');
 
-    /* Kwame still has no line manager and still says Chief Executive Officer on his record,
+    /* Kwame still has no manager and still says Chief Executive Officer on his record,
        and the desk is no longer his. */
     await expect(requests.approve(asTheChiefExecutive(), request.id)).rejects.toThrow(
       NotAuthorised,
@@ -550,7 +550,7 @@ describe('a request neither desk can answer', () => {
 
     const sent = await noticesAbout(request.id);
 
-    /* One notice rather than two: the ordinary "it is now with your line manager" would be
+    /* One notice rather than two: the ordinary "it is now with your manager" would be
        false, so the alert replaces it rather than following it. */
     expect(sent.map((notice) => notice.event)).toEqual(['UNROUTABLE']);
 

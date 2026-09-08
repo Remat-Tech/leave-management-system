@@ -560,7 +560,7 @@ describe('where an approval lands', () => {
     try {
       decisionTo(waitingOn('MANAGER'), 'APPROVE', ['HR'], []);
     } catch (error) {
-      expect((error as Error).message).toContain('your line manager');
+      expect((error as Error).message).toContain('your manager');
       expect((error as Error).message).toContain('changed to HR');
     }
   });
@@ -638,7 +638,7 @@ describe('where an approval lands', () => {
  * below is that rule read off the same walk the approvals use — there is no branch in
  * `decisionTo` for a refusal, which is the point.
  */
-describe('a line manager’s rejection', () => {
+describe('a manager’s rejection', () => {
   const waitingOn = (desk: ApproverRole): LeaveRequest => aRequestIn('SUBMITTED', desk);
 
   const ORDINARY: readonly ApproverRole[] = ['MANAGER', 'HR'];
@@ -795,7 +795,7 @@ describe('how far through its chain a request has got', () => {
   });
 
   /* And the sentence says so first. A screen that showed only the newest decision would say
-     "Approved by your line manager", which is true and is the exact belief this story is
+     "Approved by your manager", which is true and is the exact belief this story is
      written against — so the two halves are one string composed once rather than two fields
      a screen may show one of. */
   it('and says so before it says who has approved', () => {
@@ -807,7 +807,7 @@ describe('how far through its chain a request has got', () => {
 
     expect(inWords).toMatch(/not agreed yet/);
     expect(inWords).toMatch(/do not book anything on it/);
-    expect(inWords).toMatch(/Approved by your line manager/);
+    expect(inWords).toMatch(/Approved by your manager/);
     expect(inWords).toMatch(/still needs HR/);
   });
 
@@ -876,7 +876,7 @@ describe('how far through its chain a request has got', () => {
        has had its say and the request is still going: a sentence counting only approvals
        would say nobody had looked at a request the manager had already refused. */
     expect(inWords).toMatch(/Nobody has decided it yet/);
-    expect(inWords).toMatch(/still needs your line manager then HR/);
+    expect(inWords).toMatch(/still needs your manager then HR/);
   });
 });
 
@@ -911,7 +911,7 @@ describe('the table, written out', () => {
         to: 'WITHDRAWN',
         by: ['THE_REQUESTER', 'LEAVE_ADMINISTRATION'],
       },
-      /* FR 44, LMS 318. Narrowed from the line manager and HR alike to the desk the request
+      /* FR 44, LMS 318. Narrowed from the manager and HR alike to the desk the request
          is sitting on, because a rejection now advances the chain: one made away from the
          desk would mark a stage decided by somebody who was never asked. */
       {
@@ -1082,7 +1082,7 @@ describe('the table, written out', () => {
  * desks the first admits, against hardcoded actors rather than against the table.
  */
 describe('the two questions, and the order they are asked in', () => {
-  /** Ama's request. Akosua is her line manager. */
+  /** Ama's request. Akosua is her manager. */
   const hers: BalanceOwner = { employeeId: 'ama', managerId: 'akosua' };
 
   const ama = signedInAs('ama', { roles: ['EMPLOYEE'], isManager: false });

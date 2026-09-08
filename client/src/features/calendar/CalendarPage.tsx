@@ -13,7 +13,7 @@ import {
   type TeamMember,
   type Year,
 } from '../../api';
-import { inDays } from '../../format';
+import { inDays, period } from '../../format';
 import { Icon } from '../../Icon';
 import { Reports } from '../team/Reports';
 import { Month, nameOf, step } from './Month';
@@ -95,7 +95,7 @@ export function CalendarPage({
   return (
     <div className="page">
       <div className="pagehead">
-        <p className="muted">{calendar.inWords}</p>
+        <p className="muted">{whoseCalendar(calendar)}</p>
 
         <div className="controls">
           {/* LMS 409. HR only — everybody else gets their own department and no picker. */}
@@ -265,7 +265,7 @@ function ColleagueCard({
         </h3>
 
         <div className="tags">
-          {colleague.isTheManager ? <span className="tag">Your line manager</span> : null}
+          {colleague.isTheManager ? <span className="tag">Your manager</span> : null}
           {report === undefined ? null : <span className="tag">Reports to you</span>}
           {colleague.awayToday ? <span className="tag flag">Away today</span> : null}
           {left ? <span className="tag">Has left</span> : null}
@@ -277,7 +277,7 @@ function ColleagueCard({
         {named && colleague.department !== null ? ` · ${colleague.department.name}` : ''}
       </p>
 
-      <p className="muted">{colleague.inWords}</p>
+      <p className="muted">{bookedInShort(colleague)}</p>
 
       {report === undefined ? (
         colleague.absences.length === 0 ? null : (
@@ -298,9 +298,7 @@ function ColleagueCard({
 function AbsenceRow({ absence }: { absence: Absence }) {
   return (
     <li>
-      <strong>
-        {absence.from} to {absence.to}
-      </strong>
+      <strong>{period(absence.from, absence.to)}</strong>
       {` · ${inDays(absence.calendarDays)} · `}
       <span className={`tag status is-${absence.agreed ? 'approved' : 'submitted'}`}>
         {absence.agreed ? 'agreed' : 'waiting to be decided'}
@@ -371,8 +369,33 @@ function todayInWholeDays(): string {
 
 function summaryOf(calendar: TeamAwayCalendar): string {
   return calendar.days.length === 0
-    ? `Nothing is booked between ${calendar.from} and ${calendar.to}.`
-    : `${String(calendar.days.length)} days in ${calendar.year.label} have somebody away, and at most ${String(calendar.busiest)} at once.`;
+    ? 'Nothing booked this year.'
+    : `${String(calendar.days.length)} days away · up to ${String(calendar.busiest)} at once`;
+}
+
+/**
+ * What one person has booked, as a count. LMS 409.
+ *
+ * The server's sentence — "Akosua Darko has 1 absence booked in 2026, over 3 days" — repeated
+ * the name at the top of the card and the dates listed underneath it.
+ */
+function bookedInShort(colleague: Colleague): string {
+  const left = colleague.employmentStatus === 'TERMINATED' ? 'Has left · ' : '';
+
+  if (colleague.absences.length === 0) {
+    return `${left}nothing booked`;
+  }
+
+  const total = colleague.absences.reduce((sum, one) => sum + one.calendarDays, 0);
+
+  return `${left}${String(colleague.absences.length)} ${colleague.absences.length === 1 ? 'absence' : 'absences'} · ${inDays(total)}`;
+}
+
+/** Whose calendar this is, as a caption. LMS 409. */
+function whoseCalendar(calendar: TeamAwayCalendar): string {
+  const where = calendar.department === null ? 'the company' : calendar.department.name;
+
+  return `${String(calendar.size)} ${calendar.size === 1 ? 'person' : 'people'} in ${where}`;
 }
 
 /* The shape of the answer while it is on its way. */

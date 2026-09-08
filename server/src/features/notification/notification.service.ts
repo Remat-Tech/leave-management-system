@@ -31,7 +31,7 @@ export interface Telling {
   event: NoticeEvent;
   /** Whose leave it is, which for FR 59 is also who is told. */
   employee: Employee;
-  /** Who is told, where FR 44 makes that somebody else — the overruled line manager. */
+  /** Who is told, where FR 44 makes that somebody else — the overruled manager. */
   recipient?: Employee;
   /** The request **as it stands committed**, which is where the desk and status come from. */
   request: LeaveRequest;

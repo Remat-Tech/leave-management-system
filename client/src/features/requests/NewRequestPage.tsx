@@ -11,7 +11,7 @@ import {
   quoteLeave,
   type Submitted,
 } from '../../api';
-import { days, inDays, sentenceCase } from '../../format';
+import { days, inDays, period, sentenceCase } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
 import { Evidence } from './Attachments';
 
@@ -226,12 +226,6 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
 
   return (
     <div className="page">
-      <div className="pagehead">
-        <p className="muted">
-          Choose the kind of leave first — what it asks of you is shown before you pick any dates.
-        </p>
-      </div>
-
       {form.types.length === 0 ? (
         <NothingToAskFor />
       ) : (
@@ -375,7 +369,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
             {refusal === undefined ? null : <p className="notice">{refusal}</p>}
 
             <button type="submit" className="primary is-big" disabled={asking}>
-              {asking ? 'Asking…' : 'Ask for this leave'}
+              {asking ? 'Submitting…' : 'Submit request'}
               <Icon name="ask" />
             </button>
           </form>
@@ -548,11 +542,12 @@ function Cost({
             <Icon name="balances" />
             Leave period
           </h3>
+          {/* The dates alone. The calendar day count sat here beside the charged count at the
+              top of the panel — "6 days" under a headline reading "4 days of leave" — and two
+              different day figures on one card read as a contradiction rather than as FR 24's
+              distinction. The line under the headline still says both, in one breath. */}
           <p className="period">
-            <span>
-              {quote.from} to {quote.to}
-            </span>
-            <strong>{inDays(quote.calendarDays)}</strong>
+            <span>{period(quote.from, quote.to)}</span>
           </p>
         </section>
 
@@ -579,9 +574,11 @@ function Cost({
         </p>
       </div>
 
-      {quote.warnings.map((warning) => (
-        <Warning key={warning.code} warning={warning} />
-      ))}
+      {quote.warnings
+        .filter((warning) => warning.code !== 'SHORT_NOTICE')
+        .map((warning) => (
+          <Warning key={warning.code} warning={warning} />
+        ))}
     </aside>
   );
 }
@@ -630,8 +627,8 @@ function Asked({
       <h2>Asked for</h2>
 
       <p className="progress">
-        {inDays(submitted.days)} of {type?.name.toLowerCase() ?? 'leave'}, {submitted.from} to{' '}
-        {submitted.to}.
+        {inDays(submitted.days)} of {type?.name.toLowerCase() ?? 'leave'},{' '}
+        {period(submitted.from, submitted.to)}.
       </p>
 
       {/* FR 38a. Where it is now, which is the question somebody asks next. */}

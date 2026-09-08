@@ -317,7 +317,7 @@ describe('what each kind of leave asks of me', () => {
     const annual = await typeOnTheForm(people.officer, annualId);
     const unpaid = await typeOnTheForm(people.officer, await typeIdOf('UNPAID'));
 
-    expect(annual.approvedBy).toBe('your line manager then HR');
+    expect(annual.approvedBy).toBe('your manager then HR');
     expect(unpaid.approvedBy).toBe('HR then the Chief Executive');
   });
 

@@ -1,5 +1,5 @@
 import type { BalanceLine, TeamBooking, TeamMember } from '../../api';
-import { days, inDays } from '../../format';
+import { days, inDays, period } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
 
 /**
@@ -92,9 +92,7 @@ function Figures({ lines }: { lines: BalanceLine[] }) {
 function Booking({ booking }: { booking: TeamBooking }) {
   return (
     <li>
-      <strong>
-        {booking.from} to {booking.to}
-      </strong>
+      <strong>{period(booking.from, booking.to)}</strong>
       {` · ${inDays(booking.days)}`}
       {/* FR 24. Said only where the two differ, because "5 days, 5 days off" is noise. */}
       {booking.calendarDays === booking.days

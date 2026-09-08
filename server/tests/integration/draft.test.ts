@@ -54,7 +54,7 @@ import { delegationService } from '../support/delegations.js';
  *   **Everything is editable, and only while it is a draft.** The row moves table at
  *   submission, so there is nothing left to edit afterwards.
  *
- *   **It is nobody else's.** Not the line manager's and not HR's, which is narrower than
+ *   **It is nobody else's.** Not the manager's and not HR's, which is narrower than
  *   every other rule in `policy.ts`.
  */
 
@@ -546,7 +546,7 @@ describe('submitting a draft', () => {
 describe('who may see a draft', () => {
   /* The narrowest rule in `policy.ts`, and deliberately narrower than `read`, which admits
      both of these: there is no request for a manager to be the manager of. */
-  it('is refused to the line manager, to HR, and refused silently', async () => {
+  it('is refused to the manager, to HR, and refused silently', async () => {
     const draft = await aFinishedDraft();
 
     for (const actor of [asTheirManager(), asAnHrOfficer(), asTheHeadOfHr()]) {

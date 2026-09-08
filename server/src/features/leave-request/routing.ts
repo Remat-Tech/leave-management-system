@@ -305,7 +305,7 @@ function deskCannotDecideReason(stage: ApproverRole, standing: DeskStandingNow):
   switch (stage) {
     case 'MANAGER':
       /** FR 04. */
-      return 'they have no line manager, which is what being at the top of the reporting lines is';
+      return 'they have no manager, which is what being at the top of the reporting lines is';
     case 'HR':
       return 'nobody holds an HR role';
     default:
@@ -340,7 +340,7 @@ function deskCannotDecideRemedy(desk: ApproverRole, standing: DeskStanding): str
 
   switch (desk) {
     case 'MANAGER':
-      return 'giving them a line manager';
+      return 'giving them a manager';
     case 'HR':
       return 'granting somebody an HR role';
     default:

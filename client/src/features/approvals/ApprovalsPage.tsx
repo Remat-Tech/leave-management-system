@@ -8,7 +8,7 @@ import {
   type QueueItem,
   type TeamContext,
 } from '../../api';
-import { inDays, sentenceCase } from '../../format';
+import { inDays, period } from '../../format';
 import { Icon } from '../../Icon';
 import { AttachedFiles } from '../requests/Attachments';
 
@@ -107,7 +107,7 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
       <div className="pagehead">
         <p className="muted">
           {queue.items.length > 0 ? <span className="count">{queue.items.length}</span> : null}
-          {queue.inWords}
+          {queue.items.length === 1 ? 'request waiting on you' : 'requests waiting on you'}
         </p>
       </div>
 
@@ -272,7 +272,7 @@ function QueueCard({
         <div className="asking-what">
           <p className="when">
             <Icon name="balances" />
-            {item.from} to {item.to}
+            {period(item.from, item.to)}
           </p>
           <p className="muted">
             {inDays(item.days)}
@@ -323,7 +323,6 @@ function QueueCard({
             {inDays(item.balance.available)}
             <small>remaining</small>
           </p>
-          <p className="small">{sentenceCase(item.balance.inWords)}</p>
         </section>
 
         <section className="fact">
@@ -430,18 +429,32 @@ function Chain({ item }: { item: QueueItem }) {
  * rather than reading, and it is left out entirely where no name may be shown — a list of
  * anonymous rows would be furniture where the count has already said everything true.
  */
+/**
+ * How many others are away over these dates. LMS 409.
+ *
+ * The server's sentence named them and their dates, both of which are in the list directly
+ * under this line. What an approver reads first is the count.
+ */
+function awayCount(team: TeamContext): string {
+  if (team.away.length === 0) {
+    return 'Nobody else away';
+  }
+
+  return `${String(team.away.length)} ${team.away.length === 1 ? 'other' : 'others'} away`;
+}
+
 function TeamLine({ team }: { team: TeamContext }) {
   const named = team.away.filter((one) => one.name !== null);
 
   return (
     <>
-      <p>{team.inWords}</p>
+      <p>{awayCount(team)}</p>
       {named.length === 0 ? null : (
         <ul className="away">
           {named.map((one) => (
             <li key={`${one.employeeId}/${one.from}`}>
               <strong>{one.name}</strong>
-              {` · ${one.from} to ${one.to}`}
+              {` · ${period(one.from, one.to)}`}
             </li>
           ))}
         </ul>

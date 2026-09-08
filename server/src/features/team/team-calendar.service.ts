@@ -51,7 +51,7 @@ export class TeamCalendarService {
    * sent by a service that never reads the table — enforced by what is not wired up rather
    * than by a filter somebody could forget.
    *
-   * **The department is the scope.** LMS 409 replaced the line manager with it: cover is
+   * **The department is the scope.** LMS 409 replaced the manager with it: cover is
    * arranged inside a department. HR reads every record, so HR may pick any of them.
    */
   async forEmployee(

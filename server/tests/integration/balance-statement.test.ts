@@ -366,7 +366,7 @@ describe('whose statement it is', () => {
     await expect(statements.forEmployee(asThemselves(), people.officer)).resolves.toBeDefined();
   });
 
-  it('and their line manager’s. FR 55', async () => {
+  it('and their manager’s. FR 55', async () => {
     await expect(statements.forEmployee(asTheirManager(), people.officer)).resolves.toBeDefined();
   });
 
@@ -412,7 +412,7 @@ function asThemselves() {
   return signedInAs(people.officer, { roles: ['EMPLOYEE'], isManager: false });
 }
 
-/** The team lead, who is `officer`'s line manager and `engineer`'s nobody. */
+/** The team lead, who is `officer`'s manager and `engineer`'s nobody. */
 function asTheirManager() {
   return signedInAs(people.teamLead, { roles: ['EMPLOYEE'], isManager: true });
 }

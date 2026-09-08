@@ -225,7 +225,7 @@ If a hard delete is ever genuinely needed, drop the trigger in a migration,
 delete the row, and restore the trigger in the same migration. That makes it a
 deliberate act with a written reason, which is the entire point.
 
-**Every employee has exactly one line manager, and exactly one employee has
+**Every employee has exactly one manager, and exactly one employee has
 none.** `managerId` is required when a record is created, and required in the
 type rather than only at runtime. `null` is the head of the organisation saying
 so, which is a deliberate thing to state and not the same as having left the
@@ -320,8 +320,8 @@ carries a `concern` saying why:
 
 | Standing | What it means | Where it comes from |
 |---|---|---|
-| `HEAD_OF_THE_ORGANISATION` | no line manager, because there is nobody above them | FR 04, and the only root that is not a fault |
-| `SECOND_HEAD` | a second record with no line manager | a database restored from before `employee_one_root` |
+| `HEAD_OF_THE_ORGANISATION` | no manager, because there is nobody above them | FR 04, and the only root that is not a fault |
+| `SECOND_HEAD` | a second record with no manager | a database restored from before `employee_one_root` |
 | `MANAGER_NOT_ON_THE_CHART` | their manager is not among the records charted | a chart of one department, or of only the currently employed |
 | `REPORTING_LINE_LOOPS` | the line goes round in a circle, so no walk up it terminates | FR 03, refused by the deferred trigger and drawn anyway |
 
@@ -360,7 +360,7 @@ with the leavers taken off it.
 **Every employee is in exactly one department, and a department is closed rather
 than deleted.** `employee.department_id` is `NOT NULL`, and `departmentId` is
 required on `NewEmployee` in the type rather than only at runtime. There is no
-`null` and no exception for anybody — unlike the line manager, where the head of
+`null` and no exception for anybody — unlike the manager, where the head of
 the organisation genuinely has nobody above them, everybody is in some team
 including them. The reason is the story's own: leave is reported and planned by
 team, and somebody in no team appears in no team's figures. They are not visibly
@@ -702,7 +702,7 @@ nothing there should.
 principle 5.** FR 38a, LMS 204. Most types go manager then HR; unpaid leave and
 the unpaid maternity extension go HR then CEO, with no manager stage at all —
 §4.3.1 says of both that they are "Decided by HR and the Chief Executive", which
-is an arrangement with the company rather than a request a line manager signs off.
+is an arrangement with the company rather than a request a manager signs off.
 Nothing anywhere reads a type code to work that out, and
 `unit/migrations.test.ts` asserts that no file under `server/src` so much as names
 one.
@@ -2219,7 +2219,7 @@ different acts:
 | | May | Because |
 |---|---|---|
 | `withdraw()` | the requester, or HR | it is the undoing of submitting, so it is the rule `submit()` already has |
-| `refuse()` | the line manager, or HR, and [never the requester](#nobody-approves-their-own-request) | a decision about somebody else's request, which is what a manager is for |
+| `refuse()` | the manager, or HR, and [never the requester](#nobody-approves-their-own-request) | a decision about somebody else's request, which is what a manager is for |
 | `cancel()` | HR | an administrative unwinding — leave against the wrong person, a request entered twice |
 
 A single `settle` decision would have to be the union of those, which is
@@ -2439,7 +2439,7 @@ the standings that may make it:
 | From | Action | To | By |
 |---|---|---|---|
 | `SUBMITTED` | `WITHDRAW` | `WITHDRAWN` | the requester, or HR |
-| `SUBMITTED` | `REFUSE` | `REFUSED` | their line manager, or HR |
+| `SUBMITTED` | `REFUSE` | `REFUSED` | their manager, or HR |
 | `SUBMITTED` | `CANCEL` | `CANCELLED` | HR |
 | `SUBMITTED` | `APPROVE` | `APPROVED` | the desk the chain has it with |
 
@@ -2547,7 +2547,7 @@ the reason `MAINTAINS_THE_CALENDAR` is: they agree today for unrelated reasons, 
 shared constant would have made "who maintains employee records" silently decide "who
 approves unpaid leave".
 
-**A rank admits nobody.** A line manager has no standing over a request whose chain does
+**A rank admits nobody.** A manager has no standing over a request whose chain does
 not name `MANAGER` — unpaid leave goes HR then the Chief Executive, §4.3.1, and there is no
 manager stage on it at all. HR has none over a request still sitting with a manager. That
 is the point of routing rather than a restriction bolted on top of it.
@@ -2596,7 +2596,7 @@ stage is skipped to the desk that stands in for it, and the skip is recorded. Ta
 leave off the books afterwards is FR 26 and is not any of the three endings: the days are
 `taken` by then, so it is a movement against the `DEDUCTION`, and `LeaveCannotBeMoved` is
 what somebody reaching for withdraw is told in the meantime. And `leaveRequestPolicy.refuse`
-was **not** narrowed to the chain, so a line manager may still refuse unpaid leave they
+was **not** narrowed to the chain, so a manager may still refuse unpaid leave they
 could not approve — a one-line change to the `REFUSE` row that takes a power away from
 managers, which is somebody's decision to make rather than a side effect of building the
 routing. What that row did gain, in
@@ -2784,7 +2784,7 @@ endings, and the converse is one line for the story that removes the primitive.
 **And the person is told where it stands, in a sentence that answers first.**
 `progressFor()` reads the four facts that could mislead them — the status, the desk, the
 decisions, the chain — and returns one of them: `agreed`. A screen showing the newest
-decision would say "approved by your line manager", which is true and is exactly the belief
+decision would say "approved by your manager", which is true and is exactly the belief
 this story exists to prevent, so the two halves are one string composed once rather than two
 fields a screen may show one of.
 
@@ -2849,9 +2849,9 @@ marking a batch REFUSED, a migration correcting somebody's leave" — each of wh
 easily release the wrong figure as none.
 
 **One thing this story did not change, and it is worth knowing.** *Who* may reject was still
-`leaveRequestPolicy.refuse` — the line manager or HR — and it was [not the
+`leaveRequestPolicy.refuse` — the manager or HR — and it was [not the
 chain](#routing-a-request-to-its-approvers). So a request sitting at the `CEO` desk could not
-be rejected by the Chief Executive unless they happened to be that employee's line manager.
+be rejected by the Chief Executive unless they happened to be that employee's manager.
 Closing that is one standing on the `REFUSE` row of `TRANSITIONS`, "which hands a power to a
 desk that does not have it today — somebody's decision to make rather than a side effect of
 giving days back faster".
@@ -2859,7 +2859,7 @@ giving days back faster".
 [LMS 318](#hr-overturns-a-line-managers-decision) is the story that made it, and it went the
 other way round: the row now admits `THE_DESK_IT_IS_WITH` and nobody else. A rejection
 advances the chain there, so it has to be the desk's — and the Chief Executive gained the
-power in the same line that took it from a line manager whose stage the request had already
+power in the same line that took it from a manager whose stage the request had already
 passed.
 
 **And "at the moment of the rejection" now means the moment of the *last* one.** The days come
@@ -2962,7 +2962,7 @@ pure — the chain, what each desk amounts to, and nothing else.
 
 | Desk | Cannot answer when | Who that is |
 |---|---|---|
-| `MANAGER` | the requester has no line manager | whoever is at the top of the reporting lines |
+| `MANAGER` | the requester has no manager | whoever is at the top of the reporting lines |
 | `HR` | every HR role is the requester's, or nobody's | the lone HR officer, `lone-hr` in the seed |
 | `CEO` | the named Chief Executive is the requester or has left, or nobody is named | the Chief Executive asking for unpaid leave; a company still being set up |
 
@@ -2973,7 +2973,7 @@ asked" are different news and produce different sentences.
 **One stand-in each, and the ladder is deliberately not symmetrical.** `STAND_IN_FOR`, and it
 is written out rather than derived from an ordering of the three:
 
-*The line manager's stage goes to HR.* There is no second line manager to try — a reporting
+*The manager's stage goes to HR.* There is no second manager to try — a reporting
 line has one person on it — so the stage is skipped rather than restaffed.
 
 *HR's stage goes to the Chief Executive.* "Another HR officer" is not a fallback at all: the
@@ -2991,7 +2991,7 @@ and nobody could read off a screen. Where the one stand-in is empty too, the req
 **A skipped stage is recorded, and a recorded skip is never reconsidered.**
 `leave_request_routing` is append only and holds one row per stage per request: the stage, the
 desk that took it, and why in words. It is the same rule LMS 316 gives a decision — a stage
-skipped on Monday has had its turn, and a line manager appointed on Wednesday does not send a
+skipped on Monday has had its turn, and a manager appointed on Wednesday does not send a
 request that is already with HR back down. `refuse_an_approval_a_stage_never_gave()` reads it,
 which is what lets the one request FR 48b exists to move actually be approved: without that,
 a request whose manager stage was skipped could never reach `APPROVED`.
@@ -3042,7 +3042,7 @@ says on its face that one approver decided it.** FR 48d, §8.6a, LMS 322. The ha
 argued that a walk over a list of offices should not know which people fill them. It should,
 and this is where.
 
-**The case is ordinary rather than exotic.** The head of HR is somebody's line manager and
+**The case is ordinary rather than exotic.** The head of HR is somebody's manager and
 holds an HR role, so their report's annual leave is manager then HR and both stages are her.
 Asked twice, she signs twice, and the record afterwards reads as two approvals.
 
@@ -3061,7 +3061,7 @@ can actually be made.
 
 **A collapsed stage is recorded as a skip to the desk that answered it**, so
 `leave_request_is_approved_by_every_stage` still finds every stage answered. The lone HR
-officer's annual leave goes to her line manager, who is also HR's stand-in: he decides once,
+officer's annual leave goes to her manager, who is also HR's stand-in: he decides once,
 the HR stage is recorded as having gone to `MANAGER`, and there is one decision row rather
 than two.
 
@@ -3195,7 +3195,7 @@ which is the thing a draft exists to prevent.
 
 **A draft is nobody else's, and that is narrower than every other rule in the file.**
 `leaveRequestPolicy.draft` admits the person planning the leave and nobody else — not their
-line manager, not HR, not a role that reads every record, all of whom `read` admits. There is
+manager, not HR, not a role that reads every record, all of whom `read` admits. There is
 no request for a manager to be the manager of, and "your manager can see you are thinking
 about two weeks in March" is a different system from the one FR 19 asks for. Refused
 silently, so a draft's existence is not disclosed by the refusal. HR may still enter leave on
@@ -3260,10 +3260,10 @@ decided that way.
 
 **Who may attach is who may ask.** `leaveRequestPolicy.attach` carries `submit`'s standings
 — the person whose leave it is, or HR entering the record on their behalf — and not the
-line manager's: an approver who wants a certificate asks for one. Who may *read* one is
+manager's: an approver who wants a certificate asks for one. Who may *read* one is
 `leaveRequestPolicy.readAttachment`, which is `read` widened by the desk the request is
 sitting on, for the seam the approver queue already argues: FR 32h sends unpaid leave to a
-Chief Executive who is nobody's line manager and holds no role, and an approver who cannot
+Chief Executive who is nobody's manager and holds no role, and an approver who cannot
 open the evidence cannot decide on it.
 
 **And it is not audited.** The row is frozen by its own trigger, so it is already its own
@@ -3539,7 +3539,7 @@ history is the sequence that produced it.
 
 **So the trail contains what has not happened yet**, which is the decision in the story most
 worth arguing for, because a trail reads as a list of events and a pending stage is not one. A
-list that stops at "approved by your line manager" is read as the last word by somebody with an
+list that stops at "approved by your manager" is read as the last word by somebody with an
 aeroplane ticket in the other tab. A list that ends "then HR, who has not been asked yet" cannot
 be. Those steps carry a null `at`, which is what tells a screen they have not happened without
 it having to know what the four kinds mean.
@@ -3663,7 +3663,7 @@ claim can be made about the row the migration actually wrote rather than about a
 
 **A rule that asks something is marked as one.** `FormRule.asks` divides *fetch a certificate,
 give a fortnight's warning, do not leave it more than a week* from *counted in working days,
-goes to your line manager then HR*. It is the same division `RequestWarning` draws for a priced
+goes to your manager then HR*. It is the same division `RequestWarning` draws for a priced
 period, and it is what stops the one sentence the story exists for being the fourth bullet in a
 list of eight. A type that asks for nothing says nothing rather than saying "no documentation
 required": half a list reporting the absence of a rule is a list nobody finishes.
@@ -3760,7 +3760,7 @@ out of the two shapes, and the rows it can return are by construction rows this 
 decide.
 
 So there is no per-row `read` check on top, and adding one would break the one approver §4.3.1
-names: FR 32h routes unpaid leave to the Chief Executive, who is nobody's line manager and
+names: FR 32h routes unpaid leave to the Chief Executive, who is nobody's manager and
 holds no role, so `read` would refuse them every request they exist to decide. **Being the desk
 is its own reason to be looking** — the same seam `approve` already argues. It is why the
 balance figures are read through `BalanceRepository` rather than `BalanceService`, whose
@@ -3852,10 +3852,10 @@ The routes that decide arrived with [LMS 318](#hr-overturns-a-line-managers-deci
 
 ---
 
-### HR overturns a line manager's decision
+### HR overturns a manager's decision
 
 **Both stages decide before leave is finally confirmed or rejected, and HR's is the last
-word.** FR 44, §7.2, LMS 318. A line manager turning leave down is a decision at their stage,
+word.** FR 44, §7.2, LMS 318. A manager turning leave down is a decision at their stage,
 not the end of the request.
 
 **This is the story that made a rejection stop being an ending**, and that is the whole of it.
@@ -3879,7 +3879,7 @@ lands exactly where HR's plain yes would, because if the two ever differ one of 
 
 **An override is an ordinary decision that happens to disagree with an earlier stage.** Same
 standing — `THE_DESK_IT_IS_WITH` — same door, same lock, same movement. What is different is
-two things it asks for that a plain decision does not: a justification, and a line manager's
+two things it asks for that a plain decision does not: a justification, and a manager's
 decision to actually be reversing.
 
 #### Recorded as its own decision value, not as a flag
@@ -3900,7 +3900,7 @@ decision, itself, or a decision that said the same thing.
 #### The justification cannot be skipped by pressing the ordinary button
 
 The pairing that makes "mandatory" mean something. A desk about to decide the opposite way to
-the line manager is overruling them whether the button said so or not, so:
+the manager is overruling them whether the button said so or not, so:
 
 * a plain `approve` or `refuse` that would contradict them is refused with
   `OverrulingNeedsAnOverride`, naming the verb to use instead;
@@ -3912,7 +3912,7 @@ the line manager is overruling them whether the button said so or not, so:
 queue reads it too — `approvingIs` and `refusingIs` on each item — so a screen can ask for the
 reason before the button rather than after the refusal.
 
-**It reads the line manager's stage and no other.** HR overruling the Chief Executive is not
+**It reads the manager's stage and no other.** HR overruling the Chief Executive is not
 FR 44's subject, and unpaid leave — HR then the Chief Executive, §4.3.1 — has no manager stage
 at all, so HR deciding one has nobody to overrule and is asked for nothing.
 
@@ -3936,7 +3936,7 @@ FR 44's fifth criterion, and a second event the story needed on the way.
 `STAGE_APPROVED`. A manager's no no longer ends their request, so the old message — "turned
 down, your days are back" — would be wrong in both halves.
 
-**`DECISION_OVERTURNED`** goes to the line manager, and is the one notice in this system
+**`DECISION_OVERTURNED`** goes to the manager, and is the one notice in this system
 written to somebody other than the person taking the leave. `notification.employee_id` was
 built to allow exactly that: "the recipient rather than the subject, and for FR 59 those are
 the same person. The approver's queue is FR 60 and would put a different id here." It quotes
@@ -3974,7 +3974,7 @@ Administrator.
 
 **It is not a job title, and it is no longer FR 04's root either.** The story asks for the
 first and the second came with it. Until LMS 321 the desk resolved to the one employee with no
-line manager, which is a *shape of the reporting lines* standing in for a fact nobody had
+manager, which is a *shape of the reporting lines* standing in for a fact nobody had
 written down. That fails the way a job title fails — quietly, from a screen with nothing to do
 with leave:
 
@@ -4165,7 +4165,7 @@ import has committed. Routing has to read the reporting lines the import *wrote*
 it is still writing, and a re-route opening its own transaction inside that one would read
 neither.
 
-**What is deliberately not here.** A request whose new line manager has already decided it at
+**What is deliberately not here.** A request whose new manager has already decided it at
 an earlier stage stays where it is. Every stage of its chain has then been answered by one
 hand, which is the state [FR 48d](#a-request-one-person-decided) calls a single approver — and
 reaching it by moving a reporting line is not the same as reaching it by somebody deciding, so
@@ -4278,7 +4278,7 @@ the wrong person otherwise has no remedy at all. Being the *delegate* is standin
 neither.
 
 **The ledger door was widened by one clause**, and it had to be: `ledgerPolicy.commit` admits
-the line manager, the roles that read every record and FR 04's seat, and a delegate is none of
+the manager, the roles that read every record and FR 04's seat, and a delegate is none of
 those. `standsInForAnApprover` asks whether they answer *any* desk of this request for a
 colleague — deliberately weaker than the desk question, because it is asked before the walk
 has settled which desk binds, and `leaveRequestPolicy.decide` asks the sharp one inside the
@@ -4547,7 +4547,7 @@ is the difference between a rule and a redaction.
 team at all, names no subject, and is refused *openly*: whether somebody has a report is a fact
 about themselves, and an empty team and no team are different news. `ledgerPolicy.read` then
 bounds each row, asked of every report — so "direct reports only" is written once, in the rule
-that already lets a line manager open one report's balance screen, rather than restated here.
+that already lets a manager open one report's balance screen, rather than restated here.
 
 **The balances are the same lines the person's own screen shows.** `linesFor` is called rather
 than a second projection written: FR 05 keeps maternity leave off a man's row here too, FR 32g's
@@ -4616,7 +4616,7 @@ that was typed into the fixture.
 | and nobody else's department | `/me/calendar` names the reader | `actor.employeeId`, off the verified cookie |
 | unless they are HR | asking for another is guarded, not filtered | `teamPolicy.everyDepartment` |
 
-**The calendar is your department.** LMS 409 replaced "whoever shares my line manager" with
+**The calendar is your department.** LMS 409 replaced "whoever shares my manager" with
 it, because cover is arranged inside a department rather than inside a reporting line: Adwoa
 plans a week around the six people in Operations, across four reporting levels, and not around
 the three who happen to share her team lead. `EmployeeRepository.findInDepartment` is the read,

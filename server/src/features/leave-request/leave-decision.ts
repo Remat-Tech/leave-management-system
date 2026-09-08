@@ -88,7 +88,7 @@ export class OverrideNeedsAJustification extends Error {
 
   constructor() {
     super(
-      'Overturning a line manager’s decision says why, in writing. It is what the manager ' +
+      'Overturning a manager’s decision says why, in writing. It is what the manager ' +
         'whose decision is being reversed will read, what the person who asked for the ' +
         'leave is owed, and the only account of why policy prevailed over a local ' +
         'decision that will exist when somebody asks next year. FR 44.',
@@ -314,7 +314,7 @@ export function wasOverturned(
 }
 
 /**
- * The line manager's decision this kind of override reverses, where one still stands. FR 44, §7.2. LMS 318.
+ * The manager's decision this kind of override reverses, where one still stands. FR 44, §7.2. LMS 318.
  *
  * The `MANAGER` desk and no other: FR 44 is HR overruling a local decision, and a
  * judgement made at HR's own stage or the Chief Executive's is not one HR overrules.
@@ -333,7 +333,7 @@ export function theManagersDecisionReversedBy(
   );
 }
 
-/** What the line manager said about this request, where they have said anything. FR 44. */
+/** What the manager said about this request, where they have said anything. FR 44. */
 export function theManagersDecision(
   decisions: readonly LeaveDecision[],
 ): LeaveDecision | undefined {
@@ -344,7 +344,7 @@ export function theManagersDecision(
  * The override this plain verb would have to be, or null where it contradicts nobody. FR 44, §7.2. LMS 318.
  *
  * What makes the justification mandatory rather than offered: a desk about to decide the
- * opposite way to the line manager is overruling them whether it calls itself that or not.
+ * opposite way to the manager is overruling them whether it calls itself that or not.
  */
 export function overrideRequiredFor(
   action: DecidingAction,

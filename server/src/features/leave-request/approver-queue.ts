@@ -164,11 +164,11 @@ export interface TeamAway {
  *
  * Names are shown only where the approver may already read that person's leave, asked per
  * colleague through `leaveRequestPolicy.read`. The manager's desk and the HR desk see them; the
- * Chief Executive, who is nobody's line manager and holds no role, sees the count and no names
+ * Chief Executive, who is nobody's manager and holds no role, sees the count and no names
  * — which is the half the decision turns on anyway.
  */
 export interface TeamContext {
-  /** How many people report to the asker's line manager, the asker included. Nought where nobody does. */
+  /** How many people report to the asker's manager, the asker included. Nought where nobody does. */
   size: number;
   /** Soonest first. */
   away: TeamAway[];
@@ -240,7 +240,7 @@ export interface QueueItem {
   /** The policy's own sentence, where it is not. Null where it is. NFR USA 03. */
   notActionableBecause: string | null;
 
-  /** FR 44, §7.2. What the line manager said, where they have decided. LMS 318. */
+  /** FR 44, §7.2. What the manager said, where they have decided. LMS 318. */
   managersDecision: ManagersDecision | null;
   /**
    * FR 44. The override deciding this way would be, or null where it overrules nobody.
@@ -252,7 +252,7 @@ export interface QueueItem {
   refusingIs: OverridingAction | null;
 }
 
-/** What the line manager decided, for the desk about to disagree with them. FR 44, LMS 318. */
+/** What the manager decided, for the desk about to disagree with them. FR 44, LMS 318. */
 export interface ManagersDecision {
   said: DecidingAction;
   /** FR 39. Their reason, which is the thing HR is weighing. */
@@ -380,7 +380,7 @@ export function queueFor(facts: QueueFacts): ApproverQueue {
 }
 
 /**
- * The queue narrowed to what a line manager turned down. FR 44, §7.2. LMS 318's first criterion.
+ * The queue narrowed to what a manager turned down. FR 44, §7.2. LMS 318's first criterion.
  *
  * The dedicated view, and it is a narrowing of the approver queue rather than a second
  * screen assembled from its own query — a rejection no longer ends a request, so every one
@@ -397,14 +397,14 @@ export function rejectionsToReview(queue: ApproverQueue): ApproverQueue {
 /** NFR USA 03. */
 function rejectionsInWords(items: readonly QueueItem[]): string {
   if (items.length === 0) {
-    return 'No line manager has turned anything down that is waiting on you.';
+    return 'No manager has turned anything down that is waiting on you.';
   }
 
   const decidable = items.filter((item) => item.actionable).length;
   const held = items.length === 1 ? '1 request' : `${items.length} requests`;
 
   return (
-    `${held} that a line manager turned down and that policy may still allow. ` +
+    `${held} that a manager turned down and that policy may still allow. ` +
     (decidable === items.length
       ? 'Approving one overturns their decision and asks you why, in writing.'
       : `${decidable} of them are yours to decide.`)
@@ -415,7 +415,7 @@ function rejectionsInWords(items: readonly QueueItem[]): string {
  * Whose approvals this row is being answered under, or null where they are the reader's own. FR 49, FR 52, LMS 327.
  *
  * The same resolution `answeredOnBehalfOf` makes at the decide door, from the queue's side:
- * `MANAGER` is the asker's own line manager, and the other two are whichever colleague handed
+ * `MANAGER` is the asker's own manager, and the other two are whichever colleague handed
  * that desk over. A desk this person staffs themselves is theirs, delegation or not.
  */
 function answeringFor(
@@ -496,7 +496,7 @@ function itemFor(input: {
     refusedBy: desksThatRefused(decisions),
   });
 
-  /* FR 44, §7.2. LMS 318. What the line manager said, and which of this desk's two verbs
+  /* FR 44, §7.2. LMS 318. What the manager said, and which of this desk's two verbs
      would be overruling them. Both are read from the decisions rather than decided here, so
      the queue and the decide door cannot disagree about what counts as an override. */
   const managers = theManagersDecision(decisions);
@@ -601,13 +601,13 @@ function itemFor(input: {
   };
 }
 
-/** What the line manager did, said to the desk now holding the request. FR 44, NFR USA 03. */
+/** What the manager did, said to the desk now holding the request. FR 44, NFR USA 03. */
 function managersDecisionInWords(managers: LeaveDecision, askerName: string): string {
   const whose = possessively(askerName);
 
   const said = saysYes(managers.action)
-    ? `${managers.decidedBy} approved this at ${whose} line manager’s stage.`
-    : `${managers.decidedBy} turned this down at ${whose} line manager’s stage.`;
+    ? `${managers.decidedBy} approved this at ${whose} manager’s stage.`
+    : `${managers.decidedBy} turned this down at ${whose} manager’s stage.`;
 
   const weighing = saysYes(managers.action)
     ? 'Turning it down here overturns that decision, and asks you for a reason in writing.'
@@ -755,8 +755,8 @@ export function balanceFor(input: {
 /**
  * Who else on the team is away over the same days. FR 20. The story's team context.
  *
- * The team is whoever reports to the asker's line manager — counted with them, listed without
- * them. FR 04's one employee has no line manager and so no team, and the sentence says so
+ * The team is whoever reports to the asker's manager — counted with them, listed without
+ * them. FR 04's one employee has no manager and so no team, and the sentence says so
  * rather than reporting a team of one.
  *
  * {@link periodsOverlap} is the same predicate FR 15's refusal and `leave_request_never_overlaps`
@@ -780,7 +780,7 @@ export function teamFor(input: {
       size: 0,
       away: [],
       inWords:
-        'Nobody shares a line manager with this person, so there is no team calendar to ' +
+        'Nobody shares a manager with this person, so there is no team calendar to ' +
         'check this against.',
     };
   }

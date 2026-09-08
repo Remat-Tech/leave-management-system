@@ -190,7 +190,7 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
    *
    * A 400 rather than a 409 because what has to change is what was sent — the verb — rather
    * than the state of the world. The request is in a state this desk may decide; it is the
-   * plain verb that is wrong for a request the line manager already decided the other way.
+   * plain verb that is wrong for a request the manager already decided the other way.
    */
   OverrulingNeedsAnOverride: 400,
   /**

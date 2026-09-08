@@ -313,7 +313,7 @@ function asAdministrator() {
   return signedInAs(people.headOfHr, { roles: ['EMPLOYEE', 'HR_ADMIN'], isManager: true });
 }
 
-/** The team lead, who is `officer`'s line manager. */
+/** The team lead, who is `officer`'s manager. */
 function asTheirManager() {
   return signedInAs(people.teamLead, { roles: ['EMPLOYEE'], isManager: true });
 }
@@ -961,7 +961,7 @@ describe('who may read a balance', () => {
 
   /* FR 55. Direct reports only — the argument for stopping at one level is
      features/employee/policy.ts's and is not repeated here. */
-  it('their line manager', async () => {
+  it('their manager', async () => {
     expect(await balances.forEmployee(asTheirManager(), people.officer)).toHaveLength(1);
   });
 
@@ -1326,14 +1326,14 @@ describe('who may move a balance', () => {
     });
   });
 
-  /* The one place a line manager's standing over a report does not carry. They may
+  /* The one place a manager's standing over a report does not carry. They may
      read the balance and approve against it; asking for leave on somebody's behalf is
      HR's, FR 18. */
-  it('and not asked for by their line manager', async () => {
+  it('and not asked for by their manager', async () => {
     await expect(askFor({}, asTheirManager())).rejects.toBeInstanceOf(NotAuthorised);
   });
 
-  it('and approved by their line manager, never by themselves', async () => {
+  it('and approved by their manager, never by themselves', async () => {
     const { request } = await askFor();
 
     await expect(balances.commit(asThemselves(), against(request.id))).rejects.toBeInstanceOf(

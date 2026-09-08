@@ -52,6 +52,27 @@
   src: url('/fonts/sora-700.woff2') format('woff2');
 }
 
+/**
+ * Montserrat, the company's secondary typeface. Guidelines p6, LMS 409.
+ *
+ * The guidelines name Area Normal and Founders Grotesk, and both are licensed faces this
+ * project has no licence for — so the sentence that matters is the one they end on: *when
+ * Founders Grotesk is not available, it is acceptable to use Montserrat*. This is that.
+ *
+ * It sets running text, never a headline: "we never use the secondary for our main messages".
+ * Sora keeps the page titles, the card headings and every figure.
+ *
+ * One file and one rule rather than four, because this is the variable font — a weight range
+ * on the descriptor is what lets 400 through 700 come off a single 37 KB download.
+ */
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/montserrat.woff2') format('woff2');
+}
+
 :root {
   /* ---------------------------------------------- the brand, and the only place it is named */
   --brand-black: #020202;
@@ -112,15 +133,18 @@
   --who-9: #6d7580;
 
   /**
-   * Sora, everywhere.
+   * The two faces, as the guidelines divide them. Pages 4 and 6.
    *
-   * The guidelines name a secondary face for running text — Founders Grotesk, or Area Normal —
-   * and neither is in this repository, both being licensed. Rather than substitute a third
-   * typeface nobody signed off, the whole interface is set in the primary one. `--face-text`
-   * stays a separate token so the day those files arrive is a one line change here.
+   * **Sora is the primary and takes the main messages** — page titles, card headings, and every
+   * figure on a balance or a decision.
+   *
+   * **Montserrat is the secondary and takes the running text**, which is what the guidelines
+   * ask a secondary face for: "large amounts of text, detailed information, and where space is
+   * limited". It is the stand-in page 6 names for Founders Grotesk, which is licensed and not
+   * in this repository. It never sets a headline, which is the one thing that page forbids.
    */
   --face-heading: 'Sora', system-ui, sans-serif;
-  --face-text: 'Sora', system-ui, sans-serif;
+  --face-text: 'Montserrat', system-ui, sans-serif;
 
   --radius: 14px;
   --radius-small: 8px;
@@ -563,13 +587,35 @@ button:hover:not(:disabled) {
  * sideways. The figure is what lets four fit beside the rail at 1512px — the width most of
  * this company works at — rather than three and a column of nothing.
  */
+/**
+ * The balance cards, three to a row. LMS 409.
+ *
+ * A fixed three rather than `auto-fill`, which packed as many as the width allowed and gave a
+ * different count on every screen. Three keeps the headline figure large enough to be the
+ * thing you read first, which is the whole point of the card.
+ *
+ * It still bends: two columns where three would squeeze, one on a phone. The card itself is
+ * never given a minimum wider than the column, so nothing scrolls sideways.
+ */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(16.5rem, 100%), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--gap);
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+@media (max-width: 68rem) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 46rem) {
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .card {
@@ -637,15 +683,22 @@ button:hover:not(:disabled) {
   margin-left: auto;
 }
 
+/**
+ * A pill, filled and in the words' own case. LMS 409.
+ *
+ * It was outlined and set in capitals, which shouted "YOUR LINE MANAGER" and turned a status
+ * into three lines of upper case. Half of these hold a person's name or a job, and a name is
+ * not shouted; the fill is what separates the pill from the card instead of a border.
+ */
 .tag {
   font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  border: 1px solid var(--line-strong);
+  letter-spacing: 0.01em;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ink) 7%, var(--card));
+  border: 1px solid transparent;
   border-radius: 999px;
-  padding: 0.1rem 0.5rem;
+  padding: 0.2rem 0.6rem;
   white-space: nowrap;
 }
 
@@ -976,7 +1029,7 @@ button:hover:not(:disabled) {
    down and the days are still held — the word in the tag is what says which. */
 .tag.status.is-unroutable {
   color: var(--warn);
-  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 12%, var(--card));
 }
 
 .request-what {
@@ -1017,10 +1070,13 @@ button:hover:not(:disabled) {
 }
 
 /* FR 41. The sentence a person acts on, so it is the weight of one. */
+/* FR 41. The sentence a person acts on, as a caption rather than a paragraph: the trail
+   beside it says the same thing in steps, and set at full weight the two competed. LMS 409. */
 .progress {
   margin: 0;
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--ink-faint);
 }
 
 .progress.is-agreed {
@@ -1129,9 +1185,36 @@ button:hover:not(:disabled) {
   color: var(--ink-faint);
 }
 
+/* The desk, and what it said. A label and a word rather than a sentence. LMS 409. */
 .step-what {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
   margin: 0;
   font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+/* Approved, refused, or not yet asked. Never the only thing saying so — the mark on the rail
+   is hollow for a step that has not happened, and the word is here. NFR USA 03. */
+.step-state {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 7%, var(--card));
+  color: var(--ink-faint);
+}
+
+.step-state.is-approved {
+  background: color-mix(in srgb, var(--go) 14%, var(--card));
+  color: var(--go-ink);
+}
+
+.step-state.is-refused {
+  background: color-mix(in srgb, var(--warn) 12%, var(--card));
+  color: var(--warn);
 }
 
 .step-who {
@@ -1587,14 +1670,14 @@ textarea:disabled {
 /* Which desk this arrived at. Neutral, because it is a fact rather than a state. */
 .tag.desk {
   color: var(--ink-soft);
-  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--ink) 7%, var(--card));
 }
 
 /* FR 17, FR 18. Neither is a refusal, so both take the accent rather than the warning red,
    which stays with the refusals the server actually sent. The word is in the tag. */
 .tag.flag {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: var(--accent-soft);
 }
 
 .flagged {
@@ -2342,12 +2425,13 @@ textarea:disabled {
 
 /* Leave that has been agreed, as `--agreed` is used on the request cards. */
 .tag.is-agreed {
-  color: var(--agreed);
-  border-color: color-mix(in srgb, var(--agreed) 40%, transparent);
+  color: var(--go-ink);
+  background: color-mix(in srgb, var(--go) 14%, var(--card));
 }
 
 /* The reader's own leave, so the calendar reads as a whole team rather than as other people. */
 .tag.is-me {
+  border-color: currentcolor;
   border-style: dashed;
 }
 

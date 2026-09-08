@@ -138,8 +138,6 @@ export function App() {
             </a>
           ))}
         </nav>
-
-        <p className="motto">People. Progress. Together.</p>
       </header>
 
       <div className="main">

@@ -66,7 +66,7 @@ export type RequestStatus =
 export type TrailStepKind =
   | 'ASKED'
   | 'DECIDED'
-  /** A decision that reversed the line manager's. FR 44, LMS 318. */
+  /** A decision that reversed the manager's. FR 44, LMS 318. */
   | 'OVERTURNED'
   | 'ENDED'
   /** An ask for agreed leave to come off the books, or HR's answer. FR 47, LMS 324. */
@@ -78,6 +78,8 @@ export interface TrailStep {
   kind: TrailStepKind;
   /** The desk this step belongs to, where it belongs to one. */
   desk: Desk | null;
+  /** Whether the step said yes. Null on every step that is not a decision. LMS 409. */
+  agreed: boolean | null;
   /** FR 39. */
   comment: string | null;
   /** Who, in words, where a record names somebody. */
@@ -182,7 +184,7 @@ export interface RequestableLeaveType {
   exceedableWithDocument: boolean;
   /** FR 10. Whether the reason box is required for this kind of leave. */
   reasonRequired: boolean;
-  /** FR 38a. "your line manager, then HR". */
+  /** FR 38a. "your manager, then HR". */
   approvedBy: string;
   rules: FormRule[];
 }
@@ -306,7 +308,7 @@ export interface TeamAway {
 }
 
 export interface TeamContext {
-  /** How many report to the asker's line manager, the asker included. */
+  /** How many report to the asker's manager, the asker included. */
   size: number;
   away: TeamAway[];
   inWords: string;
@@ -491,7 +493,7 @@ export interface Colleague {
   /** FR 06. */
   employmentStatus: EmploymentStatus;
   isMe: boolean;
-  /** The reader's own line manager, where they are in this department too. */
+  /** The reader's own manager, where they are in this department too. */
   isTheManager: boolean;
   awayToday: boolean;
   inWords: string;
@@ -534,7 +536,7 @@ export interface TeamAwayCalendar {
   busiest: number;
   inWords: string;
   awayToday: AwayOn[];
-  /** The line manager first, then surname. */
+  /** The manager first, then surname. */
   colleagues: Colleague[];
   /** Soonest first. */
   days: AwayDay[];

@@ -8,7 +8,7 @@ import {
   type TrailStep,
   type Year,
 } from '../../api';
-import { inDays, moment, sentenceCase } from '../../format';
+import { inDays, moment, period, sentenceCase, statusLabel } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
 import { AttachedFiles } from './Attachments';
 
@@ -110,13 +110,11 @@ function RequestCard({ entry, onSignedOut }: { entry: RequestEntry; onSignedOut:
               <Icon name={iconForLeaveType(entry.typeName)} />
             </span>
 
-            <h3>
-              {entry.from} to {entry.to}
-            </h3>
+            <h3>{period(entry.from, entry.to)}</h3>
 
             <div className="tags">
               <span className={`tag status is-${entry.status.toLowerCase()}`}>
-                {sentenceCase(entry.statusInWords)}
+                {statusLabel(entry.status, entry.statusInWords)}
               </span>
             </div>
           </div>
@@ -147,10 +145,6 @@ function RequestCard({ entry, onSignedOut }: { entry: RequestEntry; onSignedOut:
             </p>
           )}
 
-          {/* FR 41. The one sentence a person acts on, and it says what has happened before it
-              says what has not. Server-composed; see the module note. */}
-          <p className={`progress${entry.agreed ? ' is-agreed' : ''}`}>{entry.progressInWords}</p>
-
           {/* FR 12, NFR SEC 04, LMS 407. Shut, and asked for only when it is opened: a list of
               filenames is itself information about somebody's health. */}
           <AttachedFiles requestId={entry.requestId} onSignedOut={onSignedOut} />
@@ -159,10 +153,7 @@ function RequestCard({ entry, onSignedOut }: { entry: RequestEntry; onSignedOut:
               real and legitimate state — LMS 316's `stagesMissing` — and saying so is better
               than a screen that quietly implies somebody signed who never did. */}
           {entry.agreed && entry.stagesMissing.length > 0 ? (
-            <p className="muted">
-              This was agreed under an earlier approval policy. The chain for this kind of leave has
-              changed since.
-            </p>
+            <p className="muted">Agreed under an earlier approval policy.</p>
           ) : null}
         </div>
 
@@ -172,15 +163,61 @@ function RequestCard({ entry, onSignedOut }: { entry: RequestEntry; onSignedOut:
   );
 }
 
+/**
+ * What a trail step is, in two or three words. LMS 409.
+ *
+ * The server writes each step as a sentence — "You asked for this leave.", "Waiting with your
+ * manager now." — which reads well in a paragraph and badly in a column of five. This is the
+ * same fact as a label: the desk it belongs to, or what happened where there is no desk.
+ *
+ * The sentence is not lost. `inWords` is still on the wire and still the thing to reach for
+ * anywhere there is room to read rather than scan.
+ */
+function stepLabel(step: TrailStep): string {
+  if (step.desk !== null) {
+    return deskLabel(step.desk);
+  }
+
+  switch (step.kind) {
+    case 'ASKED':
+      return 'Submitted';
+    case 'WITHDRAWAL':
+      return 'Withdrawal';
+    case 'ENDED':
+      return 'Closed';
+    default:
+      return sentenceCase(step.inWords);
+  }
+}
+
+/**
+ * Where that step got to, as one word beside the label.
+ *
+ * `agreed` rather than a reading of the sentence: the server sends the fact. A step with no
+ * time on it has not happened, which is the only thing "Pending" means here.
+ */
+function stepState(step: TrailStep): string | null {
+  if (step.at === null) {
+    return 'Pending';
+  }
+
+  if (step.agreed === null) {
+    return null;
+  }
+
+  /* FR 44. An overturn is still a yes or a no; which one is what `agreed` carries. */
+  return step.agreed ? 'Approved' : 'Refused';
+}
+
 /** A desk, in the words somebody says. FR 38a. */
 function deskLabel(desk: Desk): string {
   switch (desk) {
     case 'MANAGER':
-      return 'Your line manager';
+      return 'Manager';
     case 'HR':
       return 'HR';
     default:
-      return 'The Chief Executive';
+      return 'Chief Executive';
   }
 }
 
@@ -206,7 +243,14 @@ function Trail({ steps }: { steps: TrailStep[] }) {
           key={index}
           className={`step is-${step.kind.toLowerCase()}${step.at === null ? ' is-waiting' : ''}`}
         >
-          <p className="step-what">{step.inWords}</p>
+          <p className="step-what">
+            {stepLabel(step)}
+            {stepState(step) === null ? null : (
+              <span className={`step-state is-${stepState(step)?.toLowerCase() ?? ''}`}>
+                {stepState(step)}
+              </span>
+            )}
+          </p>
 
           {step.by === null && step.at === null ? null : (
             <p className="step-who">
@@ -320,7 +364,5 @@ function counted(history: History): string {
   const many = history.entries.length;
   const what = `${String(many)} ${many === 1 ? 'request' : 'requests'}`;
 
-  return history.year === null
-    ? `${what}, most recently asked for first.`
-    : `${what} in ${history.year.label}, most recently asked for first.`;
+  return history.year === null ? what : `${what} in ${history.year.label}`;
 }

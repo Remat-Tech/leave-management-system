@@ -215,7 +215,7 @@ export class EmployeeRepository {
     return Number(row.reports);
   }
 
-  /** The employee with no line manager, if there is one. FR 04. */
+  /** The employee with no manager, if there is one. FR 04. */
   async findRoot(): Promise<Employee | undefined> {
     const row = await this.db
       .selectFrom('employee')

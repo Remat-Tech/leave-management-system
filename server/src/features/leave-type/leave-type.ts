@@ -750,7 +750,7 @@ export function assertSomebodyApprovesIt(type: LeaveType): void {
 /**
  * FR 38a. Who a request of this kind goes to, in order, as a person reads it.
  *
- * "your line manager then HR", or "HR then the Chief Executive". What the request
+ * "your manager then HR", or "HR then the Chief Executive". What the request
  * form shows beside the type, so that somebody knows before they ask rather than
  * after they have waited — the same argument ../features/leave-type/policy.ts makes
  * for leaving the whole table readable.

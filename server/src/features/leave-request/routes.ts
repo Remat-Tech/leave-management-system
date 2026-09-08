@@ -138,7 +138,7 @@ export function requestRoutes({
   });
 
   /**
-   * What a line manager turned down that is now waiting on me. FR 44, §7.2. LMS 318.
+   * What a manager turned down that is now waiting on me. FR 44, §7.2. LMS 318.
    *
    * The dedicated view of the story's first criterion, and the same rows as `/me/approvals`
    * narrowed to the ones a manager said no to. Bounded by the same `leaveRequestPolicy.queue`
@@ -225,7 +225,7 @@ export function requestRoutes({
   });
 
   /**
-   * Overturns the line manager's decision. FR 44, §7.2. LMS 318.
+   * Overturns the manager's decision. FR 44, §7.2. LMS 318.
    *
    * Two verbs at one address, because they are one act with a direction: `OVERTURN_REJECTION`
    * lets leave a manager refused stand, `OVERTURN_APPROVAL` stops leave they agreed to. Which
@@ -637,7 +637,7 @@ function readOverride(value: unknown): OverridingAction {
   if (typeof value !== 'string' || !(OVERRIDING_ACTIONS as readonly string[]).includes(value)) {
     throw new InvalidLeaveRequest(
       'action',
-      `An override either lets leave a line manager turned down stand, or stops leave they ` +
+      `An override either lets leave a manager turned down stand, or stops leave they ` +
         `agreed to. Those are ${OVERRIDING_ACTIONS.join(' and ')}, and ${String(value)} is ` +
         `neither. FR 44.`,
     );
@@ -782,7 +782,7 @@ function queueItemAsJson(item: QueueItem): unknown {
     /** FR 44, §7.2. LMS 318. */
     managersDecision:
       item.managersDecision === null ? null : managersDecisionAsJson(item.managersDecision),
-    /* Which of this desk's two verbs would be overturning the line manager, so a screen can
+    /* Which of this desk's two verbs would be overturning the manager, so a screen can
        ask for the justification before the button rather than after the refusal. */
     approvingIs: item.approvingIs,
     refusingIs: item.refusingIs,
@@ -894,6 +894,8 @@ function stepAsJson(step: TrailStep): unknown {
   return {
     kind: step.kind,
     desk: step.desk,
+    /** LMS 409. Null on every step that is not a decision. */
+    agreed: step.agreed,
     /** FR 39. */
     comment: step.comment,
     by: step.by,

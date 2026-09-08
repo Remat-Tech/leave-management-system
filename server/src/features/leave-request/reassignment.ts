@@ -62,7 +62,7 @@ export function reassignmentInWords(reassignment: Omit<Reassignment, 'because'>)
   const { movedFrom, movedTo, to } = reassignment;
 
   const line =
-    to === null ? 'This person no longer has a line manager' : 'This person’s line manager changed';
+    to === null ? 'This person no longer has a manager' : 'This person’s manager changed';
 
   if (movedFrom === movedTo) {
     return (

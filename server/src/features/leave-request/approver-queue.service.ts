@@ -37,7 +37,7 @@ export class ApproverQueueService {
      * The balance context, read through the repository rather than `BalanceService`. §8.6.
      *
      * The service enforces `ledgerPolicy.read`, which the manager's desk and the HR desk pass
-     * and the Chief Executive does not — they are nobody's line manager and hold no role, so
+     * and the Chief Executive does not — they are nobody's manager and hold no role, so
      * every unpaid request §4.3.1 routes to them would arrive with no figure beside it. The
      * standing here is the desk, which `leaveRequestPolicy.queue` has already established.
      */
@@ -51,7 +51,7 @@ export class ApproverQueueService {
   ) {}
 
   /**
-   * The requests a line manager turned down that are now waiting on this person. FR 44, §7.2. LMS 318.
+   * The requests a manager turned down that are now waiting on this person. FR 44, §7.2. LMS 318.
    *
    * The same queue, narrowed. Since a rejection routes rather than ends, these arrive at
    * HR's desk on their own and each carries what the manager said and why.
@@ -154,7 +154,7 @@ function whoAsked(requests: readonly LeaveRequest[]): string[] {
   return [...new Set(requests.map((request) => request.employeeId))];
 }
 
-/** The line managers the teams hang off. */
+/** The managers the teams hang off. */
 function managersOf(askers: readonly Employee[]): string[] {
   return [...new Set(askers.map((one) => one.managerId).filter((id): id is string => id !== null))];
 }

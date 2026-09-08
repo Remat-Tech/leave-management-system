@@ -321,10 +321,10 @@ describe('a chain as a person reads it', () => {
      form. Three copies of it would drift the first time somebody decided the
      Chief Executive should be called that rather than the CEO. */
   it('says who signs it off, in order', () => {
-    expect(chainInWords(['MANAGER', 'HR'])).toBe('your line manager then HR');
+    expect(chainInWords(['MANAGER', 'HR'])).toBe('your manager then HR');
     expect(chainInWords(['HR', 'CEO'])).toBe('HR then the Chief Executive');
     expect(chainInWords(['MANAGER', 'HR', 'CEO'])).toBe(
-      'your line manager, HR then the Chief Executive',
+      'your manager, HR then the Chief Executive',
     );
     expect(chainInWords(['CEO'])).toBe('the Chief Executive');
     expect(chainInWords([])).toBe('nobody');
@@ -357,7 +357,7 @@ describe('a type nobody approves', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(NobodyApprovesLeaveType);
       expect((error as Error).message).toMatch(/HR Administrator/);
-      expect((error as Error).message).toMatch(/your line manager then HR/);
+      expect((error as Error).message).toMatch(/your manager then HR/);
     }
   });
 });

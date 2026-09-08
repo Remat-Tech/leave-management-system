@@ -83,7 +83,7 @@ interface Organisation {
   departmentById: Map<string, Department>;
   patternByName: Map<string, WorkPattern>;
   patternById: Map<string, WorkPattern>;
-  /** The employee number of the one employee with no line manager. FR 04. */
+  /** The employee number of the one employee with no manager. FR 04. */
   headNumber: string | null;
 }
 
@@ -305,7 +305,7 @@ export class StaffImportService {
   }
 
   /**
-   * That the line manager the row names is somebody, and somebody still here.
+   * That the manager the row names is somebody, and somebody still here.
    * FR 02.
    *
    * "Somebody" includes a person the same file creates four lines further down,
@@ -334,7 +334,7 @@ export class StaffImportService {
       throw new InvalidImportRow(
         'manager',
         `No employee has the number "${draft.manager}", and no row of this file ` +
-          'creates one. A record whose line manager is nobody is a record whose leave ' +
+          'creates one. A record whose manager is nobody is a record whose leave ' +
           'requests have nowhere to go. Correct the number, add the manager to the ' +
           'file, or leave the cell empty if this really is the head of the ' +
           'organisation.',
@@ -359,7 +359,7 @@ export class StaffImportService {
     throw new InvalidImportRow(
       'manager',
       `This file records ${draft.manager} as having left, so they cannot be anybody's ` +
-        'line manager. A request routed to them would have nowhere to go.',
+        'manager. A request routed to them would have nowhere to go.',
     );
   }
 
@@ -458,7 +458,7 @@ export class StaffImportService {
 
     /* The record rules again, and the manager reference stood in the same way
        planCreate() stands it in. One check inside validateEmployeeChanges() does
-       not fire as a result — "an employee cannot be their own line manager",
+       not fire as a result — "an employee cannot be their own manager",
        which compares against the record's id — and it does not need to: a row
        naming itself is a loop of length one, and findManagerCycles() has already
        rejected it by the time anything gets here. */
@@ -644,7 +644,7 @@ type RejectLine = (
 ) => void;
 
 /**
- * Rows whose line manager was on a row that got rejected.
+ * Rows whose manager was on a row that got rejected.
  *
  * The last pass, and the only one that has to run after classification, because
  * until then it is not known which rows survive. A joiner reporting to a joiner
@@ -659,7 +659,7 @@ type RejectLine = (
  * violation naming a constraint.
  *
  * Repeated until nothing more falls out, because the row that has just been
- * rejected may itself have been somebody's line manager. Each pass removes at
+ * rejected may itself have been somebody's manager. Each pass removes at
  * least one row, so it ends.
  */
 function rejectRowsLeftWithoutAManager(
@@ -678,9 +678,9 @@ function rejectRowsLeftWithoutAManager(
       managerNumber != null && !present.has(key(managerNumber));
 
     const because = (managerNumber: string) =>
-      `${managerNumber} is the line manager on this row, and the row that would have ` +
+      `${managerNumber} is the manager on this row, and the row that would have ` +
       'created them was itself rejected, so there would be nobody for this person to ' +
-      'report to. Correct that row, or give this one a different line manager.';
+      'report to. Correct that row, or give this one a different manager.';
 
     const create = creates.findIndex((one) => orphaned(one.managerNumber));
     if (create !== -1) {
@@ -885,7 +885,7 @@ function rejectReportingLineLoops(
 
     const description =
       named.length === 1
-        ? `${named[0]} is recorded as their own line manager, so their requests would ` +
+        ? `${named[0]} is recorded as their own manager, so their requests would ` +
           'be theirs to approve and would never leave them.'
         : `${named
             .map((number, index) => `${number} reports to ${named[(index + 1) % named.length]}`)
@@ -899,7 +899,7 @@ function rejectReportingLineLoops(
           draft,
           'manager',
           `Importing this file would close a loop in the reporting lines: ${description} ` +
-            'Correct one of the line managers in the loop.',
+            'Correct one of the managers in the loop.',
         );
       }
     }
@@ -907,7 +907,7 @@ function rejectReportingLineLoops(
 }
 
 /**
- * What the file does to the one employee with no line manager. FR 04.
+ * What the file does to the one employee with no manager. FR 04.
  *
  * Counted over the organisation as it would be, for the same reason the loops
  * are: a file that promotes somebody to the head without demoting the current
@@ -916,12 +916,12 @@ function rejectReportingLineLoops(
  * Two different refusals come out of that count, and they are different problems
  * with different answers.
  *
- * **Two people with no line manager** is a file that has to be corrected, and
+ * **Two people with no manager** is a file that has to be corrected, and
  * the answer is in the file: give one of them a line. The database refuses it
  * too, through employee_one_root; what this adds is both names before anything
  * is written.
  *
- * **One person with no line manager, but a different one from before** is a
+ * **One person with no manager, but a different one from before** is a
  * succession, and it is not something an import can do at all — see below. The
  * answer is not in the file, so the refusal says what to do instead rather than
  * asking HR to find a mistake that is not there.
@@ -975,11 +975,11 @@ function rejectChangesToTheHeadOfOrganisation(
     reject(
       one,
       'manager',
-      `This row leaves ${one.employeeNumber} with no line manager, and once this file ` +
+      `This row leaves ${one.employeeNumber} with no manager, and once this file ` +
         `landed ${numbers.length} people would have none: ${numbers.join(', ')}. Exactly ` +
         'one employee may be the head of the organisation, because a request is routed ' +
         'by walking up the reporting lines and that walk has to stop somewhere. Give ' +
-        'this row a line manager, or give the others one in the same file.',
+        'this row a manager, or give the others one in the same file.',
     );
   }
 }
@@ -992,7 +992,7 @@ function rejectChangesToTheHeadOfOrganisation(
  * HR to want, and there is no order of single record writes that achieves it:
  *
  *   Promote the incoming head first and there are momentarily two employees with
- *   no line manager. `employee_one_root` is a unique index rather than a deferred
+ *   no manager. `employee_one_root` is a unique index rather than a deferred
  *   trigger, so that moment is refused even inside a transaction that would have
  *   ended with one.
  *
@@ -1040,7 +1040,7 @@ function rejectSuccession(
       `This file would move the head of the organisation from ${outgoing} to ` +
         `${incoming.employeeNumber}. An import cannot do that, and neither can any ` +
         'other single record change: promoting the incoming head first leaves two ' +
-        'employees with no line manager, which is refused immediately, and demoting ' +
+        'employees with no manager, which is refused immediately, and demoting ' +
         'the outgoing one first points them at somebody still below them, which is a ' +
         'loop. Succeeding the head of the organisation is one deliberate transaction ' +
         'of its own and is not built yet. Leave both reporting lines as they stand in ' +

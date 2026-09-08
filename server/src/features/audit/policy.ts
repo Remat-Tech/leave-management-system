@@ -26,7 +26,7 @@ export const auditPolicy = {
       actor,
       'readEmployeeHistory',
       employee.id,
-      'not their record, not their line manager, and holds no role that reads everybody',
+      'not their record, not their manager, and holds no role that reads everybody',
     );
   },
 

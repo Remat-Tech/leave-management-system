@@ -425,7 +425,7 @@ export class LeaveRequestService {
       calendarDays: count.calendarDays,
       /* FR 38a, LMS 314's first criterion. The chain is handed over and the *first* stage
          of it is written onto the row; `assertSomebodyApprovesIt` above has already refused
-         an empty one with the type named. Annual leave starts with the line manager and
+         an empty one with the type named. Annual leave starts with the manager and
          unpaid leave starts with HR because that is what their chains say, and nothing on
          this path knows which type is which. */
       approvalChain: type.approvalChain,
@@ -560,7 +560,7 @@ export class LeaveRequestService {
    *   ids is refused here, silently, and learns nothing — which is the property the order
    *   below would otherwise cost. It is asked only of somebody who is *not* the desk,
    *   because being the desk is its own reason to be looking: FR 32h routes unpaid leave to
-   *   the Chief Executive, who is nobody's line manager and holds no role, so a read asked
+   *   the Chief Executive, who is nobody's manager and holds no role, so a read asked
    *   of everybody would refuse the one approver §4.3.1 names.
    *
    *   **Is there an approval to give?** {@link approvalTo}, which answers a request that has
@@ -619,13 +619,13 @@ export class LeaveRequestService {
   }
 
   /**
-   * Overturns the line manager's decision, with the reason in writing. FR 44, §7.2. LMS 318.
+   * Overturns the manager's decision, with the reason in writing. FR 44, §7.2. LMS 318.
    *
    * An ordinary decision at the desk the request is sitting on, asking two things a plain
-   * one does not: a justification, and a line manager's decision to actually be reversing.
+   * one does not: a justification, and a manager's decision to actually be reversing.
    *
    * Throws {@link OverrideNeedsAJustification} for one with nothing said, before anything
-   * is read, and {@link NothingToOverturn} where the line manager decided the same way or
+   * is read, and {@link NothingToOverturn} where the manager decided the same way or
    * has not decided at all.
    */
   async override(
@@ -684,7 +684,7 @@ export class LeaveRequestService {
    * The order of the questions is a disclosure rule. Whose leave it is, then whether the
    * asker may see it at all — asked only of somebody who is not the desk, because being
    * the desk is its own reason to be looking — then whether there is a decision to make,
-   * then whether it contradicts the line manager, and last whether this actor is the desk.
+   * then whether it contradicts the manager, and last whether this actor is the desk.
    */
   private async decide(
     actor: Actor,
@@ -1063,7 +1063,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Carries somebody's pending leave to their new line manager. FR 07, §8.4, FR 59. LMS 325.
+   * Carries somebody's pending leave to their new manager. FR 07, §8.4, FR 59. LMS 325.
    *
    * What a reporting-line change does to the requests waiting on it. The `MANAGER` desk is
    * the line, so a request waiting there is the new manager's the moment the line moves and
@@ -1256,7 +1256,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * The line manager's decision this verb reverses, or null where it reverses nothing. FR 44, §7.2. LMS 318.
+   * The manager's decision this verb reverses, or null where it reverses nothing. FR 44, §7.2. LMS 318.
    *
    * What makes the justification unavoidable: a plain verb that would contradict the line
    * manager is refused and pointed at the override, and an override that contradicts nobody
@@ -1300,7 +1300,7 @@ export class LeaveRequestService {
    * explanation of a status, and standing to see the status without the reason for it would
    * be standing to see half an answer — the same sentence this file's policy makes about a
    * request and the balance it moves. So the requester sees why they were turned down, their
-   * line manager sees it, and a role that reads every record sees it; a colleague sees
+   * manager sees it, and a role that reads every record sees it; a colleague sees
    * neither the request nor this.
    *
    * Throws {@link LeaveRequestNotFound} for an id that is nobody's, and {@link NotAuthorised}
@@ -1499,7 +1499,7 @@ export class LeaveRequestService {
    * ## The order, and what each step is for
    *
    *   **The request, then the employee, then the decision.** The policy needs to know
-   *   whose leave it is and who their line manager is, and neither is knowable from an
+   *   whose leave it is and who their manager is, and neither is knowable from an
    *   id. {@link LeaveRequestNotFound} comes before the guard because there is no
    *   standing to have towards a request that does not exist.
    *
@@ -1572,7 +1572,7 @@ export class LeaveRequestService {
   /**
    * Tells the people a decision concerns. FR 59, FR 44, §7.1. LMS 329, LMS 318.
    *
-   * The requester always, and the line manager as well where their decision was the one
+   * The requester always, and the manager as well where their decision was the one
    * reversed — which is FR 44's last criterion. Both notices go out after the transaction
    * has committed, and both are composed from the rows that were written rather than from
    * what the caller expected.
@@ -1599,7 +1599,7 @@ export class LeaveRequestService {
       return;
     }
 
-    /* FR 44. The line manager, told their decision was overturned and why. Read back off
+    /* FR 44. The manager, told their decision was overturned and why. Read back off
        the committed rows: the decision that was reversed says which desk made it and which
        way it went, and the employee record says who to send it to. */
     const reversed = (await this.decisions.forRequest(request.id)).find(
@@ -1650,7 +1650,7 @@ export class LeaveRequestService {
    * The leave somebody has asked for, the earliest first.
    *
    * Decided by exactly the rule that decides who may read their balance — yours, your
-   * line manager's, or a role that reads everybody — because a request is the reason a
+   * manager's, or a role that reads everybody — because a request is the reason a
    * figure is what it is, and standing to see one without the other would be standing
    * to see half an explanation.
    */

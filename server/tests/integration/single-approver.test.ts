@@ -36,7 +36,7 @@ import { delegationService } from '../support/delegations.js';
  * A request decided by one person says so. FR 48d, §8.6a. LMS 322.
  *
  * ../unit/routing.test.ts proves the walk. What needs a server is who the desks resolve to:
- * the head of HR is a line manager *and* an HR officer, so two stages of one chain come back
+ * the head of HR is a manager *and* an HR officer, so two stages of one chain come back
  * to one human, and only real rows can say that.
  *
  *   **Two stages, two officers.** The second stage goes to somebody who has not decided, and
@@ -159,7 +159,7 @@ function aRequest(employeeId: string): NewLeaveRequest {
   };
 }
 
-/** Ama: the head of HR, who is a line manager and an HR desk of one. */
+/** Ama: the head of HR, who is a manager and an HR desk of one. */
 function asTheHeadOfHr() {
   return signedInAs(people.headOfHr, {
     roles: ['EMPLOYEE', 'HR_OFFICER', 'HR_ADMIN'],
@@ -248,7 +248,7 @@ describe('a chain whose two stages resolve to the same person', () => {
 /**
  * The story's second criterion. FR 48d.
  *
- * Ama is the whole HR function, and her line manager is the Chief Executive — who is also
+ * Ama is the whole HR function, and her manager is the Chief Executive — who is also
  * HR's stand-in. There is nobody else, so he decides once and the request carries the fact.
  */
 describe('a request there was only one person to decide', () => {
@@ -353,7 +353,7 @@ async function secondDecisionBy(employeeId: string, leaveRequestId: string): Pro
   }
 }
 
-/** Adwoa's own line manager in the base fixtures. */
+/** Adwoa's own manager in the base fixtures. */
 function asTheTeamLead() {
   return signedInAs(people.teamLead, { roles: ['EMPLOYEE'], isManager: true });
 }

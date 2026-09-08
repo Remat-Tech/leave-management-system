@@ -499,7 +499,7 @@ maternity extension go HR then the Chief Executive, §4.3.1, so until an HR Admi
 somebody that stage falls to HR and the skip is recorded on every such request. Nothing breaks
 and nothing is auto approved — but it is not the routing the policy asks for.
 
-The migration seeds it from whoever had no line manager at the time, so an existing database
+The migration seeds it from whoever had no manager at the time, so an existing database
 carries its own answer forward and only a fresh installation starts empty.
 
 ---
@@ -990,7 +990,7 @@ since LMS 320 the request no longer sits there at all — the HR stage falls to 
 CEO, the skip is recorded on the request, and Kwame decides it.
 
 Kwame's own leave is the same story from the other end, which is why he is in the
-fixtures: FR 04 leaves him without a line manager, so the first stage of the
+fixtures: FR 04 leaves him without a manager, so the first stage of the
 ordinary chain has nobody at it and the request starts at HR instead. Neither
 fixture would show either defect if the two were the same person.
 

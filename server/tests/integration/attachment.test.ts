@@ -237,7 +237,7 @@ async function fetchThroughALink(
   return attachments.downloadVia(actor, url.slice(url.lastIndexOf('/') + 1));
 }
 
-/** A submitted request of the employee's, sitting with their line manager. */
+/** A submitted request of the employee's, sitting with their manager. */
 async function aRequest(leaveTypeId = annualId, evidence: string[] = []) {
   const submitted = await requests.submit(asTheEmployee(), {
     employeeId: people.officer,

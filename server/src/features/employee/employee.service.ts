@@ -218,7 +218,7 @@ export class EmployeeService {
     return warnAboutReportingLines(await this.employees.reportingLines());
   }
 
-  /** The employee with no line manager. FR 04. */
+  /** The employee with no manager. FR 04. */
   async head(actor: Actor): Promise<Employee | undefined> {
     this.guard.enforce(employeePolicy.search(actor));
 

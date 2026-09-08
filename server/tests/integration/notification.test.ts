@@ -63,7 +63,7 @@ import { delegationService } from '../support/delegations.js';
  *   recorded — which is three facts about one transaction boundary.
  *
  *   **A notice is somebody's post.** The policy is the narrowest in `/auth` and the only way
- *   to show that is to try it as the line manager and as HR, both of whom may read the
+ *   to show that is to try it as the manager and as HR, both of whom may read the
  *   request itself.
  */
 
@@ -175,7 +175,7 @@ beforeEach(async () => {
 
   annualId = (await admin.query("SELECT id FROM leave_type WHERE code = 'ANNUAL'")).rows[0].id;
 
-  /* Annual leave's chain as the migration wrote it: the line manager, then HR. Restored the
+  /* Annual leave's chain as the migration wrote it: the manager, then HR. Restored the
      way ./leave-request.test.ts restores it, because these files share one database. */
   await admin.query('BEGIN');
   await admin.query('DELETE FROM leave_type_approval_step WHERE leave_type_id = $1', [annualId]);
@@ -301,7 +301,7 @@ describe('what happens to a request reaches the person who asked', () => {
     const notice = (await noticesFor())[1];
 
     expect(notice.event).toBe('STAGE_APPROVED');
-    expect(notice.subject).toContain('Your line manager approved');
+    expect(notice.subject).toContain('Your manager approved');
     expect(notice.subject).toContain('it still needs HR');
     expect(notice.body).toContain('do not book anything on it');
     expect(mailer.sent).toHaveLength(1);
@@ -363,13 +363,13 @@ describe('what happens to a request reaches the person who asked', () => {
   });
 
   /**
-   * And the line manager is told when HR overturns them. FR 44's fifth criterion. LMS 318.
+   * And the manager is told when HR overturns them. FR 44's fifth criterion. LMS 318.
    *
    * The one notice in this system addressed to somebody other than the person taking the
    * leave, and it quotes HR's justification whole — which is the whole of what the manager
    * is owed for a decision that was reversed over their head.
    */
-  it('and the line manager is told when HR overturns their rejection', async () => {
+  it('and the manager is told when HR overturns their rejection', async () => {
     const id = await submit();
     mailer.clear();
 
@@ -544,8 +544,8 @@ describe('who may read a notification', () => {
     expect(theirs[0].event).toBe('SUBMITTED');
   });
 
-  /* The line manager may read the request, the decisions and the balance. Not the post. */
-  it('and not their line manager, who may read everything else about the request', async () => {
+  /* The manager may read the request, the decisions and the balance. Not the post. */
+  it('and not their manager, who may read everything else about the request', async () => {
     await submit();
 
     await expect(notifications.forEmployee(asTheirManager(), people.officer)).rejects.toThrow(

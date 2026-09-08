@@ -16,7 +16,7 @@ export const NOTICE_EVENTS = [
   'REFUSED',
   'WITHDRAWN',
   'CANCELLED',
-  /** The line manager, told their decision was overturned. FR 44, §7.2, LMS 318. */
+  /** The manager, told their decision was overturned. FR 44, §7.2, LMS 318. */
   'DECISION_OVERTURNED',
   /** Nobody can decide it, told to the requester and to whoever can fix that. FR 48b, LMS 320. */
   'UNROUTABLE',
@@ -298,7 +298,7 @@ export function noticeOf(happened: WhatHappened): NewNotice {
         };
 
       /* FR 44, §7.2, LMS 318. The one message written to somebody other than the person
-         taking the leave: the line manager whose decision was reversed. It names the
+         taking the leave: the manager whose decision was reversed. It names the
          justification in full, which is the whole of what they are owed. */
       case 'DECISION_OVERTURNED': {
         const theirs = happened.overturned?.said === 'APPROVE' ? 'approved' : 'turned down';
@@ -351,7 +351,7 @@ export function noticeOf(happened: WhatHappened): NewNotice {
         return {
           subject: `${possessively(employee.name)} ${typeName} for ${period} is now yours to decide`,
           paragraphs: [
-            `${employee.name} asked for ${cost}, and you are now their line manager, so the request is waiting on you.`,
+            `${employee.name} asked for ${cost}, and you are now their manager, so the request is waiting on you.`,
             ...said,
             'Nothing has been decided at your stage. Any approval an earlier stage has already given stands, in the name of whoever gave it.',
             `Their ${held} are held while it is decided, so an answer either way is worth having soon.`,
@@ -585,7 +585,7 @@ function deskOrSomebody(desk: ApproverRole | null): string {
   return desk === null ? 'an approver' : deskInWords(desk);
 }
 
-/** "the line manager's" — the desk said as the owner of a stage. */
+/** "the manager's" — the desk said as the owner of a stage. */
 function possessive(desk: ApproverRole | null): string {
   const named = deskOrSomebody(desk);
 
@@ -597,7 +597,7 @@ export function inDays(days: number): string {
   return `${days} ${days === 1 ? 'day' : 'days'}`;
 }
 
-/** A phrase that starts a sentence. "your line manager" opening one reads as a typo. */
+/** A phrase that starts a sentence. "your manager" opening one reads as a typo. */
 function sentenceCase(words: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }

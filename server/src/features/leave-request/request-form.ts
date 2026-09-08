@@ -83,7 +83,7 @@ export interface RequestableLeaveType {
   exceedableWithDocument: boolean;
   /** FR 10. Whether the form's reason box is required, as well as what the rule says. */
   reasonRequired: boolean;
-  /** FR 38a. "your line manager, then HR". */
+  /** FR 38a. "your manager, then HR". */
   approvedBy: string;
   rules: FormRule[];
 }

@@ -311,7 +311,7 @@ function asOfficer() {
   return signedInAs(people.hrOfficer, { roles: ['EMPLOYEE', 'HR_OFFICER'], isManager: false });
 }
 
-/** The team lead, who is `officer`'s and `partTimer`'s line manager. */
+/** The team lead, who is `officer`'s and `partTimer`'s manager. */
 function asTheirManager() {
   return signedInAs(people.teamLead, { roles: ['EMPLOYEE'], isManager: true });
 }
@@ -781,7 +781,7 @@ describe('who may read a balance, FR 53, FR 55, FR 56', () => {
     expect((await ledger.history(asThemselves(), people.officer)).length).toBe(1);
   });
 
-  it('their line manager', async () => {
+  it('their manager', async () => {
     expect((await ledger.history(asTheirManager(), people.officer)).length).toBe(1);
   });
 

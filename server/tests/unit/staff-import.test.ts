@@ -163,7 +163,7 @@ describe('mapping columns to fields', () => {
     expect(error.message).toContain('"Employee Number"');
   });
 
-  it('requires a line manager column even though a cell in it may be blank', () => {
+  it('requires a manager column even though a cell in it may be blank', () => {
     /* FR 02 restated for a file. Without the column every row is silently the
        head of the organisation, and the person who finds out is the employee
        whose first request vanishes. */
@@ -227,7 +227,7 @@ describe('reading one row', () => {
     expect(draftOf(`${HEADINGS}\n${row}\n`).workEmail).toBe('esi.nyarko@rematholdings.com');
   });
 
-  it('reads a blank line manager as the head of the organisation', () => {
+  it('reads a blank manager as the head of the organisation', () => {
     /* The one blank in this system that means something rather than nothing. The
        domain refuses '' precisely so that whoever maps blanks to null does it
        knowingly, and this is that layer doing it knowingly. */
@@ -404,7 +404,7 @@ describe('finding loops in the reporting lines', () => {
     expect(loop).toEqual(['a', 'b', 'c']);
   });
 
-  it('finds somebody recorded as their own line manager', () => {
+  it('finds somebody recorded as their own manager', () => {
     expect(findManagerCycles(linesOf([['a', 'a']]))).toEqual([['a']]);
   });
 

@@ -598,7 +598,7 @@ describe('reading the account of what happened', () => {
   });
 
   it('keeps the access history narrower than the record history', async () => {
-    /* A line manager may read a report's record and its history. When that
+    /* A manager may read a report's record and its history. When that
        report's password was reset is not their business. */
     const kofi = await (async () => {
       await logins.setPassword(system, people.teamLead, PASSWORD);

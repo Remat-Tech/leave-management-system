@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { type BalanceLine, isNotSignedIn, myBalances, type Statement, type Year } from '../../api';
-import { days, sentenceCase, signed } from '../../format';
+import { days, period } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
 
 /** My balances. FR 53, LMS 401, FR 32g. */
@@ -58,7 +58,7 @@ export function BalancesPage({
     <div className="page">
       <div className="pagehead">
         <p className="muted">
-          {statement.year.label} · {statement.year.startDate} to {statement.year.endDate}
+          {statement.year.label} · {period(statement.year.startDate, statement.year.endDate)}
           {statement.year.isClosed ? ' · this year has been closed' : ''}
         </p>
       </div>
@@ -70,11 +70,6 @@ export function BalancesPage({
           <BalanceCard key={line.leaveTypeId} line={line} />
         ))}
       </ul>
-
-      <p className="muted" style={{ marginTop: '1.5rem' }}>
-        Pending days are subtracted too, because days spoken for are not days you can book twice.
-        They come back if a request is turned down or you take it back.
-      </p>
     </div>
   );
 }
@@ -113,40 +108,16 @@ function BalanceCard({ line }: { line: BalanceLine }) {
       </div>
 
       {overdrawn ? (
-        <p className="headline-note overdrawn">
-          Overdrawn by {days(Math.abs(line.available))}. This type allows it — going past the
-          allowance asks for a certificate rather than refusing the leave.
-        </p>
+        <p className="headline-note overdrawn">Overdrawn by {days(Math.abs(line.available))}</p>
       ) : null}
 
       <Meter line={line} />
 
-      <details className="breakdown">
-        <summary>How this adds up</summary>
-
-        {/* FR 32g. What kind of allowance this is, so the figures above have a basis. */}
-        <p className="muted">{sentenceCase(line.allowanceInWords)}</p>
-
-        <dl>
-          <dt>Entitled</dt>
-          <dd>{days(line.entitled)}</dd>
-
-          <dt>Carried over</dt>
-          <dd>{days(line.carriedOver)}</dd>
-
-          <dt>Adjustments</dt>
-          <dd>{signed(line.adjustment)}</dd>
-
-          <dt>Taken</dt>
-          <dd>−{days(line.taken)}</dd>
-
-          <dt>Pending</dt>
-          <dd>−{days(line.pending)}</dd>
-
-          <dt className="sum">Available</dt>
-          <dd className="sum">{days(line.available)}</dd>
-        </dl>
-      </details>
+      {/* "How this adds up" — entitled, carried over, adjustments, taken, pending — was taken
+          off in LMS 409. They are the workings of a figure already on the card, and six cards
+          each carrying a sixth disclosure made the screen read as a form. Every one of them is
+          still on the wire, and still in the team screen's "balances in full" table, which is
+          where somebody checking an allowance rather than reading one goes. */}
 
       {/* The story's third criterion, in the two words the server chose. The full
           explanation of what a basis means belongs on the request quote, where somebody is

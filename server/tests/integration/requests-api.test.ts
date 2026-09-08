@@ -433,10 +433,10 @@ describe('how each was decided', () => {
    * FR 44, §7.2. The trail says which decision stood, and why. LMS 318.
    *
    * The story's "so that": the reason stays visible for ever. A trail reading "Approved by
-   * HR" under "Turned down at your line manager's stage" would leave the person to work out
+   * HR" under "Turned down at your manager's stage" would leave the person to work out
    * which one counted, so an override is its own kind of step and says what it reversed.
    */
-  it('and says so when HR overturned the line manager, with the reason on it', async () => {
+  it('and says so when HR overturned the manager, with the reason on it', async () => {
     const id = await aRequest();
 
     await requests.refuse(asTheirManager(), id, WHY_NOT);

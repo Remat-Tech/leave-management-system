@@ -51,7 +51,7 @@ export interface Colleague {
   employmentStatus: EmploymentStatus;
   /** The reader. */
   isMe: boolean;
-  /** The reader's own line manager, where they are in this department too. */
+  /** The reader's own manager, where they are in this department too. */
   isTheManager: boolean;
   awayToday: boolean;
   /** Soonest first. */
@@ -316,7 +316,7 @@ function colleagueInWords(
 
 /* --------------------------------------------------------------------------- helpers */
 
-/** The shared line manager first, then surname, forename, employee number. */
+/** The shared manager first, then surname, forename, employee number. */
 function byManagerThenName(managerId: string | null) {
   return (left: Employee, right: Employee): number => {
     if ((left.id === managerId) !== (right.id === managerId)) {
