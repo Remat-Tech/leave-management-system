@@ -11,6 +11,7 @@ import type { Database } from '../../src/db/schema.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
 import { DepartmentRepository } from '../../src/features/department/department.db.js';
 import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
+import { EntitlementRuleRepository } from '../../src/features/entitlement/entitlement-rule.db.js';
 import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
 import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
@@ -144,6 +145,7 @@ beforeAll(async () => {
     departments: new DepartmentRepository(db),
     types,
     years,
+    entitlementRules: new EntitlementRuleRepository(db),
     requests: requestRepository,
     leaveRequests: requests,
     decisions,

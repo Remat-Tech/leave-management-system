@@ -2968,3 +2968,56 @@ select[aria-invalid='true'] {
   width: 0.85rem;
   height: 0.85rem;
 }
+
+/* ------------------------------------ entitlement rules. FR 31, LMS 502 */
+
+/* One kind of leave and the rules under it. The heading carries the type, so a card only
+   has to say who and how many — the two things that differ between rules of one type. */
+.ruleset {
+  margin: 0 0 var(--gap-lg);
+}
+
+.ruleset h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.75rem;
+  font-family: var(--face-heading);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ruleset .chip {
+  width: 2rem;
+  height: 2rem;
+}
+
+/* A rule whose day has not come: still editable, and marked so it reads as provisional. */
+.card.draft {
+  border-style: dashed;
+}
+
+/* Why a rule may no longer be changed. A sentence rather than a tooltip, because it is the
+   whole of FR 31 and a hover is not something a screen reader lands on. */
+.muted.fixed {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: auto 0 0;
+  padding-top: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.muted.fixed svg {
+  flex: none;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.1rem;
+}
+
+/* The leave type filter in the page head, beside the button that adds a rule. */
+.pagehead .filter select {
+  min-width: 12rem;
+}

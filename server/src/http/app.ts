@@ -4,6 +4,7 @@ import express, { type Express, type Request, type Response } from 'express';
 import type { Guard } from '../auth/policy.js';
 import { ApproverQueueService } from '../features/leave-request/approver-queue.service.js';
 import { BalanceStatementService } from '../features/balance/balance-statement.service.js';
+import { EntitlementRuleService } from '../features/entitlement/entitlement-rule.service.js';
 import { LeaveTypeService } from '../features/leave-type/leave-type.service.js';
 import { RequestFormService } from '../features/leave-request/request-form.service.js';
 import { RequestHistoryService } from '../features/leave-request/request-history.service.js';
@@ -30,7 +31,10 @@ import { AttachmentService } from '../features/leave-request/attachment.service.
 import { attachmentRoutes } from '../features/leave-request/attachment.routes.js';
 import type { Scanner } from '../scanning/index.js';
 import type { Storage } from '../storage/index.js';
+import type { EntitlementRuleRepository } from '../features/entitlement/entitlement-rule.db.js';
+import { earliestOpenDayFrom } from '../features/leave-year/leave-year.service.js';
 import { balanceRoutes } from '../features/balance/routes.js';
+import { entitlementRuleRoutes } from '../features/entitlement/routes.js';
 import { leaveTypeRoutes } from '../features/leave-type/routes.js';
 import { teamRoutes } from '../features/team/routes.js';
 import { TeamService } from '../features/team/team.service.js';
@@ -52,6 +56,8 @@ export interface Application {
   departments: DepartmentRepository;
   types: LeaveTypeRepository;
   years: LeaveYearRepository;
+  /** FR 31, LMS 502. What a leave type is worth, and from when. */
+  entitlementRules: EntitlementRuleRepository;
   /** FR 54. */
   requests: LeaveRequestRepository;
   /**
@@ -137,6 +143,24 @@ export function buildApp(parts: Application): Express {
      notice window is the one about to miss it — and writing one is an HR Administrator's,
      which `leaveTypePolicy` decides rather than the mounting does. */
   app.use('/api', leaveTypeRoutes({ types: new LeaveTypeService(parts.types, parts.guard) }));
+
+  /* FR 31, LMS 502. The figures behind those types, effective dated. The boundary a closed
+     year sets is read from the leave year table rather than passed in, so the refusal that
+     protects last year's figures cannot be configured away. */
+  app.use(
+    '/api',
+    entitlementRuleRoutes({
+      rules: new EntitlementRuleService(
+        parts.entitlementRules,
+        parts.guard,
+        earliestOpenDayFrom(parts.years),
+      ),
+      types: new LeaveTypeService(parts.types, parts.guard),
+      employees: parts.employees,
+      departments: parts.departments,
+      years: parts.years,
+    }),
+  );
 
   /* FR 55, FR 56, LMS 405. A read service built from repositories, as the two above are:
      nothing a manager reads about their reports needs a transaction or a mailer. */

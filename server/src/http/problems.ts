@@ -287,6 +287,17 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
    */
   DuplicateLeaveTypeCode: 409,
   DuplicateLeaveTypeName: 409,
+
+  /**
+   * FR 31, LMS 502. The three an entitlement rule meets, and none of them a fault.
+   *
+   * 409 for all three: what was typed is fine, and what refuses it is the state of the
+   * record — a rule already in force, a year already closed, a rule already starting on
+   * that day. Each sentence names the other date to use instead.
+   */
+  EntitlementRuleAlreadyApplies: 409,
+  ReachesIntoAClosedYear: 409,
+  DuplicateEntitlementRule: 409,
 };
 
 /**

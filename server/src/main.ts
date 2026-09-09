@@ -7,6 +7,7 @@ import { createMailer } from './mail/mailer.js';
 import { BalanceRepository } from './features/balance/balance.db.js';
 import { DepartmentRepository } from './features/department/department.db.js';
 import { EmployeeRepository } from './features/employee/employee.db.js';
+import { EntitlementRuleRepository } from './features/entitlement/entitlement-rule.db.js';
 import { HolidayRepository } from './features/holiday/holiday.db.js';
 import { ApprovalDelegationRepository } from './features/leave-request/delegation.db.js';
 import { AttachmentRepository } from './features/leave-request/attachment.db.js';
@@ -61,6 +62,8 @@ const accounts = new SignInAccountRepository(db);
 const roles = new RoleRepository(db);
 const types = new LeaveTypeRepository(db);
 const years = new LeaveYearRepository(db);
+/** FR 31, LMS 502. */
+const entitlementRules = new EntitlementRuleRepository(db);
 const requests = new LeaveRequestRepository(db);
 const decisions = new LeaveDecisionRepository(db);
 /** FR 48b, LMS 320. */
@@ -121,6 +124,7 @@ const app = buildApp({
   departments,
   types,
   years,
+  entitlementRules,
   requests,
   leaveRequests,
   decisions,
