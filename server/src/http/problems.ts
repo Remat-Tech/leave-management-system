@@ -276,6 +276,17 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   DocumentationCannotBeRemoved: 409,
   /** §8.9. */
   LeaveYearIsClosed: 409,
+
+  /**
+   * FR 31, LMS 501. A code or a name already on another type.
+   *
+   * 409 rather than 400: what was typed is fine, and what refuses it is a row that already
+   * exists. Both sentences name the type it clashes with, which is what the form puts beside
+   * the box — and without them here a duplicate reached the screen as "something went wrong
+   * at our end", which is the one thing an HR Administrator cannot act on.
+   */
+  DuplicateLeaveTypeCode: 409,
+  DuplicateLeaveTypeName: 409,
 };
 
 /**

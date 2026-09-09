@@ -3,6 +3,7 @@ import { currentSession, type Me, signOut, type Year } from './api';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { BalancesPage } from './features/balances/BalancesPage';
 import { CalendarPage } from './features/calendar/CalendarPage';
+import { LeaveTypesPage } from './features/config/LeaveTypesPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
 import { RequestsPage } from './features/requests/RequestsPage';
 import { SignIn } from './features/session/SignIn';
@@ -34,6 +35,15 @@ const SCREENS = [
   /** FR 55, FR 56, FR 57, LMS 406, LMS 409. Everybody's, scoped to a department. */
   { id: 'calendar', label: 'Who is away', icon: 'calendar' },
   { id: 'approvals', label: 'Waiting on me', icon: 'approvals' },
+  /**
+   * FR 31, FR 32, LMS 501. Setting the kinds of leave up.
+   *
+   * Offered to everybody, for the reason "Waiting on me" is: reading a leave type is open to
+   * anybody signed in, and every button on the screen is refused for anybody but an HR
+   * Administrator with the server's own sentence. A tab hidden on this page's idea of
+   * somebody's roles would be a second answer to a question the server owns.
+   */
+  { id: 'leave-types', label: 'Leave types', icon: 'settings' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -225,6 +235,7 @@ export function App() {
           <CalendarPage onSignedOut={ranOut} yearId={yearId} onYears={yearsKnown} />
         ) : null}
         {screen === 'approvals' ? <ApprovalsPage onSignedOut={ranOut} /> : null}
+        {screen === 'leave-types' ? <LeaveTypesPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );

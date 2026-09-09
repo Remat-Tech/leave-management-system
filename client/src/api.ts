@@ -582,6 +582,206 @@ export interface DraftFields {
   reason?: string | null;
 }
 
+/** ------------------------------------ leave types, as HR sets them up. FR 31, FR 32, LMS 501 */
+
+export type CountingBasis = 'WORKING_DAYS' | 'CALENDAR_DAYS';
+export type EntitlementBasis = 'QUOTA' | 'EVENT';
+export type AllowanceUnit = 'DAYS' | 'WEEKS' | 'MONTHS';
+export type DocumentationRule = 'NOT_REQUIRED' | 'ALWAYS' | 'AFTER_DAYS';
+/** FR 05. Null is no restriction, which is most types. */
+export type GenderRestriction = 'MALE' | 'FEMALE' | null;
+
+/**
+ * One value of a closed set, with the words that go beside it.
+ *
+ * The labels come down the wire rather than being written here, for the reason the server's
+ * `countingBasisLabel` gives about itself: the file that defines a basis is the file that
+ * decides what it is called, and a second copy in a browser is one that eventually disagrees.
+ */
+export interface Choice<T> {
+  value: T;
+  label: string;
+  /** FR 22. What the basis costs, in full. Only the counting bases carry one. */
+  inWords?: string;
+}
+
+/** Every control on the form, and what may go in it. */
+export interface LeaveTypeChoices {
+  countingBases: Choice<CountingBasis>[];
+  entitlementBases: Choice<EntitlementBasis>[];
+  units: Choice<AllowanceUnit>[];
+  documentationRules: Choice<DocumentationRule>[];
+  genderRestrictions: Choice<GenderRestriction>[];
+  /** FR 38a. */
+  approvers: Choice<Desk>[];
+}
+
+/** A leave type as the screen that edits it sees one. FR 31, FR 32. */
+export interface ConfiguredLeaveType {
+  id: string;
+  /** The handle reports and imports join on. Never branched on. */
+  code: string;
+  name: string;
+  description: string | null;
+
+  /** FR 21. */
+  countingBasis: CountingBasis;
+  countingBasisLabel: string;
+  countingBasisInWords: string;
+
+  /** FR 32g. */
+  entitlementBasis: EntitlementBasis;
+  entitlementBasisLabel: string;
+
+  isPaid: boolean;
+  /** FR 24. How the allowance is said, never how it is counted. */
+  unit: AllowanceUnit;
+  unitLabel: string;
+
+  /** FR 13. */
+  documentation: DocumentationRule;
+  documentationLabel: string;
+  documentationAfterDays: number | null;
+  /** FR 32a. Whether going past the allowance asks for evidence rather than refusing. */
+  exceedableWithDocument: boolean;
+  /** FR 32e. How long an unused grant lasts. Not carry over. */
+  entitlementExpiryMonths: number | null;
+
+  mayBeSplit: boolean;
+  /** FR 17, FR 18. Calendar days; zero means no window. */
+  minNoticeCalendarDays: number;
+  maxBackdateCalendarDays: number;
+
+  genderRestriction: GenderRestriction;
+  genderRestrictionLabel: string;
+  /** FR 10. */
+  reasonRequired: boolean;
+  /** FR 33. Shown, never set: it is false forever. */
+  deductsFromAnnual: boolean;
+
+  /** FR 38a. */
+  approvalChain: Desk[];
+  approvedBy: string;
+
+  /** §7.4. The order the balance screen and the request form list them in. */
+  displayOrder: number;
+  /** A retired type is still readable and still heads every report it ever did. */
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * What a new type is unless the person says otherwise. FR 32.
+ *
+ * On the wire rather than written here, because these are the values the server would apply
+ * anyway: a create form drawing its controls at its own guesses would show one thing and save
+ * another. `countingBasis` and `entitlementBasis` are deliberately absent — they have no
+ * default and are refused when missing, so the form makes somebody choose.
+ */
+export interface LeaveTypeDefaults {
+  isPaid: boolean;
+  unit: AllowanceUnit;
+  documentation: DocumentationRule;
+  documentationAfterDays: number | null;
+  exceedableWithDocument: boolean;
+  entitlementExpiryMonths: number | null;
+  mayBeSplit: boolean;
+  minNoticeCalendarDays: number;
+  maxBackdateCalendarDays: number;
+  genderRestriction: GenderRestriction;
+  reasonRequired: boolean;
+  displayOrder: number;
+  approvalChain: Desk[];
+}
+
+export interface LeaveTypeSettings {
+  types: ConfiguredLeaveType[];
+  choices: LeaveTypeChoices;
+  defaults: LeaveTypeDefaults;
+}
+
+/**
+ * What the form sends. FR 31, FR 32.
+ *
+ * Every field optional, and that is the PATCH: a field left out is unchanged, where a field
+ * sent as null is cleared. The two are different instructions all the way down to the UPDATE.
+ */
+export interface LeaveTypeFields {
+  code?: string;
+  name?: string;
+  description?: string | null;
+  countingBasis?: CountingBasis;
+  entitlementBasis?: EntitlementBasis;
+  isPaid?: boolean;
+  unit?: AllowanceUnit;
+  documentation?: DocumentationRule;
+  documentationAfterDays?: number | null;
+  exceedableWithDocument?: boolean;
+  entitlementExpiryMonths?: number | null;
+  mayBeSplit?: boolean;
+  minNoticeCalendarDays?: number;
+  maxBackdateCalendarDays?: number;
+  genderRestriction?: GenderRestriction;
+  reasonRequired?: boolean;
+  displayOrder?: number;
+  /** FR 38a. Only on a create; changing it afterwards is {@link setApprovalChain}. */
+  approvalChain?: Desk[];
+}
+
+/**
+ * Every type there is, retired ones included, with the vocabulary the form needs.
+ *
+ * Reading is open to anybody signed in — the person who most needs to know a notice window is
+ * the one about to miss it — so this route answers for everybody. Every write below is refused
+ * for anybody but an HR Administrator, with the server's own sentence.
+ */
+export async function leaveTypes(): Promise<LeaveTypeSettings> {
+  return request<LeaveTypeSettings>('GET', '/api/leave-types');
+}
+
+export async function createLeaveType(fields: LeaveTypeFields): Promise<ConfiguredLeaveType> {
+  return request<ConfiguredLeaveType>('POST', '/api/leave-types', fields);
+}
+
+/** Changes one. Only what is sent changes. FR 32, FR 33. */
+export async function editLeaveType(
+  id: string,
+  fields: LeaveTypeFields,
+): Promise<ConfiguredLeaveType> {
+  return request<ConfiguredLeaveType>(
+    'PATCH',
+    `/api/leave-types/${encodeURIComponent(id)}`,
+    fields,
+  );
+}
+
+/**
+ * Says who approves leave of this kind, in order. FR 38a.
+ *
+ * Its own call rather than a field on the edit, because it is its own table and its own
+ * refusals — a chain naming the same desk twice is refused with a sentence about the chain.
+ */
+export async function setApprovalChain(id: string, chain: Desk[]): Promise<ConfiguredLeaveType> {
+  return request<ConfiguredLeaveType>(
+    'PUT',
+    `/api/leave-types/${encodeURIComponent(id)}/approval-chain`,
+    { approvalChain: chain },
+  );
+}
+
+/** Takes it out of use. There is no delete: the type heads every report it ever headed. */
+export async function retireLeaveType(id: string): Promise<ConfiguredLeaveType> {
+  return request<ConfiguredLeaveType>('POST', `/api/leave-types/${encodeURIComponent(id)}/retire`);
+}
+
+export async function reinstateLeaveType(id: string): Promise<ConfiguredLeaveType> {
+  return request<ConfiguredLeaveType>(
+    'POST',
+    `/api/leave-types/${encodeURIComponent(id)}/reinstate`,
+  );
+}
+
 /** Who the session belongs to. */
 export interface Me {
   employeeId: string;
