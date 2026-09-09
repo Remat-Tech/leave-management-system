@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { type BalanceLine, isNotSignedIn, myBalances, type Statement, type Year } from '../../api';
 import { days, period } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
+import { Notice, type Problem, problemFrom } from '../../problem';
 
 /** My balances. FR 53, LMS 401, FR 32g. */
 export function BalancesPage({
@@ -15,7 +16,7 @@ export function BalancesPage({
   onYears: (years: Year[], showing: string) => void;
 }) {
   const [statement, setStatement] = useState<Statement | undefined>(undefined);
-  const [problem, setProblem] = useState<string | undefined>(undefined);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(
@@ -34,8 +35,8 @@ export function BalancesPage({
             return;
           }
 
-          /** The server's own sentence, verbatim. NFR USA 03. */
-          setProblem(error instanceof Error ? error.message : 'Something went wrong.');
+          /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
+          setProblem(problemFrom(error));
         })
         .finally(() => {
           setLoading(false);
@@ -50,7 +51,20 @@ export function BalancesPage({
 
   if (statement === undefined) {
     return (
-      <div className="page">{loading ? <Skeletons /> : <p className="notice">{problem}</p>}</div>
+      <div className="page">
+        {loading ? (
+          <Skeletons />
+        ) : problem === undefined ? null : (
+          /* LMS 410. Nothing is on screen, so the way out has to be on the notice. */
+          <Notice
+            problem={problem}
+            retrying={loading}
+            onRetry={() => {
+              load(yearId);
+            }}
+          />
+        )}
+      </div>
     );
   }
 
@@ -63,7 +77,15 @@ export function BalancesPage({
         </p>
       </div>
 
-      {problem === undefined ? null : <p className="notice">{problem}</p>}
+      {problem === undefined ? null : (
+        <Notice
+          problem={problem}
+          retrying={loading}
+          onRetry={() => {
+            load(yearId);
+          }}
+        />
+      )}
 
       <ul className="cards">
         {statement.lines.map((line) => (

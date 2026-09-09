@@ -145,8 +145,8 @@ export function problemInABatch(
  * The refusals a leave request can meet, and the status each is answered with. LMS 403.
  *
  * Every one of these is a well formed request that a rule says no to. Without this table they
- * fall through to {@link unexpected} and reach the browser as "Something went wrong. It has
- * been logged." — which is the exact failure LMS 403 is written against, because each of them
+ * fall through to {@link unexpected} and reach the browser as "Something went wrong at our
+ * end" — which is the exact failure LMS 403 is written against, because each of them
  * already carries the sentence that tells somebody what to do instead. `LeaveCrossesAYearEnd`
  * names the two dates to submit; `NotEnoughDays` names how many days could be asked for;
  * `TooLateToRecord` names who can still enter it. Throwing that away and logging a stack
@@ -306,12 +306,21 @@ export function answerProblems(log: FailureLog = failuresToStderr()) {
   };
 }
 
+/**
+ * The one refusal nobody wrote a sentence for, so it is written here. LMS 410.
+ *
+ * "It has been logged" told the reader nothing to do. This says whose fault it is and the two
+ * acts that are theirs. It does not promise nothing was saved — a five hundred can be thrown
+ * after a write, and this handler cannot check.
+ */
 function unexpected(): { status: number; body: Problem } {
   return {
     status: 500,
     body: {
       error: 'Unexpected',
-      message: 'Something went wrong. It has been logged.',
+      message:
+        'Something went wrong at our end, and it has been logged. Try again in a minute — ' +
+        'and if it keeps happening, tell IT roughly when you tried, so they can find it.',
     },
   };
 }

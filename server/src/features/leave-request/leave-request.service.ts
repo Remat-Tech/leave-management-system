@@ -72,6 +72,7 @@ import {
   LeaveRequestNotFound,
   LeaveOverlapsAnother,
   type NewLeaveRequest,
+  NotEnoughDays,
   NothingLeftToGiveBack,
   noticeGiven,
   NothingToOverturn,
@@ -114,12 +115,14 @@ import type { LeaveRequestListOptions, LeaveRequestRepository } from './leave-re
 import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
 import type { OrganisationRepository } from '../organisation/organisation.db.js';
+import { BalanceOverdrawn } from '../balance/balance.js';
 import type {
   BalanceService,
   LeaveApproved,
   LeaveReleased,
   LeaveRequested,
   LeaveRerouted,
+  RequestToSubmit,
   WithdrawalAnswered,
   WithdrawalAsked,
 } from '../balance/balance.service.js';
@@ -434,7 +437,7 @@ export class LeaveRequestService {
       available,
     });
 
-    const submitted = await this.balances.reserveForRequest(actor, {
+    const submitted = await this.reserve(actor, type, period, {
       request,
       reason: reasonForReservation(type.name, period, count.days),
       /* FR 13, LMS 311. The files go onto the request in the same transaction as the row,
@@ -468,6 +471,32 @@ export class LeaveRequestService {
     });
 
     return submitted;
+  }
+
+  /**
+   * Holds the days, and says the lock's refusal in the submission's words. FR 14, LMS 410.
+   *
+   * `daysToReserve` is still the check that binds; nothing here weakens it. What changes is who
+   * the refusal is addressed to. {@link BalanceOverdrawn} is composed inside the lock from days
+   * and a balance, so it names no leave type and nothing to do. {@link NotEnoughDays} is the
+   * same fact with the type and period in hand. Only this path translates — the door keeps its
+   * own refusal for every other caller.
+   */
+  private async reserve(
+    actor: Actor,
+    type: LeaveType,
+    period: LeavePeriod,
+    submission: RequestToSubmit,
+  ): Promise<LeaveRequested> {
+    try {
+      return await this.balances.reserveForRequest(actor, submission);
+    } catch (error) {
+      if (error instanceof BalanceOverdrawn) {
+        throw new NotEnoughDays(type, period, error.requested, error.available);
+      }
+
+      throw error;
+    }
   }
 
   /**

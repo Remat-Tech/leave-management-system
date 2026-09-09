@@ -13,6 +13,7 @@ import {
 } from '../../api';
 import { days, inDays, period, sentenceCase } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
+import { Notice, type Problem, problemFrom } from '../../problem';
 import { Evidence } from './Attachments';
 
 /**
@@ -24,6 +25,9 @@ import { Evidence } from './Attachments';
  * the validator if it is ever a rule rather than a courtesy.
  */
 const REASON_LIMIT = 500;
+
+/** LMS 410. What an input the refusal named points a screen reader at. */
+const REFUSAL_ID = 'ask-refusal';
 
 /**
  * Asking for leave, told the rules while you fill it in. FR 10, FR 11, FR 13, FR 17, FR 32f, LMS 403, LMS 307.
@@ -46,7 +50,7 @@ const REASON_LIMIT = 500;
  */
 export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [form, setForm] = useState<RequestForm | undefined>(undefined);
-  const [problem, setProblem] = useState<string | undefined>(undefined);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
 
   const [leaveTypeId, setLeaveTypeId] = useState('');
   const [from, setFrom] = useState('');
@@ -64,11 +68,11 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [evidence, setEvidence] = useState<string[]>([]);
 
   const [quote, setQuote] = useState<Quote | undefined>(undefined);
-  const [quoteProblem, setQuoteProblem] = useState<string | undefined>(undefined);
+  const [quoteProblem, setQuoteProblem] = useState<Problem | undefined>(undefined);
   const [pricing, setPricing] = useState(false);
 
   const [asking, setAsking] = useState(false);
-  const [refusal, setRefusal] = useState<string | undefined>(undefined);
+  const [refusal, setRefusal] = useState<Problem | undefined>(undefined);
   const [submitted, setSubmitted] = useState<Submitted | undefined>(undefined);
 
   /**
@@ -81,7 +85,9 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
    */
   const asked = useRef(0);
 
-  useEffect(() => {
+  const openForm = useCallback(() => {
+    setProblem(undefined);
+
     requestForm()
       .then((next) => {
         setForm(next);
@@ -92,10 +98,12 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
           return;
         }
 
-        /** The server's own sentence, verbatim. NFR USA 03. */
-        setProblem(error instanceof Error ? error.message : 'Something went wrong.');
+        /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
+        setProblem(problemFrom(error));
       });
   }, [onSignedOut]);
+
+  useEffect(openForm, [openForm]);
 
   /**
    * The cost, re-asked whenever the question changes. The story's first criterion.
@@ -147,7 +155,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
              sentence the domain wrote, naming what to do instead. The old figure goes:
              showing a cost beside a refusal would be two answers to one question. */
           setQuote(undefined);
-          setQuoteProblem(error instanceof Error ? error.message : 'Something went wrong.');
+          setQuoteProblem(problemFrom(error));
         })
         .finally(() => {
           if (mine === asked.current) {
@@ -185,7 +193,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
           return;
         }
 
-        setRefusal(error instanceof Error ? error.message : 'Something went wrong.');
+        setRefusal(problemFrom(error));
       })
       .finally(() => {
         setAsking(false);
@@ -209,7 +217,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
   if (form === undefined) {
     return (
       <div className="page">
-        {problem === undefined ? <Skeleton /> : <p className="notice">{problem}</p>}
+        {problem === undefined ? <Skeleton /> : <Notice problem={problem} onRetry={openForm} />}
       </div>
     );
   }
@@ -223,6 +231,16 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
       </div>
     );
   }
+
+  /**
+   * The input the refusal is about, where it named one. LMS 410.
+   *
+   * `field` has been on the wire since LMS 401 and nothing read it, so a refusal about the last
+   * day sat under the button with both dates looking equally fine.
+   */
+  const badField = refusal?.field;
+  const marks = (field: string) =>
+    badField !== field ? {} : { 'aria-invalid': true, 'aria-describedby': REFUSAL_ID };
 
   return (
     <div className="page">
@@ -278,6 +296,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
                   min={earliestEntry(chosen)}
                   disabled={asking}
                   required
+                  {...marks('from')}
                   onChange={(event) => {
                     const day = event.target.value;
                     setFrom(day);
@@ -303,6 +322,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
                   min={from === '' ? undefined : from}
                   disabled={asking}
                   required
+                  {...marks('to')}
                   onChange={(event) => {
                     setTo(event.target.value);
                   }}
@@ -321,6 +341,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
                 disabled={asking}
                 required={chosen === undefined || chosen.reasonRequired}
                 placeholder={placeholderFor(chosen)}
+                {...marks('reason')}
                 onChange={(event) => {
                   setReason(event.target.value);
                 }}
@@ -366,7 +387,12 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
               </label>
             )}
 
-            {refusal === undefined ? null : <p className="notice">{refusal}</p>}
+            {/* LMS 410. The retry is offered only where trying again could come out
+                differently — a dropped connection or a fault at our end. A rule that said no
+                is not answered by pressing submit twice. */}
+            {refusal === undefined ? null : (
+              <Notice problem={refusal} id={REFUSAL_ID} retrying={asking} onRetry={ask} />
+            )}
 
             <button type="submit" className="primary is-big" disabled={asking}>
               {asking ? 'Submitting…' : 'Submit request'}
@@ -465,15 +491,17 @@ function Cost({
   waitingForDates,
 }: {
   quote: Quote | undefined;
-  problem: string | undefined;
+  problem: Problem | undefined;
   pricing: boolean;
   type: RequestableLeaveType | undefined;
   waitingForDates: boolean;
 }) {
   if (problem !== undefined) {
+    /* No retry: the quote re-asks itself the moment either date moves, so a button here would
+       be a second way to do what changing a date already does. */
     return (
       <aside className="cost">
-        <p className="notice">{problem}</p>
+        <Notice problem={problem} />
       </aside>
     );
   }

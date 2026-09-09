@@ -2626,11 +2626,13 @@ function readReason(value: unknown, required: boolean): string | null {
   const said = typeof value === 'string' ? value.trim() : '';
 
   if (said === '' && required) {
+    /* LMS 410. The third sentence is the act. An explanation is being asked for, not a value. */
     throw new InvalidLeaveRequest(
       'reason',
       'This kind of leave says why. Whoever decides it is being asked to agree to ' +
         'something they have no entitlement to weigh it against, and a request with ' +
-        'nothing against it asks them to agree to it blind.',
+        'nothing against it asks them to agree to it blind. Say what the leave is for, ' +
+        'in enough detail for somebody who does not already know.',
     );
   }
 

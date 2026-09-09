@@ -43,9 +43,22 @@ const YEAR_SCOPED = new Set<Screen>(['balances', 'calendar']);
 
 const DEFAULT_SCREEN: Screen = 'balances';
 
+/**
+ * What somebody is told when the session ran out under them. NFR USA 03, LMS 410.
+ *
+ * Every screen answers a 401 by dropping back here, and used to do it in silence — a half
+ * filled form replaced by a sign in box with no account of why. It does not promise what was
+ * typed survived; it did not.
+ */
+const SESSION_ENDED =
+  'You were signed out because your session ran out. Sign in again to carry on — anything ' +
+  'you had already submitted is safe, but a form you were part way through is not.';
+
 export function App() {
   const [me, setMe] = useState<Me | undefined>(undefined);
   const [asked, setAsked] = useState(false);
+  /** LMS 410. Set only where the session ended on its own, never where somebody signed out. */
+  const [ended, setEnded] = useState<string | undefined>(undefined);
 
   /**
    * The leave year, held here rather than on each screen. LMS 409.
@@ -69,7 +82,10 @@ export function App() {
 
   const ask = useCallback(() => {
     currentSession()
-      .then(setMe)
+      .then((who) => {
+        setMe(who);
+        setEnded(undefined);
+      })
       .catch(() => {
         setMe(undefined);
       })
@@ -80,8 +96,16 @@ export function App() {
 
   useEffect(ask, [ask]);
 
+  /** Signing out on purpose. Nothing went wrong, so nothing is said. */
   const forget = useCallback(() => {
     setMe(undefined);
+    setEnded(undefined);
+  }, []);
+
+  /** LMS 410. What every screen calls on a 401. Not the same act as signing out. */
+  const ranOut = useCallback(() => {
+    setMe(undefined);
+    setEnded(SESSION_ENDED);
   }, []);
 
   /**
@@ -103,7 +127,7 @@ export function App() {
   }
 
   if (me === undefined) {
-    return <SignIn onSignedIn={ask} />;
+    return <SignIn onSignedIn={ask} ended={ended} />;
   }
 
   const here = SCREENS.find((one) => one.id === screen) ?? SCREENS[0];
@@ -190,15 +214,17 @@ export function App() {
           </div>
         </div>
 
+        {/* LMS 410. `ranOut` rather than `forget`: a screen reaches this on a 401, which is a
+            session ending under somebody rather than a person leaving. */}
         {screen === 'balances' ? (
-          <BalancesPage onSignedOut={forget} yearId={yearId} onYears={yearsKnown} />
+          <BalancesPage onSignedOut={ranOut} yearId={yearId} onYears={yearsKnown} />
         ) : null}
-        {screen === 'ask' ? <NewRequestPage onSignedOut={forget} /> : null}
-        {screen === 'requests' ? <RequestsPage onSignedOut={forget} /> : null}
+        {screen === 'ask' ? <NewRequestPage onSignedOut={ranOut} /> : null}
+        {screen === 'requests' ? <RequestsPage onSignedOut={ranOut} /> : null}
         {screen === 'calendar' ? (
-          <CalendarPage onSignedOut={forget} yearId={yearId} onYears={yearsKnown} />
+          <CalendarPage onSignedOut={ranOut} yearId={yearId} onYears={yearsKnown} />
         ) : null}
-        {screen === 'approvals' ? <ApprovalsPage onSignedOut={forget} /> : null}
+        {screen === 'approvals' ? <ApprovalsPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );

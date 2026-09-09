@@ -623,6 +623,28 @@ export function isNotSignedIn(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401;
 }
 
+/** The status a request that never got an answer carries. Nought: there was no response. */
+export const UNREACHABLE = 0;
+
+/**
+ * Every call this file makes, with a dropped connection given a sentence. LMS 410.
+ *
+ * `fetch` rejects with a `TypeError` reading "Failed to fetch", which is what the screens used
+ * to show — the one failure here with no sentence behind it. It does not claim the request was
+ * not received: a connection can drop after the server has read it.
+ */
+async function send(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init);
+  } catch {
+    throw new ApiError(
+      UNREACHABLE,
+      'Unreachable',
+      'Could not reach the server. Check your connection, then try again.',
+    );
+  }
+}
+
 /** Who the session belongs to, or a 401 where there is no usable one. */
 export async function currentSession(): Promise<Me> {
   return request<Me>('GET', '/api/me');
@@ -993,7 +1015,7 @@ export async function attachToRequest(requestId: string, file: File): Promise<At
 
 /** The one shape both uploads have: bytes as the body, name in a header. FR 12. */
 async function upload(path: string, file: File): Promise<Attachment> {
-  const response = await fetch(path, {
+  const response = await send(path, {
     method: 'POST',
     credentials: 'same-origin',
     headers: {
@@ -1101,7 +1123,7 @@ export async function fetchAttachment(
 ): Promise<{ blob: Blob; filename: string }> {
   const link = await downloadLinkFor(requestId, attachmentId);
 
-  const response = await fetch(link.url, { method: 'GET', credentials: 'same-origin' });
+  const response = await send(link.url, { method: 'GET', credentials: 'same-origin' });
 
   if (!response.ok) {
     throw errorFrom(response.status, await response.json().catch(() => undefined));
@@ -1111,7 +1133,7 @@ export async function fetchAttachment(
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
+  const response = await send(path, {
     method,
     /* Sends the HttpOnly session cookie. Same-origin rather than include, because the API
        is proxied onto this origin — see client/vite.config.ts — and `include` would be
@@ -1150,9 +1172,11 @@ function errorFrom(status: number, payload: unknown): ApiError {
   return new ApiError(
     status,
     typeof body.error === 'string' ? body.error : 'Unexpected',
+    /* LMS 410. Nothing upstream wrote this one, so it says the act as well as the fault. */
     typeof body.message === 'string'
       ? body.message
-      : 'Something went wrong, and the server did not say what.',
+      : 'Something went wrong and the server did not say what. Try again in a minute, and ' +
+          'tell IT roughly when you tried if it keeps happening.',
     typeof body.field === 'string' ? body.field : undefined,
   );
 }
