@@ -782,6 +782,155 @@ export async function reinstateLeaveType(id: string): Promise<ConfiguredLeaveTyp
   );
 }
 
+/** ------------------------- what a leave type is worth, and from when. FR 31, LMS 502 */
+
+/** How narrowly a rule is aimed, and therefore which one wins. */
+export type RuleScope = 'EVERYBODY' | 'DEPARTMENT' | 'EMPLOYEE';
+
+/** One effective dated figure, as the screen that edits it sees one. FR 31. */
+export interface EntitlementRule {
+  id: string;
+  leaveTypeId: string;
+  leaveTypeName: string;
+
+  scope: RuleScope;
+  scopeLabel: string;
+  /** Null on anything but a rule aimed at that rung. */
+  employeeId: string | null;
+  departmentId: string | null;
+  /** Who it is for, named, in the server's words. */
+  who: string;
+
+  /** FR 24. Whole days. */
+  entitlementDays: number;
+  prorateOnJoin: boolean;
+
+  carriesOver: boolean;
+  carryoverMaxDays: number | null;
+  /** 1 to 12, or null where carried days never expire. */
+  carryoverExpiryMonth: number | null;
+  carryoverInWords: string;
+
+  /** Ten characters. */
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  periodInWords: string;
+  note: string | null;
+
+  /**
+   * FR 31. Whether it is still a draft, and the sentence saying why not.
+   *
+   * The whole of the story's second criterion: a rule that has taken effect is history and
+   * the next figure is another rule, from a later date. The refusal is the server's — this
+   * only decides which button is greyed.
+   */
+  mayBeChanged: boolean;
+  fixedBecause: string | null;
+  inForce: boolean;
+  inWords: string;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RuleLeaveType {
+  id: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface RuleDepartment {
+  id: string;
+  name: string;
+}
+
+export interface RulePerson {
+  id: string;
+  name: string;
+  departmentId: string;
+}
+
+/** What a new rule is unless the person says otherwise. On the wire, as LMS 501's are. */
+export interface EntitlementRuleDefaults {
+  entitlementDays: number;
+  prorateOnJoin: boolean;
+  carriesOver: boolean;
+  carryoverMaxDays: number | null;
+  carryoverExpiryMonth: number | null;
+  effectiveTo: string | null;
+  note: string | null;
+}
+
+export interface EntitlementRuleSettings {
+  /** Latest starting date first. */
+  rules: EntitlementRule[];
+  leaveTypes: RuleLeaveType[];
+  departments: RuleDepartment[];
+  employees: RulePerson[];
+  scopes: Choice<RuleScope>[];
+  defaults: EntitlementRuleDefaults;
+  /** The server's day, in UTC, which is what "already in force" is judged against. */
+  today: string;
+  /** FR 31. The earliest day a rule may start from, or null where nothing is closed. */
+  earliestOpenDay: string | null;
+  closedYearsInWords: string;
+}
+
+/** What the form sends. A field left out is unchanged; a field sent as null is cleared. */
+export interface EntitlementRuleFields {
+  leaveTypeId?: string;
+  employeeId?: string | null;
+  departmentId?: string | null;
+  entitlementDays?: number;
+  prorateOnJoin?: boolean;
+  carriesOver?: boolean;
+  carryoverMaxDays?: number | null;
+  carryoverExpiryMonth?: number | null;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  note?: string | null;
+}
+
+/**
+ * Every rule there is, with the vocabulary the form needs. FR 31.
+ *
+ * Refused with a 403 for anybody who does not read every record — the rules include personal
+ * arrangements — and the screen shows the server's own sentence.
+ */
+export async function entitlementRules(leaveTypeId?: string): Promise<EntitlementRuleSettings> {
+  const query = leaveTypeId === undefined ? '' : `?leaveTypeId=${encodeURIComponent(leaveTypeId)}`;
+
+  return request<EntitlementRuleSettings>('GET', `/api/entitlement-rules${query}`);
+}
+
+/**
+ * Adds a rule. FR 31.
+ *
+ * The only way a figure ever changes: a new rule from a later date, never an edit to one
+ * that has already applied. Refused where the date reaches into a closed leave year.
+ */
+export async function addEntitlementRule(fields: EntitlementRuleFields): Promise<EntitlementRule> {
+  return request<EntitlementRule>('POST', '/api/entitlement-rules', fields);
+}
+
+/** Corrects a rule that has not started yet. Only what is sent changes. */
+export async function editEntitlementRule(
+  id: string,
+  fields: EntitlementRuleFields,
+): Promise<EntitlementRule> {
+  return request<EntitlementRule>(
+    'PATCH',
+    `/api/entitlement-rules/${encodeURIComponent(id)}`,
+    fields,
+  );
+}
+
+/** Removes a rule that never applied to anybody. */
+export async function withdrawEntitlementRule(id: string): Promise<void> {
+  await request<void>('DELETE', `/api/entitlement-rules/${encodeURIComponent(id)}`);
+}
+
 /** Who the session belongs to. */
 export interface Me {
   employeeId: string;

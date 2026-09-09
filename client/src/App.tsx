@@ -3,6 +3,7 @@ import { currentSession, type Me, signOut, type Year } from './api';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { BalancesPage } from './features/balances/BalancesPage';
 import { CalendarPage } from './features/calendar/CalendarPage';
+import { EntitlementRulesPage } from './features/config/EntitlementRulesPage';
 import { LeaveTypesPage } from './features/config/LeaveTypesPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
 import { RequestsPage } from './features/requests/RequestsPage';
@@ -44,6 +45,18 @@ const SCREENS = [
    * somebody's roles would be a second answer to a question the server owns.
    */
   { id: 'leave-types', label: 'Leave types', icon: 'settings' },
+  /**
+   * FR 31, LMS 502. What each of those types is worth, and from when.
+   *
+   * Its own screen rather than a panel on the one above, because it is a different kind of
+   * record: a leave type is edited in place, and an entitlement figure is never edited at
+   * all — it is superseded by a rule from a later date, and both stay.
+   *
+   * Offered to everybody for the reason the tab above is, though this one's *reading* is HR's:
+   * the rules include personal arrangements, and somebody without the standing gets the
+   * server's own sentence rather than a tab that quietly is not there.
+   */
+  { id: 'entitlements', label: 'Entitlements', icon: 'balances' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -236,6 +249,7 @@ export function App() {
         ) : null}
         {screen === 'approvals' ? <ApprovalsPage onSignedOut={ranOut} /> : null}
         {screen === 'leave-types' ? <LeaveTypesPage onSignedOut={ranOut} /> : null}
+        {screen === 'entitlements' ? <EntitlementRulesPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );
