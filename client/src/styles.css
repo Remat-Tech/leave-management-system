@@ -1590,12 +1590,39 @@ textarea:disabled {
   margin: var(--gap) 0;
 }
 
+/* LMS 410. A notice is a sentence and, where retrying is the fix, a button — so it stacks. */
+.notice > p {
+  margin: 0;
+}
+
 /* Nothing to report rather than something wrong. The stripe is for a refusal the server
    wrote; an empty history is an answer, and colouring it as a warning would tell somebody
    their perfectly ordinary first month at work had gone wrong. */
 .notice.plain {
   border-left-color: var(--line-strong);
   color: var(--ink-soft);
+}
+
+/* LMS 410. Its own line under the sentence, not wrapped into it. 44px, LMS 408. */
+.notice .retry {
+  margin-top: 0.6rem;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.notice .retry svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* LMS 410. The box a refusal named. `aria-invalid` carries it; the colour only says where. */
+input[aria-invalid='true'],
+textarea[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--warn);
+  outline-color: var(--warn);
 }
 
 .centred {

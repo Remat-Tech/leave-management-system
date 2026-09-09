@@ -623,24 +623,15 @@ export function isNotSignedIn(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401;
 }
 
-/**
- * The status a request that never got an answer carries. LMS 410.
- *
- * Nought because there was no response to take one from, and it is a number rather than a
- * second failure type so that everything downstream has one shape to read.
- */
+/** The status a request that never got an answer carries. Nought: there was no response. */
 export const UNREACHABLE = 0;
 
 /**
  * Every call this file makes, with a dropped connection given a sentence. LMS 410.
  *
- * `fetch` rejects rather than resolving when the request never completes — a sleeping laptop,
- * office wifi, a server that is not answering — and what it rejects with is a `TypeError`
- * reading "Failed to fetch". That is written for whoever is writing the browser, and it was
- * what the screens showed: the one failure in the application with no sentence behind it.
- *
- * It deliberately does not say the request was not received. A connection can drop after the
- * server has read it, so "nothing was saved" is a reassurance nothing here can check.
+ * `fetch` rejects with a `TypeError` reading "Failed to fetch", which is what the screens used
+ * to show — the one failure here with no sentence behind it. It does not claim the request was
+ * not received: a connection can drop after the server has read it.
  */
 async function send(path: string, init: RequestInit): Promise<Response> {
   try {
@@ -1181,8 +1172,7 @@ function errorFrom(status: number, payload: unknown): ApiError {
   return new ApiError(
     status,
     typeof body.error === 'string' ? body.error : 'Unexpected',
-    /* LMS 410. The one message here nothing upstream wrote, so it says the act as well as
-       the fault — everything a proxy or a crash produces this from arrives with neither. */
+    /* LMS 410. Nothing upstream wrote this one, so it says the act as well as the fault. */
     typeof body.message === 'string'
       ? body.message
       : 'Something went wrong and the server did not say what. Try again in a minute, and ' +

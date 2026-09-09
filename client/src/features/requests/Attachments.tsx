@@ -14,6 +14,7 @@ import {
   rescanEvidence,
 } from '../../api';
 import { Icon } from '../../Icon';
+import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
  * Uploading a certificate, and reading one back. FR 12, FR 13, NFR SEC 04, NFR SEC 07. LMS 407.
@@ -52,14 +53,10 @@ export function AttachedFiles({
   onSignedOut: () => void;
 }) {
   const [held, setHeld] = useState<Attachments | undefined>(undefined);
-  const [problem, setProblem] = useState<string | undefined>(undefined);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [opened, setOpened] = useState(false);
 
-  useEffect(() => {
-    if (!opened) {
-      return;
-    }
-
+  const look = useCallback(() => {
     attachmentsOn(requestId)
       .then((next) => {
         setHeld(next);
@@ -71,9 +68,15 @@ export function AttachedFiles({
           return;
         }
 
-        setProblem(error instanceof Error ? error.message : 'Something went wrong.');
+        setProblem(problemFrom(error));
       });
-  }, [opened, requestId, onSignedOut]);
+  }, [requestId, onSignedOut]);
+
+  useEffect(() => {
+    if (opened) {
+      look();
+    }
+  }, [opened, look]);
 
   return (
     <details
@@ -87,7 +90,7 @@ export function AttachedFiles({
         {held === undefined ? '' : ` (${String(held.attachments.length)})`}
       </summary>
 
-      {problem === undefined ? null : <p className="notice">{problem}</p>}
+      {problem === undefined ? null : <Notice problem={problem} onRetry={look} />}
 
       {held === undefined ? (
         problem === undefined ? (
@@ -124,7 +127,7 @@ function FileOnARequest({
   onSignedOut: () => void;
 }) {
   const [opening, setOpening] = useState(false);
-  const [refusal, setRefusal] = useState<string | undefined>(undefined);
+  const [refusal, setRefusal] = useState<Problem | undefined>(undefined);
 
   const open = useCallback(() => {
     setOpening(true);
@@ -138,7 +141,7 @@ function FileOnARequest({
           return;
         }
 
-        setRefusal(error instanceof Error ? error.message : 'Something went wrong.');
+        setRefusal(problemFrom(error));
       })
       .finally(() => {
         setOpening(false);
@@ -161,7 +164,11 @@ function FileOnARequest({
         <span className="tag flag">Being checked for viruses</span>
       )}
 
-      {refusal === undefined ? null : <p className="notice">{refusal}</p>}
+      {/* NFR SEC 04, LMS 407. A link is meant to stop working, so the retry is the whole
+          answer here: pressing Download again mints a new one. */}
+      {refusal === undefined ? null : (
+        <Notice problem={refusal} retrying={opening} onRetry={open} />
+      )}
     </li>
   );
 }
@@ -186,7 +193,7 @@ export function Evidence({
   onSignedOut: () => void;
 }) {
   const [waiting, setWaiting] = useState<EvidenceWaiting | undefined>(undefined);
-  const [problem, setProblem] = useState<string | undefined>(undefined);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
   /** One place the answer lands, so the ids the form sends and the list drawn agree. */
@@ -206,15 +213,17 @@ export function Evidence({
         return;
       }
 
-      /** The server's own sentence, verbatim — it names the fix. NFR USA 03. */
-      setProblem(error instanceof Error ? error.message : 'Something went wrong.');
+      /** The server's own sentence, verbatim — it names the fix. NFR USA 03, LMS 410. */
+      setProblem(problemFrom(error));
     },
     [onSignedOut],
   );
 
-  useEffect(() => {
+  const read = useCallback(() => {
     evidenceWaiting().then(took).catch(failed);
   }, [took, failed]);
+
+  useEffect(read, [read]);
 
   /** Uploads, then re-reads: what is waiting is the server's answer, not a list kept here. */
   const upload = useCallback(
@@ -288,7 +297,15 @@ export function Evidence({
         </span>
       </label>
 
-      {problem === undefined ? null : <p className="notice">{problem}</p>}
+      {/* LMS 410. Offered only while nothing has been read at all — after a failed upload the
+          fix is the dropzone above, and a button re-reading a list would point at the wrong act. */}
+      {problem === undefined ? null : (
+        <Notice
+          problem={problem}
+          retrying={busy}
+          onRetry={waiting === undefined ? read : undefined}
+        />
+      )}
 
       {held.length === 0 ? null : (
         <>

@@ -1,13 +1,21 @@
 import { type FormEvent, useState } from 'react';
 import { type CodeSent, signIn, submitCode } from '../../api';
+import { Notice, type Problem, problemFrom } from '../../problem';
 
 /** Signing in. LMS 109, LMS 110. */
-export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
+export function SignIn({
+  onSignedIn,
+  ended,
+}: {
+  onSignedIn: () => void;
+  /** LMS 410. Why this screen is showing, where nobody asked for it. Undefined on a sign out. */
+  ended?: string;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState<CodeSent | undefined>(undefined);
-  const [problem, setProblem] = useState<string | undefined>(undefined);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
   function attempt(what: Promise<unknown>, onDone: (outcome: unknown) => void): void {
@@ -16,9 +24,9 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
 
     what
       .then(onDone)
-      /** The server's own sentence, verbatim. NFR USA 03. */
+      /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
       .catch((error: unknown) => {
-        setProblem(error instanceof Error ? error.message : 'Something went wrong.');
+        setProblem(problemFrom(error));
       })
       .finally(() => {
         setBusy(false);
@@ -60,7 +68,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
             {new Date(sent.expiresAt).toLocaleTimeString()}.
           </p>
 
-          {problem === undefined ? null : <p className="notice">{problem}</p>}
+          {problem === undefined ? null : <Notice problem={problem} />}
 
           <form onSubmit={submitTheCode}>
             <label>
@@ -92,7 +100,11 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
         <h1>Sign in</h1>
         <p className="muted">Use your work email address.</p>
 
-        {problem === undefined ? null : <p className="notice">{problem}</p>}
+        {/* LMS 410. Above the refusal rather than instead of it — a session that ended and a
+            password that was wrong are two pieces of news and can both be true. */}
+        {ended === undefined ? null : <p className="notice plain">{ended}</p>}
+
+        {problem === undefined ? null : <Notice problem={problem} />}
 
         <form onSubmit={submitPassword}>
           <label>

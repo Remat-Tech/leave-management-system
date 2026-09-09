@@ -3,50 +3,38 @@
 import { ApiError, UNREACHABLE } from './api';
 import { Icon } from './Icon';
 
-/**
- * One failure, ready to draw.
- *
- * The sentence is the server's wherever there is one, and that is the arrangement rather than
- * an implementation detail: the domain knows what a leave year is, what a balance holds and
- * what a person may do about either, and every refusal in `server/src` is written to say both
- * halves — what is wrong, and what to do. A browser that reworded them would be a second
- * account of a rule, and the day the two disagree the server is right and the page has been
- * lying. So nothing here composes a message except for the two failures the server never got
- * to write one for: a call that did not arrive, and a fault in this page.
- */
+/** NFR SEC 04, LMS 407. A download link spent, expired, or never issued. */
+const LINK_IS_GONE = 410;
+
 export interface Problem {
-  /** What is wrong and what to do, in one sentence. */
+  /** What is wrong and what to do, in one sentence. The server's, wherever there is one. */
   what: string;
-  /** Which input, where the server named one, so a form can put it beside the box. */
+  /** Which input, where the server named one. */
   field: string | undefined;
   /** Whether the same act, tried again, could come out differently. */
   worthRetrying: boolean;
 }
 
 /**
- * Whatever was thrown, as something to show. LMS 410.
+ * Whatever was thrown, as something to show.
  *
- * The ten copies of `error instanceof Error ? error.message : 'Something went wrong.'` this
- * replaces each had the same hole in it, and it was the branch nobody reads: the fallback told
- * a person their leave request had failed and then declined to say anything else at all.
+ * Nothing here rewords a refusal: the domain writes both halves and a second copy would
+ * eventually disagree with it. Only the two failures the server never wrote one for are
+ * composed here — a call that did not arrive, and a fault in this page.
  *
- * **`worthRetrying` is about the act, not the mood.** A dropped connection and a fault at our
- * end are the two failures where pressing the same button again is genuinely the fix, so they
- * are the two that offer it. A rule that said no — a balance without the days in it, leave over
- * leave already booked — is not made true by asking twice, and a button offering that would be
- * telling somebody to do the one thing that cannot work.
+ * `worthRetrying` is the offline case, a fault at our end, and a spent download link, where
+ * the next press mints a new one. A rule that said no is not made true by asking twice.
  */
 export function problemFrom(error: unknown): Problem {
   if (error instanceof ApiError) {
     return {
       what: error.message,
       field: error.field,
-      worthRetrying: error.status === UNREACHABLE || error.status >= 500,
+      worthRetrying:
+        error.status === UNREACHABLE || error.status >= 500 || error.status === LINK_IS_GONE,
     };
   }
 
-  /* Not a refusal: something in this page threw. Nobody upstream wrote a sentence for it, so
-     this is the one place in the client that writes its own. */
   return {
     what:
       'This page could not finish what it was doing. Reload it and try again — and if it ' +
@@ -56,30 +44,22 @@ export function problemFrom(error: unknown): Problem {
   };
 }
 
-/**
- * A failure on the screen. LMS 410.
- *
- * `role="alert"` because a refusal that arrives after a button press is read out rather than
- * merely drawn — somebody who submitted a fortnight and is waiting to hear is exactly the
- * person a silent replacement fails.
- *
- * The button is the "what to do" made pressable, and it appears only when the caller has
- * somewhere to retry to *and* retrying could come out differently. Where it does not appear,
- * the sentence carries the act on its own, which is what every refusal in the domain is
- * written to do.
- */
+/** A failure on the screen. `role="alert"`: it arrives after a press, so it is read out. */
 export function Notice({
   problem,
   onRetry,
   retrying = false,
+  id,
 }: {
   problem: Problem;
-  /** What to do again. Left out where the act is the form still on screen. */
+  /** Left out where the act is the form still on screen. */
   onRetry?: () => void;
   retrying?: boolean;
+  /** So an input the refusal named can point at it. */
+  id?: string;
 }) {
   return (
-    <div className="notice" role="alert">
+    <div className="notice" role="alert" id={id}>
       <p>{problem.what}</p>
 
       {onRetry === undefined || !problem.worthRetrying ? null : (

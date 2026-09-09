@@ -476,16 +476,11 @@ export class LeaveRequestService {
   /**
    * Holds the days, and says the lock's refusal in the submission's words. FR 14, LMS 410.
    *
-   * `daysToReserve` is still the check that binds — see {@link assertTheDaysAreThere} — and
-   * nothing here weakens it. What changes is who the refusal is addressed to. Inside the lock
-   * there is a number of days and a balance and no leave at all, so {@link BalanceOverdrawn}
-   * says "That is 6 days against a balance of 3": the right sentence for the ledger, and one a
-   * person at a form can do nothing with. {@link NotEnoughDays} is the same fact with the type
-   * and the period in hand, so it names the kind of leave, the figure left and the number to
-   * ask for instead — which is what the person who lost the race needs and what the person who
-   * was refused a moment earlier already got.
-   *
-   * Only this path translates. The door keeps its own refusal for every other caller.
+   * `daysToReserve` is still the check that binds; nothing here weakens it. What changes is who
+   * the refusal is addressed to. {@link BalanceOverdrawn} is composed inside the lock from days
+   * and a balance, so it names no leave type and nothing to do. {@link NotEnoughDays} is the
+   * same fact with the type and period in hand. Only this path translates — the door keeps its
+   * own refusal for every other caller.
    */
   private async reserve(
     actor: Actor,

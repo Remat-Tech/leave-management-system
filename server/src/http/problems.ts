@@ -307,19 +307,11 @@ export function answerProblems(log: FailureLog = failuresToStderr()) {
 }
 
 /**
- * The one refusal nobody wrote a sentence for, and so the one that has to be written here.
- * LMS 410.
+ * The one refusal nobody wrote a sentence for, so it is written here. LMS 410.
  *
- * Every other message in this file is the domain's — it knows what went wrong and says what to
- * do about it. This one is a fault, and what the person reading it can do is bounded: they
- * cannot fix it and they should not be asked to. So the sentence says the two true things
- * there are — it is ours and it is recorded — and then the two acts that are actually theirs:
- * try again, and tell IT when. "It has been logged" on its own was neither, and a person who
- * read it had nothing to do but guess whether pressing the button again was safe.
- *
- * It deliberately does not promise that nothing was saved. A five hundred can be thrown after
- * a write as easily as before one, and a reassurance this handler cannot check is worse than
- * no reassurance: it is the sentence that stops somebody looking.
+ * "It has been logged" told the reader nothing to do. This says whose fault it is and the two
+ * acts that are theirs. It does not promise nothing was saved — a five hundred can be thrown
+ * after a write, and this handler cannot check.
  */
 function unexpected(): { status: number; body: Problem } {
   return {

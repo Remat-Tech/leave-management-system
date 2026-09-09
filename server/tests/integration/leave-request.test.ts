@@ -1085,6 +1085,35 @@ describe('a request the balance does not hold', () => {
     expect((await admin.query('SELECT count(*) FROM leave_request')).rows[0].count).toBe('0');
   });
 
+  /**
+   * And the person who loses that race is told the same thing as everybody else. LMS 410.
+   *
+   * The test above is the door being right; this is about who its sentence is addressed to.
+   * `BalanceOverdrawn` names no leave type and nothing to do, so `submit` says it again as
+   * {@link NotEnoughDays} with the door's own figures carried across.
+   *
+   * The door is replaced rather than raced: the test above already proves the race exists
+   * against a real lock, and what is under test here is only what the person is told.
+   */
+  it('and the refusal from inside the lock reaches the person in the same words', async () => {
+    const door = balances.reserveForRequest.bind(balances);
+
+    balances.reserveForRequest = () => Promise.reject(new BalanceOverdrawn(6, 3));
+
+    try {
+      const refusal = await refused(aRequest());
+
+      /* The story's second criterion: the figure the door refused against is in the
+         sentence, with the kind of leave and what to ask for instead. */
+      expect(refusal.available).toBe(3);
+      expect(refusal.requested).toBe(6);
+      expect(refusal.message).toContain('6 days of Annual Leave and you have 3 left');
+      expect(refusal.message).toContain('Ask for 3 days or fewer');
+    } finally {
+      balances.reserveForRequest = door;
+    }
+  });
+
   /** The refusal, caught, for the tests that are about what it says. */
   async function refused(input: NewLeaveRequest): Promise<NotEnoughDays> {
     const error = await requests.submit(asThemselves(), input).then(
