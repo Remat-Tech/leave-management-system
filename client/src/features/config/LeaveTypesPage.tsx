@@ -15,8 +15,8 @@ import {
   leaveTypes,
   reinstateLeaveType,
   retireLeaveType,
-  setApprovalChain,
 } from '../../api';
+import { ChainEditor, ChainInOrder } from './ChainEditor';
 import { Icon, iconForLeaveType } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
@@ -645,18 +645,29 @@ function TypeForm({
         />
       </fieldset>
 
-      {/* FR 38a. */}
+      {/* FR 38a. Set here only while the type does not exist yet — one nobody approves cannot
+          be asked for at all. Changing it afterwards is LMS 503's screen. */}
       <fieldset className="fields">
         <legend>Who approves it</legend>
 
-        <ChainEditor
-          chain={draft.approvalChain}
-          choices={settings.choices.approvers}
-          disabled={saving}
-          onChange={(approvalChain) => {
-            change({ approvalChain });
-          }}
-        />
+        {type === null ? (
+          <ChainEditor
+            chain={draft.approvalChain}
+            choices={settings.choices.approvers}
+            disabled={saving}
+            onChange={(approvalChain) => {
+              change({ approvalChain });
+            }}
+          />
+        ) : (
+          <>
+            <ChainInOrder chain={type.approvalChain} choices={settings.choices.approvers} />
+            <p className="muted">
+              Who approves it is changed on <a href="#/approval-chains">Approval chains</a>, where
+              every type's is in one place.
+            </p>
+          </>
+        )}
       </fieldset>
 
       <div className="card-actions">
@@ -669,107 +680,6 @@ function TypeForm({
         </button>
       </div>
     </form>
-  );
-}
-
-/**
- * The chain, in order, as a list rather than a set of ticks. FR 38a.
- *
- * The order is the rule — "HR then the Chief Executive" is a different policy from the
- * reverse — so a row of checkboxes would be a control that cannot say what it is for.
- */
-function ChainEditor({
-  chain,
-  choices,
-  disabled,
-  onChange,
-}: {
-  chain: Desk[];
-  choices: { value: Desk; label: string }[];
-  disabled: boolean;
-  onChange: (chain: Desk[]) => void;
-}) {
-  const nameOf = (desk: Desk): string => choices.find((one) => one.value === desk)?.label ?? desk;
-  const unused = choices.filter((one) => !chain.includes(one.value));
-
-  const move = (at: number, by: number): void => {
-    const moved = [...chain];
-    const [desk] = moved.splice(at, 1);
-    moved.splice(at + by, 0, desk);
-    onChange(moved);
-  };
-
-  return (
-    <>
-      <ol className="chain-edit">
-        {chain.map((desk, at) => (
-          <li key={desk}>
-            <span className="chain-desk">{nameOf(desk)}</span>
-
-            <button
-              type="button"
-              className="linkish"
-              disabled={disabled || at === 0}
-              onClick={() => {
-                move(at, -1);
-              }}
-            >
-              Earlier
-            </button>
-
-            <button
-              type="button"
-              className="linkish"
-              disabled={disabled || at === chain.length - 1}
-              onClick={() => {
-                move(at, 1);
-              }}
-            >
-              Later
-            </button>
-
-            <button
-              type="button"
-              className="linkish"
-              disabled={disabled}
-              onClick={() => {
-                onChange(chain.filter((one) => one !== desk));
-              }}
-            >
-              <Icon name="cross" />
-              <span className="visually-hidden">Remove {nameOf(desk)}</span>
-            </button>
-          </li>
-        ))}
-      </ol>
-
-      {/* A type nobody approves is refused when somebody asks for it, with the type named.
-          Said here too, because this is where it can still be fixed. */}
-      {chain.length > 0 ? null : (
-        <p className="muted">
-          Nobody. A request for this type would sit in no queue at all — add an approver.
-        </p>
-      )}
-
-      {unused.length === 0 ? null : (
-        <p className="chain-add">
-          Add:{' '}
-          {unused.map((one) => (
-            <button
-              key={one.value}
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                onChange([...chain, one.value]);
-              }}
-            >
-              <Icon name="plus" />
-              {one.label}
-            </button>
-          ))}
-        </p>
-      )}
-    </>
   );
 }
 
@@ -884,22 +794,15 @@ function createOne(draft: Draft): Promise<ConfiguredLeaveType> {
 }
 
 /**
- * The two calls an edit can be, and only the ones it is.
+ * What an edit sends, and only what it is.
  *
  * A PATCH carrying every field would revert whatever a colleague changed while this form was
- * open, so what goes is what differs. The chain is its own table and its own door, and it
- * goes last so the record that comes back is the current one.
+ * open, so what goes is what differs.
  */
 async function saveChanges(type: ConfiguredLeaveType, draft: Draft): Promise<ConfiguredLeaveType> {
   const changes = changedIn(fieldsOf(draft), type);
 
-  let saved = Object.keys(changes).length === 0 ? type : await editLeaveType(type.id, changes);
-
-  if (!sameChain(draft.approvalChain, type.approvalChain)) {
-    saved = await setApprovalChain(type.id, draft.approvalChain);
-  }
-
-  return saved;
+  return Object.keys(changes).length === 0 ? type : editLeaveType(type.id, changes);
 }
 
 /** The fields that differ from the record the form was drawn from. */
@@ -916,10 +819,6 @@ function changedIn(
   }
 
   return changes as LeaveTypeFields;
-}
-
-function sameChain(one: Desk[], other: Desk[]): boolean {
-  return one.length === other.length && one.every((desk, at) => desk === other[at]);
 }
 
 /** An optional count: empty is nothing at all, which is a different instruction from zero. */
