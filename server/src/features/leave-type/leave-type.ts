@@ -134,6 +134,9 @@ export class InvalidLeaveType extends Error {
 }
 
 export class DuplicateLeaveTypeCode extends Error {
+  /** NFR USA 03, LMS 501. The box a form puts the message beside. */
+  readonly field = 'code';
+
   constructor(code: string) {
     super(
       `There is already a leave type with the code ${code}. A code is the handle ` +
@@ -144,6 +147,9 @@ export class DuplicateLeaveTypeCode extends Error {
 }
 
 export class DuplicateLeaveTypeName extends Error {
+  /** NFR USA 03, LMS 501. */
+  readonly field = 'name';
+
   constructor(name: string) {
     super(`There is already a leave type called ${name}.`);
     this.name = 'DuplicateLeaveTypeName';
@@ -296,24 +302,28 @@ export function validateNewLeaveType(input: NewLeaveType): ValidatedLeaveType {
     description: optionalText('description', input.description),
     countingBasis: requireOneOf('countingBasis', input.countingBasis, COUNTING_BASES),
     entitlementBasis: requireOneOf('entitlementBasis', input.entitlementBasis, ENTITLEMENT_BASES),
-    isPaid: input.isPaid ?? true,
-    unit: requireOneOf('unit', input.unit ?? 'DAYS', ALLOWANCE_UNITS),
+    isPaid: input.isPaid ?? LEAVE_TYPE_DEFAULTS.isPaid,
+    unit: requireOneOf('unit', input.unit ?? LEAVE_TYPE_DEFAULTS.unit, ALLOWANCE_UNITS),
     documentation: requireOneOf(
       'documentation',
-      input.documentation ?? 'NOT_REQUIRED',
+      input.documentation ?? LEAVE_TYPE_DEFAULTS.documentation,
       DOCUMENTATION_RULES,
     ),
     documentationAfterDays: optionalCount('documentationAfterDays', input.documentationAfterDays),
-    exceedableWithDocument: input.exceedableWithDocument ?? false,
+    exceedableWithDocument:
+      input.exceedableWithDocument ?? LEAVE_TYPE_DEFAULTS.exceedableWithDocument,
     entitlementExpiryMonths: optionalCount(
       'entitlementExpiryMonths',
       input.entitlementExpiryMonths,
     ),
-    mayBeSplit: input.mayBeSplit ?? true,
-    minNoticeCalendarDays: requireWindow('minNoticeCalendarDays', input.minNoticeCalendarDays ?? 0),
+    mayBeSplit: input.mayBeSplit ?? LEAVE_TYPE_DEFAULTS.mayBeSplit,
+    minNoticeCalendarDays: requireWindow(
+      'minNoticeCalendarDays',
+      input.minNoticeCalendarDays ?? LEAVE_TYPE_DEFAULTS.minNoticeCalendarDays,
+    ),
     maxBackdateCalendarDays: requireWindow(
       'maxBackdateCalendarDays',
-      input.maxBackdateCalendarDays ?? DEFAULT_BACKDATE_DAYS,
+      input.maxBackdateCalendarDays ?? LEAVE_TYPE_DEFAULTS.maxBackdateCalendarDays,
     ),
     genderRestriction:
       input.genderRestriction == null
@@ -321,14 +331,14 @@ export function validateNewLeaveType(input: NewLeaveType): ValidatedLeaveType {
         : requireOneOf('genderRestriction', input.genderRestriction, GENDERS),
     /* FR 10. True unless said otherwise, as the column defaults: a type that quietly
        stopped asking is an approver deciding blind. */
-    reasonRequired: input.reasonRequired ?? true,
-    displayOrder: requireOrder(input.displayOrder ?? 0),
+    reasonRequired: input.reasonRequired ?? LEAVE_TYPE_DEFAULTS.reasonRequired,
+    displayOrder: requireOrder(input.displayOrder ?? LEAVE_TYPE_DEFAULTS.displayOrder),
     /* FR 38a. Manager then HR unless the caller said otherwise, applied here
        rather than left to the writer for the reason every other default is: the
        record the caller gets back is the record that was written, and a type
        created through a form that did not mention approvals reads as the type it
        is immediately rather than after a round trip. */
-    approvalChain: validateApprovalChain(input.approvalChain ?? DEFAULT_APPROVAL_CHAIN),
+    approvalChain: validateApprovalChain(input.approvalChain ?? LEAVE_TYPE_DEFAULTS.approvalChain),
   };
 
   assertRulesAgree(validated);
@@ -525,6 +535,49 @@ export function countingBasisInWords(basis: CountingBasis): string {
  */
 export function countingBasisLabel(basis: CountingBasis): string {
   return basis === 'WORKING_DAYS' ? 'Working days' : 'Calendar days';
+}
+
+/**
+ * FR 32g. The entitlement basis, as a person reads it. LMS 501.
+ *
+ * Here rather than on the configuration screen, for the reason {@link countingBasisLabel}
+ * is: the file that defines the basis is the file that decides what it is called.
+ */
+export function entitlementBasisLabel(basis: EntitlementBasis): string {
+  return basis === 'QUOTA' ? 'A yearly allowance' : 'Granted when an occasion arises';
+}
+
+/** FR 24. How the allowance is said. LMS 501. */
+export function allowanceUnitLabel(unit: AllowanceUnit): string {
+  switch (unit) {
+    case 'WEEKS':
+      return 'Weeks';
+    case 'MONTHS':
+      return 'Months';
+    default:
+      return 'Days';
+  }
+}
+
+/** FR 13. The documentation rule, as the form offers it. LMS 501. */
+export function documentationRuleLabel(rule: DocumentationRule): string {
+  switch (rule) {
+    case 'ALWAYS':
+      return 'Always required';
+    case 'AFTER_DAYS':
+      return 'Required past a number of days';
+    default:
+      return 'Never required';
+  }
+}
+
+/** FR 05. Who the type is open to, null being everybody. LMS 501. */
+export function genderRestrictionLabel(gender: Gender | null): string {
+  if (gender === null) {
+    return 'Anybody';
+  }
+
+  return gender === 'FEMALE' ? 'Women only' : 'Men only';
 }
 
 /**
@@ -769,8 +822,34 @@ export function byDisplayOrder(left: LeaveType, right: LeaveType): number {
 
 /* ---------------------------------------------------------------- the fields */
 
-/** FR 18, and the TDD's column default. One week. */
-const DEFAULT_BACKDATE_DAYS = 7;
+/**
+ * What a type is unless the caller says otherwise. LMS 501.
+ *
+ * Exported since LMS 501, because a create form has to draw its controls at something and
+ * the alternative was a browser holding a second copy of this list. Only the optional
+ * fields are here: `countingBasis` and `entitlementBasis` have no default and are refused
+ * when missing, which is FR 21 and FR 32g refusing to be guessed at.
+ *
+ * `maxBackdateCalendarDays` is FR 18 and the TDD's column default — one week.
+ */
+export const LEAVE_TYPE_DEFAULTS: Omit<
+  ValidatedLeaveType,
+  'code' | 'name' | 'description' | 'countingBasis' | 'entitlementBasis'
+> = {
+  isPaid: true,
+  unit: 'DAYS',
+  documentation: 'NOT_REQUIRED',
+  documentationAfterDays: null,
+  exceedableWithDocument: false,
+  entitlementExpiryMonths: null,
+  mayBeSplit: true,
+  minNoticeCalendarDays: 0,
+  maxBackdateCalendarDays: 7,
+  genderRestriction: null,
+  reasonRequired: true,
+  displayOrder: 0,
+  approvalChain: [...DEFAULT_APPROVAL_CHAIN],
+};
 
 /* Imported rather than restated, because a restriction naming something no
    employee record can hold is a type nobody is eligible for. */

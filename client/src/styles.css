@@ -2817,3 +2817,154 @@ select[aria-invalid='true'] {
     gap: 0.75rem;
   }
 }
+
+/* ---------------------------------------- leave type configuration. FR 31, FR 32, LMS 501 */
+
+/* The rules on a type, as a definition list: a label and the value the column holds. */
+.settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem var(--gap);
+  margin: 0;
+}
+
+.settings dt {
+  color: var(--ink-faint);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings dd {
+  margin: 0.1rem 0 0;
+  font-size: 0.875rem;
+}
+
+/* The buttons at the foot of a card and of the form. Wrapping, so a narrow column keeps
+   them a fingertip apart rather than side by side and half off the edge. */
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.25rem;
+}
+
+/* The form itself is the panel, so it is given a reading width rather than the whole page:
+   a 1500px row of inputs is a form nobody can follow across. */
+.panel.wide {
+  max-width: 56rem;
+}
+
+/* One group of settings. `fieldset` carries the grouping a screen reader announces; the
+   border it comes with says the same thing twice, so only the rule above the legend stays. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 0;
+  padding: var(--gap) 0 0;
+}
+
+.fields legend {
+  padding: 0 0.5rem 0 0;
+  font-family: var(--face-heading);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Anything that wants the width: free text, a tick with a sentence on it, the chain. */
+.fields > label:has(textarea),
+.fields > .tick,
+.fields > .chain-edit,
+.fields > .chain-add,
+.fields > p {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 46rem) {
+  .fields,
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.fields small {
+  color: var(--ink-faint);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+/* A checkbox is the one control whose label reads across rather than down. */
+.tick {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--ink);
+  font-size: 0.875rem;
+}
+
+.tick input {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--accent);
+}
+
+/* FR 38a. The chain as a numbered list, because the order is the policy. */
+.chain-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0 0 0 1.4rem;
+}
+
+.chain-edit li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--page);
+}
+
+.chain-desk {
+  flex: 1 1 8rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.chain-edit svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.chain-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 0.8125rem;
+}
+
+.chain-add button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8125rem;
+}
+
+.chain-add svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}

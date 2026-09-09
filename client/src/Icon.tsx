@@ -12,6 +12,7 @@ export type IconName =
   | 'requests'
   | 'calendar'
   | 'approvals'
+  | 'settings'
   /* Kinds of leave, matched on the name by `iconForLeaveType`. */
   | 'annual'
   | 'sick'
@@ -29,7 +30,8 @@ export type IconName =
   | 'send'
   | 'clip'
   | 'upload'
-  | 'again';
+  | 'again'
+  | 'plus';
 
 const PATHS: Record<IconName, string> = {
   /** What you have: a calendar with days counted on it. */
@@ -43,6 +45,8 @@ const PATHS: Record<IconName, string> = {
     'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2 20a7 7 0 0 1 14 0M17 4.5a3.5 3.5 0 0 1 0 7M18 20a6.5 6.5 0 0 0-2-4.7',
   /** Waiting on you: a clock, because what it is about is how long it has been sitting there. */
   approvals: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.5V12l3 2',
+  /** LMS 501. Setting the rules up: sliders, because each one is a value being set. */
+  settings: 'M4 7h10M18 7h2M4 17h2M10 17h10M16 4.5v5M8 14.5v5',
 
   annual: 'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4',
   sick: 'M12 6.5h5M14.5 4v5M4.5 4.5h4v5.5a3 3 0 0 0 6 0M8.5 10v3a5 5 0 0 0 10 0v-1',
@@ -67,6 +71,8 @@ const PATHS: Record<IconName, string> = {
   upload: 'M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
   /** LMS 410. Trying the same thing again. */
   again: 'M20 12a8 8 0 1 1-2.6-5.9M20 3.5V8h-4.5',
+  /** LMS 501. Adding one. */
+  plus: 'M12 5v14M5 12h14',
 };
 
 export function Icon({ name }: { name: IconName }) {

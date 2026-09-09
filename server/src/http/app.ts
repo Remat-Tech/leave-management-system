@@ -31,6 +31,7 @@ import { attachmentRoutes } from '../features/leave-request/attachment.routes.js
 import type { Scanner } from '../scanning/index.js';
 import type { Storage } from '../storage/index.js';
 import { balanceRoutes } from '../features/balance/routes.js';
+import { leaveTypeRoutes } from '../features/leave-type/routes.js';
 import { teamRoutes } from '../features/team/routes.js';
 import { TeamService } from '../features/team/team.service.js';
 import { teamCalendarRoutes } from '../features/team/team-calendar.routes.js';
@@ -131,6 +132,11 @@ export function buildApp(parts: Application): Express {
       ),
     }),
   );
+
+  /* FR 31, FR 32, LMS 501. Reading a type is anybody's — the person who most needs to know a
+     notice window is the one about to miss it — and writing one is an HR Administrator's,
+     which `leaveTypePolicy` decides rather than the mounting does. */
+  app.use('/api', leaveTypeRoutes({ types: new LeaveTypeService(parts.types, parts.guard) }));
 
   /* FR 55, FR 56, LMS 405. A read service built from repositories, as the two above are:
      nothing a manager reads about their reports needs a transaction or a mailer. */
