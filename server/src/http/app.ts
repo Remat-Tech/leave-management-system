@@ -39,6 +39,8 @@ import { balanceRoutes } from '../features/balance/routes.js';
 import { entitlementRuleRoutes } from '../features/entitlement/routes.js';
 import { holidayRoutes } from '../features/holiday/routes.js';
 import { leaveTypeRoutes } from '../features/leave-type/routes.js';
+import { organisationRoutes } from '../features/organisation/routes.js';
+import { OrganisationService } from '../features/organisation/organisation.service.js';
 import { teamRoutes } from '../features/team/routes.js';
 import { TeamService } from '../features/team/team.service.js';
 import { teamCalendarRoutes } from '../features/team/team-calendar.routes.js';
@@ -181,6 +183,19 @@ export function buildApp(parts: Application): Express {
         parts.years,
       ),
       years: parts.years,
+    }),
+  );
+
+  /* FR 44, FR 48c, NFR SEC 06, LMS 505. The settings that are about the company rather than
+     about a type, a year or a person. Reading them is everybody's — the request form already
+     says unpaid leave goes to the Chief Executive — and `organisationPolicy` decides the
+     writes rather than the mounting. The notice and back-dating windows are read here and
+     written through `leaveTypeRoutes` above, which stays the one door onto a type. */
+  app.use(
+    '/api',
+    organisationRoutes({
+      organisation: new OrganisationService(parts.organisation, parts.guard, parts.employees),
+      types: new LeaveTypeService(parts.types, parts.guard),
     }),
   );
 

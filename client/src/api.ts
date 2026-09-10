@@ -1014,6 +1014,85 @@ export async function removeHoliday(id: string): Promise<void> {
   await request<void>('DELETE', `/api/holidays/${encodeURIComponent(id)}`);
 }
 
+/** --------------- the settings that are about the company. FR 44, FR 48c, NFR SEC 06, LMS 505 */
+
+/** Every org-wide setting, with the sentence each one adds up to. */
+export interface PolicySettings {
+  /** FR 48c. Null until somebody names one, which is what go live waits on. */
+  chiefExecutiveId: string | null;
+  chiefExecutiveName: string | null;
+  chiefExecutiveJobTitle: string | null;
+  isReadyForGoLive: boolean;
+
+  /** FR 44. False makes a line manager's decision final. */
+  overridesAreAllowed: boolean;
+  overrideRuleInWords: string;
+
+  /** NFR SEC 06. Whole months, or null for kept indefinitely. */
+  attachmentRetentionMonths: number | null;
+  retentionInWords: string;
+
+  updatedAt: string;
+}
+
+/** FR 17, FR 18. One type's two windows, as this screen shows them side by side. */
+export interface LeaveWindow {
+  id: string;
+  code: string;
+  name: string;
+  minNoticeCalendarDays: number;
+  maxBackdateCalendarDays: number;
+  displayOrder: number;
+}
+
+/** Somebody who could be named Chief Executive. */
+export interface Nameable {
+  id: string;
+  name: string;
+  jobTitle: string | null;
+  /** FR 06. In the list and marked, so the picker says why it refuses them. */
+  hasLeft: boolean;
+}
+
+export interface PolicySettingsPage {
+  settings: PolicySettings;
+  windows: LeaveWindow[];
+  employees: Nameable[];
+  longestRetentionMonths: number;
+}
+
+/** What the form sends. A field left out is unchanged; null clears the window. */
+export interface PolicyFields {
+  overridesAreAllowed?: boolean;
+  attachmentRetentionMonths?: number | null;
+}
+
+/**
+ * Every policy setting on one answer. FR 44, FR 48c, NFR SEC 06.
+ *
+ * Reading is open to anybody signed in — the request form already says unpaid leave goes to
+ * the Chief Executive — and every write below is refused for anybody but an HR
+ * Administrator, with the server's own sentence.
+ */
+export async function policySettings(): Promise<PolicySettingsPage> {
+  return request<PolicySettingsPage>('GET', '/api/policy-settings');
+}
+
+/** Changes the override rule, the retention window, or both. */
+export async function changePolicySettings(fields: PolicyFields): Promise<PolicySettings> {
+  return request<PolicySettings>('PATCH', '/api/policy-settings', fields);
+}
+
+/**
+ * Names the Chief Executive. FR 48c.
+ *
+ * Its own call rather than a field on the change above, because it is its own refusals: an
+ * id that is nobody's, somebody who has left, and an empty box.
+ */
+export async function nameChiefExecutive(employeeId: string): Promise<PolicySettings> {
+  return request<PolicySettings>('PUT', '/api/policy-settings/chief-executive', { employeeId });
+}
+
 /** Who the session belongs to. */
 export interface Me {
   employeeId: string;

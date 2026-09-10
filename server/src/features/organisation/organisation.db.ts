@@ -1,6 +1,6 @@
-/** Database access for the organisation's own settings. FR 48c, §4.3.1, LMS 321. */
+/** Database access for the organisation's own settings. FR 44, FR 48c, NFR SEC 06, §4.3.1, LMS 321, LMS 505. */
 
-import type { Kysely, Selectable } from 'kysely';
+import type { Kysely, Selectable, Updateable } from 'kysely';
 import type { Database } from '../../db/index.js';
 import type { OrganisationSettingTable } from '../../db/schema.js';
 import type { Attribution } from '../audit/audit.js';
@@ -10,6 +10,8 @@ import {
   ChiefExecutiveHasLeft,
   ChiefExecutiveNotFound,
   type OrganisationSettings,
+  type PolicyChanges,
+  UNCONFIGURED,
 } from './organisation.js';
 import { recording } from '../../db/recording.js';
 
@@ -48,6 +50,60 @@ export class OrganisationRepository {
     const row = await this.db.selectFrom('organisation_setting').selectAll().executeTakeFirst();
 
     return row === undefined ? undefined : toSettings(row);
+  }
+
+  /**
+   * Whether HR may overturn a line manager. FR 44, LMS 505.
+   *
+   * The one read `LeaveRequestService` goes through, beside `chiefExecutiveId`. A row-less
+   * database answers what the column defaults to.
+   */
+  async overridesAreAllowed(): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('organisation_setting')
+      .select('overrides_are_allowed')
+      .executeTakeFirst();
+
+    return row?.overrides_are_allowed ?? UNCONFIGURED.overridesAreAllowed;
+  }
+
+  /**
+   * Changes the settings that are not the Chief Executive. FR 44, NFR SEC 06. LMS 505.
+   *
+   * The insert is the same unreachable case {@link OrganisationRepository.nameTheChiefExecutive}
+   * answers, and for the same reason.
+   */
+  async changePolicy(by: Attribution, changes: PolicyChanges): Promise<OrganisationSettings> {
+    const values: Updateable<OrganisationSettingTable> = {};
+
+    if (changes.overridesAreAllowed !== undefined) {
+      values.overrides_are_allowed = changes.overridesAreAllowed;
+    }
+    if ('attachmentRetentionMonths' in changes) {
+      values.attachment_retention_months = changes.attachmentRetentionMonths ?? null;
+    }
+
+    /* Nothing sent is not a write. An UPDATE with no SET is a syntax error, and an empty
+       PATCH is a screen asking what the settings are. */
+    if (Object.keys(values).length === 0) {
+      const current = await this.settings();
+
+      return current ?? { ...UNCONFIGURED, updatedAt: new Date() };
+    }
+
+    const updated = await recording(this.db, by, (on) =>
+      on.updateTable('organisation_setting').set(values).returningAll().executeTakeFirst(),
+    );
+
+    if (updated !== undefined) {
+      return toSettings(updated);
+    }
+
+    const inserted = await recording(this.db, by, (on) =>
+      on.insertInto('organisation_setting').values(values).returningAll().executeTakeFirstOrThrow(),
+    );
+
+    return toSettings(inserted);
   }
 
   /**
@@ -130,6 +186,8 @@ function violationOf(error: unknown): { code: string; constraint: string } | und
 function toSettings(row: SettingRow): OrganisationSettings {
   return {
     chiefExecutiveId: row.ceo_employee_id,
+    overridesAreAllowed: row.overrides_are_allowed,
+    attachmentRetentionMonths: row.attachment_retention_months,
     updatedAt: row.updated_at,
   };
 }

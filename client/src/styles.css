@@ -3465,3 +3465,71 @@ select[aria-invalid='true'] {
     flex-basis: 100%;
   }
 }
+
+/* ------------------------------- policy settings. FR 44, FR 48c, NFR SEC 06, LMS 505 */
+
+/* One setting and what it means, in a card the width of the panels above it. Each writes
+   through its own door, so each carries its own refusal and its own button. */
+.policy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 44rem;
+  padding: var(--gap);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.policy > label {
+  max-width: 26rem;
+}
+
+.policy .rules {
+  margin: 0;
+}
+
+.policy .card-actions {
+  margin-top: 0;
+}
+
+/* FR 17, FR 18. The windows across every type. Scrolls inside itself rather than pushing
+   the page sideways on a phone. */
+.windows {
+  overflow-x: auto;
+  padding: var(--gap);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.windows .figures-table {
+  margin-top: 0;
+  min-width: 34rem;
+}
+
+.windows .figures-table td {
+  vertical-align: middle;
+}
+
+/* A number and the unit beside it, so "14 days" reads as one thing rather than a box. */
+.days {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+}
+
+.days input {
+  width: 5rem;
+  text-align: right;
+}
+
+.windows .figures-table .notice {
+  margin: 0.5rem 0;
+  text-align: left;
+}

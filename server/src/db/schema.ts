@@ -484,6 +484,10 @@ export interface OrganisationSettingTable {
   id: Generated<string>;
   /** FR 48c. Who the `CEO` desk resolves to, until HR names somebody it is nobody. */
   ceo_employee_id: string | null;
+  /** FR 44. FALSE makes a line manager's decision final. LMS 505. */
+  overrides_are_allowed: Generated<boolean>;
+  /** NFR SEC 06. Null is kept indefinitely. LMS 505. */
+  attachment_retention_months: number | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 }

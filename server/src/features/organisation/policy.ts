@@ -11,6 +11,11 @@ const SETUP_IS_THE_ADMINISTRATORS =
   'Who the Chief Executive is decides where unpaid leave goes for everybody, so it is set ' +
   'by an HR Administrator rather than by anybody who can see it. Ask one. FR 48c.';
 
+/** The same, for the settings that are not a person. LMS 505. */
+const POLICY_IS_THE_ADMINISTRATORS =
+  'The policy settings decide how every request in the company is decided and how long ' +
+  'certificates are kept, so they are set by an HR Administrator. Ask one. FR 44, NFR SEC 06.';
+
 export const organisationPolicy = {
   resource: about.resource,
 
@@ -39,6 +44,24 @@ export const organisationPolicy = {
           employeeId,
           'holds no role that sets the organisation up',
           SETUP_IS_THE_ADMINISTRATORS,
+        );
+  },
+
+  /**
+   * Changing the override rule and the retention window. FR 44, NFR SEC 06, LMS 505.
+   *
+   * The same standing as naming the Chief Executive: both change what the system does to
+   * everybody, and neither is an HR Officer's.
+   */
+  changePolicy(actor: Actor): Decision {
+    return holdsAny(actor, ...SETS_UP_THE_ORGANISATION)
+      ? about.allow(actor, 'change the policy settings')
+      : about.refuseOpenly(
+          actor,
+          'change the policy settings',
+          null,
+          'holds no role that sets the organisation up',
+          POLICY_IS_THE_ADMINISTRATORS,
         );
   },
 };
