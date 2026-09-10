@@ -51,8 +51,8 @@ import { delegationService } from '../support/delegations.js';
  *   back-dating windows and the retention window, without opening four screens to see them.
  *
  *   **Reading is everybody's and writing is an HR Administrator's**, decided by
- *   `organisationPolicy` rather than by where the router is mounted — and an HR Officer,
- *   who may keep the holiday calendar, may not touch these.
+ *   `organisationPolicy` rather than by where the router is mounted. An HR Officer, who may
+ *   keep the holiday calendar, may not touch these.
  *
  *   **Every refusal arrives as a sentence.** Naming a leaver, emptying the seat and a
  *   retention window that is not a whole number of months were all reaching a browser as
@@ -264,7 +264,7 @@ describe('the screen', () => {
     const page = (await (await get('/api/policy-settings', people.headOfHr)).json()) as JsonPage;
 
     expect(page.settings.overrideRuleInWords).toContain('overturn');
-    expect(page.settings.retentionInWords).toContain('for ever');
+    expect(page.settings.retentionInWords).toContain('indefinitely');
   });
 
   it('is readable by anybody signed in', async () => {
@@ -274,8 +274,8 @@ describe('the screen', () => {
   /**
    * And the staff directory behind the picker is not readable by anybody signed in.
    *
-   * Reading the settings is everybody's — the request form already says where unpaid leave
-   * goes — and a route that fetched every employee for everybody would be a way round
+   * Reading the settings is everybody's, because the request form already says where unpaid
+   * leave goes. A route that fetched every employee for everybody would be a way round
    * `employeePolicy.list`. The Chief Executive's own name stays: that is the setting.
    */
   it('but the picker behind it is empty for somebody who cannot use it', async () => {
@@ -339,7 +339,7 @@ describe('changing the settings', () => {
   });
 
   /* Null is a setting rather than an unanswered question, so it has to survive a round trip
-     as one — clearing the box is "keep them indefinitely". */
+     as one. Clearing the box is "keep them indefinitely". */
   it('and a retention window can be cleared back to indefinite', async () => {
     await send('PATCH', '/api/policy-settings', people.headOfHr, {
       attachmentRetentionMonths: 24,

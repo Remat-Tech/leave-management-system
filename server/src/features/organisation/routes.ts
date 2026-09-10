@@ -31,7 +31,7 @@ export function organisationRoutes(parts: OrganisationRoutes): Router {
    *
    * The windows are read here and written through `PATCH /leave-types/:id`, which stays the
    * one door onto a type. `employees` is the picker, and is empty for anybody who cannot use
-   * it — a route that read the directory for everybody would be a way round
+   * it: a route that read the directory for everybody would be a way round
    * `employeePolicy.list`.
    */
   routes.get('/policy-settings', (_request: Request, response: Response, next) => {
@@ -71,8 +71,8 @@ export function organisationRoutes(parts: OrganisationRoutes): Router {
   /**
    * Names the Chief Executive. FR 48c.
    *
-   * Its own door because it is its own three refusals — nobody, somebody who has left, and
-   * an empty box — and none of them is about a number.
+   * Its own door because it is its own three refusals: nobody, somebody who has left, and an
+   * empty box. None of them is about a number.
    */
   routes.put('/policy-settings/chief-executive', (request: Request, response: Response, next) => {
     const actor = actorOf(response);

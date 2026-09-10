@@ -168,15 +168,12 @@ export function overrideRuleInWords(allowed: boolean): string {
 /** What the retention window means for a certificate. NFR SEC 06, LMS 505. */
 export function retentionInWords(months: number | null): string {
   if (months === null) {
-    return (
-      'Certificates and supporting documents are kept for as long as the request is, ' +
-      'which is for ever.'
-    );
+    return 'Certificates and supporting documents are kept indefinitely.';
   }
 
   return (
     `Certificates and supporting documents are kept for ${inMonths(months)} after the ` +
-    'request they are attached to ends. Nothing removes them on that window yet — it is the ' +
+    'request they are attached to ends. Nothing removes them on that window yet. It is the ' +
     'figure the retention sweep will read.'
   );
 }

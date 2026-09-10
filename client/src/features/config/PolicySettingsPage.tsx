@@ -229,7 +229,7 @@ function ChiefExecutivePanel({
             </div>
             <div>
               <dt>Job title</dt>
-              <dd>{settings.chiefExecutiveJobTitle ?? '—'}</dd>
+              <dd>{settings.chiefExecutiveJobTitle ?? 'Not recorded'}</dd>
             </div>
           </dl>
 
@@ -274,7 +274,7 @@ function ChiefExecutivePanel({
             {employees.map((person) => (
               <option key={person.id} value={person.id}>
                 {person.name}
-                {person.jobTitle === null ? '' : ` — ${person.jobTitle}`}
+                {person.jobTitle === null ? '' : `, ${person.jobTitle}`}
                 {person.hasLeft ? ' (has left)' : ''}
               </option>
             ))}
@@ -285,7 +285,7 @@ function ChiefExecutivePanel({
           </small>
         </label>
 
-        {/* FR 06. Said before the press — the server refuses it, and this saves the trip. */}
+        {/* FR 06. Said before the press. The server refuses it, and this saves the trip. */}
         {leaver ? (
           <p className="notice warning" role="status">
             They have left the company and cannot sign in to decide anything. Name whoever holds the
@@ -334,7 +334,7 @@ function WindowsPanel({
       <p className="rules">
         <Icon name="info" />
         Short notice warns and is allowed through; the approvers see that it was short. Back dating
-        refuses — past the window only HR may enter the leave, with a reason.
+        refuses: past the window only HR may enter the leave, with a reason.
       </p>
 
       <div className="windows">
@@ -505,7 +505,7 @@ function RetentionPanel({
               setMonths(event.target.value);
             }}
           >
-            <option value="">As long as the request — indefinitely</option>
+            <option value="">Indefinitely</option>
             {retentionChoices(longestMonths).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}

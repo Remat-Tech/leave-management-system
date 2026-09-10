@@ -1311,7 +1311,7 @@ export class LeaveRequestService {
     if (!isAnOverride(action)) {
       if (required !== null) {
         /* Switched off, so the plain verb is not pointed at an override that would also be
-           refused — the manager's answer stands and nothing here changes it. */
+           refused. The manager's answer stands and nothing here changes it. */
         throw overridesAreAllowed
           ? new OverrulingNeedsAnOverride(request, required)
           : new OverridesAreSwitchedOff();

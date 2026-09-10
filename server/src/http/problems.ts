@@ -315,7 +315,7 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   /**
    * FR 44, FR 48c, LMS 505. The three the policy settings screen meets that are not a typo.
    *
-   * 409: what was sent is fine, and what refuses it is the state of the world — the rule is
+   * 409: what was sent is fine, and what refuses it is the state of the world. The rule is
    * switched off, the person named has left, or nobody has been named at all.
    */
   OverridesAreSwitchedOff: 409,

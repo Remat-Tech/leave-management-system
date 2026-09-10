@@ -144,7 +144,7 @@ describe('the retention window', () => {
     expect(validatePolicyChanges({ attachmentRetentionMonths: null })).toEqual({
       attachmentRetentionMonths: null,
     });
-    expect(retentionInWords(null)).toContain('for ever');
+    expect(retentionInWords(null)).toContain('indefinitely');
   });
 
   it('and never a fraction, a nought or a negative', () => {

@@ -494,10 +494,10 @@ Ghana's 2026 gazette. One thing they cannot: **who the Chief Executive is**. FR 
 SELECT ceo_employee_id FROM organisation_setting;
 ```
 
-Since LMS 505 that is a screen — **Policy**, beside the other configuration tabs — which says
-so at the top of the page rather than leaving it to a psql prompt. The same screen holds the
-other two org-wide settings: whether HR may overturn a line manager (FR 44) and how long a
-certificate is kept (NFR SEC 06).
+Since LMS 505 that is a screen, **Policy**, beside the other configuration tabs. It says so at
+the top of the page rather than leaving it to a psql prompt, and holds the other two org-wide
+settings: whether HR may overturn a line manager (FR 44) and how long a certificate is kept
+(NFR SEC 06).
 
 A null there is an installation nobody has finished configuring. Unpaid leave and the unpaid
 maternity extension go HR then the Chief Executive, §4.3.1, so until an HR Administrator names
