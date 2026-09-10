@@ -60,7 +60,7 @@ export class RefusalNeedsAComment extends Error {
 
   constructor() {
     super(
-      'Turning leave down says why. Whoever asked for it is owed the reason in writing — ' +
+      'Turning leave down says why. Whoever asked for it is owed the reason in writing, ' +
         'it is what they will act on, and it is the only account of this decision that ' +
         'will exist when somebody asks about it next year. Approving needs no comment; ' +
         'refusing does.',

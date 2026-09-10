@@ -639,7 +639,7 @@ export function flagsFor(input: {
     warnings.push({
       code: 'BACKDATED',
       inWords:
-        `This leave had already started when it was asked for — it began ${days(backdatedBy)} ` +
+        `This leave had already started when it was asked for. It began ${days(backdatedBy)} ` +
         `before the request was made. ` +
         /* LMS 308. Two different pieces of news, and the second is the one an approver has to
            weigh: inside the window this is the ordinary way an absence gets recorded, and past
@@ -680,7 +680,7 @@ function shortNoticeInWords(
 
   return (
     `${typeName} normally wants ${days(expected)}’ notice and this gave ` +
-    `${noticeGivenDays < 0 ? 'none — it was asked for after the leave began' : days(noticeGivenDays)}` +
+    `${noticeGivenDays < 0 ? 'none, asked for after the leave began' : days(noticeGivenDays)}` +
     `, ${days(shortNoticeBy)} short. Short notice is not a reason to refuse on its own; ` +
     `whether it is workable is yours to judge. FR 17.`
   );
@@ -744,7 +744,7 @@ export function balanceFor(input: {
     inWords:
       `${days(request.days)} of ${possessively(askerName)} ${granted} days of ${typeName} for ` +
       `${yearLabel}. ${sentenceCase(days(balance.taken))} taken and ${days(committed(balance) - balance.taken)} ` +
-      `held while requests are decided — approving this leaves ${days(left)}, which it already ` +
+      `held while requests are decided. Approving this leaves ${days(left)}, which it already ` +
       `counts.` +
       /* §8.6b. A negative figure is legitimate on a type FR 32a lets go past its allowance, and
          an approver seeing one bare would reasonably think something had gone wrong. */

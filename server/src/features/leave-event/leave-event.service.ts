@@ -32,7 +32,7 @@ export class NotAnEventBasedType extends Error {
     super(
       `${name} is a yearly allowance rather than something granted per occurrence, so ` +
         `there is no event to record it against. Its entitlement arrives with the leave ` +
-        `year — the annual grant posts it — and a second grant of it is refused. FR 32g.`,
+        `year (the annual grant posts it) and a second grant of it is refused. FR 32g.`,
     );
     this.name = 'NotAnEventBasedType';
     this.leaveTypeId = id;

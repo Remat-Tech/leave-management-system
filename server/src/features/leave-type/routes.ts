@@ -18,7 +18,7 @@ import {
   type LeaveTypeChanges,
   type NewLeaveType,
 } from './leave-type.js';
-import { APPROVER_ROLES, deskInWords } from './approval-chain.js';
+import { APPROVER_ROLES, chainLabel, deskLabel } from './approval-chain.js';
 import { GENDERS } from '../employee/employee.js';
 import type { LeaveTypeService } from './leave-type.service.js';
 import { actorOf } from '../../http/identify.js';
@@ -197,7 +197,7 @@ const CHOICES = {
     ...GENDERS.map((value) => ({ value, label: genderRestrictionLabel(value) })),
   ],
   /** FR 38a. */
-  approvers: APPROVER_ROLES.map((value) => ({ value, label: deskInWords(value) })),
+  approvers: APPROVER_ROLES.map((value) => ({ value, label: deskLabel(value) })),
 };
 
 /**
@@ -248,6 +248,8 @@ function typeAsJson(type: LeaveType): unknown {
     /** FR 38a. */
     approvalChain: type.approvalChain,
     approvedBy: approvalChainInWords(type),
+    /** FR 38a, LMS 503. The same chain in the voice a configuration screen reads in. */
+    approvedByLabel: chainLabel(type.approvalChain),
 
     displayOrder: type.displayOrder,
     isActive: type.isActive,

@@ -301,7 +301,7 @@ const DECIDING_IS_SOMEBODY_ELSE =
 /** Said openly, and only to somebody who is an approver of this request. FR 48d, LMS 322. */
 const A_SECOND_STAGE_IS_SOMEBODY_ELSE =
   'A request that two stages decide is decided by two people. You answered an earlier stage ' +
-  'of this one, so this stage is a colleague’s to answer — and where the company has nobody ' +
+  'of this one, so this stage is a colleague’s to answer, and where the company has nobody ' +
   'else to ask, the request goes through stamped as decided by a single approver rather ' +
   'than carrying your name twice. FR 48d.';
 
@@ -309,7 +309,7 @@ const A_SECOND_STAGE_IS_SOMEBODY_ELSE =
 const ANSWERING_IS_SOMEBODY_ELSE =
   'An ask to take agreed leave off the books is answered by somebody other than the person ' +
   'whose leave it is, whatever roles they hold. Your own ask is on the record and another ' +
-  'HR desk will answer it — agreeing to it yourself would be putting your own days back on ' +
+  'HR desk will answer it, agreeing to it yourself would be putting your own days back on ' +
   'your own say-so. FR 47, FR 48.';
 
 export const leaveRequestPolicy = {
@@ -434,7 +434,7 @@ export const leaveRequestPolicy = {
       told:
         'A manager’s decision is overturned by the next desk the request goes to, ' +
         'and this request is not waiting on you. It is the same standing as approving or ' +
-        'refusing it — an override is an ordinary decision that happens to disagree with ' +
+        'refusing it. An override is an ordinary decision that happens to disagree with ' +
         'an earlier stage. FR 44.',
     });
   },
@@ -475,7 +475,7 @@ export const leaveRequestPolicy = {
           null,
           'has nobody reporting to them and staffs no approver desk',
           'An approver queue holds the requests waiting on you. Leave is approved by the ' +
-            'manager it was addressed to, by HR, or by the Chief Executive — so this ' +
+            'manager it was addressed to, by HR, or by the Chief Executive, so this ' +
             'screen belongs to somebody with a report, an HR role, or FR 04’s seat. Your own ' +
             'requests and what became of them are on your leave pages. FR 38a.',
         );
@@ -543,7 +543,7 @@ export const leaveRequestPolicy = {
       told:
         'An ask to take agreed leave off the books is answered by HR. The days are spent ' +
         'rather than held, so putting them back is a correction to a balance rather than a ' +
-        'decision at a desk — a manager approves leave and does not unspend it. FR 47.',
+        'decision at a desk. A manager approves leave and does not unspend it. FR 47.',
     });
   },
 
@@ -660,7 +660,7 @@ export const approvalDelegationPolicy = {
           approverId,
           'is neither the approver nor a role that maintains leave for the company',
           'A delegation is ended by the approver who nominated it, or by HR. Being the ' +
-            'delegate is not standing to end it — hand the requests back by deciding them ' +
+            'delegate is not standing to end it. Hand the requests back by deciding them ' +
             'or by asking them to. FR 49.',
         );
   },

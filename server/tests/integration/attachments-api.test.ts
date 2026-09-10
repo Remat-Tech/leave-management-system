@@ -127,6 +127,7 @@ beforeAll(async () => {
     /** FR 12, LMS 310. */
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
+    holidays: new HolidayRepository(db),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
     accounts,

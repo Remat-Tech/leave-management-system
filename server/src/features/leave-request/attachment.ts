@@ -217,7 +217,7 @@ export class AttachmentTypeNotAccepted extends Error {
     super(
       `This file is ${sniffed ?? 'not a kind of file this system recognises'}, whatever ` +
         `it is called. ${acceptedInWords()} are accepted, and what a file is, is read ` +
-        `from the file rather than from its name — so renaming it will not help. ` +
+        `from the file rather than from its name, so renaming it will not help. ` +
         `You sent it as ${claimed || 'nothing in particular'}. FR 12.`,
     );
     this.name = 'AttachmentTypeNotAccepted';
@@ -272,7 +272,7 @@ export class AttachmentIsInfected extends Error {
 
   constructor(signature: string | null) {
     super(
-      `The virus scanner refused this file${signature === null ? '' : ` — ${signature}`}. ` +
+      `The virus scanner refused this file${signature === null ? '' : `, ${signature}`}. ` +
         `It has not been stored. If you believe that is wrong, send the document to HR ` +
         `another way and tell them what happened. NFR SEC 07.`,
     );
@@ -411,7 +411,7 @@ export function validateFilename(value: unknown): string {
   if (name.length > 255) {
     throw new InvalidAttachment(
       'filename',
-      'That filename is longer than 255 characters. Shorten it — the name is a label for ' +
+      'That filename is longer than 255 characters. Shorten it. The name is a label for ' +
         'whoever approves this, not part of the document.',
     );
   }

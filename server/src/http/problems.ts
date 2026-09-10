@@ -298,6 +298,16 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   EntitlementRuleAlreadyApplies: 409,
   ReachesIntoAClosedYear: 409,
   DuplicateEntitlementRule: 409,
+
+  /**
+   * FR 22, LMS 504. The two the holiday calendar meets, and neither a fault.
+   *
+   * 409 for both, as the three above are: the date is well formed and what refuses it is a
+   * row that already exists or a year already closed. Each sentence names what to do instead
+   * — rename the day that is there, or the earliest day the calendar is still open for.
+   */
+  DuplicateHoliday: 409,
+  HolidayInASettledYear: 409,
 };
 
 /**
@@ -341,7 +351,7 @@ function unexpected(): { status: number; body: Problem } {
     body: {
       error: 'Unexpected',
       message:
-        'Something went wrong at our end, and it has been logged. Try again in a minute — ' +
+        'Something went wrong at our end, and it has been logged. Try again in a minute, ' +
         'and if it keeps happening, tell IT roughly when you tried, so they can find it.',
     },
   };

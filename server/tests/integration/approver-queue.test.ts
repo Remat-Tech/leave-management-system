@@ -134,6 +134,7 @@ beforeAll(async () => {
     drafts: new LeaveRequestDraftRepository(db),
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
+    holidays: new HolidayRepository(db),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
     accounts,
@@ -378,7 +379,7 @@ describe('the context beside each request', () => {
     expect(item.balance.owed).toBe(20);
     expect(item.balance.pending).toBe(6);
     expect(item.balance.available).toBe(14);
-    expect(item.balance.inWords).toContain('approving this leaves 14 days');
+    expect(item.balance.inWords).toContain('Approving this leaves 14 days');
   });
 
   /* FR 20. Kofi's team is Adwoa, Abena and Kojo, so two others besides the asker. */

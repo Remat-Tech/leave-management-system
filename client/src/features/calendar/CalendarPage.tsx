@@ -161,7 +161,7 @@ export function CalendarPage({
       {/* FR 57. What this screen deliberately does not say, said. */}
       <p className="footnote">
         <Icon name="info" />
-        Only the dates are shown. Leave type and reason are not on this screen at all — just who is
+        Only the dates are shown. Leave type and reason are not on this screen at all, just who is
         away and when.
       </p>
 

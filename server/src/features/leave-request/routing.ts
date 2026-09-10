@@ -278,9 +278,9 @@ export function skipInWords(
   const because = deskCannotDecideReason(stage, standing);
 
   return routedTo === null
-    ? `${desk} could not decide this request — ${because} — and neither could ` +
+    ? `${desk} could not decide this request (${because}) and neither could ` +
         `${deskInWords(STAND_IN_FOR[stage] ?? stage)}, so there is nobody left to ask. FR 48b.`
-    : `${desk} could not decide this request — ${because} — so this stage went to ` +
+    : `${desk} could not decide this request (${because}) so this stage went to ` +
         `${deskInWords(routedTo)} instead. Nobody approved it on the way. FR 48b.`;
 }
 

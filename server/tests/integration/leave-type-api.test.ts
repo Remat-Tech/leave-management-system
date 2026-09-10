@@ -137,6 +137,7 @@ beforeAll(async () => {
     drafts: new LeaveRequestDraftRepository(db),
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
+    holidays: new HolidayRepository(db),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
     accounts,
@@ -536,9 +537,9 @@ describe('the vocabulary the form is drawn from', () => {
 
     /** FR 38a. */
     expect(settings.choices.approvers.map((one) => one.label)).toEqual([
-      'your manager',
+      'Manager',
       'HR',
-      'the Chief Executive',
+      'Chief Executive',
     ]);
   });
 });

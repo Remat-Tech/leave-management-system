@@ -98,10 +98,10 @@ export function period(from: string, to: string): string {
   const sameMonth = sameYear && from.slice(5, 7) === to.slice(5, 7);
 
   if (sameMonth) {
-    return `${String(Number(from.slice(8, 10)))}–${last}`;
+    return `${String(Number(from.slice(8, 10)))} to ${last}`;
   }
 
-  return sameYear ? `${first.slice(0, first.lastIndexOf(' '))} – ${last}` : `${first} – ${last}`;
+  return sameYear ? `${first.slice(0, first.lastIndexOf(' '))} to ${last}` : `${first} to ${last}`;
 }
 
 /**

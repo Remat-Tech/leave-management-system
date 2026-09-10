@@ -524,7 +524,7 @@ function requireDay(field: string, value: unknown): CalendarDate {
     throw new InvalidEntitlementRule(
       field,
       `${labelFor(field)} is a date in the form YYYY-MM-DD. An entitlement changes on a ` +
-        'day, so it is written as one — 31/07/2026 and 07/31/2026 are the same eleven ' +
+        'day, so it is written as one: 31/07/2026 and 07/31/2026 are the same eleven ' +
         'characters meaning two different days.',
     );
   }

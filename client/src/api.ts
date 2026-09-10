@@ -661,7 +661,10 @@ export interface ConfiguredLeaveType {
 
   /** FR 38a. */
   approvalChain: Desk[];
+  /** In the requester's voice: "your manager then HR". What the request form says. */
   approvedBy: string;
+  /** The same chain as a configuration screen names it: "Manager then HR". LMS 503. */
+  approvedByLabel: string;
 
   /** §7.4. The order the balance screen and the request form list them in. */
   displayOrder: number;
@@ -825,7 +828,7 @@ export interface EntitlementRule {
    * only decides which button is greyed.
    */
   mayBeChanged: boolean;
-  fixedBecause: string | null;
+  fixedReason: string | null;
   inForce: boolean;
   inWords: string;
 
@@ -929,6 +932,86 @@ export async function editEntitlementRule(
 /** Removes a rule that never applied to anybody. */
 export async function withdrawEntitlementRule(id: string): Promise<void> {
   await request<void>('DELETE', `/api/entitlement-rules/${encodeURIComponent(id)}`);
+}
+
+/** ------------------------------- the days the office is closed. FR 22, LMS 504 */
+
+/** One gazetted day, as the screen that keeps it sees one. FR 22. */
+export interface Holiday {
+  id: string;
+  /** What the gazette calls it. */
+  name: string;
+  /** Ten characters. */
+  date: string;
+  /** The same day as a person writes one, in the server's words. */
+  inWords: string;
+  weekday: string;
+
+  /** Null where the day falls outside every leave year HR has defined. */
+  leaveYearId: string | null;
+  leaveYearLabel: string | null;
+
+  /**
+   * FR 22. Whether the calendar is still open for this day, and the sentence saying it is not.
+   *
+   * A closed leave year is never recalculated, so a day inside one is fixed: every request
+   * over it was already counted against the calendar as it stood. The refusal is the
+   * server's — this only decides which buttons are greyed.
+   */
+  mayBeChanged: boolean;
+  fixedReason: string | null;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HolidayCalendar {
+  /** In the order the days fall. */
+  holidays: Holiday[];
+  years: Year[];
+  /**
+   * FR 22. The years nobody has transcribed the gazette for yet.
+   *
+   * A leave year with no holidays in it is not a year with no holidays, and everybody in it
+   * is charged a day for Christmas until somebody enters one.
+   */
+  yearsAwaitingACalendar: Year[];
+  /** The server's day, in UTC, so the screen never asks a browser's clock. */
+  today: string;
+  /** FR 22. The earliest day the calendar may still be changed for, or null where none is. */
+  earliestOpenDay: string | null;
+  closedYearsInWords: string;
+}
+
+/** What the form sends. A field left out is unchanged. */
+export interface HolidayFields {
+  name?: string;
+  date?: string;
+}
+
+/**
+ * The whole calendar, with the vocabulary the form needs. FR 22.
+ *
+ * Reading it is open to anybody signed in — it is what a leave quote is priced against — and
+ * every write below is refused for anybody but HR, with the server's own sentence.
+ */
+export async function holidayCalendar(): Promise<HolidayCalendar> {
+  return request<HolidayCalendar>('GET', '/api/holidays');
+}
+
+/** Adds a day. Refused where the day is taken, or inside a closed leave year. */
+export async function addHoliday(fields: HolidayFields): Promise<Holiday> {
+  return request<Holiday>('POST', '/api/holidays', fields);
+}
+
+/** Renames a day or moves it. Only what is sent changes. */
+export async function editHoliday(id: string, fields: HolidayFields): Promise<Holiday> {
+  return request<Holiday>('PATCH', `/api/holidays/${encodeURIComponent(id)}`, fields);
+}
+
+/** Takes a day off the calendar, making it a working day again for everybody. */
+export async function removeHoliday(id: string): Promise<void> {
+  await request<void>('DELETE', `/api/holidays/${encodeURIComponent(id)}`);
 }
 
 /** Who the session belongs to. */

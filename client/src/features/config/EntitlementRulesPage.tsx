@@ -35,9 +35,6 @@ export function EntitlementRulesPage({ onSignedOut }: { onSignedOut: () => void 
   /** Null is a new rule; a record is that one being corrected; undefined is the list. */
   const [editing, setEditing] = useState<EntitlementRule | null | undefined>(undefined);
 
-  /** '' is every type. */
-  const [showing, setShowing] = useState('');
-
   const answer = useCallback(
     (error: unknown) => {
       if (isNotSignedIn(error)) {
@@ -97,36 +94,19 @@ export function EntitlementRulesPage({ onSignedOut }: { onSignedOut: () => void 
     );
   }
 
-  const shown =
-    showing === '' ? settings.rules : settings.rules.filter((one) => one.leaveTypeId === showing);
-
   return (
     <div className="page">
       <div className="pagehead">
+        {/* Why a rule is never edited belongs on the rule whose buttons are greyed, where
+            there is something in front of somebody to be about, rather than in the abstract
+            up here. `fixedReason` says it there. */}
         <p className="muted">
           <span className="count">{String(settings.rules.length)}</span>
-          entitlement rules. A figure changes by adding a rule from a later date — what people were
-          owed for days that have already passed never moves.
+          entitlement rules. Each one says what a kind of leave is worth, who it is for, and from
+          when.
         </p>
 
         <div className="controls">
-          <label className="filter">
-            <span className="visually-hidden">Kind of leave</span>
-            <select
-              value={showing}
-              onChange={(event) => {
-                setShowing(event.target.value);
-              }}
-            >
-              <option value="">Every kind of leave</option>
-              {settings.leaveTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
           <button
             type="button"
             className="primary"
@@ -140,46 +120,41 @@ export function EntitlementRulesPage({ onSignedOut }: { onSignedOut: () => void 
         </div>
       </div>
 
-      {/* FR 31. The boundary a closed year sets, said where a date is about to be typed. */}
-      <p className="rules">
-        <Icon name="info" />
-        {settings.closedYearsInWords}
-      </p>
+      {/* FR 31. Only where a closed year actually bars a date. With nothing closed the
+          sentence announces a restriction that does not apply to anybody reading it. */}
+      {settings.earliestOpenDay === null ? null : (
+        <p className="rules">
+          <Icon name="info" />
+          {settings.closedYearsInWords}
+        </p>
+      )}
 
       {problem === undefined ? null : (
         <Notice problem={problem} retrying={loading} onRetry={load} />
       )}
 
-      {shown.length === 0 ? (
+      {settings.rules.length === 0 ? (
         <p className="muted">
-          No rules here yet. Until one is added, this kind of leave has no figure at all — which is
+          No rules here yet. Until one is added, this kind of leave has no figure at all, which is
           not the same as a figure of nought.
         </p>
       ) : (
-        groupedByType(shown).map(([leaveTypeId, group]) => (
-          <section key={leaveTypeId} className="ruleset">
-            <h2>
-              <span className="chip">
-                <Icon name={iconForLeaveType(group[0].leaveTypeName)} />
-              </span>
-              {group[0].leaveTypeName}
-            </h2>
-
-            <ul className="cards">
-              {group.map((rule) => (
-                <RuleCard
-                  key={rule.id}
-                  rule={rule}
-                  onEdit={() => {
-                    setEditing(rule);
-                  }}
-                  onChanged={load}
-                  onProblem={answer}
-                />
-              ))}
-            </ul>
-          </section>
-        ))
+        /* One grid rather than a section per leave type. Most types carry a single rule, so
+           a heading and a lone card each left three quarters of every row empty. The type is
+           on the card instead, and the sort keeps a type's rules next to each other. */
+        <ul className="cards">
+          {byTypeThenDate(settings.rules).map((rule) => (
+            <RuleCard
+              key={rule.id}
+              rule={rule}
+              onEdit={() => {
+                setEditing(rule);
+              }}
+              onChanged={load}
+              onProblem={answer}
+            />
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -215,21 +190,29 @@ function RuleCard({
   return (
     <li className={`card${rule.mayBeChanged ? ' draft' : ''}`}>
       <div className="card-head">
-        <h3>{rule.who}</h3>
+        <span className="chip">
+          <Icon name={iconForLeaveType(rule.leaveTypeName)} />
+        </span>
 
+        <h3>{rule.leaveTypeName}</h3>
+
+        {/* `scopeLabel` is not among these: it reads "Everybody" beside a `who` of
+            "Everybody", and where the two differ the named one is the better half. */}
         <div className="tags">
-          <span className="tag">{rule.scopeLabel}</span>
           {rule.inForce ? <span className="tag is-agreed">In force</span> : null}
           {rule.mayBeChanged ? <span className="tag">Not started</span> : null}
         </div>
       </div>
 
-      <p className="headline">
+      <p className="headline compact">
         <span className="figure">{inDays(rule.entitlementDays)}</span>
-        <span className="of">a year{rule.prorateOnJoin ? ', pro rata on joining' : ''}</span>
       </p>
 
       <dl className="settings">
+        <div>
+          <dt>Who</dt>
+          <dd>{rule.who}</dd>
+        </div>
         <div>
           <dt>Effective from</dt>
           <dd>{day(rule.effectiveFrom)}</dd>
@@ -240,14 +223,21 @@ function RuleCard({
         </div>
       </dl>
 
-      {/* FR 31. Carry over, in the server's words rather than reassembled here. */}
-      <p className="rules">
+      {/* FR 31. Carry over, in the server's words rather than reassembled here. Set smaller
+          than the card's other footnotes: the sentence runs to ten words in a third-width
+          card, and the alternative to shrinking it was wrapping to three lines. */}
+      <p className="rules small">
         <Icon name="again" />
         {rule.carryoverInWords}
       </p>
 
-      {rule.note === null ? null : <p className="muted">{rule.note}</p>}
+      {/* The note is not drawn. It is written for the record rather than for this list, and
+          what the migration seeded reads as provenance for a developer. It is still on the
+          rule and still sent, so a screen that wants it has it. */}
 
+      {/* Nothing at all under the carry over line for a rule that has already started: the
+          "In force" tag says which those are, and `fixedReason` said the rest at length on
+          every card. The server still refuses the write with the whole sentence. */}
       {rule.mayBeChanged ? (
         <div className="card-actions">
           <button type="button" disabled={busy} onClick={onEdit}>
@@ -283,14 +273,7 @@ function RuleCard({
             </button>
           )}
         </div>
-      ) : (
-        /* Not a disabled button with a title on it: the reason is the point, so it is read
-           out rather than hovered for. */
-        <p className="muted fixed">
-          <Icon name="info" />
-          {rule.fixedBecause}
-        </p>
-      )}
+      ) : null}
     </li>
   );
 }
@@ -438,7 +421,7 @@ function RuleForm({
             }}
           />
           <small className="muted">
-            Whole days. Nought is a real figure — it says this leave is worth nothing to these
+            Whole days. Nought is a real figure. It says this leave is worth nothing to these
             people, which reads differently from having no rule at all.
           </small>
         </label>
@@ -550,7 +533,9 @@ function RuleForm({
               change({ effectiveFrom: event.target.value });
             }}
           />
-          <small className="muted">{settings.closedYearsInWords}</small>
+          {settings.earliestOpenDay === null ? null : (
+            <small className="muted">{settings.closedYearsInWords}</small>
+          )}
         </label>
 
         <label>
@@ -587,7 +572,7 @@ function RuleForm({
             }}
           />
           <small className="muted">
-            Why the figure changed — the board minute, the policy, the arrangement. It stays on the
+            Why the figure changed: the board minute, the policy, the arrangement. It stays on the
             record beside the rule.
           </small>
         </label>
@@ -691,21 +676,18 @@ function Tick({
   );
 }
 
-/** The rules of one type, in the order the types come in. */
-function groupedByType(rules: EntitlementRule[]): [string, EntitlementRule[]][] {
-  const groups = new Map<string, EntitlementRule[]>();
-
-  for (const rule of rules) {
-    const group = groups.get(rule.leaveTypeId);
-
-    if (group === undefined) {
-      groups.set(rule.leaveTypeId, [rule]);
-    } else {
-      group.push(rule);
-    }
-  }
-
-  return [...groups];
+/**
+ * A type's rules together, latest first within each.
+ *
+ * What the grouping headings used to do, without spending a row on each: the grid reads
+ * left to right, so rules of one kind sit beside each other rather than under a heading.
+ */
+function byTypeThenDate(rules: EntitlementRule[]): EntitlementRule[] {
+  return [...rules].sort(
+    (left, right) =>
+      left.leaveTypeName.localeCompare(right.leaveTypeName) ||
+      right.effectiveFrom.localeCompare(left.effectiveFrom),
+  );
 }
 
 /**

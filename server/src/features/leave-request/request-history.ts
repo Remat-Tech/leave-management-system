@@ -155,7 +155,7 @@ export function statusInWords(status: RequestStatus): string {
 
   /** FR 48b, LMS 320. Not decided, and not waiting on anybody either. */
   if (status === 'UNROUTABLE') {
-    return 'stopped — no approver could decide it';
+    return 'stopped, no approver could decide it';
   }
 
   return inWordsSettled(status);

@@ -5,6 +5,7 @@ import { BalancesPage } from './features/balances/BalancesPage';
 import { CalendarPage } from './features/calendar/CalendarPage';
 import { ApprovalChainsPage } from './features/config/ApprovalChainsPage';
 import { EntitlementRulesPage } from './features/config/EntitlementRulesPage';
+import { HolidaysPage } from './features/config/HolidaysPage';
 import { LeaveTypesPage } from './features/config/LeaveTypesPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
 import { RequestsPage } from './features/requests/RequestsPage';
@@ -65,6 +66,15 @@ const SCREENS = [
    * that was answerable only by opening each form in turn.
    */
   { id: 'approval-chains', label: 'Approval chains', icon: 'stage' },
+  /**
+   * FR 22, LMS 504. The days the office is closed, which nobody is charged leave for.
+   *
+   * Last of the configuration tabs and not beside "Who is away", though both draw dates:
+   * that screen is a reading of what people asked for, and this is a record HR keeps. Its
+   * *reading* is everybody's — a holiday is what a leave quote is priced against — and the
+   * writes are HR's, refused with the server's own sentence.
+   */
+  { id: 'holidays', label: 'Holidays', icon: 'holiday' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -82,7 +92,7 @@ const DEFAULT_SCREEN: Screen = 'balances';
  * typed survived; it did not.
  */
 const SESSION_ENDED =
-  'You were signed out because your session ran out. Sign in again to carry on — anything ' +
+  'You were signed out because your session ran out. Sign in again to carry on. Anything ' +
   'you had already submitted is safe, but a form you were part way through is not.';
 
 export function App() {
@@ -259,6 +269,7 @@ export function App() {
         {screen === 'leave-types' ? <LeaveTypesPage onSignedOut={ranOut} /> : null}
         {screen === 'entitlements' ? <EntitlementRulesPage onSignedOut={ranOut} /> : null}
         {screen === 'approval-chains' ? <ApprovalChainsPage onSignedOut={ranOut} /> : null}
+        {screen === 'holidays' ? <HolidaysPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );

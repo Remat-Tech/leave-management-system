@@ -64,6 +64,8 @@ const types = new LeaveTypeRepository(db);
 const years = new LeaveYearRepository(db);
 /** FR 31, LMS 502. */
 const entitlementRules = new EntitlementRuleRepository(db);
+/** FR 22, LMS 206, LMS 504. */
+const holidays = new HolidayRepository(db);
 const requests = new LeaveRequestRepository(db);
 const decisions = new LeaveDecisionRepository(db);
 /** FR 48b, LMS 320. */
@@ -112,7 +114,7 @@ const leaveRequests = new LeaveRequestService(
   roles,
   delegations,
   organisation,
-  new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
+  new LeaveCalculatorService(new WorkPatternRepository(db), holidays, guard),
   new NotificationService(new NotificationRepository(db), mailer, guard),
 );
 
@@ -125,6 +127,7 @@ const app = buildApp({
   types,
   years,
   entitlementRules,
+  holidays,
   requests,
   leaveRequests,
   decisions,

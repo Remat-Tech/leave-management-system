@@ -53,6 +53,10 @@ export function ChainEditor({
             <span className="chain-at">{at + 1}</span>
             <span className="chain-desk">{nameOf(desk, choices)}</span>
 
+            {/* Arrows rather than "Earlier" and "Later". The list is numbered and read top
+                to bottom, so up and down are the directions somebody is thinking in, and
+                three words of button beside every step crowded a narrow card. The words
+                are still the accessible names. NFR USA 03. */}
             <button
               type="button"
               className="linkish"
@@ -61,7 +65,10 @@ export function ChainEditor({
                 move(at, -1);
               }}
             >
-              Earlier
+              <Icon name="up" />
+              <span className="visually-hidden">
+                Move {nameOf(desk, choices)} earlier in the chain
+              </span>
             </button>
 
             <button
@@ -72,7 +79,10 @@ export function ChainEditor({
                 move(at, 1);
               }}
             >
-              Later
+              <Icon name="down" />
+              <span className="visually-hidden">
+                Move {nameOf(desk, choices)} later in the chain
+              </span>
             </button>
 
             <button
@@ -120,7 +130,7 @@ export function sameChain(one: Desk[], other: Desk[]): boolean {
   return one.length === other.length && one.every((desk, at) => desk === other[at]);
 }
 
-const NOBODY = 'Nobody. A request for this type would sit in no queue at all — add an approver.';
+const NOBODY = 'Nobody. A request for this type would sit in no queue at all. Add an approver.';
 
 /** The label the server gave the desk, or the token where it named none. */
 function nameOf(desk: Desk, choices: DeskChoices): string {

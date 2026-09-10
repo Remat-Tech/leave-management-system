@@ -343,7 +343,7 @@ export function assertHasHappened(occurredOn: CalendarDate, today: CalendarDate)
   if (occurredOn > today) {
     throw new InvalidLeaveEvent(
       'occurredOn',
-      `An event on ${occurredOn} has not happened yet — today is ${today}. Entitlement ` +
+      `An event on ${occurredOn} has not happened yet. Today is ${today}. Entitlement ` +
         `arrives with the event rather than in anticipation of it, and a date in the ` +
         `future is a year typed wrong far more often than it is a plan. FR 32g.`,
     );

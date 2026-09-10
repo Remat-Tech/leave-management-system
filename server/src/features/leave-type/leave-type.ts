@@ -209,7 +209,7 @@ export class NotEligibleForLeaveType extends Error {
       gender === null
         ? `${type.name} is only available to ${lower(type.genderRestriction)} employees, ` +
             `and this record does not say. Ask HR to complete the record rather than ` +
-            `guessing — nothing here will assume it.`
+            `guessing. Nothing here will assume it.`
         : `${type.name} is only available to ${lower(type.genderRestriction)} employees.`,
     );
     this.name = 'NotEligibleForLeaveType';
@@ -239,7 +239,7 @@ export class NobodyApprovesLeaveType extends Error {
   constructor(type: LeaveType) {
     super(
       `Nobody is set up to approve ${type.name}, so a request for it would sit in ` +
-        `no queue at all. Ask an HR Administrator to say who approves it — most ` +
+        `no queue at all. Ask an HR Administrator to say who approves it. Most ` +
         `types go to ${chainInWords(DEFAULT_APPROVAL_CHAIN)}.`,
     );
     this.name = 'NobodyApprovesLeaveType';
@@ -515,8 +515,8 @@ export function countsWorkingDays(type: LeaveType): boolean {
  */
 export function countingBasisInWords(basis: CountingBasis): string {
   return basis === 'WORKING_DAYS'
-    ? 'working days — days you are not scheduled to work, and public holidays, cost nothing'
-    : 'calendar days — every day of the period counts, weekends and public holidays included';
+    ? 'working days: days you are not scheduled to work, and public holidays, cost nothing'
+    : 'calendar days: every day of the period counts, weekends and public holidays included';
 }
 
 /**
@@ -544,7 +544,7 @@ export function countingBasisLabel(basis: CountingBasis): string {
  * is: the file that defines the basis is the file that decides what it is called.
  */
 export function entitlementBasisLabel(basis: EntitlementBasis): string {
-  return basis === 'QUOTA' ? 'A yearly allowance' : 'Granted when an occasion arises';
+  return basis === 'QUOTA' ? 'Yearly allowance' : 'Granted when an occasion arises';
 }
 
 /** FR 24. How the allowance is said. LMS 501. */
@@ -889,7 +889,7 @@ function requireCode(value: string | undefined): string {
     throw new InvalidLeaveType(
       'code',
       `${code} is not a usable code. Use letters, digits and underscores, starting ` +
-        'with a letter or a digit — a code is a column heading in an export and a ' +
+        'with a letter or a digit. A code is a column heading in an export and a ' +
         'value in an import, and a space or a comma in one breaks both.',
     );
   }

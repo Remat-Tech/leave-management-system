@@ -53,22 +53,26 @@ const MONTHS = [
   'December',
 ];
 
-/** FR 31. What unused days do at the year end. */
+/**
+ * FR 31. What unused days do at the year end.
+ *
+ * Written short because of where it is read: a footnote on a card three to a row, where
+ * "Unused days carry over, uncapped, and do not expire" wrapped to three lines. The subject
+ * is the card it sits on, so it does not need naming again.
+ */
 export function carryoverInWords(rule: EntitlementRule): string {
   if (!rule.carriesOver) {
-    return 'Unused days do not carry over.';
+    return 'No carry over.';
   }
 
   const cap =
     rule.carryoverMaxDays === null
-      ? 'Unused days carry over, uncapped'
-      : `Unused days carry over, up to ${inDays(rule.carryoverMaxDays)}`;
+      ? 'Carries over, uncapped'
+      : `Carries over, up to ${inDays(rule.carryoverMaxDays)}`;
 
   const month = rule.carryoverExpiryMonth;
 
-  return month === null
-    ? `${cap}, and do not expire.`
-    : `${cap}, and expire at the end of ${MONTHS[month - 1]}.`;
+  return month === null ? `${cap}, never expires.` : `${cap}, expires end of ${MONTHS[month - 1]}.`;
 }
 
 /** The days a rule is in force for. */
@@ -89,16 +93,16 @@ export function ruleInWords(rule: EntitlementRule, names: RuleNames): string {
 }
 
 /**
- * Why this rule can no longer be edited, or null while it still can. FR 31.
+ * What fixes this rule, or null while it can still be edited. FR 31.
  *
  * The screen greys a button on it, so the sentence is the server's rather than the
  * browser's — the same rule `assertMayBeCorrected` throws.
  */
-export function whyItIsFixed(rule: EntitlementRule, today: CalendarDate): string | null {
+export function fixedReason(rule: EntitlementRule, today: CalendarDate): string | null {
   return isStillADraft(rule, today)
     ? null
-    : `In force since ${formatDay(rule.effectiveFrom)}. What people were owed for days ` +
-        'that have already passed does not change — add a rule from a later date instead.';
+    : `This rule started on ${formatDay(rule.effectiveFrom)}, so it can no longer be ` +
+        'changed. To use a different figure, add a new rule that starts on a later date.';
 }
 
 /** The boundary a closed year sets, said where a date picker can act on it. FR 31. */

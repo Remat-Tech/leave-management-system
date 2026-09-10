@@ -549,7 +549,7 @@ describe('the quote warns on exactly what the submission refuses on', () => {
     const warning = quote.warnings.find((each) => each.code === 'DOCUMENTATION_REQUIRED');
 
     expect(warning?.message).toContain('past its allowance');
-    expect(warning?.message).toContain('a request without it is refused');
+    expect(warning?.message).toContain('A request without it is refused');
   });
 
   it('and says nothing where no rule applies', () => {
@@ -1454,7 +1454,7 @@ describe('the refusal, which names the leave already in the way', () => {
       new LeaveOverlapsAnother(WANTED, { request: aStoredRequest(), typeName: 'Annual Leave' })
         .message,
     ).toBe(
-      'You already have leave from 2 March 2026 to 10 March 2026 — 6 days of Annual ' +
+      'You already have leave from 2 March 2026 to 10 March 2026, 6 days of Annual ' +
         'Leave. The same days cannot be booked twice, or they come off your balance ' +
         'twice. Withdraw that request, or ask for dates outside it.',
     );
@@ -1570,7 +1570,7 @@ describe('a request the balance does not hold', () => {
   /* The story's second criterion, and the one it is named for. */
   it('and the message states the figure that is available', () => {
     expect(refuse(3).message).toBe(
-      'This is 7 days of Annual Leave and you have 3 left — 4 days more than the balance ' +
+      'This is 7 days of Annual Leave and you have 3 left, 4 days more than the balance ' +
         'holds. Ask for 3 days or fewer, or speak to HR if the balance itself looks wrong.',
     );
   });

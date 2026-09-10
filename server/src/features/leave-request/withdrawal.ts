@@ -169,7 +169,7 @@ export class AlreadyAskedToWithdraw extends Error {
     super(
       `You have already asked for this leave to be taken off the books, and HR has not ` +
         `answered yet. Asking again would give them two sentences and one decision. If what ` +
-        `you told them has changed, tell HR — the ask is on the record. FR 47.`,
+        `you told them has changed, tell HR. The ask is on the record. FR 47.`,
     );
     this.name = 'AlreadyAskedToWithdraw';
     this.leaveRequestId = leaveRequestId;
@@ -236,7 +236,7 @@ export function withdrawalInWords(withdrawal: Withdrawal): string {
       return 'HR agreed. The leave came off the books and the days went back into the balance.';
     case 'AMEND':
       return (
-        'HR agreed, and this leave had already started — so the days up to then are spent ' +
+        'HR agreed, and this leave had already started, so the days up to then are spent ' +
         'and the rest went back into the balance.'
       );
     default:

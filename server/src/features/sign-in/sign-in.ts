@@ -56,7 +56,7 @@ function messageFor(reason: RefusalReason): string {
     case 'ACCOUNT_CLOSED':
       return (
         'This account has been closed. Your password is right, so this is not a ' +
-        'typing mistake — ask HR or IT to reopen it.'
+        'typing mistake. Ask HR or IT to reopen it.'
       );
     case 'EMPLOYMENT_ENDED':
       return (

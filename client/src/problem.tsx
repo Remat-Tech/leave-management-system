@@ -37,7 +37,7 @@ export function problemFrom(error: unknown): Problem {
 
   return {
     what:
-      'This page could not finish what it was doing. Reload it and try again — and if it ' +
+      'This page could not finish what it was doing. Reload it and try again. If it ' +
       'keeps happening, tell IT which screen you were on.',
     field: undefined,
     worthRetrying: true,

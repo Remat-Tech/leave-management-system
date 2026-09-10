@@ -54,7 +54,7 @@ export function policyFor(resource: string) {
 /** What a refusal says when saying more would disclose something. */
 export const NOT_AUTHORISED_MESSAGE =
   'No record you have access to matches that. If you think that is wrong, ask HR ' +
-  'or IT and tell them roughly when you tried — the attempt is in the log.';
+  'or IT and tell them roughly when you tried. The attempt is in the log.';
 
 /** A refused attempt, as an exception. */
 export class NotAuthorised extends Error {

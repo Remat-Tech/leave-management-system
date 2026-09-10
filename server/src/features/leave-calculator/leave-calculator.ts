@@ -159,7 +159,7 @@ export function validateLeavePeriod(period: LeavePeriod): LeavePeriod {
   if (calendarDaysBetween(from, to) > LONGEST_PERIOD_DAYS) {
     throw new InvalidLeavePeriod(
       'to',
-      `${from} to ${to} is over two years of leave. Check the year — the longest ` +
+      `${from} to ${to} is over two years of leave. Check the year. The longest ` +
         'absence this system knows about is four months of maternity leave and the ' +
         'unpaid extension after it.',
     );
@@ -173,7 +173,7 @@ function requireDay(field: string, value: unknown): CalendarDate {
     throw new InvalidLeavePeriod(
       field,
       `The ${field === 'from' ? 'first' : 'last'} day of a period of leave is a date in ` +
-        'the form YYYY-MM-DD. Leave is taken on days, so it is written as one — ' +
+        'the form YYYY-MM-DD. Leave is taken on days, so it is written as one: ' +
         '31/07/2026 and 07/31/2026 are the same eleven characters meaning two ' +
         'different days.',
     );

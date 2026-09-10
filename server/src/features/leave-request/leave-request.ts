@@ -103,7 +103,7 @@ export class LeaveAlreadySettled extends Error {
     super(
       `This leave was already ${inWordsSettled(request.status)} and its days have been ` +
         `given back, so there is nothing left to give back. A request ends once. If the ` +
-        `days are wanted again, ask for them again — they are back in the balance.`,
+        `days are wanted again, ask for them again. They are back in the balance.`,
     );
     this.name = 'LeaveAlreadySettled';
     this.leaveRequestId = request.id;
@@ -145,7 +145,7 @@ export class LeaveCannotBeMoved extends Error {
         (instead.length > 0
           ? `What it can be is ${listOf(instead)}.`
           : `Leave that has been agreed is taken off the books by HR, who put the days ` +
-            `back as a correction — the days are spent rather than held, so there is no ` +
+            `back as a correction. The days are spent rather than held, so there is no ` +
             `hold left to release. Speak to them.`),
     );
     this.name = 'LeaveCannotBeMoved';
@@ -201,7 +201,7 @@ export class ApprovalChainChanged extends Error {
   constructor(request: LeaveRequest, awaiting: ApproverRole, chain: readonly ApproverRole[]) {
     super(
       `This request is waiting on ${chainInWords([awaiting])}, and the approvers for this ` +
-        `kind of leave have since been changed to ${chainInWords(chain)} — which no longer ` +
+        `kind of leave have since been changed to ${chainInWords(chain)}, which no longer ` +
         `includes that stage, so there is no next approver to send it to. Nothing is wrong ` +
         `with the request. Ask an HR Administrator to put the approval chain back, or ` +
         `withdraw this and ask again so it starts at the first stage of the new one.`,
@@ -710,7 +710,7 @@ export function settlementTo(request: LeaveRequest, action: ReleasingAction): Re
     throw new Error(
       `A ${action} leaves this request ${transition.to}, which does not end it, so its ` +
         `days are not the release door's to give back. A transition that keeps a request ` +
-        `alive needs the movement that matches it — approval commits days rather than ` +
+        `alive needs the movement that matches it, approval commits days rather than ` +
         `releasing them. §6.`,
     );
   }
@@ -777,7 +777,7 @@ export class NothingLeftToGiveBack extends Error {
   constructor(request: LeaveRequest, typeName: string) {
     super(
       `This ${typeName} ran from ${formatDay(request.from)} to ${formatDay(request.to)} and ` +
-        `there is none of it left to give back — the days were taken. Leave that has ` +
+        `there is none of it left to give back. The days were taken. Leave that has ` +
         `already happened is on the record because it happened, and days somebody was ` +
         `absent for are not days a balance can have back. If the record itself is wrong, ` +
         `that is an adjustment with a reason on it. FR 27, FR 47.`,
@@ -1402,7 +1402,7 @@ export class LeaveCountsNoDays extends Error {
   constructor(type: LeaveType, period: LeavePeriod, free: FreeDay[]) {
     super(
       `${period.from} to ${period.to} costs no ${type.name} at all: ${inWords(free)}. ` +
-        `Leave that costs nothing is leave nobody needs to ask for. Check the dates — ` +
+        `Leave that costs nothing is leave nobody needs to ask for. Check the dates. ` +
         `or, if the whole period really is meant to be recorded, it is a kind of ` +
         `leave that counts every day rather than only working ones.`,
     );
@@ -1541,11 +1541,11 @@ export class LeaveOverlapsAnother extends Error {
     super(
       conflict === undefined
         ? `Those days overlap leave this person already has. One period of leave per ` +
-            `person per day — the same days cannot be booked twice, or they come off a ` +
+            `person per day. The same days cannot be booked twice, or they come off a ` +
             `balance twice. Another request for them was submitted at the same moment as ` +
             `this one; reload the leave page and check the dates before asking again.`
         : `You already have leave from ${formatDay(conflict.request.from)} to ` +
-            `${formatDay(conflict.request.to)} — ${conflict.request.days} ` +
+            `${formatDay(conflict.request.to)}, ${conflict.request.days} ` +
             `${conflict.request.days === 1 ? 'day' : 'days'} of ${conflict.typeName}. The ` +
             `same days cannot be booked twice, or they come off your balance twice. ` +
             `Withdraw that request, or ask for dates outside it.`,
@@ -1631,7 +1631,7 @@ export class NotEnoughDays extends Error {
     super(
       `${daysAgainstTheBalance(type, requested, availableDays)}` +
         (couldAskFor > 0
-          ? ` — ${inDays(round(requested - availableDays))} more than the balance holds. ` +
+          ? `, ${inDays(round(requested - availableDays))} more than the balance holds. ` +
             `Ask for ${inDays(couldAskFor)} or fewer, or speak to HR if the balance ` +
             `itself looks wrong.`
           : `, so there is nothing left to book against. Speak to HR if the balance ` +
@@ -1667,7 +1667,7 @@ export class ShortNoticeNotAcknowledged extends Error {
   constructor(type: LeaveType, period: LeavePeriod, daysOfNotice: number, shortBy: number) {
     super(
       `${noticeAgainstWhatIsExpected(type, daysOfNotice, shortBy)}. Short notice is not ` +
-        `refused and these dates do not have to move — say you understand that the approvers ` +
+        `refused and these dates do not have to move, say you understand that the approvers ` +
         `may push back, and this goes through as it stands. FR 17.`,
     );
     this.name = 'ShortNoticeNotAcknowledged';
@@ -1799,7 +1799,7 @@ export class DocumentationNotAttached extends Error {
             ? ''
             : ` ${waiting === 1 ? 'One file is' : `${waiting} files are`} still being checked` +
               ` for viruses and cannot count until that is done.`
-        } Upload it first — a file waits under your name until you ask for the leave — and ` +
+        } Upload it first (a file waits under your name until you ask for the leave) and ` +
         `ask again with it. FR 13.`,
     );
     this.name = 'DocumentationNotAttached';
@@ -1872,7 +1872,7 @@ export class LateEntryNeedsAReason extends Error {
     super(
       `${type.name} can be entered up to ${inDays(type.maxBackdateCalendarDays)} after the ` +
         `fact and this one began ${inDays(daysAgo)} ago, so it goes on the record as an ` +
-        `exception. Say why it is being entered now — that sentence is what the approvers ` +
+        `exception. Say why it is being entered now. That sentence is what the approvers ` +
         `and any later audit have to go on. FR 18.`,
     );
     this.name = 'LateEntryNeedsAReason';
@@ -2050,7 +2050,7 @@ function noticeAgainstWhatIsExpected(
   shortBy: number,
 ): string {
   const gives =
-    daysOfNotice < 0 ? 'none — the leave has already started' : `${inDays(daysOfNotice)}`;
+    daysOfNotice < 0 ? 'none, the leave had already started' : `${inDays(daysOfNotice)}`;
 
   return (
     `${type.name} normally wants ${inDays(type.minNoticeCalendarDays)}’ notice and this ` +
@@ -2223,7 +2223,7 @@ export function quoteFor(input: {
       code: 'SHORT_NOTICE',
       message:
         `${noticeAgainstWhatIsExpected(type, daysOfNotice, shortfall)}. It can still be ` +
-        `submitted — you will be asked to say you know it is short, and whoever approves it ` +
+        `submitted. You will be asked to say you know it is short, and whoever approves it ` +
         `will see that it was.`,
     });
   }
@@ -2236,7 +2236,7 @@ export function quoteFor(input: {
       code: 'DOCUMENTATION_REQUIRED',
       message:
         `${documentationAgainstWhatIsAsked(type, grounds, count.days, availableNow)}. ` +
-        `Attach it before you ask — a request without it is refused.`,
+        `Attach it before you ask. A request without it is refused.`,
     });
   }
 
@@ -2645,7 +2645,7 @@ function requireWholeDays(field: string, value: unknown): number {
     throw new InvalidLeaveRequest(
       field,
       `${field} is a whole number of days, at least one. Leave is requested in whole ` +
-        `days — FR 24 — and a morning off is settled with a manager rather than here.`,
+        `days (FR 24) and a morning off is settled with a manager rather than here.`,
     );
   }
 

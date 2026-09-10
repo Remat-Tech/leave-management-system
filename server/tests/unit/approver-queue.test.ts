@@ -166,7 +166,7 @@ describe('the balance beside each request', () => {
     expect(item.balance.taken).toBe(6);
     expect(item.balance.pending).toBe(5);
     expect(item.balance.available).toBe(9);
-    expect(item.balance.inWords).toContain('approving this leaves 9 days');
+    expect(item.balance.inWords).toContain('Approving this leaves 9 days');
   });
 
   /* §8.6b, FR 32a. A negative figure with nothing beside it reads as a fault. */

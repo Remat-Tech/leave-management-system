@@ -37,7 +37,7 @@ export class InvalidApprovalChain extends Error {
 export function validateApprovalChain(value: unknown): ApproverRole[] {
   if (!Array.isArray(value)) {
     throw new InvalidApprovalChain(
-      'An approval chain is the list of approvers a request goes to, in order — ' +
+      'An approval chain is the list of approvers a request goes to, in order, ' +
         `${APPROVER_ROLES.join(', ')}.`,
     );
   }
@@ -79,7 +79,7 @@ export function readApproverRole(value: unknown): ApproverRole {
 
   if (!(APPROVER_ROLES as readonly string[]).includes(role)) {
     throw new InvalidApprovalChain(
-      `${value.trim()} is not an approver. Approvers are ${APPROVER_ROLES.join(', ')} — ` +
+      `${value.trim()} is not an approver. Approvers are ${APPROVER_ROLES.join(', ')}, ` +
         'the desk a request goes to, rather than the role somebody holds, so HR ' +
         'covers an HR Officer and an HR Administrator alike.',
     );
@@ -251,6 +251,39 @@ export function chainInWords(chain: readonly ApproverRole[]): string {
   }
 
   const named = chain.map(deskInWords);
+
+  return named.length === 1
+    ? named[0]
+    : `${named.slice(0, -1).join(', ')} then ${named[named.length - 1]}`;
+}
+
+/**
+ * One desk, as a configuration screen names it. FR 38a, LMS 503.
+ *
+ * The other half of {@link deskInWords}, and a separate function rather than a case in it,
+ * because they are two different voices for two different readers. A person asking for
+ * leave is told "your manager", which is true of them; an HR Administrator setting a chain
+ * up is looking at a list of desks, where "your manager" names nobody and reads as a
+ * sentence fragment in a pill.
+ */
+export function deskLabel(role: ApproverRole): string {
+  switch (role) {
+    case 'MANAGER':
+      return 'Manager';
+    case 'HR':
+      return 'HR';
+    default:
+      return 'Chief Executive';
+  }
+}
+
+/** A chain in the same voice, for the screen that sets it. "Manager then HR". */
+export function chainLabel(chain: readonly ApproverRole[]): string {
+  if (chain.length === 0) {
+    return 'Nobody';
+  }
+
+  const named = chain.map(deskLabel);
 
   return named.length === 1
     ? named[0]

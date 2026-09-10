@@ -688,7 +688,7 @@ function Asked({
 function NothingToAskFor() {
   return (
     <p className="notice plain">
-      There are no kinds of leave you can ask for at the moment. Ask HR — this usually means the
+      There are no kinds of leave you can ask for at the moment. Ask HR. This usually means the
       leave types have not been set up yet, or that your record is missing something they depend on.
     </p>
   );
@@ -738,6 +738,6 @@ function placeholderFor(type: RequestableLeaveType | undefined): string {
 
   /** FR 10. An optional box asks for something rather than demanding it. */
   return type.reasonRequired
-    ? `What this leave is for — enough that ${type.approvedBy} can decide on it`
+    ? `What this leave is for, enough that ${type.approvedBy} can decide on it`
     : `Anything ${type.approvedBy} should know. Leave it blank if there is nothing`;
 }
