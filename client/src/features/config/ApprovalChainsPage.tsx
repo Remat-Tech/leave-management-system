@@ -165,7 +165,7 @@ function ChainCard({
           {/* The same chain in the requester's voice, which is what the request form says. */}
           <p className="rules">
             <Icon name="stage" />
-            Staff are told: {type.approvedBy}
+            {type.approvedBy}
           </p>
 
           <div className="card-actions">

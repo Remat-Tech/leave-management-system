@@ -120,7 +120,7 @@ export function sameChain(one: Desk[], other: Desk[]): boolean {
   return one.length === other.length && one.every((desk, at) => desk === other[at]);
 }
 
-const NOBODY = 'Nobody. A request for this type would sit in no queue at all — add an approver.';
+const NOBODY = 'Nobody. A request for this type would sit in no queue at all. Add an approver.';
 
 /** The label the server gave the desk, or the token where it named none. */
 function nameOf(desk: Desk, choices: DeskChoices): string {

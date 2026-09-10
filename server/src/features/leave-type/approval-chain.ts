@@ -37,7 +37,7 @@ export class InvalidApprovalChain extends Error {
 export function validateApprovalChain(value: unknown): ApproverRole[] {
   if (!Array.isArray(value)) {
     throw new InvalidApprovalChain(
-      'An approval chain is the list of approvers a request goes to, in order — ' +
+      'An approval chain is the list of approvers a request goes to, in order, ' +
         `${APPROVER_ROLES.join(', ')}.`,
     );
   }
@@ -79,7 +79,7 @@ export function readApproverRole(value: unknown): ApproverRole {
 
   if (!(APPROVER_ROLES as readonly string[]).includes(role)) {
     throw new InvalidApprovalChain(
-      `${value.trim()} is not an approver. Approvers are ${APPROVER_ROLES.join(', ')} — ` +
+      `${value.trim()} is not an approver. Approvers are ${APPROVER_ROLES.join(', ')}, ` +
         'the desk a request goes to, rather than the role somebody holds, so HR ' +
         'covers an HR Officer and an HR Administrator alike.',
     );

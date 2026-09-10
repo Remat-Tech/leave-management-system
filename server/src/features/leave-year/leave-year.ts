@@ -376,7 +376,7 @@ function requireLabel(value: string | undefined): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new InvalidLeaveYear(
       'label',
-      'A leave year needs a name. It is what people call it — 2026, or 2026/27 for ' +
+      'A leave year needs a name. It is what people call it: 2026, or 2026/27 for ' +
         'a year that runs April to March.',
     );
   }
@@ -399,7 +399,7 @@ function requireDay(field: string, value: unknown): CalendarDate {
       field,
       `${field === 'startDate' ? 'The first day' : 'The last day'} of a leave year is a ` +
         'date in the form YYYY-MM-DD. A year begins and ends on a day, so it is ' +
-        'written as one — 31/07/2026 and 07/31/2026 are the same eleven characters ' +
+        'written as one: 31/07/2026 and 07/31/2026 are the same eleven characters ' +
         'meaning two different days.',
     );
   }

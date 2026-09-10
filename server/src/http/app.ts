@@ -32,9 +32,12 @@ import { attachmentRoutes } from '../features/leave-request/attachment.routes.js
 import type { Scanner } from '../scanning/index.js';
 import type { Storage } from '../storage/index.js';
 import type { EntitlementRuleRepository } from '../features/entitlement/entitlement-rule.db.js';
+import type { HolidayRepository } from '../features/holiday/holiday.db.js';
+import { HolidayService } from '../features/holiday/holiday.service.js';
 import { earliestOpenDayFrom } from '../features/leave-year/leave-year.service.js';
 import { balanceRoutes } from '../features/balance/routes.js';
 import { entitlementRuleRoutes } from '../features/entitlement/routes.js';
+import { holidayRoutes } from '../features/holiday/routes.js';
 import { leaveTypeRoutes } from '../features/leave-type/routes.js';
 import { teamRoutes } from '../features/team/routes.js';
 import { TeamService } from '../features/team/team.service.js';
@@ -58,6 +61,8 @@ export interface Application {
   years: LeaveYearRepository;
   /** FR 31, LMS 502. What a leave type is worth, and from when. */
   entitlementRules: EntitlementRuleRepository;
+  /** FR 22, LMS 504. The gazetted days the office is closed. */
+  holidays: HolidayRepository;
   /** FR 54. */
   requests: LeaveRequestRepository;
   /**
@@ -158,6 +163,23 @@ export function buildApp(parts: Application): Express {
       types: new LeaveTypeService(parts.types, parts.guard),
       employees: parts.employees,
       departments: parts.departments,
+      years: parts.years,
+    }),
+  );
+
+  /* FR 22, LMS 504. The days the office is closed, kept by HR the day the gazette says so.
+     Reading the calendar is anybody's — it is what a leave quote is priced against — and
+     `holidayPolicy` decides the writes rather than the mounting. The closed-year boundary is
+     read from the leave year table, so the trigger and the refusal cannot disagree. */
+  app.use(
+    '/api',
+    holidayRoutes({
+      holidays: new HolidayService(
+        parts.holidays,
+        parts.guard,
+        earliestOpenDayFrom(parts.years),
+        parts.years,
+      ),
       years: parts.years,
     }),
   );

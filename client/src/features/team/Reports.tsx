@@ -78,7 +78,7 @@ function Figures({ lines }: { lines: BalanceLine[] }) {
             <Icon name={iconForLeaveType(line.name)} />
             <span className="what">{line.name}</span>
             <span className={`figure${line.available < 0 ? ' overdrawn' : ''}`}>
-              {awaitingAnOccasion ? '—' : days(line.available)}
+              {awaitingAnOccasion ? 'n/a' : days(line.available)}
             </span>
             <span className="of">{awaitingAnOccasion ? 'per occasion' : 'left'}</span>
           </li>

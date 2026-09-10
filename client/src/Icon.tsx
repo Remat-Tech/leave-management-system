@@ -13,6 +13,7 @@ export type IconName =
   | 'calendar'
   | 'approvals'
   | 'settings'
+  | 'holiday'
   /* Kinds of leave, matched on the name by `iconForLeaveType`. */
   | 'annual'
   | 'sick'
@@ -47,6 +48,9 @@ const PATHS: Record<IconName, string> = {
   approvals: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.5V12l3 2',
   /** LMS 501. Setting the rules up: sliders, because each one is a value being set. */
   settings: 'M4 7h10M18 7h2M4 17h2M10 17h10M16 4.5v5M8 14.5v5',
+  /** LMS 504. The calendar of `balances`, with one day ringed on it. */
+  holiday:
+    'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4M12 17.25a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5z',
 
   annual: 'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4',
   sick: 'M12 6.5h5M14.5 4v5M4.5 4.5h4v5.5a3 3 0 0 0 6 0M8.5 10v3a5 5 0 0 0 10 0v-1',

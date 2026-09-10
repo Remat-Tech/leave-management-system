@@ -54,7 +54,7 @@ export class LeaveYearAheadIsClosed extends Error {
   constructor(opening: LeaveYear) {
     super(
       `${opening.label} is already closed, so nothing can be carried into it. A settled ` +
-        `year takes no new figures — the only entry it accepts is a manual adjustment ` +
+        `year takes no new figures. The only entry it accepts is a manual adjustment ` +
         `with a reason. §8.9.`,
     );
     this.name = 'LeaveYearAheadIsClosed';

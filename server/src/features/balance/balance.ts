@@ -114,7 +114,7 @@ export class NotEnoughHeld extends Error {
     super(
       `That is ${requested} days to ${what}, and only ${held} are being held for this ` +
         `balance. Days can only be ${what === 'approve' ? 'approved' : 'given back'} once, ` +
-        `and only after they were reserved — so this is either a second attempt at ` +
+        `and only after they were reserved, so this is either a second attempt at ` +
         `something that already happened or a figure that does not match the request.`,
     );
     this.name = 'NotEnoughHeld';
@@ -136,7 +136,7 @@ export class NotEnoughTaken extends Error {
   constructor(requested: number, taken: number) {
     super(
       `That is ${requested} days to give back, and only ${taken} have been taken against ` +
-        `this balance. Days come back out of days that were spent — so this is either a ` +
+        `this balance. Days come back out of days that were spent, so this is either a ` +
         `second answer to something that has already been put right or a figure that does ` +
         `not match the leave it is about. FR 47.`,
     );
@@ -259,7 +259,7 @@ export function daysToCarry(days: number, carriesAlreadyPosted: number): number 
     throw new InvalidBalanceMovement(
       `A carry forward is a number of days left over from last year, and ${String(days)} is ` +
         `not one. A balance with nothing left carries nothing, and a balance that is ` +
-        `overdrawn carries nothing either — a debt is not written off on the first of ` +
+        `overdrawn carries nothing either. A debt is not written off on the first of ` +
         `January, it is reported and settled by hand. FR 36.`,
     );
   }
@@ -288,8 +288,8 @@ export function daysToLapse(days: number): number {
   if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
     throw new InvalidBalanceMovement(
       `A lapse is a number of days going unused, and ${String(days)} is not one. A ` +
-        `balance with nothing left in it lapses nothing — there is no movement to post ` +
-        `— and one that is overdrawn lapses nothing either, because a lapse takes days ` +
+        `balance with nothing left in it lapses nothing (there is no movement to post) ` +
+        `and one that is overdrawn lapses nothing either, because a lapse takes days ` +
         `away and there are none to take. FR 32e.`,
     );
   }

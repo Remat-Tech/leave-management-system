@@ -108,7 +108,7 @@ export class AlreadyDelegated extends Error {
   constructor(period: { from: CalendarDate; to: CalendarDate }) {
     super(
       `Your approvals are already handed to somebody over ${formatDay(period.from)} to ` +
-        `${formatDay(period.to)}. One delegate at a time — two people holding the same ` +
+        `${formatDay(period.to)}. One delegate at a time. Two people holding the same ` +
         'approvals is a decision recorded under whichever of them pressed first. End the ' +
         'delegation that stands first. FR 49.',
     );

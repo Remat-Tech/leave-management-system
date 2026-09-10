@@ -134,7 +134,7 @@ export const ledgerPolicy = {
           owner.employeeId,
           'holds no role that grants a year of entitlement',
           'A year’s entitlement arrives from the rule that says what a leave type is ' +
-            'worth, and applying it is the same desk that writes it — an HR ' +
+            'worth, and applying it is the same desk that writes it, an HR ' +
             'Administrator’s. FR 30.',
         );
   },
@@ -165,7 +165,7 @@ export const ledgerPolicy = {
           owner.employeeId,
           'holds no role that lapses an unused grant',
           'Days lapse because a leave type says how long a grant is usable for, and ' +
-            'applying that is the same desk that writes it — an HR Administrator’s. ' +
+            'applying that is the same desk that writes it, an HR Administrator’s. ' +
             'FR 32e.',
         );
   },
@@ -181,7 +181,7 @@ export const ledgerPolicy = {
           'holds no role that carries a year forward',
           'Carrying unused days into a new year applies the rule that says whether a ' +
             'leave type carries at all, and applying it is the same desk that writes ' +
-            'it — an HR Administrator’s. FR 36.',
+            'it, an HR Administrator’s. FR 36.',
         );
   },
 
@@ -216,7 +216,7 @@ export const ledgerPolicy = {
           owner.employeeId,
           'holds no role that maintains leave for the company',
           'Leave that has been agreed has already come out of a balance, and putting those ' +
-            'days back is HR’s answer to somebody asking for it — not the person’s own, ' +
+            'days back is HR’s answer to somebody asking for it, not the person’s own, ' +
             'and not their manager’s. Ask for it to be taken off the books, and HR ' +
             'will answer. FR 47.',
         );

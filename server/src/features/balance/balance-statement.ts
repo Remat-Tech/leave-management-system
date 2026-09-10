@@ -99,7 +99,7 @@ export class NotOneOfTheirLeaveYears extends Error {
 
   constructor(employeeId: string, year: LeaveYear, choices: readonly LeaveYear[]) {
     super(
-      `${year.label} is not a leave year this person has any balances in — they were ` +
+      `${year.label} is not a leave year this person has any balances in. They were ` +
         `employed for no part of it and nothing has been filed under it for them. ` +
         (choices.length === 0
           ? 'There are no leave years to show for them at all.'

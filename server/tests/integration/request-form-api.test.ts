@@ -157,6 +157,7 @@ beforeAll(async () => {
     drafts: new LeaveRequestDraftRepository(db),
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
+    holidays: new HolidayRepository(db),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
     accounts,

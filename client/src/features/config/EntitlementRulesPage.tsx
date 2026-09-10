@@ -105,7 +105,7 @@ export function EntitlementRulesPage({ onSignedOut }: { onSignedOut: () => void 
       <div className="pagehead">
         <p className="muted">
           <span className="count">{String(settings.rules.length)}</span>
-          entitlement rules. A figure changes by adding a rule from a later date — what people were
+          entitlement rules. A figure changes by adding a rule from a later date. What people were
           owed for days that have already passed never moves.
         </p>
 
@@ -152,7 +152,7 @@ export function EntitlementRulesPage({ onSignedOut }: { onSignedOut: () => void 
 
       {shown.length === 0 ? (
         <p className="muted">
-          No rules here yet. Until one is added, this kind of leave has no figure at all — which is
+          No rules here yet. Until one is added, this kind of leave has no figure at all, which is
           not the same as a figure of nought.
         </p>
       ) : (
@@ -438,7 +438,7 @@ function RuleForm({
             }}
           />
           <small className="muted">
-            Whole days. Nought is a real figure — it says this leave is worth nothing to these
+            Whole days. Nought is a real figure. It says this leave is worth nothing to these
             people, which reads differently from having no rule at all.
           </small>
         </label>
@@ -587,7 +587,7 @@ function RuleForm({
             }}
           />
           <small className="muted">
-            Why the figure changed — the board minute, the policy, the arrangement. It stays on the
+            Why the figure changed: the board minute, the policy, the arrangement. It stays on the
             record beside the rule.
           </small>
         </label>

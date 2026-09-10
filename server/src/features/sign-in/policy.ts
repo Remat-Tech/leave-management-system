@@ -10,7 +10,7 @@ const about = policyFor('sign in account');
 
 /** Said openly. */
 const SETTING_UP_IS_HRS =
-  'Logins are created and passwords reset by HR. Ask them — they can do it from ' +
+  'Logins are created and passwords reset by HR. Ask them. They can do it from ' +
   'the same screen as your employee record.';
 
 const CLOSING_IS_ADMINISTRATIVE =

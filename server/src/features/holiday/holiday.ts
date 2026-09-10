@@ -1,6 +1,6 @@
 /** The gazetted public holiday calendar. FR 22, §5.4., LMS 206, §7.3. */
 
-import { type CalendarDate, isCalendarDate } from '../../shared/time.js';
+import { type CalendarDate, formatDay, isCalendarDate } from '../../shared/time.js';
 import { coversDay, type LeaveYear } from '../leave-year/leave-year.js';
 
 /** What the caller supplies to add one. */
@@ -225,6 +225,31 @@ export function byDate(left: Holiday, right: Holiday): number {
   return left.date < right.date ? -1 : left.date > right.date ? 1 : 0;
 }
 
+/* ----------------------------------------------------------------- the words */
+
+/** The boundary a closed year sets, said where a day is about to be typed. FR 22, LMS 504. */
+export function closedYearsInWords(earliestOpenDay: CalendarDate | null): string {
+  return earliestOpenDay === null
+    ? 'No leave year has been closed, so any day on the calendar can still be changed.'
+    : `Leave years are closed up to ${formatDay(earliestOpenDay)}. Days before then are ` +
+        'fixed: every request over one was counted against the calendar as it stood, and a ' +
+        'closed year is never recalculated.';
+}
+
+/**
+ * What fixes a day, or null while it can still be changed. FR 22, LMS 504.
+ *
+ * The rule {@link assertNotInASettledYear} throws, asked of a day rather than of an act, so
+ * a screen greys its buttons on the server's answer rather than on its own.
+ */
+export function fixedReason(holiday: Holiday, earliestOpenDay: CalendarDate | null): string | null {
+  return earliestOpenDay === null || holiday.date >= earliestOpenDay
+    ? null
+    : `${formatDay(holiday.date)} is inside a leave year that has been closed. Every request ` +
+        'over it was counted against the calendar as it stood, so it cannot be renamed, moved ' +
+        `or cleared. The calendar is open from ${formatDay(earliestOpenDay)}.`;
+}
+
 /* ---------------------------------------------------------------- the fields */
 
 /**
@@ -240,7 +265,7 @@ function requireName(value: string | undefined): string {
     throw new InvalidHoliday(
       'name',
       'A public holiday needs a name. It is what the gazette calls the day, and what ' +
-        "somebody reads beside it on a calendar — Christmas Day, Farmers' Day.",
+        "somebody reads beside it on a calendar: Christmas Day, Farmers' Day.",
     );
   }
 
@@ -261,7 +286,7 @@ function requireDay(value: unknown): CalendarDate {
     throw new InvalidHoliday(
       'date',
       'A public holiday is a date in the form YYYY-MM-DD. The office is closed on a ' +
-        'day, so it is written as one — 06/03/2026 and 03/06/2026 are the same ten ' +
+        'day, so it is written as one: 06/03/2026 and 03/06/2026 are the same ten ' +
         'characters meaning two different days, and one of them is Independence Day.',
     );
   }

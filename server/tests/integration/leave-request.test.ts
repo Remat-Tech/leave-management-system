@@ -1725,7 +1725,7 @@ describe('leave cannot be booked over leave already booked', () => {
 
     expect(refusal.code).toBe('OVERLAPPING_REQUEST');
     expect(refusal.message).toBe(
-      'You already have leave from 2 March 2026 to 10 March 2026 — 6 days of Annual ' +
+      'You already have leave from 2 March 2026 to 10 March 2026, 6 days of Annual ' +
         'Leave. The same days cannot be booked twice, or they come off your balance ' +
         'twice. Withdraw that request, or ask for dates outside it.',
     );

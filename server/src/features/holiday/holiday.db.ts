@@ -138,7 +138,10 @@ export class HolidayRepository {
       const violation = violationOf(error);
 
       if (violation?.code === UNIQUE_VIOLATION && violation.constraint === ONE_PER_DAY) {
-        throw new DuplicateHoliday(day);
+        /* Named, because "rename the one that is there" needs the one that is there. It is
+           read after the refusal rather than before the write, so the check is still the
+           index's — a lookup first would be a race with a second officer's insert. */
+        throw new DuplicateHoliday(day, (await this.findOn(day))?.name);
       }
 
       if (violation?.code === RESTRICT_VIOLATION && violation.constraint === SETTLED_YEARS) {

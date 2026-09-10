@@ -98,7 +98,7 @@ export function whyItIsFixed(rule: EntitlementRule, today: CalendarDate): string
   return isStillADraft(rule, today)
     ? null
     : `In force since ${formatDay(rule.effectiveFrom)}. What people were owed for days ` +
-        'that have already passed does not change — add a rule from a later date instead.';
+        'that have already passed does not change. Add a rule from a later date instead.';
 }
 
 /** The boundary a closed year sets, said where a date picker can act on it. FR 31. */

@@ -88,7 +88,7 @@ export const employeePolicy = {
           'update',
           employee.id,
           'can see the record but holds no role that maintains employee records',
-          'Employee records are changed by HR. Ask them to make the correction — ' +
+          'Employee records are changed by HR. Ask them to make the correction. ' +
             'this includes your own record, which is why the figures on it can be ' +
             'relied on.',
         )

@@ -216,8 +216,8 @@ export function validateDraftContents(input: DraftAsSent): DraftContents {
     throw new InvalidLeaveRequestDraft(
       'leaveTypeId',
       'A draft with nothing in it is a form that was opened rather than leave that is ' +
-        'being planned. Fill in whatever is settled — the kind of leave, a date, or why ' +
-        '— and the rest can wait.',
+        'being planned. Fill in whatever is settled (the kind of leave, a date, or why) ' +
+        'and the rest can wait.',
     );
   }
 

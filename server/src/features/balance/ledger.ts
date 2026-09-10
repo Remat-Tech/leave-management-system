@@ -182,7 +182,7 @@ export function validateNewLedgerEntry(input: NewLedgerEntry): ValidatedLedgerEn
       'entryType',
       `A ${entryType} cannot put another entry right. A correction is always an ` +
         `adjustment, because it is the only kind of entry whose amount may go either ` +
-        `way — putting right a grant of 20 days means −20, and putting right an ` +
+        `way: putting right a grant of 20 days means −20, and putting right an ` +
         `expiry of 5 means +5.`,
     );
   }
@@ -314,7 +314,7 @@ function requireDays(entryType: LedgerEntryType, value: unknown): number {
     throw new InvalidLedgerEntry(
       'days',
       `${String(value)} is a number of days to more than two decimal places. An accrued ` +
-        `figure is held to the hundredth of a day — a joiner on 1 July is owed 10.08 — ` +
+        `figure is held to the hundredth of a day (a joiner on 1 July is owed 10.08) ` +
         `and anything finer would be rounded away without saying so.`,
     );
   }
