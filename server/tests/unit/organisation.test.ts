@@ -6,8 +6,13 @@ import {
   ChiefExecutiveCannotBeCleared,
   ChiefExecutiveHasLeft,
   isReadyForGoLive,
+  InvalidPolicySetting,
   type OrganisationSettings,
+  overrideRuleInWords,
   readChiefExecutiveId,
+  retentionInWords,
+  UNCONFIGURED,
+  validatePolicyChanges,
   whyTheyCannotBeNamed,
 } from '../../src/features/organisation/organisation.js';
 import { organisationPolicy } from '../../src/features/organisation/policy.js';
@@ -105,8 +110,96 @@ describe('who may see it', () => {
   });
 });
 
+/* ---------------------------------------- the rest of the policy settings. LMS 505 */
+
+describe('the override rule', () => {
+  it('is yes or no', () => {
+    expect(validatePolicyChanges({ overridesAreAllowed: false })).toEqual({
+      overridesAreAllowed: false,
+    });
+  });
+
+  it('and anything else is refused', () => {
+    expect(() =>
+      validatePolicyChanges({ overridesAreAllowed: 'no' as unknown as boolean }),
+    ).toThrow(InvalidPolicySetting);
+  });
+
+  /* The screen says what the setting means rather than repeating the word on the toggle. */
+  it('says what it means both ways', () => {
+    expect(overrideRuleInWords(true)).toContain('overturn');
+    expect(overrideRuleInWords(false)).toContain('final');
+  });
+});
+
+describe('the retention window', () => {
+  it('is a whole number of months', () => {
+    expect(validatePolicyChanges({ attachmentRetentionMonths: 24 })).toEqual({
+      attachmentRetentionMonths: 24,
+    });
+  });
+
+  /* Null is a setting — kept indefinitely — rather than a question nobody answered. */
+  it('or null, which is kept indefinitely', () => {
+    expect(validatePolicyChanges({ attachmentRetentionMonths: null })).toEqual({
+      attachmentRetentionMonths: null,
+    });
+    expect(retentionInWords(null)).toContain('indefinitely');
+  });
+
+  it('and never a fraction, a nought or a negative', () => {
+    for (const months of [1.5, 0, -12]) {
+      expect(() => validatePolicyChanges({ attachmentRetentionMonths: months }), String(months)) //
+        .toThrow(InvalidPolicySetting);
+    }
+  });
+
+  it('and never longer than the longest offered', () => {
+    expect(() => validatePolicyChanges({ attachmentRetentionMonths: 121 })).toThrow(
+      InvalidPolicySetting,
+    );
+  });
+
+  /* Two years reads as two years. A window nobody can picture is a window nobody checks. */
+  it('says a window that divides into years as years', () => {
+    expect(retentionInWords(24)).toContain('2 years');
+    expect(retentionInWords(12)).toContain('1 year');
+    expect(retentionInWords(18)).toContain('18 months');
+  });
+
+  /* NFR SEC 06. Nothing sweeps on this figure yet, and the screen has to say so rather
+     than let somebody believe certificates are being removed. */
+  it('and says nothing removes files on it yet', () => {
+    expect(retentionInWords(24)).toContain('yet');
+  });
+});
+
+describe('changing the settings', () => {
+  it('is an HR Administrator’s, as naming the Chief Executive is', () => {
+    expect(organisationPolicy.changePolicy(who('HR_ADMIN')).allowed).toBe(true);
+    expect(organisationPolicy.changePolicy(who('HR_OFFICER')).allowed).toBe(false);
+    expect(organisationPolicy.changePolicy(who('EMPLOYEE')).allowed).toBe(false);
+  });
+
+  it('and a refusal says who to ask', () => {
+    expect(organisationPolicy.changePolicy(who('HR_OFFICER')).told).toContain('HR Administrator');
+  });
+
+  /* A field left out is unchanged, which is the PATCH. */
+  it('reads only the fields that were sent', () => {
+    expect(validatePolicyChanges({})).toEqual({});
+    expect(validatePolicyChanges({ overridesAreAllowed: true })).toEqual({
+      overridesAreAllowed: true,
+    });
+  });
+});
+
 function settings(chiefExecutiveId: string | null): OrganisationSettings {
-  return { chiefExecutiveId, updatedAt: new Date('2026-09-03T00:00:00Z') };
+  return {
+    ...UNCONFIGURED,
+    chiefExecutiveId,
+    updatedAt: new Date('2026-09-03T00:00:00Z'),
+  };
 }
 
 function who(...roles: RoleCode[]): Actor {

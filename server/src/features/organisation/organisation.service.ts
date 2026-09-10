@@ -1,4 +1,4 @@
-/** Setting the organisation up, which today is naming the Chief Executive. FR 48c, §4.3.1, LMS 321. */
+/** Setting the organisation up: the Chief Executive, the override rule and the retention window. FR 44, FR 48c, NFR SEC 06, §4.3.1, LMS 321, LMS 505. */
 
 import type { Actor } from '../../auth/actor.js';
 import type { Guard } from '../../auth/policy.js';
@@ -10,7 +10,10 @@ import {
   isReadyForGoLive,
   NoChiefExecutiveNamed,
   type OrganisationSettings,
+  type PolicyChanges,
   readChiefExecutiveId,
+  UNCONFIGURED,
+  validatePolicyChanges,
   whyTheyCannotBeNamed,
 } from './organisation.js';
 import type { OrganisationRepository } from './organisation.db.js';
@@ -35,9 +38,23 @@ export class OrganisationService {
   async settings(actor: Actor): Promise<OrganisationSettings> {
     this.guard.enforce(organisationPolicy.read(actor));
 
-    return (
-      (await this.organisation.settings()) ?? { chiefExecutiveId: null, updatedAt: new Date() }
-    );
+    return (await this.organisation.settings()) ?? { ...UNCONFIGURED, updatedAt: new Date() };
+  }
+
+  /**
+   * Changes the settings that are not a person. FR 44, NFR SEC 06. LMS 505.
+   *
+   * Its own door rather than a field on {@link OrganisationService.nameTheChiefExecutive}:
+   * that one names a record and refuses three ways about who it names, and these are two
+   * figures nobody has to be.
+   *
+   * Throws {@link InvalidPolicySetting} for a window that is not a whole number of months,
+   * and {@link NotAuthorised} for anybody but an HR Administrator.
+   */
+  async changePolicy(actor: Actor, changes: PolicyChanges): Promise<OrganisationSettings> {
+    this.guard.enforce(organisationPolicy.changePolicy(actor));
+
+    return this.organisation.changePolicy(actor, validatePolicyChanges(changes));
   }
 
   /**
@@ -61,6 +78,35 @@ export class OrganisationService {
     }
 
     return employee;
+  }
+
+  /**
+   * The Chief Executive, or null where nobody is named. FR 48c, LMS 505.
+   *
+   * {@link OrganisationService.chiefExecutive} throws; this is for a screen that has to draw
+   * the empty seat.
+   */
+  async chiefExecutiveOrNobody(actor: Actor): Promise<Employee | null> {
+    const { chiefExecutiveId } = await this.settings(actor);
+
+    if (chiefExecutiveId === null) {
+      return null;
+    }
+
+    return (await this.employees.findById(chiefExecutiveId)) ?? null;
+  }
+
+  /**
+   * Everybody who could be named Chief Executive, or nobody. FR 48c, LMS 505.
+   *
+   * Empty rather than a refusal: reading the settings is everybody's, the staff directory
+   * behind the picker is not. `permits` rather than `enforce`, so a read is not a denial in
+   * the log.
+   */
+  async whoCouldBeNamed(actor: Actor): Promise<Employee[]> {
+    this.guard.enforce(organisationPolicy.read(actor));
+
+    return this.guard.permits(organisationPolicy.changePolicy(actor)) ? this.employees.list() : [];
   }
 
   /** The story's second criterion as a question rather than as a refusal. FR 48c. */

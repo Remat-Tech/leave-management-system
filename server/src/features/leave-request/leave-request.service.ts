@@ -115,6 +115,8 @@ import type { LeaveRequestListOptions, LeaveRequestRepository } from './leave-re
 import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
 import type { OrganisationRepository } from '../organisation/organisation.db.js';
+/** FR 44, LMS 505. */
+import { OverridesAreSwitchedOff } from '../organisation/organisation.js';
 import { BalanceOverdrawn } from '../balance/balance.js';
 import type {
   BalanceService,
@@ -784,8 +786,13 @@ export class LeaveRequestService {
       occupants,
     });
 
-    /** FR 44, §7.2. */
-    const overturns = this.whatThisReverses(request, action, decisions);
+    /** FR 44, §7.2, LMS 505. */
+    const overturns = this.whatThisReverses(
+      request,
+      action,
+      decisions,
+      await this.organisation.overridesAreAllowed(),
+    );
 
     /* FR 48d. A standing question, so it is asked here with the others rather than before
        them: somebody reaching for leave that has since been approved is told that. LMS 322.
@@ -1295,16 +1302,26 @@ export class LeaveRequestService {
     request: LeaveRequest,
     action: DecidingAction,
     decisions: readonly LeaveDecision[],
+    /** FR 44, LMS 505. Off makes the manager's word final. */
+    overridesAreAllowed: boolean,
   ): string | null {
     const managers = theManagersDecision(decisions);
     const required = overrideRequiredFor(action, decisions);
 
     if (!isAnOverride(action)) {
       if (required !== null) {
-        throw new OverrulingNeedsAnOverride(request, required);
+        /* Switched off, so the plain verb is not pointed at an override that would also be
+           refused. The manager's answer stands and nothing here changes it. */
+        throw overridesAreAllowed
+          ? new OverrulingNeedsAnOverride(request, required)
+          : new OverridesAreSwitchedOff();
       }
 
       return null;
+    }
+
+    if (!overridesAreAllowed) {
+      throw new OverridesAreSwitchedOff();
     }
 
     if (required !== action || managers === undefined) {

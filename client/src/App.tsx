@@ -7,6 +7,7 @@ import { ApprovalChainsPage } from './features/config/ApprovalChainsPage';
 import { EntitlementRulesPage } from './features/config/EntitlementRulesPage';
 import { HolidaysPage } from './features/config/HolidaysPage';
 import { LeaveTypesPage } from './features/config/LeaveTypesPage';
+import { PolicySettingsPage } from './features/config/PolicySettingsPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
 import { RequestsPage } from './features/requests/RequestsPage';
 import { SignIn } from './features/session/SignIn';
@@ -75,6 +76,13 @@ const SCREENS = [
    * writes are HR's, refused with the server's own sentence.
    */
   { id: 'holidays', label: 'Holidays', icon: 'holiday' },
+  /**
+   * FR 44, FR 48c, NFR SEC 06, LMS 505. What the system does for everybody.
+   *
+   * Last of the configuration tabs: these are set once and revisited when the policy changes,
+   * where the four above are kept.
+   */
+  { id: 'policy', label: 'Policy', icon: 'settings' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -270,6 +278,7 @@ export function App() {
         {screen === 'entitlements' ? <EntitlementRulesPage onSignedOut={ranOut} /> : null}
         {screen === 'approval-chains' ? <ApprovalChainsPage onSignedOut={ranOut} /> : null}
         {screen === 'holidays' ? <HolidaysPage onSignedOut={ranOut} /> : null}
+        {screen === 'policy' ? <PolicySettingsPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );

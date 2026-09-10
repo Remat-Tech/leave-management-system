@@ -1,13 +1,33 @@
-/** Who the Chief Executive is. FR 48c, FR 04, FR 38a, §4.3.1, LMS 321. */
+/** Who the Chief Executive is, and the rest of the policy settings. FR 44, FR 48c, NFR SEC 06, §4.3.1, LMS 321, LMS 505. */
 
 import type { Employee } from '../employee/employee.js';
 
-/** The organisation's own settings. FR 48c. */
+/** The organisation's own settings. FR 44, FR 48c, NFR SEC 06. */
 export interface OrganisationSettings {
   /** Who the `CEO` desk resolves to. Null is nobody, which FR 48b routes round. */
   chiefExecutiveId: string | null;
+  /** FR 44. False makes a line manager's decision final. */
+  overridesAreAllowed: boolean;
+  /** NFR SEC 06. Whole months, or null for kept indefinitely. */
+  attachmentRetentionMonths: number | null;
   updatedAt: Date;
 }
+
+/** What the settings are on a database nobody has configured. */
+export const UNCONFIGURED: Omit<OrganisationSettings, 'updatedAt'> = {
+  chiefExecutiveId: null,
+  overridesAreAllowed: true,
+  attachmentRetentionMonths: null,
+};
+
+/** The settings that are not the Chief Executive. That one has its own door. LMS 505. */
+export interface PolicyChanges {
+  overridesAreAllowed?: boolean;
+  attachmentRetentionMonths?: number | null;
+}
+
+/** The longest window offered. Longer than a person's memory of why the file is there. */
+export const LONGEST_RETENTION_MONTHS = 120;
 
 /** Naming somebody who is not an employee. FR 48c. */
 export class ChiefExecutiveNotFound extends Error {
@@ -67,6 +87,49 @@ export class NoChiefExecutiveNamed extends Error {
   }
 }
 
+/** A policy setting that was refused, and the field that caused it. NFR USA 03. */
+export class InvalidPolicySetting extends Error {
+  readonly field: string;
+
+  constructor(field: string, message: string) {
+    super(message);
+    this.name = 'InvalidPolicySetting';
+    this.field = field;
+  }
+}
+
+/** An override attempted while the rule is switched off. FR 44, LMS 505. */
+export class OverridesAreSwitchedOff extends Error {
+  /** FR 44. */
+  readonly code = 'OVERRIDES_ARE_SWITCHED_OFF';
+
+  constructor() {
+    super(
+      'HR overrides are switched off, so a line manager’s decision on this request is ' +
+        'the final one. Nobody can approve leave they turned down or turn down leave they ' +
+        'approved. An HR Administrator can switch overrides back on in the policy settings. ' +
+        'FR 44.',
+    );
+    this.name = 'OverridesAreSwitchedOff';
+  }
+}
+
+/* ------------------------------------------------------------- what is valid */
+
+/** Checks and tidies a change to the policy settings. Only what is sent is read. */
+export function validatePolicyChanges(changes: PolicyChanges): PolicyChanges {
+  const validated: PolicyChanges = {};
+
+  if ('overridesAreAllowed' in changes) {
+    validated.overridesAreAllowed = requireYesOrNo(changes.overridesAreAllowed);
+  }
+  if ('attachmentRetentionMonths' in changes) {
+    validated.attachmentRetentionMonths = requireRetention(changes.attachmentRetentionMonths);
+  }
+
+  return validated;
+}
+
 /** The id a caller supplied, or a refusal. Whether it is anybody's is asked where the rows are. */
 export function readChiefExecutiveId(value: unknown): string {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -89,4 +152,76 @@ export function whyTheyCannotBeNamed(employee: Employee): Error | null {
  */
 export function isReadyForGoLive(settings: OrganisationSettings): boolean {
   return settings.chiefExecutiveId !== null;
+}
+
+/* ----------------------------------------------------------------- the words */
+
+/** What the override rule means for a manager, as it stands. FR 44, LMS 505. */
+export function overrideRuleInWords(allowed: boolean): string {
+  return allowed
+    ? 'HR sees every request a manager turned down and can overturn it, in writing. The ' +
+        'manager is told, and both decisions stay on the record.'
+    : 'A line manager’s decision is the final one. HR can still agree with it, and cannot ' +
+        'reverse it.';
+}
+
+/** What the retention window means for a certificate. NFR SEC 06, LMS 505. */
+export function retentionInWords(months: number | null): string {
+  if (months === null) {
+    return 'Certificates and supporting documents are kept indefinitely.';
+  }
+
+  return (
+    `Certificates and supporting documents are kept for ${inMonths(months)} after the ` +
+    'request they are attached to ends. Nothing removes them on that window yet. It is the ' +
+    'figure the retention sweep will read.'
+  );
+}
+
+/** "18 months", "2 years" where it divides. */
+function inMonths(months: number): string {
+  if (months % 12 === 0) {
+    const years = months / 12;
+    return `${String(years)} ${years === 1 ? 'year' : 'years'}`;
+  }
+
+  return `${String(months)} months`;
+}
+
+/* ---------------------------------------------------------------- the fields */
+
+function requireYesOrNo(value: unknown): boolean {
+  if (typeof value !== 'boolean') {
+    throw new InvalidPolicySetting(
+      'overridesAreAllowed',
+      'Whether HR may overturn a line manager’s decision is yes or no. FR 44.',
+    );
+  }
+
+  return value;
+}
+
+/** Null is kept indefinitely, which is a setting rather than an unanswered question. */
+function requireRetention(value: unknown): number | null {
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw new InvalidPolicySetting(
+      'attachmentRetentionMonths',
+      'A retention window is a whole number of months, one or more. Leave it empty to keep ' +
+        'certificates indefinitely. NFR SEC 06.',
+    );
+  }
+
+  if (value > LONGEST_RETENTION_MONTHS) {
+    throw new InvalidPolicySetting(
+      'attachmentRetentionMonths',
+      `${String(LONGEST_RETENTION_MONTHS)} months is the longest window offered. A longer ` +
+        'one is the same as keeping them indefinitely, which is what leaving it empty says.',
+    );
+  }
+
+  return value;
 }

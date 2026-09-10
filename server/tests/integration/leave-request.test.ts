@@ -3281,6 +3281,51 @@ describe('the decision at a stage', () => {
     ).rejects.toMatchObject({ code: 'NOTHING_TO_OVERTURN' });
   });
 
+  /**
+   * And the whole of FR 44 can be switched off, which makes the manager's word final. LMS 505.
+   *
+   * Both doors refuse, not only the override one: the plain verb that contradicts the
+   * manager is what somebody presses next, and pointing it at an override that is also
+   * refused would be a loop with a sentence on each turn.
+   */
+  it('and neither door opens while overrides are switched off', async () => {
+    await admin.query('UPDATE organisation_setting SET overrides_are_allowed = false');
+
+    try {
+      const { request } = await requests.submit(asThemselves(), aRequest());
+      await requests.refuse(asTheirManager(), request.id, WHY_NOT);
+
+      await expect(
+        requests.override(asOfficer(), request.id, 'OVERTURN_REJECTION', BECAUSE_POLICY),
+      ).rejects.toMatchObject({ code: 'OVERRIDES_ARE_SWITCHED_OFF' });
+
+      await expect(requests.approve(asOfficer(), request.id)).rejects.toMatchObject({
+        code: 'OVERRIDES_ARE_SWITCHED_OFF',
+      });
+
+      /* The manager's no stands, and the request is where they left it. */
+      expect((await requests.byId(asThemselves(), request.id)).status).toBe('SUBMITTED');
+    } finally {
+      await admin.query('UPDATE organisation_setting SET overrides_are_allowed = true');
+    }
+  });
+
+  /* And agreeing with the manager is untouched by the switch: FR 44 is about disagreeing. */
+  it('and HR can still agree with the manager while they are switched off', async () => {
+    await admin.query('UPDATE organisation_setting SET overrides_are_allowed = false');
+
+    try {
+      const { request } = await requests.submit(asThemselves(), aRequest());
+      await requests.approve(asTheirManager(), request.id);
+
+      const decided = await requests.approve(asOfficer(), request.id);
+
+      expect(decided.request.status).toBe('APPROVED');
+    } finally {
+      await admin.query('UPDATE organisation_setting SET overrides_are_allowed = true');
+    }
+  });
+
   /* And a manager's rejection is overturned once. The second attempt finds a request that
      has been decided and nothing left to reverse. */
   it('and a decision is overturned once', async () => {
