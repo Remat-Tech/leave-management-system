@@ -154,11 +154,14 @@ export function HolidaysPage({ onSignedOut }: { onSignedOut: () => void }) {
         </p>
       )}
 
-      {/* FR 22. The boundary a closed year sets, said where a date is about to be typed. */}
-      <p className="rules">
-        <Icon name="info" />
-        {calendar.closedYearsInWords}
-      </p>
+      {/* FR 22. Only where a closed year actually bars a day. With nothing closed the
+          sentence announces a restriction that does not apply to anybody reading it. */}
+      {calendar.earliestOpenDay === null ? null : (
+        <p className="rules">
+          <Icon name="info" />
+          {calendar.closedYearsInWords}
+        </p>
+      )}
 
       {problem === undefined ? null : (
         <Notice problem={problem} retrying={loading} onRetry={load} />
@@ -397,7 +400,9 @@ function HolidayForm({
               setDate(event.target.value);
             }}
           />
-          <small className="muted">{calendar.closedYearsInWords}</small>
+          {calendar.earliestOpenDay === null ? null : (
+            <small className="muted">{calendar.closedYearsInWords}</small>
+          )}
         </label>
 
         {taken === undefined ? null : (

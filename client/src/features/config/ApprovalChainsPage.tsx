@@ -9,6 +9,7 @@ import {
 } from '../../api';
 import { ChainEditor, ChainInOrder, type DeskChoices, sameChain } from './ChainEditor';
 import { Icon, iconForLeaveType } from '../../Icon';
+import { Modal } from '../../Modal';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
@@ -68,6 +69,8 @@ export function ApprovalChainsPage({ onSignedOut }: { onSignedOut: () => void })
     );
   }
 
+  const changing = settings.types.find((one) => one.id === editing);
+
   return (
     <div className="page">
       <div className="pagehead">
@@ -94,42 +97,51 @@ export function ApprovalChainsPage({ onSignedOut }: { onSignedOut: () => void })
             key={type.id}
             type={type}
             choices={settings.choices.approvers}
-            editing={editing === type.id}
             onEdit={() => {
               setEditing(type.id);
             }}
-            onCancel={() => {
-              setEditing(undefined);
-            }}
+          />
+        ))}
+      </ul>
+
+      {/* The editor is a dialog rather than a panel that opens inside the card. A grid row
+          is as tall as its tallest tile, so growing one card pushed every card beside it
+          down with it. Nothing on the page moves now. Looked up fresh, so a save that
+          reloads the list cannot leave a stale copy on screen. */}
+      {changing === undefined ? null : (
+        <Modal
+          title={`Who approves ${changing.name}`}
+          onClose={() => {
+            setEditing(undefined);
+          }}
+        >
+          <ChainForm
+            type={changing}
+            choices={settings.choices.approvers}
             onSaved={() => {
               setEditing(undefined);
               load();
             }}
+            onCancel={() => {
+              setEditing(undefined);
+            }}
             onSignedOut={onSignedOut}
           />
-        ))}
-      </ul>
+        </Modal>
+      )}
     </div>
   );
 }
 
-/** One kind of leave and its chain, read or being changed. */
+/** One kind of leave and its chain. Read only: changing it happens in the dialog. */
 function ChainCard({
   type,
   choices,
-  editing,
   onEdit,
-  onCancel,
-  onSaved,
-  onSignedOut,
 }: {
   type: ConfiguredLeaveType;
   choices: DeskChoices;
-  editing: boolean;
   onEdit: () => void;
-  onCancel: () => void;
-  onSaved: () => void;
-  onSignedOut: () => void;
 }) {
   return (
     <li className={`card chain-card${type.isActive ? '' : ' dormant'}`}>
@@ -140,8 +152,10 @@ function ChainCard({
 
         <h3>{type.name}</h3>
 
+        {/* No code pill. This screen is about who signs a request, the name is what
+            identifies the type on it, and the code was taking the width a long name
+            needed. Leave types is where a code is the point. */}
         <div className="tags">
-          <span className="tag">{type.code}</span>
           {type.isActive ? null : <span className="tag">Retired</span>}
           {type.approvalChain.length === 0 ? (
             <span className="tag is-nobody">Nobody approves it</span>
@@ -149,32 +163,21 @@ function ChainCard({
         </div>
       </div>
 
-      {editing ? (
-        /* Mounted only while it is being changed, so the draft starts at the saved chain. */
-        <ChainForm
-          type={type}
-          choices={choices}
-          onSaved={onSaved}
-          onCancel={onCancel}
-          onSignedOut={onSignedOut}
-        />
-      ) : (
-        <>
-          <ChainInOrder chain={type.approvalChain} choices={choices} />
+      <ChainInOrder chain={type.approvalChain} choices={choices} />
 
-          {/* The same chain in the requester's voice, which is what the request form says. */}
-          <p className="rules">
-            <Icon name="stage" />
-            {type.approvedBy}
-          </p>
+      {/* The chain as a sentence, with the pencil on the end of it: that sentence is what
+          the button changes, so it sits beside it rather than under a rule of its own. The
+          label is the button's accessible name, because a control with no words still has
+          to say what it does and which chain it does it to. NFR USA 03. */}
+      <p className="rules">
+        <Icon name="stage" />
+        {type.approvedByLabel}
 
-          <div className="card-actions">
-            <button type="button" onClick={onEdit}>
-              Change who approves it
-            </button>
-          </div>
-        </>
-      )}
+        <button type="button" className="iconic trailing" onClick={onEdit}>
+          <Icon name="pencil" />
+          <span className="visually-hidden">Change who approves {type.name}</span>
+        </button>
+      </p>
     </li>
   );
 }
@@ -235,7 +238,7 @@ function ChainForm({
         }}
       />
 
-      <div className="card-actions">
+      <div className="modal-actions">
         <button type="button" className="primary" disabled={saving || unchanged} onClick={save}>
           {saving ? 'Saving…' : 'Save this chain'}
         </button>

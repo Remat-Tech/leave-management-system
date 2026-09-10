@@ -53,6 +53,10 @@ export function ChainEditor({
             <span className="chain-at">{at + 1}</span>
             <span className="chain-desk">{nameOf(desk, choices)}</span>
 
+            {/* Arrows rather than "Earlier" and "Later". The list is numbered and read top
+                to bottom, so up and down are the directions somebody is thinking in, and
+                three words of button beside every step crowded a narrow card. The words
+                are still the accessible names. NFR USA 03. */}
             <button
               type="button"
               className="linkish"
@@ -61,7 +65,10 @@ export function ChainEditor({
                 move(at, -1);
               }}
             >
-              Earlier
+              <Icon name="up" />
+              <span className="visually-hidden">
+                Move {nameOf(desk, choices)} earlier in the chain
+              </span>
             </button>
 
             <button
@@ -72,7 +79,10 @@ export function ChainEditor({
                 move(at, 1);
               }}
             >
-              Later
+              <Icon name="down" />
+              <span className="visually-hidden">
+                Move {nameOf(desk, choices)} later in the chain
+              </span>
             </button>
 
             <button

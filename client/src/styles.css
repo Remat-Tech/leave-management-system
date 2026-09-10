@@ -729,6 +729,18 @@ button:hover:not(:disabled) {
   color: var(--warn);
 }
 
+/* On an entitlement card the figure shares its line with what it is a figure of, rather
+   than heading a panel of its own, so it is sized to sit beside the words. At 2.75rem
+   "20 days" alone filled the width and pushed "a year" onto a second line. */
+.headline.compact .figure {
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.headline.compact .of {
+  font-size: 0.875rem;
+}
+
 .headline-note {
   font-size: 0.875rem;
   color: var(--ink-soft);
@@ -952,6 +964,20 @@ button:hover:not(:disabled) {
   flex: none;
   width: 1rem;
   height: 1rem;
+}
+
+/* A longer footnote in a narrow card. `flex-start` because a sentence that does wrap should
+   put its mark beside the first line rather than centred against the whole block. */
+.rules.small {
+  align-items: flex-start;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.rules.small svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-top: 0.15rem;
 }
 
 /* -------------------------------------------------------------- the request history */
@@ -3027,20 +3053,58 @@ select[aria-invalid='true'] {
 
 /* ------------------------------------ approval chains. FR 38a, LMS 503 */
 
-/* One column, and capped short of the page: a chain is at most three short steps read across,
-   so a row the width of a wide screen would be mostly empty. */
+/* A grid rather than one column. A chain is a name and at most three short pills, so a card
+   the width of the page left the steps stranded at its left end. `auto-fill` with a minimum
+   rather than a fixed count, so a narrow window drops to one across on its own. */
 .chains {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
   gap: var(--gap);
-  max-width: 64rem;
 }
 
 .chain-card {
   gap: 0.75rem;
+}
+
+/* The name and its pills stay on one line. What made room for them is the code pill being
+   gone from this card: on a screen about who signs a request, the name identifies the type
+   and `MAT_EXT_UNPAID` was taking the width "Unpaid Maternity Extension" needed. */
+.chain-card .card-head h3 {
+  font-size: 1rem;
+}
+
+/* Tiles keep their own height rather than stretching to the tallest in the row, so a card
+   carrying an extra pill does not pull its neighbours taller with it. */
+.chains > .chain-card {
+  align-self: start;
+}
+
+/* A button that is only its glyph. Square, so the pencil sits in the middle of it, and the
+   same 44px target a fingertip needs even though the mark inside is 1rem. */
+.iconic {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+}
+
+.iconic svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+/* On the end of a line it shares with a sentence. Smaller than a standalone target, because
+   the whole line is short and a 2.5rem square beside one line of text reads as a third
+   element rather than as the line's own control. */
+.iconic.trailing {
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  margin-left: auto;
 }
 
 /* The chain as it stands: the steps in a row, in order, each with its position on it. */
@@ -3281,9 +3345,15 @@ select[aria-invalid='true'] {
   border-color: transparent;
 }
 
+/* The name takes the first line and the pills drop under it, rather than a long code
+   squeezing "Unpaid Maternity Extension" onto two. */
+.type-card button {
+  flex-wrap: wrap;
+}
+
 .type-card h3 {
   flex: 1 1 auto;
-  min-width: 0;
+  min-width: 11rem;
   font-size: 1.0625rem;
   overflow-wrap: break-word;
 }

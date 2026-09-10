@@ -22,7 +22,7 @@ import {
   ruleInWords,
   scopeLabel,
   whoInWords,
-  whyItIsFixed,
+  fixedReason,
 } from './entitlement-words.js';
 import { earliestOpenDayOf } from '../leave-year/leave-year.js';
 import { type CalendarDate, calendarDateIn } from '../../shared/time.js';
@@ -163,7 +163,7 @@ export function entitlementRuleRoutes(parts: EntitlementRuleRoutes): Router {
 
 /** One rule as the screen needs it: the columns, and the sentences they add up to. */
 function ruleAsJson(rule: EntitlementRule, names: RuleNames, today: CalendarDate): unknown {
-  const fixedBecause = whyItIsFixed(rule, today);
+  const fixed = fixedReason(rule, today);
 
   return {
     id: rule.id,
@@ -190,8 +190,8 @@ function ruleAsJson(rule: EntitlementRule, names: RuleNames, today: CalendarDate
     note: rule.note,
 
     /** FR 31. Whether it is still a draft, and the sentence saying why not. */
-    mayBeChanged: fixedBecause === null,
-    fixedBecause,
+    mayBeChanged: fixed === null,
+    fixedReason: fixed,
     inForce:
       rule.effectiveFrom <= today && (rule.effectiveTo === null || today <= rule.effectiveTo),
     inWords: ruleInWords(rule, names),

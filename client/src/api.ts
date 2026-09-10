@@ -661,7 +661,10 @@ export interface ConfiguredLeaveType {
 
   /** FR 38a. */
   approvalChain: Desk[];
+  /** In the requester's voice: "your manager then HR". What the request form says. */
   approvedBy: string;
+  /** The same chain as a configuration screen names it: "Manager then HR". LMS 503. */
+  approvedByLabel: string;
 
   /** §7.4. The order the balance screen and the request form list them in. */
   displayOrder: number;
@@ -825,7 +828,7 @@ export interface EntitlementRule {
    * only decides which button is greyed.
    */
   mayBeChanged: boolean;
-  fixedBecause: string | null;
+  fixedReason: string | null;
   inForce: boolean;
   inWords: string;
 

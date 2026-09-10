@@ -258,6 +258,39 @@ export function chainInWords(chain: readonly ApproverRole[]): string {
 }
 
 /**
+ * One desk, as a configuration screen names it. FR 38a, LMS 503.
+ *
+ * The other half of {@link deskInWords}, and a separate function rather than a case in it,
+ * because they are two different voices for two different readers. A person asking for
+ * leave is told "your manager", which is true of them; an HR Administrator setting a chain
+ * up is looking at a list of desks, where "your manager" names nobody and reads as a
+ * sentence fragment in a pill.
+ */
+export function deskLabel(role: ApproverRole): string {
+  switch (role) {
+    case 'MANAGER':
+      return 'Manager';
+    case 'HR':
+      return 'HR';
+    default:
+      return 'Chief Executive';
+  }
+}
+
+/** A chain in the same voice, for the screen that sets it. "Manager then HR". */
+export function chainLabel(chain: readonly ApproverRole[]): string {
+  if (chain.length === 0) {
+    return 'Nobody';
+  }
+
+  const named = chain.map(deskLabel);
+
+  return named.length === 1
+    ? named[0]
+    : `${named.slice(0, -1).join(', ')} then ${named[named.length - 1]}`;
+}
+
+/**
  * One desk, as a person says it rather than as the column holds it.
  *
  * Exported since LMS 329, and for the reason {@link chainInWords} gives about itself: the

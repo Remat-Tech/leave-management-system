@@ -32,7 +32,10 @@ export type IconName =
   | 'clip'
   | 'upload'
   | 'again'
-  | 'plus';
+  | 'plus'
+  | 'pencil'
+  | 'up'
+  | 'down';
 
 const PATHS: Record<IconName, string> = {
   /** What you have: a calendar with days counted on it. */
@@ -77,6 +80,11 @@ const PATHS: Record<IconName, string> = {
   again: 'M20 12a8 8 0 1 1-2.6-5.9M20 3.5V8h-4.5',
   /** LMS 501. Adding one. */
   plus: 'M12 5v14M5 12h14',
+  /** LMS 503. Changing one: a pencil over the line it is writing on. */
+  pencil: 'M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16zM14 6l4 4',
+  /** LMS 503. A step moving up or down an approval chain. */
+  up: 'M6 15l6-6 6 6',
+  down: 'M6 9l6 6 6-6',
 };
 
 export function Icon({ name }: { name: IconName }) {

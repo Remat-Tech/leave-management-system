@@ -537,9 +537,9 @@ describe('the vocabulary the form is drawn from', () => {
 
     /** FR 38a. */
     expect(settings.choices.approvers.map((one) => one.label)).toEqual([
-      'your manager',
+      'Manager',
       'HR',
-      'the Chief Executive',
+      'Chief Executive',
     ]);
   });
 });

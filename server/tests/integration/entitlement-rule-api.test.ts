@@ -288,14 +288,12 @@ describe('changing what a leave type is worth', () => {
     expect(rule.who).toBe('Everybody');
     /* Both sentences the server writes, because a browser composing either would be a
        second answer to what carrying over means. */
-    expect(rule.carryoverInWords).toBe(
-      'Unused days carry over, up to 5 days, and expire at the end of March.',
-    );
+    expect(rule.carryoverInWords).toBe('Carries over, up to 5 days, expires end of March.');
     expect(rule.inWords).toContain('25 days');
 
     /* Still a draft, so it still carries the two buttons. */
     expect(rule.mayBeChanged).toBe(true);
-    expect(rule.fixedBecause).toBeNull();
+    expect(rule.fixedReason).toBeNull();
     expect(rule.inForce).toBe(false);
 
     /* The superseded rule by its own id, not by its scope: the new one shares that scope,
@@ -402,7 +400,7 @@ describe('a rule that has taken effect', () => {
 
     expect(rule.mayBeChanged).toBe(false);
     expect(rule.inForce).toBe(true);
-    expect(rule.fixedBecause).toContain('already passed');
+    expect(rule.fixedReason).toContain('can no longer be changed');
   });
 });
 
@@ -540,7 +538,7 @@ interface JsonRule {
   periodInWords: string;
   note: string | null;
   mayBeChanged: boolean;
-  fixedBecause: string | null;
+  fixedReason: string | null;
   inForce: boolean;
   inWords: string;
 }
