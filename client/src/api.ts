@@ -1070,8 +1070,8 @@ export interface PolicyFields {
 /**
  * Every policy setting on one answer. FR 44, FR 48c, NFR SEC 06.
  *
- * Reading is open to anybody signed in — the request form already says unpaid leave goes to
- * the Chief Executive — and every write below is refused for anybody but an HR
+ * Reading is open to anybody signed in, because the request form already says unpaid leave
+ * goes to the Chief Executive. Every write below is refused for anybody but an HR
  * Administrator, with the server's own sentence.
  */
 export async function policySettings(): Promise<PolicySettingsPage> {
