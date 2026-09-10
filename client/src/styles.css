@@ -2882,6 +2882,7 @@ select[aria-invalid='true'] {
 .fields > .tick,
 .fields > .chain-edit,
 .fields > .chain-add,
+.fields > .chain,
 .fields > p {
   grid-column: 1 / -1;
 }
@@ -2915,13 +2916,15 @@ select[aria-invalid='true'] {
   accent-color: var(--accent);
 }
 
-/* FR 38a. The chain as a numbered list, because the order is the policy. */
+/* FR 38a. The chain as a numbered list, because the order is the policy. The number is the
+   badge below rather than the marker `ol` draws, which would sit outside the bordered row. */
 .chain-edit {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  list-style: none;
   margin: 0;
-  padding: 0 0 0 1.4rem;
+  padding: 0;
 }
 
 .chain-edit li {
@@ -3020,4 +3023,74 @@ select[aria-invalid='true'] {
 /* The leave type filter in the page head, beside the button that adds a rule. */
 .pagehead .filter select {
   min-width: 12rem;
+}
+
+/* ------------------------------------ approval chains. FR 38a, LMS 503 */
+
+/* One column, and capped short of the page: a chain is at most three short steps read across,
+   so a row the width of a wide screen would be mostly empty. */
+.chains {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  max-width: 64rem;
+}
+
+.chain-card {
+  gap: 0.75rem;
+}
+
+/* The chain as it stands: the steps in a row, in order, each with its position on it. */
+.chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chain li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.25rem 0.7rem 0.25rem 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--page);
+}
+
+/* Stretches in the editor's rows, where the buttons follow it; not in the pills above. */
+.chain .chain-desk {
+  flex: none;
+}
+
+/* Where in the chain this step sits. 1 is the first approver. */
+.chain-at {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A type nobody approves. Warning red rather than the accent: requests for it are refused. */
+.tag.is-nobody {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, var(--card));
+}
+
+/* A chain row is a heading and a line of pills, so its placeholder is shorter than a card's. */
+.skeleton.is-short {
+  height: 8rem;
 }

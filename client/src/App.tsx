@@ -3,6 +3,7 @@ import { currentSession, type Me, signOut, type Year } from './api';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { BalancesPage } from './features/balances/BalancesPage';
 import { CalendarPage } from './features/calendar/CalendarPage';
+import { ApprovalChainsPage } from './features/config/ApprovalChainsPage';
 import { EntitlementRulesPage } from './features/config/EntitlementRulesPage';
 import { LeaveTypesPage } from './features/config/LeaveTypesPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
@@ -57,6 +58,13 @@ const SCREENS = [
    * server's own sentence rather than a tab that quietly is not there.
    */
   { id: 'entitlements', label: 'Entitlements', icon: 'balances' },
+  /**
+   * FR 38a, LMS 503. Who approves each of those types, and in what order.
+   *
+   * Its own screen rather than a fieldset on "Leave types": a chain is read across types, and
+   * that was answerable only by opening each form in turn.
+   */
+  { id: 'approval-chains', label: 'Approval chains', icon: 'stage' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -250,6 +258,7 @@ export function App() {
         {screen === 'approvals' ? <ApprovalsPage onSignedOut={ranOut} /> : null}
         {screen === 'leave-types' ? <LeaveTypesPage onSignedOut={ranOut} /> : null}
         {screen === 'entitlements' ? <EntitlementRulesPage onSignedOut={ranOut} /> : null}
+        {screen === 'approval-chains' ? <ApprovalChainsPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );
