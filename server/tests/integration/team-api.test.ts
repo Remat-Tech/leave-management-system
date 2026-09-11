@@ -175,17 +175,14 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  /* Closes, and nothing else. `databaseForThisFile` drops this file's database next, so
+     tidying its rows here is work that cannot matter — and a statement that throws leaves a
+     connection open for that drop's FORCE to terminate, which surfaces as an unhandled 57P01. */
   await new Promise<void>((resolve) => {
     server.close(() => {
       resolve();
     });
   });
-
-  await admin.query('TRUNCATE leave_balance');
-  await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
-  );
-  await restoreYears();
 
   await db?.destroy();
   await admin?.end();
