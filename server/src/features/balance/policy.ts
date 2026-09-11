@@ -222,6 +222,26 @@ export const ledgerPolicy = {
         );
   },
 
+  /**
+   * Moving taken days from one leave type's balance to another's. FR 32c, §8.6c, §10, LMS 507.
+   *
+   * The same standing as {@link ledgerPolicy.giveBackTakenDays} and for the same reason: one
+   * side of the move is a `DEDUCTION` being put back.
+   */
+  moveTakenDaysBetweenTypes(actor: Actor, owner: BalanceOwner): Decision {
+    return holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)
+      ? about.allow(actor, 'moveTakenDaysBetweenTypes', owner.employeeId)
+      : about.refuseOpenly(
+          actor,
+          'moveTakenDaysBetweenTypes',
+          owner.employeeId,
+          'holds no role that maintains leave for the company',
+          'Days that were taken as one kind of leave become another kind because HR moves ' +
+            'them, on a certificate. Neither the person nor their manager may credit one ' +
+            'balance and charge another. FR 32c.',
+        );
+  },
+
   /** Giving held days back, when a request is withdrawn, refused or cancelled. */
   release(actor: Actor, owner: BalanceOwner): Decision {
     if (

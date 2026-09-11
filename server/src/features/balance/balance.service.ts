@@ -37,10 +37,12 @@ import type { ApproverRole } from '../leave-type/approval-chain.js';
 import {
   assertNobodyGotThereFirst,
   certifiedDaysGivenBack,
+  certifiedDaysIn,
   decisionTo,
   isTheLastWord,
   type LeaveRequest,
   LeaveRequestNotFound,
+  reclassificationTo,
   type ReleasingAction,
   type ReleasingStatus,
   routingTo,
@@ -48,6 +50,10 @@ import {
   type ValidatedLeaveRequest,
   withdrawalTo,
 } from '../leave-request/leave-request.js';
+import {
+  assertTheDaysAreNotAlreadyMoved,
+  type Reclassification,
+} from '../leave-request/reclassification.js';
 import { reassignmentFor, type ReportingLineMove } from '../leave-request/reassignment.js';
 import type { RecordedReassignment } from '../leave-request/reassignment.db.js';
 import type { DeskOccupants, DesksAvailable } from '../leave-request/routing.js';
@@ -60,7 +66,8 @@ import {
   type Withdrawal,
   type WithdrawalAnswer,
 } from '../leave-request/withdrawal.js';
-import { LeaveTypeNotFound } from '../leave-type/leave-type.js';
+import { type LeaveType, LeaveTypeNotFound } from '../leave-type/leave-type.js';
+import type { LeavePeriod } from '../leave-calculator/leave-calculator.js';
 import { LeaveYearNotFound } from '../leave-year/leave-year.js';
 import type { CalendarDate } from '../../shared/time.js';
 import {
@@ -211,6 +218,36 @@ export interface WithdrawalToAnswer {
   days: number;
   /** FR 27. The sentence on the `RECALCULATION`. */
   reasonForGivingBack: string;
+}
+
+/** What `LeaveRequestService` supplies to move days of agreed leave to sick leave. FR 32c, LMS 507. */
+export interface RequestToReclassify {
+  request: LeaveRequest;
+  /** What the days become. §8.6b makes it a type whose allowance may be exceeded. */
+  into: LeaveType;
+  /** Which days, inside the request's own dates. */
+  period: LeavePeriod;
+  /** How many that period costs, counted on the request's basis rather than chosen. FR 11. */
+  days: number;
+  /** FR 13. The clean certificate the move stands on. */
+  certificateId: string;
+  /** FR 27, FR 32c. The one sentence both entries carry. */
+  reason: string;
+  /** What the two entries are found by. §8.6c. */
+  correlationId: string;
+}
+
+/** The move, the two entries it wrote, and where it left both balances. FR 32c, LMS 507. */
+export interface LeaveReclassified {
+  request: LeaveRequest;
+  reclassification: Reclassification;
+  /** The days back in the balance they came out of. */
+  credited: LedgerEntry;
+  /** The same days, charged to the type they became. */
+  charged: LedgerEntry;
+  balance: BalanceWithAvailable;
+  /** §8.6b. Permitted to be negative. */
+  into: BalanceWithAvailable;
 }
 
 /** An ask on the record, and the balance it did not move. FR 47, LMS 324. */
@@ -921,6 +958,117 @@ export class BalanceService {
               }),
             ),
         balance: withAvailable(await repositories.balances.forOne(key)),
+      };
+    });
+  }
+
+  /**
+   * Moves days of agreed leave into another leave type. FR 32c, §8.6c, §8.2. LMS 507.
+   *
+   * The seventh door, and the only one that moves two balances. The days come back out of
+   * `taken` where they were spent and go into `taken` where they now belong, as two
+   * `RECLASSIFICATION` entries under one reason and one correlation id.
+   *
+   * **Nothing happens to the request.** Its dates, its price and its status stand: the leave
+   * was taken, and what changed is what kind of leave it was. §8.6c's "the system never
+   * shifts the remaining days" is that, stated as an absence of a write.
+   *
+   * **The charge is not checked against what is there**, which is the one place a movement
+   * out of this class is not. §8.6b: sick balances go negative and that is correct.
+   *
+   * Both balances are held still, in id order, so two moves touching the same pair cannot
+   * take the two locks in opposite orders.
+   */
+  async reclassifyForRequest(actor: Actor, move: RequestToReclassify): Promise<LeaveReclassified> {
+    const { request, into, period, days, certificateId, reason, correlationId } = move;
+    const owner = await this.ownerOf(request.employeeId);
+
+    /** FR 48, §8.6a. Nobody moves their own days between their own balances. */
+    this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, 'RECLASSIFY'));
+    this.guard.enforce(leaveRequestPolicy.reclassify(actor, owner));
+    this.guard.enforce(ledgerPolicy.moveTakenDaysBetweenTypes(actor, owner));
+
+    const from = keyOf(request);
+    const to = { ...from, leaveTypeId: into.id };
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      const [first, second] = [from, to].sort((one, other) =>
+        one.leaveTypeId.localeCompare(other.leaveTypeId),
+      );
+
+      const held = new Map([
+        [first.leaveTypeId, await repositories.balances.holdStill(first)],
+        [second.leaveTypeId, await repositories.balances.holdStill(second)],
+      ]);
+
+      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. */
+      const current = await repositories.requests.holdStill(request.id);
+
+      /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
+      if (current === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      /* Asked for its refusal: agreed leave is the only state with a row for this verb. */
+      reclassificationTo(current);
+
+      /* FR 32c. The days one certificate has already moved, re-read inside the lock. */
+      assertTheDaysAreNotAlreadyMoved(
+        current,
+        period,
+        await repositories.reclassifications.forRequest(current.id),
+      );
+
+      const credited = await repositories.entries.post(
+        actor,
+        validateNewLedgerEntry({
+          ...from,
+          entryType: 'RECLASSIFICATION',
+          /* Positive, out of `taken`, and no more than this leave ever spent there. */
+          days: daysToGiveBackFromTaken(held.get(from.leaveTypeId)!, days),
+          /* FR 32a, LMS 312. Certified days come back first, as they do on a withdrawal. */
+          certifiedDays: certifiedDaysGivenBack(current.certifiedDays, days),
+          reason,
+          leaveRequestId: current.id,
+          correlationId,
+        }),
+      );
+
+      const charged = await repositories.entries.post(
+        actor,
+        validateNewLedgerEntry({
+          ...to,
+          entryType: 'RECLASSIFICATION',
+          days: -days,
+          /* FR 32a, §8.6b. How many of the arriving days are past the allowance, off the
+             balance as this lock is holding it. */
+          certifiedDays: certifiedDaysIn({
+            type: into,
+            days,
+            availableNow: available(held.get(to.leaveTypeId)!),
+          }),
+          reason,
+          leaveRequestId: current.id,
+          correlationId,
+        }),
+      );
+
+      return {
+        request: current,
+        reclassification: await repositories.reclassifications.record(actor, {
+          leaveRequestId: current.id,
+          toLeaveTypeId: into.id,
+          from: period.from,
+          to: period.to,
+          days,
+          reason,
+          correlationId,
+          certificateId,
+        }),
+        credited,
+        charged,
+        balance: withAvailable(await repositories.balances.forOne(from)),
+        into: withAvailable(await repositories.balances.forOne(to)),
       };
     });
   }

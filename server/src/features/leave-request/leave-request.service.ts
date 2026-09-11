@@ -2,6 +2,7 @@
  * Asking for leave, being told what it costs first, and taking it back. FR 10, FR 11, FR 14, FR 26, §8., LMS 301, LMS 305, LMS 306, FR 16, FR 05, FR 15, LMS 303, §8.2, LMS 314, FR 38a, LMS 212, FR 39, FR 52, LMS 315, FR 48, §8.6, LMS 319, FR 59, §7.1., LMS 329, FR 17, FR 13.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { Actor } from '../../auth/actor.js';
 import { desksHandedTo, leaveRequestPolicy } from './policy.js';
 import { delegatesOf, delegationsThatBearOn } from './delegation.js';
@@ -80,6 +81,7 @@ import {
   progressOf,
   quoteFor,
   reachesPastTheEndOf,
+  reclassificationTo,
   reasonForApproval,
   reasonForGivingBackTakenDays,
   reasonForRelease,
@@ -99,6 +101,15 @@ import {
   theOpenAsk,
   WithdrawalNeedsAReason,
 } from './withdrawal.js';
+import {
+  assertItCanBeMovedInto,
+  assertTheCertificateStands,
+  assertTheDaysAreNotAlreadyMoved,
+  periodToMove,
+  type ReclassificationAsked,
+  reasonForReclassification,
+} from './reclassification.js';
+import type { ReclassificationRepository } from './reclassification.db.js';
 import { decisionNews, endingNews } from '../notification/notification.js';
 import {
   assertEligible,
@@ -121,6 +132,7 @@ import { BalanceOverdrawn } from '../balance/balance.js';
 import type {
   BalanceService,
   LeaveApproved,
+  LeaveReclassified,
   LeaveReleased,
   LeaveRequested,
   LeaveRerouted,
@@ -215,6 +227,13 @@ export class LeaveRequestService {
      * the days it moves, so the writing is `BalanceService`'s.
      */
     private readonly withdrawals: WithdrawalRepository,
+    /**
+     * The days of agreed leave that became sick leave, for the reads. FR 32c, LMS 507.
+     *
+     * The same division `withdrawals` is held to: a move lands in the same transaction as the
+     * two entries it explains, so the writing is `BalanceService`'s.
+     */
+    private readonly reclassifications: ReclassificationRepository,
     /**
      * The evidence waiting to go on a request, for the reads. FR 13, LMS 311.
      *
@@ -1050,6 +1069,106 @@ export class LeaveRequestService {
     }
 
     return count.days;
+  }
+
+  /**
+   * Moves days of agreed leave to sick leave, on a certificate. FR 32c, §8.6c. LMS 507.
+   *
+   * The whole request, or whole days inside it — {@link periodToMove} — and the count is the
+   * calendar's rather than the caller's, on the basis the request was priced under. Nothing
+   * happens to the request itself: §8.6c's remaining days keep the dates they were booked
+   * for, and the system does not offer to move them.
+   *
+   * Throws {@link LeaveCannotBeMoved} for leave that is not agreed, {@link CertificateNotUsable}
+   * without a clean certificate of theirs, {@link DaysOutsideTheLeave} for days that are not
+   * part of it, {@link DaysAlreadyMoved} for days a certificate has already moved, and
+   * {@link NotATypeToMoveInto} for a destination that is not one.
+   */
+  async reclassify(
+    actor: Actor,
+    id: string,
+    asked: ReclassificationAsked,
+  ): Promise<LeaveReclassified> {
+    const request = await this.requests.findById(id);
+
+    if (request === undefined) {
+      throw new LeaveRequestNotFound(id);
+    }
+
+    const employee = await this.employeeFor(request.employeeId);
+    const owner = ownerOf(employee);
+
+    /** FR 48, §8.6a. Standing before state, as every other door here asks it. */
+    this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, 'RECLASSIFY'));
+    this.guard.enforce(leaveRequestPolicy.reclassify(actor, owner));
+
+    /* Read off `TRANSITIONS` for its refusal, and asked again inside the lock. */
+    reclassificationTo(request);
+
+    const type = await this.typeFor(request.leaveTypeId);
+    const into = await this.typeFor(asked.toLeaveTypeId);
+
+    assertItCanBeMovedInto(type, into);
+
+    /** FR 13, NFR SEC 07. Refused before anything is counted. */
+    const certificate = assertTheCertificateStands(
+      employee.id,
+      await this.attachments.findById(asked.certificateId),
+    );
+
+    const period = periodToMove(request, asked);
+
+    /* FR 32c. Asked here for the sentence naming the earlier move, and again inside the
+       lock, where it binds. */
+    assertTheDaysAreNotAlreadyMoved(
+      request,
+      period,
+      await this.reclassifications.forRequest(request.id),
+    );
+
+    /** FR 11, LMS 303. The request's basis, not the type's as it now stands. */
+    const count = await this.calculator.count(
+      actor,
+      employee,
+      { ...type, countingBasis: request.countingBasis },
+      period,
+    );
+
+    assertItCostsSomething(type, period, count);
+
+    const moved = await this.balances.reclassifyForRequest(actor, {
+      request,
+      into,
+      period,
+      days: count.days,
+      certificateId: certificate.id,
+      reason: reasonForReclassification({
+        typeName: type.name,
+        intoName: into.name,
+        period,
+        days: count.days,
+      }),
+      /* One id on both entries, minted here so that the pair is one act however the
+         transaction below goes. §8.6c. */
+      correlationId: randomUUID(),
+    });
+
+    /** FR 59. */
+    await this.notifications.tell({
+      event: 'LEAVE_RECLASSIFIED',
+      employee,
+      request: moved.request,
+      typeName: type.name,
+      /** FR 52. Moving days between two balances is not a decision at a desk. */
+      decidedBy: null,
+      comment: null,
+      availableAfter: moved.balance.available,
+      /** FR 32c. What moved, and what it became. */
+      daysBack: moved.reclassification.days,
+      movedInto: { typeName: into.name, availableAfter: moved.into.available },
+    });
+
+    return moved;
   }
 
   /**

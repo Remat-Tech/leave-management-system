@@ -176,8 +176,13 @@ describe('the columns', () => {
      are nullable because the *day is not settled yet* rather than because it may never
      arrive — FR 19's whole sentence. They are days for the reason the request's own two
      are: a draft becomes a request by handing these across unchanged, so a zone creeping
-     in here would move the leave by a day at the moment somebody committed to it. */
-  it('the fifteen dates there are today are the ones expected', async () => {
+     in here would move the leave by a day at the moment somebody committed to it.
+
+     The two from LMS 507 are the days of a holiday a certificate moved to sick leave. They
+     are days for the same reason and for one more: they are compared against the request's
+     own two, and a zone between the two pairs would put a day outside the leave it is
+     part of. FR 32c. */
+  it('the seventeen dates there are today are the ones expected', async () => {
     const dates = (await temporalColumns())
       .filter((column) => column.data_type === 'date')
       .map((column) => `${column.table_name}.${column.column_name}`);
@@ -198,6 +203,9 @@ describe('the columns', () => {
       /** FR 19, LMS 302. */
       'leave_request_draft.end_date',
       'leave_request_draft.start_date',
+      /** FR 32c, LMS 507. Which days of a holiday became sick leave. */
+      'leave_request_reclassification.end_date',
+      'leave_request_reclassification.start_date',
       'leave_year.end_date',
       'leave_year.start_date',
     ]);

@@ -388,7 +388,8 @@ this is a rule the compiler holds as well as the prose.
 integration test reads the tables carrying the trigger straight out of the
 catalogue and asserts they are exactly that list, so neither can drift. The
 absences are deliberate, for two different reasons. `leave_request_decision`,
-`leave_request_withdrawal`, `leave_request_routing` and
+`leave_request_withdrawal`, `leave_request_routing`,
+`leave_request_reclassification` and
 `leave_request_reassignment` are append only and carry their own writer and
 instant, so each row is already its own history and an audit of it would be a
 second copy. `leave_request_draft` is the

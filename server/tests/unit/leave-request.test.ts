@@ -1721,6 +1721,8 @@ describe('where this story stops', () => {
       'WITHDRAW_APPROVED',
       'AMEND',
       'REFUSE_WITHDRAWAL',
+      /** FR 32c, §8.6c, LMS 507. Sickness during it, moved to sick leave. */
+      'RECLASSIFY',
     ]);
 
     for (const verb of ['WITHDRAW', 'CANCEL', 'REFUSE', 'APPROVE', 'ROUTE'] as const) {

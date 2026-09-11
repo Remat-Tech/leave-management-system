@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { databaseForThisFile } from '../setup/test-database.js';
@@ -106,7 +107,7 @@ beforeEach(async () => {
      which is the door both migrations leave open for exactly this. */
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, attachment_access, attachment_download_link, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
   );
   await restoreYears();
 
@@ -288,7 +289,37 @@ async function post(
     await post('RESERVATION', -Math.abs(days), overrides);
   }
 
+  /* FR 32c, LMS 507. A reclassification is two entries under one correlation, judged at
+     COMMIT, so the other side goes in beside it — in the leave type this balance is not,
+     which is why it changes nothing measured here. */
+  if (entryType === 'RECLASSIFICATION' && row.correlation_id === undefined) {
+    return withItsOtherSide({ ...row, leave_request_id: currentRequest ?? null });
+  }
+
   return insertEntry({ ...row, leave_request_id: currentRequest ?? null });
+}
+
+async function withItsOtherSide(row: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const correlation = randomUUID();
+
+  await admin.query('BEGIN');
+  try {
+    const written = await insertEntry({ ...row, correlation_id: correlation });
+
+    await insertEntry({
+      ...row,
+      correlation_id: correlation,
+      leave_type_id: row.leave_type_id === annualId ? sickId : annualId,
+      days: (-Number(row.days)).toFixed(2),
+    });
+
+    await admin.query('COMMIT');
+
+    return written;
+  } catch (error) {
+    await admin.query('ROLLBACK');
+    throw error;
+  }
 }
 
 /** The balance this file's default entry lands in. */

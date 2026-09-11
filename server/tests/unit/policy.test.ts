@@ -1394,7 +1394,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
        which is what stops it being "a way to reach the transition without passing the check
        that knows which desk FR 38a's chain has the request sitting on" — the sentence this
        file refused it with for two stories. */
-    it('and the decisions it holds are these twenty', () => {
+    it('and the decisions it holds are these twenty one', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
         /** FR 47, LMS 324. HR's three answers, decided by one rule. */
         'answerAWithdrawal',
@@ -1425,6 +1425,8 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         'readAttachment',
         /* FR 18, LMS 308. The one decision here that is asked rather than enforced: what it
            refuses is answered by `TooLateToRecord`, which names HR. */
+        /** FR 32c, LMS 507. Moving days of agreed leave to sick leave. */
+        'reclassify',
         'recordLate',
         'refuse',
         'resource',

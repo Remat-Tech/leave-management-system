@@ -207,6 +207,8 @@ export interface LeaveLedgerEntryTable {
   corrects_id: string | null;
   /** The request that caused this movement. LMS 301. */
   leave_request_id: string | null;
+  /** The other side of a move between two leave types. FR 32c, §8.6c, LMS 507. */
+  correlation_id: string | null;
   created_by: ColumnType<string, never, never>;
   created_by_employee_id: ColumnType<string | null, never, never>;
   created_at: Timestamp;
@@ -427,6 +429,29 @@ export interface LeaveRequestWithdrawalTable {
   recorded_at: Timestamp;
 }
 
+/** Days of approved leave that became sick leave. FR 32c, §8.6c, LMS 507. */
+export interface LeaveRequestReclassificationTable {
+  id: Generated<string>;
+  /** The leave the days came out of. Its dates and its price are untouched. */
+  leave_request_id: ColumnType<string, string, never>;
+  /** What they became. */
+  to_leave_type_id: ColumnType<string, string, never>;
+  /** Which days, inclusive at both ends. NFR DAT 03. */
+  start_date: ColumnType<string, string, never>;
+  end_date: ColumnType<string, string, never>;
+  /** What that period cost on the request's own basis. FR 11, FR 24. */
+  days: ColumnType<number, number, never>;
+  /** FR 27. The one sentence both ledger entries carry. */
+  reason: ColumnType<string, string, never>;
+  /** What the two entries are found by. */
+  correlation_id: ColumnType<string, string, never>;
+  /** FR 13, NFR SEC 07. The clean certificate this stands on. */
+  certificate_id: ColumnType<string, string, never>;
+  recorded_by: ColumnType<string, never, never>;
+  recorded_by_employee_id: ColumnType<string | null, never, never>;
+  recorded_at: Timestamp;
+}
+
 /** One stage of a request's chain that another desk answered. FR 48b, §8.6a, LMS 320. */
 export interface LeaveRequestRoutingTable {
   id: Generated<string>;
@@ -535,6 +560,7 @@ export interface Database {
   leave_request_decision: LeaveRequestDecisionTable;
   leave_request_draft: LeaveRequestDraftTable;
   leave_request_reassignment: LeaveRequestReassignmentTable;
+  leave_request_reclassification: LeaveRequestReclassificationTable;
   leave_request_routing: LeaveRequestRoutingTable;
   leave_request_withdrawal: LeaveRequestWithdrawalTable;
   leave_type: LeaveTypeTable;

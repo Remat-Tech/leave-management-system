@@ -345,6 +345,13 @@ export const REQUEST_ACTIONS = [
   'WITHDRAW_APPROVED',
   'AMEND',
   'REFUSE_WITHDRAWAL',
+  /**
+   * Moving days of agreed leave to sick leave. FR 32c, §8.6c, LMS 507.
+   *
+   * Decides nothing and ends nothing: the request keeps its status, its dates and its
+   * price, and what moves is two balances.
+   */
+  'RECLASSIFY',
 ] as const;
 
 export type RequestAction = (typeof REQUEST_ACTIONS)[number];
@@ -368,6 +375,9 @@ export function actionInWords(action: RequestAction): string {
       return 'amend it to the days actually taken';
     case 'REFUSE_WITHDRAWAL':
       return 'turn down the ask to take it off the books';
+    /** FR 32c, LMS 507. */
+    case 'RECLASSIFY':
+      return 'move days of it to sick leave';
     default:
       return action.toLowerCase();
   }
@@ -601,6 +611,13 @@ export const TRANSITIONS: readonly Transition[] = [
     to: 'APPROVED',
     by: ['LEAVE_ADMINISTRATION'],
   },
+
+  /* Sickness during agreed leave, moved to sick leave. FR 32c, §8.6c. LMS 507.
+
+     Agreed leave only, and it stays agreed: the days were taken, which is the fact that
+     makes them days there is something to move. `to` is `APPROVED` for the same reason
+     `AMEND`'s is — the leave still happened, and its dates are not the system's to shift. */
+  { from: 'APPROVED', action: 'RECLASSIFY', to: 'APPROVED', by: ['LEAVE_ADMINISTRATION'] },
 ];
 
 /**
@@ -731,6 +748,22 @@ export function withdrawalTo(request: LeaveRequest, action: WithdrawalAction): R
 
   if (transition === undefined) {
     throw refuseTheMove(request, action);
+  }
+
+  return transition.to;
+}
+
+/**
+ * Where moving days of this leave to sick leave leaves it. FR 32c, §6. LMS 507.
+ *
+ * Asked for its refusal rather than its answer: agreed leave is the only state with a row
+ * for this verb, and the answer is always the status it already has.
+ */
+export function reclassificationTo(request: LeaveRequest): RequestStatus {
+  const transition = transitionFor(request.status, 'RECLASSIFY');
+
+  if (transition === undefined) {
+    throw refuseTheMove(request, 'RECLASSIFY');
   }
 
   return transition.to;

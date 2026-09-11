@@ -15,6 +15,7 @@ import { AttachmentLinkRepository } from './features/leave-request/attachment-li
 import { LeaveDecisionRepository } from './features/leave-request/leave-decision.db.js';
 import { LeaveRequestDraftRepository } from './features/leave-request/draft.db.js';
 import { LeaveRoutingRepository } from './features/leave-request/routing.db.js';
+import { ReclassificationRepository } from './features/leave-request/reclassification.db.js';
 import { WithdrawalRepository } from './features/leave-request/withdrawal.db.js';
 import { LeaveRequestRepository } from './features/leave-request/leave-request.db.js';
 import { LeaveTypeRepository } from './features/leave-type/leave-type.db.js';
@@ -73,6 +74,8 @@ const decisions = new LeaveDecisionRepository(db);
 const routing = new LeaveRoutingRepository(db);
 /** FR 47, LMS 324. */
 const withdrawals = new WithdrawalRepository(db);
+/** FR 32c, LMS 507. */
+const reclassifications = new ReclassificationRepository(db);
 /** FR 19, LMS 302. Requests started and not finished. */
 const drafts = new LeaveRequestDraftRepository(db);
 /** FR 12, LMS 310. */
@@ -122,6 +125,7 @@ const leaveRequests = new LeaveRequestService(
   decisions,
   routing,
   withdrawals,
+  reclassifications,
   attachments,
   roles,
   delegations,

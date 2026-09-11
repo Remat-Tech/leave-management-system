@@ -46,6 +46,8 @@ export interface Telling {
   overturned?: { desk: ApproverRole; said: 'APPROVE' | 'REFUSE' } | null;
   /** FR 47. How many days came back, where that is not all of them. LMS 324. */
   daysBack?: number | null;
+  /** FR 32c. What the days became, and what that balance holds now. LMS 507. */
+  movedInto?: { typeName: string; availableAfter: number } | null;
 }
 
 /** One approver chased about one request on one day. FR 50, FR 60, LMS 330. */
@@ -152,6 +154,8 @@ export class NotificationService {
       overturned: telling.overturned ?? null,
       /** FR 47, LMS 324. */
       daysBack: telling.daysBack ?? null,
+      /** FR 32c, LMS 507. */
+      movedInto: telling.movedInto ?? null,
     });
 
     const notice = await this.write(composed);

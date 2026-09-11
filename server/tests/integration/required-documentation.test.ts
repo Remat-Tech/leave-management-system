@@ -21,6 +21,7 @@ import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
 import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
+import { ReclassificationRepository } from '../../src/features/leave-request/reclassification.db.js';
 import { LeaveRoutingRepository } from '../../src/features/leave-request/routing.db.js';
 import { WithdrawalRepository } from '../../src/features/leave-request/withdrawal.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
@@ -111,6 +112,8 @@ beforeAll(async () => {
     new LeaveDecisionRepository(db),
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
+    /** FR 32c, LMS 507. */
+    new ReclassificationRepository(db),
     attachmentRepository,
     new RoleRepository(db),
     /** FR 49, LMS 327. */
@@ -187,7 +190,7 @@ async function clear(): Promise<void> {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
+      'attachment_access, attachment_download_link, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
       'leave_request_withdrawal, leave_request_draft, leave_request',
   );
 }

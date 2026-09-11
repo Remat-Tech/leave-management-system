@@ -18,6 +18,7 @@ import { LeaveRequestRepository } from '../../src/features/leave-request/leave-r
 import { LeaveRoutingRepository } from '../../src/features/leave-request/routing.db.js';
 import { LeaveRequestDraftRepository } from '../../src/features/leave-request/draft.db.js';
 import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
+import { ReclassificationRepository } from '../../src/features/leave-request/reclassification.db.js';
 import { AttachmentLinkRepository } from '../../src/features/leave-request/attachment-link.db.js';
 import { SignatureScanner } from '../../src/scanning/signature-scanner.js';
 import { InMemoryStorage } from '../support/in-memory-storage.js';
@@ -135,6 +136,8 @@ beforeAll(async () => {
     new LeaveRoutingRepository(db),
     /** FR 47, LMS 324. */
     new WithdrawalRepository(db),
+    /** FR 32c, LMS 507. */
+    new ReclassificationRepository(db),
     /** FR 13, LMS 311. */
     new AttachmentRepository(db),
     new RoleRepository(db),
@@ -1000,7 +1003,7 @@ async function yearIdOf(label: string): Promise<string> {
 function emptyTheLeaveTables(): Promise<unknown> {
   return admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request, leave_balance',
+      'attachment_access, attachment_download_link, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request, leave_balance',
   );
 }
 

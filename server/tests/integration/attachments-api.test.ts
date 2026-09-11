@@ -10,6 +10,7 @@ import { databaseFor } from '../../src/db/index.js';
 import type { Database } from '../../src/db/schema.js';
 import { calendarDateIn } from '../../src/shared/time.js';
 import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
+import { ReclassificationRepository } from '../../src/features/leave-request/reclassification.db.js';
 import { AttachmentLinkRepository } from '../../src/features/leave-request/attachment-link.db.js';
 import { BalanceRepository } from '../../src/features/balance/balance.db.js';
 import { DepartmentRepository } from '../../src/features/department/department.db.js';
@@ -98,6 +99,8 @@ beforeAll(async () => {
     decisions,
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
+    /** FR 32c, LMS 507. */
+    new ReclassificationRepository(db),
     /** FR 13, LMS 311. */
     new AttachmentRepository(db),
     roles,
@@ -189,7 +192,7 @@ async function clear(): Promise<void> {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
+      'attachment_access, attachment_download_link, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
       'leave_request_withdrawal, leave_request_draft, leave_request',
   );
 }
