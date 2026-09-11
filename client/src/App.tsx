@@ -4,6 +4,7 @@ import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { BalancesPage } from './features/balances/BalancesPage';
 import { CalendarPage } from './features/calendar/CalendarPage';
 import { ApprovalChainsPage } from './features/config/ApprovalChainsPage';
+import { BalanceAdjustmentsPage } from './features/config/BalanceAdjustmentsPage';
 import { EntitlementRulesPage } from './features/config/EntitlementRulesPage';
 import { HolidaysPage } from './features/config/HolidaysPage';
 import { LeaveTypesPage } from './features/config/LeaveTypesPage';
@@ -83,6 +84,17 @@ const SCREENS = [
    * where the four above are kept.
    */
   { id: 'policy', label: 'Policy', icon: 'settings' },
+  /**
+   * FR 37, FR 27, LMS 506. Putting one person's figures right.
+   *
+   * Last, and not beside "Entitlements" though both are about what somebody is owed: the five
+   * above are rules that apply to everybody, and this is one correction to one balance. It is
+   * the only configuration screen that writes a movement rather than a setting.
+   *
+   * Offered to everybody for the reason the others are. Its reading is HR's and a manager's and
+   * the person's own; the button is an HR Administrator's, refused with the server's sentence.
+   */
+  { id: 'adjustments', label: 'Adjustments', icon: 'pencil' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -279,6 +291,7 @@ export function App() {
         {screen === 'approval-chains' ? <ApprovalChainsPage onSignedOut={ranOut} /> : null}
         {screen === 'holidays' ? <HolidaysPage onSignedOut={ranOut} /> : null}
         {screen === 'policy' ? <PolicySettingsPage onSignedOut={ranOut} /> : null}
+        {screen === 'adjustments' ? <BalanceAdjustmentsPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );

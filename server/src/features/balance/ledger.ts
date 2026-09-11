@@ -263,6 +263,29 @@ export function isARequestMovement(entryType: LedgerEntryType): boolean {
   return REQUEST_MOVEMENTS.includes(entryType);
 }
 
+/** Each kind of movement in words, written to sit mid-line. §5.7, LMS 506. */
+const MOVEMENTS_IN_WORDS: Readonly<Record<LedgerEntryType, string>> = {
+  GRANT: 'granted for the year',
+  CARRY_FORWARD: 'carried over from last year',
+  ADJUSTMENT: 'adjusted by hand',
+  EXPIRY: 'carried days expired',
+  LAPSE: 'grant lapsed unused',
+  RESERVATION: 'held for a request',
+  DEDUCTION: 'taken as leave',
+  RELEASE: 'given back',
+  RECALCULATION: 'recounted',
+};
+
+/**
+ * What a movement was, for a reader rather than a branch. LMS 506.
+ *
+ * Here rather than on a screen so that nine enum values have one wording, and so that a
+ * ledger row is readable wherever it is sent.
+ */
+export function movementInWords(entryType: LedgerEntryType): string {
+  return MOVEMENTS_IN_WORDS[entryType];
+}
+
 /** Whether this entry puts an earlier one right. */
 export function isACorrection(entry: LedgerEntry): boolean {
   return entry.correctsId !== null;

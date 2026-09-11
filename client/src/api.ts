@@ -1093,6 +1093,115 @@ export async function nameChiefExecutive(employeeId: string): Promise<PolicySett
   return request<PolicySettings>('PUT', '/api/policy-settings/chief-executive', { employeeId });
 }
 
+/** ------------------------------ putting a balance right by hand. FR 37, FR 27, LMS 506 */
+
+/** Every kind of movement a balance is made of. §5.7. */
+export type MovementType =
+  | 'GRANT'
+  | 'CARRY_FORWARD'
+  | 'ADJUSTMENT'
+  | 'EXPIRY'
+  | 'LAPSE'
+  | 'RESERVATION'
+  | 'DEDUCTION'
+  | 'RELEASE'
+  | 'RECALCULATION';
+
+/** Somebody whose balance can be corrected. */
+export interface Adjustable {
+  id: string;
+  name: string;
+  employeeNumber: string;
+  jobTitle: string | null;
+  /** FR 06. In the list and marked: a leaver's final figure is still HR's to put right. */
+  hasLeft: boolean;
+}
+
+/** One movement in a balance, on its own. FR 27. */
+export interface Entry {
+  id: string;
+  leaveTypeId: string;
+  entryType: MovementType;
+  /** The server's wording for the kind of movement. Never translated here. */
+  inWords: string;
+  /** Signed. An adjustment is the only kind that may go either way. FR 37. */
+  days: number;
+  /** FR 27. What somebody reads when they ask why the figure is what it is. */
+  reason: string;
+  correctsId: string | null;
+  leaveRequestId: string | null;
+  /** Who wrote it. An employee id where a person did, and `createdBy` for a job. */
+  createdBy: string;
+  createdByEmployeeId: string | null;
+  createdAt: string;
+}
+
+/** The same, read as one of a run: named, with the figure it left behind it. LMS 211. */
+export interface Movement extends Entry {
+  typeName: string;
+  after: number;
+}
+
+/** One person's figures for one leave year, and every movement behind them. */
+export interface AdjustmentView {
+  employee: Adjustable;
+  year: Year;
+  years: Year[];
+  lines: BalanceLine[];
+  ledger: Movement[];
+}
+
+/** What the form sends. `days` is signed, and the reason is mandatory. FR 37. */
+export interface AdjustmentFields {
+  employeeId: string;
+  leaveTypeId: string;
+  leaveYearId: string;
+  days: number;
+  reason: string;
+}
+
+/** The movement that was written, and what the balance became. */
+export interface Adjusted {
+  /** No running total and no type name: neither is true of one movement on its own. */
+  entry: Entry;
+  balance: {
+    leaveTypeId: string;
+    leaveYearId: string;
+    entitled: number;
+    carriedOver: number;
+    adjustment: number;
+    taken: number;
+    pending: number;
+    available: number;
+  };
+}
+
+/** Whose balance could be corrected. Refused for anybody who does not read every record. */
+export async function whoCanBeAdjusted(): Promise<{ employees: Adjustable[] }> {
+  return request<{ employees: Adjustable[] }>('GET', '/api/balance-adjustments');
+}
+
+/** One person's figures and movements, for one leave year or the one the server picks. */
+export async function balanceToAdjust(
+  employeeId: string,
+  leaveYearId?: string,
+): Promise<AdjustmentView> {
+  const query = leaveYearId === undefined ? '' : `?leaveYearId=${encodeURIComponent(leaveYearId)}`;
+
+  return request<AdjustmentView>('GET', `/api/balance-adjustments/${employeeId}${query}`);
+}
+
+/**
+ * Moves a balance by hand. FR 37.
+ *
+ * An HR Administrator's, and an HR Officer who reaches it meets the server's own sentence
+ * naming the desk that can. The answer carries what the balance became, so nothing here has
+ * to add the movement to the figure it moved.
+ */
+export async function adjustBalance(fields: AdjustmentFields): Promise<Adjusted> {
+  return request<Adjusted>('POST', '/api/balance-adjustments', fields);
+}
+
 /** Who the session belongs to. */
 export interface Me {
   employeeId: string;

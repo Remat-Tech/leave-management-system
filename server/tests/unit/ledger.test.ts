@@ -14,6 +14,7 @@ import {
   type LedgerEntry,
   LedgerEntryIsFinal,
   type LedgerEntryType,
+  movementInWords,
   type NewLedgerEntry,
   REQUEST_MOVEMENTS,
   runningTotal,
@@ -687,5 +688,39 @@ describe('reading a run of entries', () => {
   it('is empty for a balance nothing has moved', () => {
     expect(runningTotal([])).toEqual([]);
     expect(inOrderWritten([])).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------- a movement, in words */
+
+/**
+ * What a row says it is. LMS 506.
+ *
+ * Here rather than on the screen that shows a ledger, for the reason `countingBasisLabel` is
+ * on the server: a wording kept beside the enum cannot fall out of step with it, and a screen
+ * that translated nine codes itself would be the second place they are named.
+ */
+describe('each kind of movement in words', () => {
+  it('has a wording for every one of the nine', () => {
+    for (const entryType of LEDGER_ENTRY_TYPES) {
+      expect(movementInWords(entryType)).not.toBe('');
+    }
+  });
+
+  /* Lower case and mid-line, which is the convention every sentence the server writes
+     follows. A heading capitalises it; a wording that arrived capitalised could not be
+     put back down. */
+  it('and each reads mid-line', () => {
+    for (const entryType of LEDGER_ENTRY_TYPES) {
+      const words = movementInWords(entryType);
+
+      expect(words).toBe(words.toLowerCase());
+      expect(words).not.toContain('_');
+    }
+  });
+
+  it('and says what an adjustment is, which is the one nobody would guess', () => {
+    expect(movementInWords('ADJUSTMENT')).toBe('adjusted by hand');
+    expect(movementInWords('GRANT')).toBe('granted for the year');
   });
 });

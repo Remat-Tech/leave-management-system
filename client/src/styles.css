@@ -3533,3 +3533,161 @@ select[aria-invalid='true'] {
   margin: 0.5rem 0;
   text-align: left;
 }
+
+/* ------------------------------- balance adjustments. FR 37, FR 27, LMS 506 */
+
+/* The figures being corrected. Scrolls inside itself rather than pushing the page sideways,
+   as `.windows` does: seven columns do not fit a phone and wrapping them loses the row. */
+.balance-figures {
+  overflow-x: auto;
+  padding: var(--gap);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.balance-figures .figures-table {
+  margin-top: 0;
+  min-width: 38rem;
+}
+
+/* The figures are right aligned to read as a column of numbers; the names under the first
+   heading are not, and a heading that does not sit over its own column reads as a stray. */
+.balance-figures .figures-table thead th:first-child {
+  text-align: left;
+}
+
+/* FR 37. The one column this screen writes to, marked where it has been written to. */
+.figures-table td.is-adjusted {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* FR 27. The movements behind the figures, oldest first. */
+.movements {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.movement {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap);
+  padding: 0.75rem var(--gap);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* The movement this screen writes, picked out of the run it sits in. */
+.movement.is-adjustment {
+  border-left: 3px solid var(--accent);
+}
+
+.movement-days {
+  width: 7rem;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.movement-days b {
+  font-family: var(--face-heading);
+  font-size: 1.125rem;
+}
+
+.movement-days .muted {
+  font-size: 0.75rem;
+}
+
+.movement-what {
+  flex: 1 1 18rem;
+}
+
+.movement-what h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* Never clamped. A reason nobody can read is a reason nobody wrote. FR 27. */
+.movement-reason {
+  margin: 0.3rem 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.movement-what .muted {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+/* FR 37. The direction, as two answers rather than a minus sign somebody has to remember. */
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice legend {
+  width: 100%;
+  padding: 0;
+  color: var(--ink-faint);
+  font-size: 0.75rem;
+}
+
+.radio {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink);
+  font-size: 0.875rem;
+}
+
+.radio input {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--accent);
+}
+
+.day-count input {
+  max-width: 8rem;
+}
+
+/* What the balance became, in the server's figure. Not a refusal, so not the warning stripe. */
+.notice.done {
+  border-left-color: var(--go);
+}
+
+@media (max-width: 46rem) {
+  .movement-days {
+    width: auto;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.5rem;
+    text-align: left;
+  }
+
+  .movement {
+    flex-wrap: wrap;
+  }
+}
