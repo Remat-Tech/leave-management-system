@@ -16,18 +16,21 @@ export const LEDGER_ENTRY_TYPES = [
   'DEDUCTION',
   'RELEASE',
   'RECALCULATION',
+  /** Days moving from one leave type to another. FR 32c, §8.6c, LMS 507. */
+  'RECLASSIFICATION',
 ] as const;
 
 export type LedgerEntryType = (typeof LEDGER_ENTRY_TYPES)[number];
 
 /**
- * The four that move days because of a leave request, rather than because of what somebody is owed. FR 24.
+ * The five that move days because of a leave request, rather than because of what somebody is owed. FR 24.
  */
 export const REQUEST_MOVEMENTS: readonly LedgerEntryType[] = [
   'RESERVATION',
   'DEDUCTION',
   'RELEASE',
   'RECALCULATION',
+  'RECLASSIFICATION',
 ];
 
 /** Which way each kind of movement goes. §5.7. */
@@ -41,6 +44,8 @@ export const ENTRY_SIGNS: Readonly<Record<LedgerEntryType, 'ADDS' | 'CONSUMES' |
   DEDUCTION: 'CONSUMES',
   RELEASE: 'ADDS',
   RECALCULATION: 'ADDS',
+  /** Either way: one side of the move credits a balance and the other charges one. LMS 507. */
+  RECLASSIFICATION: 'EITHER',
 };
 
 /** Which of the cached balance's columns each type moves. §5.7, LMS 211, LMS 218, LMS 210, LMS 213. */
@@ -54,6 +59,8 @@ export const BUCKETS: Readonly<Record<LedgerEntryType, readonly BalanceBucket[]>
   DEDUCTION: ['pending', 'taken'],
   RELEASE: ['pending'],
   RECALCULATION: ['taken'],
+  /** `taken` alone: a deduction would draw down a hold nothing reserved. LMS 507. */
+  RECLASSIFICATION: ['taken'],
 };
 
 /** The largest movement the column holds, `NUMERIC(6,2)`. */
@@ -75,6 +82,8 @@ export interface NewLedgerEntry {
   correctsId?: string | null;
   /** The request that caused this movement. LMS 301. */
   leaveRequestId?: string | null;
+  /** FR 32c, §8.6c. What the other side of a move between two leave types is found by. LMS 507. */
+  correlationId?: string | null;
 }
 
 /** The shape a validated entry has by the time it reaches the repository. */
@@ -88,6 +97,7 @@ export interface ValidatedLedgerEntry {
   reason: string;
   correctsId: string | null;
   leaveRequestId: string | null;
+  correlationId: string | null;
 }
 
 /** An entry as it comes back out. */
@@ -107,9 +117,11 @@ export interface LedgerEntry {
   reason: string;
   correctsId: string | null;
   /**
-   * The request that caused this, for the four in REQUEST_MOVEMENTS, and null for every other kind. LMS 301.
+   * The request that caused this, for the five in REQUEST_MOVEMENTS, and null for every other kind. LMS 301.
    */
   leaveRequestId: string | null;
+  /** FR 32c. The other side of the move, on a `RECLASSIFICATION` and nothing else. LMS 507. */
+  correlationId: string | null;
   /** Who, as the writer named themselves. */
   createdBy: string;
   /** Which employee, where the writer was a person. */
@@ -176,6 +188,7 @@ export function validateNewLedgerEntry(input: NewLedgerEntry): ValidatedLedgerEn
   const entryType = requireEntryType(input.entryType);
   const correctsId = optionalId('correctsId', input.correctsId);
   const leaveRequestId = optionalId('leaveRequestId', input.leaveRequestId);
+  const correlationId = optionalId('correlationId', input.correlationId);
 
   if (correctsId !== null && entryType !== 'ADJUSTMENT') {
     throw new InvalidLedgerEntry(
@@ -210,6 +223,27 @@ export function validateNewLedgerEntry(input: NewLedgerEntry): ValidatedLedgerEn
     );
   }
 
+  /* FR 32c, LMS 507. An equivalence, as the request id is, and held again by
+     `leave_ledger_entry_only_a_reclassification_correlates`. */
+  const moves = entryType === 'RECLASSIFICATION';
+
+  if (moves && correlationId === null) {
+    throw new InvalidLedgerEntry(
+      'correlationId',
+      `A reclassification is one side of days moving between two leave types, so it has to ` +
+        `name the other. One side on its own is a balance credited or charged with nothing ` +
+        `opposite it. FR 32c, §8.6c.`,
+    );
+  }
+
+  if (!moves && correlationId !== null) {
+    throw new InvalidLedgerEntry(
+      'correlationId',
+      `A ${entryType} moves days within one balance, so there is no other side for it to ` +
+        `name. A correlation is what makes two entries one act.`,
+    );
+  }
+
   const days = requireDays(entryType, input.days);
 
   return {
@@ -222,6 +256,7 @@ export function validateNewLedgerEntry(input: NewLedgerEntry): ValidatedLedgerEn
     reason: requireReason(input.reason),
     correctsId,
     leaveRequestId,
+    correlationId,
   };
 }
 
@@ -274,6 +309,7 @@ const MOVEMENTS_IN_WORDS: Readonly<Record<LedgerEntryType, string>> = {
   DEDUCTION: 'taken as leave',
   RELEASE: 'given back',
   RECALCULATION: 'recounted',
+  RECLASSIFICATION: 'moved between leave types',
 };
 
 /**

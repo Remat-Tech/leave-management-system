@@ -10,6 +10,7 @@ import { LeaveDecisionRepository } from '../features/leave-request/leave-decisio
 import { LeaveEventRepository } from '../features/leave-event/leave-event.db.js';
 import { LeaveReassignmentRepository } from '../features/leave-request/reassignment.db.js';
 import { LeaveRequestRepository } from '../features/leave-request/leave-request.db.js';
+import { ReclassificationRepository } from '../features/leave-request/reclassification.db.js';
 import { LeaveRoutingRepository } from '../features/leave-request/routing.db.js';
 import { LeaveTypeRepository } from '../features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../features/leave-year/leave-year.db.js';
@@ -38,6 +39,8 @@ export interface Repositories {
   reassignments: LeaveReassignmentRepository;
   /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
   withdrawals: WithdrawalRepository;
+  /** FR 32c. The days of agreed leave that became sick leave. LMS 507. */
+  reclassifications: ReclassificationRepository;
   /** FR 13. The evidence a request has to arrive with, put on it here. LMS 311. */
   attachments: AttachmentRepository;
 }
@@ -62,6 +65,7 @@ export class Transactions {
         routing: new LeaveRoutingRepository(trx),
         reassignments: new LeaveReassignmentRepository(trx),
         withdrawals: new WithdrawalRepository(trx),
+        reclassifications: new ReclassificationRepository(trx),
         attachments: new AttachmentRepository(trx),
       }),
     );

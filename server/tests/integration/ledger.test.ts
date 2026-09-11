@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { databaseForThisFile } from '../setup/test-database.js';
@@ -197,6 +198,15 @@ async function writeDirectly(
     row.leave_request_id = await aRequestHoldingDays(row);
   }
 
+  /* FR 32c, LMS 507. A reclassification names the other side of itself, and the pair is
+     judged at COMMIT — so the correlation is supplied here and the other side is written
+     beside it, unless the case at hand is about one of those two rules. */
+  if (row.entry_type === 'RECLASSIFICATION' && row.correlation_id === undefined) {
+    row.correlation_id = randomUUID();
+
+    return withItsOtherSide(row);
+  }
+
   return insertEntry(row);
 }
 
@@ -210,6 +220,36 @@ async function insertEntry(row: Record<string, unknown>): Promise<Record<string,
   );
 
   return rows[0] as Record<string, unknown>;
+}
+
+/**
+ * The two sides of one move, in one transaction. FR 32c, LMS 507.
+ *
+ * `leave_ledger_entry_correlates_a_pair` is deferred and judged at COMMIT, so a
+ * reclassification written on its own is refused there however it was written. The other
+ * side goes into the leave type the request is not, for the same days and the same reason.
+ */
+async function withItsOtherSide(row: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const otherType = (await admin.query("SELECT id FROM leave_type WHERE code = 'SICK'")).rows[0]
+    .id as string;
+
+  await admin.query('BEGIN');
+  try {
+    const written = await insertEntry(row);
+
+    await insertEntry({
+      ...row,
+      leave_type_id: otherType,
+      days: (-Number(row.days)).toFixed(2),
+    });
+
+    await admin.query('COMMIT');
+
+    return written;
+  } catch (error) {
+    await admin.query('ROLLBACK');
+    throw error;
+  }
 }
 
 /** A RESERVATION and the request whose days it holds, in one transaction. */
@@ -351,7 +391,7 @@ function anAdjustment(days: number, reason = 'Opening balance at go live') {
 
 /* ---------------------------------------------- the table holds what it says */
 
-describe('the eight kinds of movement, on a migrated database', () => {
+describe('the ten kinds of movement, on a migrated database', () => {
   /* The domain holds a list and the column holds a CHECK. A type the domain knows
      and the column refuses is a write that fails at the last moment; one the column
      allows and the domain does not is days moving for a reason no screen can
@@ -365,7 +405,7 @@ describe('the eight kinds of movement, on a migrated database', () => {
     expect(written.entry_type).toBe(entryType);
   });
 
-  it('and a ninth is not', async () => {
+  it('and an eleventh is not', async () => {
     await expect(writeDirectly({ entry_type: 'WRITE_OFF' })).rejects.toMatchObject({
       constraint: 'leave_ledger_entry_type_known',
     });
@@ -382,7 +422,9 @@ describe('the eight kinds of movement, on a migrated database', () => {
 
   it('refuses a movement that goes the wrong way for its kind', async () => {
     for (const entryType of LEDGER_ENTRY_TYPES) {
-      if (entryType === 'ADJUSTMENT') continue;
+      /* FR 32c, LMS 507. RECLASSIFICATION beside it: both sides of a move are the same
+         kind of entry, so its sign is free too and neither way round is wrong. */
+      if (entryType === 'ADJUSTMENT' || entryType === 'RECLASSIFICATION') continue;
 
       await expect(
         writeDirectly({ entry_type: entryType, days: (-signFor(entryType)).toFixed(2) }),
@@ -678,6 +720,7 @@ describe('a mistake is put right by a new entry', () => {
         certifiedDays: 0,
         correctsId: wrong.id,
         leaveRequestId: null,
+        correlationId: null,
       }),
     ).rejects.toBeInstanceOf(InvalidLedgerEntry);
   });
@@ -765,6 +808,7 @@ describe('a settled leave year takes no new figures, with one exception', () => 
         certifiedDays: 0,
         correctsId: null,
         leaveRequestId: null,
+        correlationId: null,
       }),
     ).rejects.toMatchObject({ name: 'InvalidLedgerEntry', field: 'leaveYearId' });
   });
@@ -886,6 +930,7 @@ describe('reading one balance', () => {
         certifiedDays: 0,
         correctsId: null,
         leaveRequestId: null,
+        correlationId: null,
       },
       {
         employeeId: people.officer,
@@ -897,6 +942,7 @@ describe('reading one balance', () => {
         certifiedDays: 0,
         correctsId: null,
         leaveRequestId: null,
+        correlationId: null,
       },
     ]);
 
@@ -921,6 +967,7 @@ describe('reading one balance', () => {
       certifiedDays: 0,
       correctsId: null,
       leaveRequestId: null,
+      correlationId: null,
     };
 
     await expect(

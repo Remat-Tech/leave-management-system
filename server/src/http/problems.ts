@@ -216,6 +216,12 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
    * request, and the same request goes through the moment the certificate is on it.
    */
   DocumentationNotAttached: 400,
+  /**
+   * FR 32c, LMS 507. The dates are the fix, and the message names the leave they have to be inside.
+   */
+  DaysOutsideTheLeave: 400,
+  /** FR 32c, §8.6b. The type is the fix: days move into one whose allowance may be exceeded. */
+  NotATypeToMoveInto: 400,
 
   /** FR 51. The other verb is the fix; an override is decided one request at a time. LMS 328. */
   NotABulkAction: 400,
@@ -262,6 +268,13 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   AttachmentNotScanned: 409,
   /** FR 12. The request has moved past the point evidence goes on or comes off. LMS 310. */
   AttachmentsAreClosed: 409,
+  /**
+   * FR 32c, NFR SEC 07, LMS 507. Nothing about the request refuses this: the certificate is
+   * missing, somebody else's, or still being scanned.
+   */
+  CertificateNotUsable: 409,
+  /** FR 32c. Those days have moved once already, and the message names when. LMS 507. */
+  DaysAlreadyMoved: 409,
   /**
    * NFR SEC 04. Spent, expired, somebody else's, or never issued at all. LMS 407.
    *

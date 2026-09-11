@@ -37,6 +37,13 @@ export const NOTICE_EVENTS = [
   'WITHDRAWAL_REFUSED',
   /** The approver a request is still sitting on, chased daily. FR 50, FR 60, LMS 330. */
   'STILL_WAITING',
+  /**
+   * Days of agreed leave that became sick leave. FR 32c, §8.6c, LMS 507.
+   *
+   * Not `LEAVE_AMENDED`: nothing came off the books and the leave still happened. What the
+   * person needs told is that a holiday they spent unwell is back in their annual balance.
+   */
+  'LEAVE_RECLASSIFIED',
 ] as const;
 
 export type NoticeEvent = (typeof NOTICE_EVENTS)[number];
@@ -65,6 +72,8 @@ const GAVE_THE_DAYS_BACK: readonly NoticeEvent[] = [
   'CANCELLED',
   'WITHDRAWAL_GRANTED',
   'LEAVE_AMENDED',
+  /** FR 32c. Into one balance, and out of another. LMS 507. */
+  'LEAVE_RECLASSIFIED',
 ];
 
 /** Whether this is news that the balance has days again. */
@@ -181,6 +190,8 @@ export interface WhatHappened {
    * field on this interface is: it describes what committed.
    */
   daysBack?: number | null;
+  /** FR 32c. What the days became, and what that balance holds now. LMS 507. */
+  movedInto?: { typeName: string; availableAfter: number } | null;
 }
 
 /**
@@ -396,6 +407,31 @@ export function noticeOf(happened: WhatHappened): NewNotice {
             'If you think the split is wrong, speak to HR — the dates and the reason above are both on the request for good.',
           ],
         };
+
+      /* FR 32c, §8.6c, LMS 507. The days are back and the dates are not: what the person
+         most needs to know is that the rest of the holiday still stands as booked. */
+      case 'LEAVE_RECLASSIFIED': {
+        const moved = inDays(happened.daysBack ?? request.days);
+        const into = happened.movedInto;
+
+        return {
+          subject:
+            `${moved} of your ${typeName} for ${period} ` +
+            `${happened.daysBack === 1 ? 'is' : 'are'} now ${into?.typeName ?? 'sick leave'}`,
+          paragraphs: [
+            `${moved} of your ${cost} have been recorded as ` +
+              `${into?.typeName ?? 'sick leave'} on your medical certificate.`,
+            `The ${moved} are back in your ${typeName} balance. ${left}`,
+            into === null || into === undefined
+              ? 'The same days have been taken off the balance they moved to.'
+              : `They have come off your ${into.typeName} balance instead, which now stands ` +
+                `at ${inDays(into.availableAfter)}. That figure can be negative — sick leave ` +
+                `past its allowance is granted on a certificate rather than refused.`,
+            'The rest of this leave stands exactly as it was booked. Nothing has been moved ' +
+              'to later dates: if you want those days back as time off, ask for them.',
+          ],
+        };
+      }
 
       case 'WITHDRAWAL_REFUSED':
         return {

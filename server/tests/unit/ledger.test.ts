@@ -56,6 +56,9 @@ const SOUND: NewLedgerEntry = {
   reason: 'Annual entitlement for 2026',
 };
 
+/** FR 32c, LMS 507. What the two sides of one move are found by. */
+const CORRELATION = '0b5f1d3e-0000-4000-8000-00000000abcd';
+
 /**
  * SOUND, plus the request id LMS 301 requires of the four request-shaped kinds.
  *
@@ -70,6 +73,8 @@ function soundFor(entryType: LedgerEntryType): NewLedgerEntry {
     ...((REQUEST_MOVEMENTS as readonly string[]).includes(entryType)
       ? { leaveRequestId: '77' }
       : {}),
+    /** FR 32c, LMS 507. The one kind that also names the other side of itself. */
+    ...(entryType === 'RECLASSIFICATION' ? { correlationId: CORRELATION } : {}),
   };
 }
 
@@ -94,6 +99,7 @@ function stored(
       ...((REQUEST_MOVEMENTS as readonly string[]).includes(entryType)
         ? { leaveRequestId: '77' }
         : {}),
+      ...(entryType === 'RECLASSIFICATION' ? { correlationId: CORRELATION } : {}),
       ...input,
     }),
     createdBy: 'Ama in HR',
@@ -114,10 +120,10 @@ function refusedField(build: () => unknown): string {
   throw new Error('That was accepted, and should not have been.');
 }
 
-/* -------------------------------------------------------- the nine, and signs */
+/* --------------------------------------------------------- the ten, and signs */
 
-describe('the nine kinds of movement, §5.7', () => {
-  it('are the nine the stories name', () => {
+describe('the ten kinds of movement, §5.7', () => {
+  it('are the ten the stories name', () => {
     expect([...LEDGER_ENTRY_TYPES].sort()).toEqual(
       [
         'ADJUSTMENT',
@@ -127,6 +133,7 @@ describe('the nine kinds of movement, §5.7', () => {
         'GRANT',
         'LAPSE',
         'RECALCULATION',
+        'RECLASSIFICATION',
         'RELEASE',
         'RESERVATION',
       ].sort(),
@@ -174,13 +181,16 @@ describe('the nine kinds of movement, §5.7', () => {
     ).toEqual([...LEDGER_ENTRY_TYPES].sort());
   });
 
-  it('each has a sign rule, and only an adjustment is free', () => {
+  it('each has a sign rule, and only the two that go either way are free', () => {
     for (const type of LEDGER_ENTRY_TYPES) {
       expect(ENTRY_SIGNS[type], type).toBeDefined();
     }
 
+    /* FR 32c, LMS 507. RECLASSIFICATION joins it: one side of a move credits a balance
+       and the other charges one, and they are the same kind of entry. */
     expect(LEDGER_ENTRY_TYPES.filter((type) => ENTRY_SIGNS[type] === 'EITHER')).toEqual([
       'ADJUSTMENT',
+      'RECLASSIFICATION',
     ]);
   });
 
@@ -198,6 +208,7 @@ describe('the nine kinds of movement, §5.7', () => {
       EXPIRY: 'CONSUMES',
       LAPSE: 'CONSUMES',
       ADJUSTMENT: 'EITHER',
+      RECLASSIFICATION: 'EITHER',
     });
   });
 
@@ -222,10 +233,11 @@ describe('the nine kinds of movement, §5.7', () => {
     expect(BUCKETS.EXPIRY).not.toEqual(BUCKETS.LAPSE);
   });
 
-  it('divide into the four a request causes and the four it does not', () => {
+  it('divide into the five a request causes and the five it does not', () => {
     expect([...REQUEST_MOVEMENTS].sort()).toEqual([
       'DEDUCTION',
       'RECALCULATION',
+      'RECLASSIFICATION',
       'RELEASE',
       'RESERVATION',
     ]);

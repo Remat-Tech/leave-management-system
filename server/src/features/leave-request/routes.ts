@@ -22,6 +22,7 @@ import {
 } from './leave-request.js';
 import type {
   LeaveApproved,
+  LeaveReclassified,
   LeaveRequested,
   WithdrawalAnswered,
   WithdrawalAsked,
@@ -322,6 +323,29 @@ export function requestRoutes({
       )
       .then((answered) => {
         response.json(withdrawalAsJson(answered));
+      })
+      .catch(next);
+  });
+
+  /**
+   * Moves days of agreed leave to sick leave, on a certificate. FR 32c, §8.6c. LMS 507.
+   *
+   * `from` and `to` are optional and mean the whole request when left out — the story's
+   * first criterion, and the reason there is no verb to pass. 201: what this creates is the
+   * record of the move, and the request it is about is untouched.
+   */
+  routes.post('/requests/:id/reclassification', (request: Request, response: Response, next) => {
+    const sent = bodyOf(request);
+
+    void requests
+      .reclassify(actorOf(response), asString(request.params.id), {
+        toLeaveTypeId: asString(sent.toLeaveTypeId),
+        from: sent.from === undefined || sent.from === null ? null : asString(sent.from),
+        to: sent.to === undefined || sent.to === null ? null : asString(sent.to),
+        certificateId: asString(sent.certificateId),
+      })
+      .then((moved) => {
+        response.status(201).json(reclassificationAsJson(moved));
       })
       .catch(next);
   });
@@ -1063,6 +1087,36 @@ function withdrawalAsJson(answered: WithdrawalAsked | WithdrawalAnswered): unkno
     entryId: 'entry' in answered ? (answered.entry?.id ?? null) : null,
     daysBack: 'entry' in answered ? (answered.entry?.days ?? 0) : 0,
     availableAfter: answered.balance.available,
+  };
+}
+
+/** What moved, the two entries that moved it, and where it left both balances. FR 32c, LMS 507. */
+function reclassificationAsJson(moved: LeaveReclassified): unknown {
+  return {
+    requestId: moved.request.id,
+    /** Unchanged, and said so the screen does not have to infer it. §8.6c. */
+    status: moved.request.status,
+    from: moved.request.from,
+    to: moved.request.to,
+    reclassification: {
+      id: moved.reclassification.id,
+      toLeaveTypeId: moved.reclassification.toLeaveTypeId,
+      from: moved.reclassification.from,
+      to: moved.reclassification.to,
+      days: moved.reclassification.days,
+      /** FR 27. The one sentence both entries carry. */
+      reason: moved.reclassification.reason,
+      certificateId: moved.reclassification.certificateId,
+      recordedBy: moved.reclassification.recordedBy,
+      recordedAt: moved.reclassification.recordedAt.toISOString(),
+    },
+    /** §8.6c. The two entries, and what they are found by. */
+    correlationId: moved.reclassification.correlationId,
+    creditedEntryId: moved.credited.id,
+    chargedEntryId: moved.charged.id,
+    availableAfter: moved.balance.available,
+    /** §8.6b. May be negative. */
+    availableAfterInto: moved.into.available,
   };
 }
 

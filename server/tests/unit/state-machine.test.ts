@@ -225,7 +225,9 @@ describe('the transitions a request may make', () => {
 
          FR 07, LMS 325. `ROUTE` was among them until the reporting line was allowed to move
          a request nobody has answered. */
-      if (isAboutAWithdrawal(action)) {
+      /* FR 32c, LMS 507. `RECLASSIFY` is the fifth: days are moved to sick leave out of
+         leave that was agreed and taken, and a request still being decided has taken none. */
+      if (isAboutAWithdrawal(action) || action === 'RECLASSIFY') {
         expect(transitionFor('SUBMITTED', action)).toBeUndefined();
         continue;
       }
@@ -350,6 +352,8 @@ describe('the transitions a request may make', () => {
       'ASK_TO_WITHDRAW',
       'AMEND',
       'REFUSE_WITHDRAWAL',
+      /** FR 32c, LMS 507. It moves two balances and leaves the request exactly as it was. */
+      'RECLASSIFY',
     ]);
     expect([...new Set(live.map((transition) => transition.to))]).toEqual([
       'APPROVED',
@@ -1004,13 +1008,22 @@ describe('the table, written out', () => {
         to: 'APPROVED',
         by: ['LEAVE_ADMINISTRATION'],
       },
+
+      /* FR 32c, §8.6c, LMS 507. Sickness during agreed leave, and the row that moves no
+         request at all: what changes is two balances. */
+      {
+        from: 'APPROVED',
+        action: 'RECLASSIFY',
+        to: 'APPROVED',
+        by: ['LEAVE_ADMINISTRATION'],
+      },
     ]);
   });
 
   /* And the vocabulary it is keyed by, for the same reason. A standing added here
      without a branch in `hasStanding` does not compile; one added and left out of every
      row is a concept nothing uses. */
-  it('and is keyed by the eleven actions and the four standings there are', () => {
+  it('and is keyed by the twelve actions and the four standings there are', () => {
     expect([...REQUEST_ACTIONS]).toEqual([
       'WITHDRAW',
       'REFUSE',
@@ -1025,6 +1038,8 @@ describe('the table, written out', () => {
       'WITHDRAW_APPROVED',
       'AMEND',
       'REFUSE_WITHDRAWAL',
+      /** FR 32c, LMS 507. */
+      'RECLASSIFY',
     ]);
     expect([...STANDINGS]).toEqual([
       'THE_REQUESTER',

@@ -548,6 +548,25 @@ export const leaveRequestPolicy = {
   },
 
   /**
+   * Moving days of agreed leave to sick leave. FR 32c, §6, §10, LMS 507.
+   *
+   * HR's, like the answer to a withdrawal and for the same reason: the days are spent rather
+   * than held, so moving them between two balances is a correction to both. The certificate
+   * is the employee's part of it, and they can neither credit their own annual leave back
+   * nor decide what their own absence was.
+   */
+  reclassify(actor: Actor, owner: BalanceOwner): Decision {
+    return mayMove(actor, owner, 'RECLASSIFY', {
+      because: 'holds no role that maintains leave for the company',
+      told:
+        'Sickness during agreed leave is moved to sick leave by HR, on a medical ' +
+        'certificate. The days have been taken, so putting them back into one balance and ' +
+        'out of another is a correction rather than a decision at a desk. Send the ' +
+        'certificate to HR. FR 32c.',
+    });
+  },
+
+  /**
    * Reading, editing, discarding or submitting a draft. FR 19, §10., LMS 302.
    *
    * The narrowest rule in this file: the person planning the leave and nobody else. Not

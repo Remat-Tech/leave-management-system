@@ -1146,13 +1146,17 @@ design principle 1, LMS 210. `leave_ledger_entry` is what makes "why do I have
 twelve days rather than fifteen" answerable with a list rather than an assertion:
 a date, an amount, a reason, and a name against each line.
 
-**Nine kinds of movement, in two families**, and the division runs through every
+**Ten kinds of movement, in two families**, and the division runs through every
 rule the table has.
 
 | | Kinds | Sign | Whole days? | Into a settled year? |
 |---|---|---|---|---|
 | What somebody is owed | `GRANT`, `CARRY_FORWARD`, `ADJUSTMENT`, `EXPIRY`, `LAPSE` | `+`, `+`, either, `−`, `−` | no — §8.6d pro rates to 10.08 | only `ADJUSTMENT`, see below |
-| What a request moved | `RESERVATION`, `DEDUCTION`, `RELEASE`, `RECALCULATION` | `−`, `−`, `+`, `+` | yes — FR 24 | never |
+| What a request moved | `RESERVATION`, `DEDUCTION`, `RELEASE`, `RECALCULATION`, `RECLASSIFICATION` | `−`, `−`, `+`, `+`, either | yes — FR 24 | never |
+
+`RECLASSIFICATION` is [sickness during annual leave](#sickness-during-annual-leave), FR 32c: one
+entry per side of days moving between two leave types, under one reason and one
+`correlation_id`, and the only kind besides an `ADJUSTMENT` whose sign is free.
 
 **`EXPIRY` and `LAPSE` are two clocks with similar names, and they are two entry
 types because they put their days back in different places.** LMS 218, and
@@ -1214,7 +1218,7 @@ whose whole value is that there is one, and a copy that could disagree.
 §8.6d pro rates a joiner on 1 July to 20 × 184/365 = 10.08 days and "FR 24 governs
 how leave is requested, not how entitlement is held". `unit/migrations.test.ts`
 permits it by name and by file, on the condition the table enforces inside the
-column: the four request-shaped kinds are held to whole days by
+column: every request-shaped kind is held to whole days by
 `leave_ledger_entry_requests_move_whole_days`. So the exception buys a fractional
 *entitlement*, never fractional *leave*. It comes back from the driver as a string
 and becomes a number once, in the repository — `'20.00' + '5.00'` is `'20.005.00'`,
@@ -4115,6 +4119,67 @@ expects, that some of the days are spent; `WITHDRAWAL_REFUSED` says the leave st
 still a new request. FR 25's holiday falling inside approved leave writes the same entry type
 and is a different story; what this one leaves behind for it is the entry, the door and the
 rule that neither may give back more than was taken.
+
+---
+
+### Sickness during annual leave
+
+**A holiday somebody spent unwell is not a holiday they spent.** FR 32c, §8.6c, LMS 507. The
+days go back into the balance they came out of and the same days are charged to sick leave, on
+a medical certificate. Nothing about the leave itself changes.
+
+**Two entries, one reason, one correlation id.** A `RECLASSIFICATION` is the tenth kind of
+movement and the first that goes either way besides an `ADJUSTMENT`: one side credits the
+balance the days were taken from, the other charges the balance they moved to, and they are
+the same kind of entry because they are one act. `leave_ledger_entry.correlation_id` is what
+[immutable-leave-ledger](#the-balance-ledger) said `corrects_id` could not be — "a correlation
+spans two balances on purpose and is a different column with a different rule" — and
+`leave_ledger_entry_correlates_a_pair` holds all of it at COMMIT: two entries, one person, one
+leave year, one request, two leave types, one reason, and nought days between them.
+
+**It moves `taken` alone, and that is why it is not a `DEDUCTION`.** A deduction moves days out
+of `pending` and into `taken`, which is right when a reservation put them there and wrong here
+— nothing reserved these. Posting one would leave the sick balance's available exactly where
+it started while both columns moved, which reconciles perfectly and is incorrect by the number
+of days somebody was ill.
+
+**The remaining dates are never shifted.** The request keeps its dates, its price and its
+`APPROVED` status: `leave_request_says_what_it_said` is untouched, and there is no write to the
+row at all. A fortnight with three days moved is still a fortnight on the team calendar,
+because that is where the person was. What they get back is days, not a later holiday — and
+the notice says so in those words, because it is what somebody assumes otherwise.
+
+**Whole days, or the whole request.** The dates are optional and left out mean all of it;
+`periodToMove` refuses anything reaching past either end, since being ill outside agreed leave
+is a sick leave request of its own. What the period costs is counted on the basis the request
+was priced under — FR 11 — rather than taken from the caller.
+
+**A day moves once.** `leave_request_reclassification_covers_each_day_once` is a GiST exclusion
+constraint keyed by the request and the dates, the same shape as
+[`leave_request_never_overlaps`](#leave-over-leave-already-booked). A day moved twice would
+credit annual leave twice and charge sick leave twice, and both balances would still
+reconcile. The service reads the earlier moves and says which one already covers the days; the
+constraint is what makes that true when two tabs press together.
+
+**The sick side is permitted to go negative.** §8.6b, and there is no clamp: the days arrive
+whether or not the balance can afford them, which is the whole difference between this and a
+request. That is also why the destination has to be a type whose allowance may be exceeded on a
+document — `exceedable_with_document`, the column FR 32a is, rather than a leave code — and how
+many of the arriving days are past the allowance is recorded as `certified_days` on the charge.
+
+**It stands on a clean certificate of that person's.** FR 13, NFR SEC 07. The reclassification
+row names the file with a real foreign key, so the certificate cannot be removed while the days
+it moved stand, and `leave_request_reclassification_stands_on_a_clean_certificate` refuses
+anything the scanner has not cleared.
+
+**It is HR's, and never the employee's own.** Epic 5.2, and the same standing as answering a
+withdrawal: the days are spent rather than held, so moving them between two balances is a
+correction to both rather than a decision at a desk. Nobody moves their own.
+
+**What is deliberately not here.** There is no ask-and-answer conversation — the certificate is
+the employee's part of it and HR records the move. And leave whose days have *all* been moved
+cannot afterwards be withdrawn: there is nothing left in that balance to give back, and
+`NotEnoughTaken` refuses it rather than crediting days twice.
 
 ---
 

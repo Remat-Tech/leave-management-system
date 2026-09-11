@@ -1,5 +1,6 @@
 import { Client } from 'pg';
 import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
+import { ReclassificationRepository } from '../../src/features/leave-request/reclassification.db.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { databaseForThisFile } from '../setup/test-database.js';
 import type { Kysely } from 'kysely';
@@ -104,6 +105,8 @@ beforeAll(async () => {
     routing,
     /** FR 47, LMS 324. */
     new WithdrawalRepository(db),
+    /** FR 32c, LMS 507. */
+    new ReclassificationRepository(db),
     /** FR 13, LMS 311. */
     new AttachmentRepository(db),
     new RoleRepository(db),
@@ -148,7 +151,7 @@ async function clear(): Promise<void> {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
+      'attachment_access, attachment_download_link, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
   );
 }
 

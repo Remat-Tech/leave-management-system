@@ -27,6 +27,8 @@ const SETTLED_YEARS = 'leave_ledger_entry_leaves_settled_years_alone';
 const SAME_BALANCE = 'leave_ledger_entry_corrects_the_same_balance';
 /** FR 32a, LMS 312. */
 const EXCEEDABLE = 'leave_ledger_entry_certified_days_need_an_exceedable_allowance';
+/** FR 32c, LMS 507. Deferred, so this arrives at COMMIT rather than at the insert. */
+const A_PAIR = 'leave_ledger_entry_correlates_a_pair';
 
 /** Which field a refused row is reported against. */
 const CHECKED_FIELDS: Record<string, string> = {
@@ -41,6 +43,8 @@ const CHECKED_FIELDS: Record<string, string> = {
   /** FR 32a, LMS 312. */
   leave_ledger_entry_certified_days_are_part_of_it: 'certifiedDays',
   leave_ledger_entry_only_a_request_certifies: 'certifiedDays',
+  /** FR 32c, LMS 507. */
+  leave_ledger_entry_only_a_reclassification_correlates: 'correlationId',
 };
 
 /** Which field a missing reference is reported against. */
@@ -169,6 +173,9 @@ export class LedgerRepository {
         if (violation.constraint === EXCEEDABLE) {
           throw new InvalidLedgerEntry('certifiedDays', said);
         }
+        if (violation.constraint === A_PAIR) {
+          throw new InvalidLedgerEntry('correlationId', said);
+        }
       }
 
       if (violation?.code === CHECK_VIOLATION) {
@@ -239,6 +246,7 @@ function rowFor(entry: ValidatedLedgerEntry): Insertable<LeaveLedgerEntryTable> 
     reason: entry.reason,
     corrects_id: entry.correctsId,
     leave_request_id: entry.leaveRequestId,
+    correlation_id: entry.correlationId,
   };
 }
 
@@ -263,6 +271,7 @@ function toEntry(row: LedgerRow): LedgerEntry {
     reason: row.reason,
     correctsId: row.corrects_id,
     leaveRequestId: row.leave_request_id,
+    correlationId: row.correlation_id,
     createdBy: row.created_by,
     createdByEmployeeId: row.created_by_employee_id,
     createdAt: row.created_at,

@@ -15,6 +15,7 @@ import { EntitlementRuleRepository } from '../../src/features/entitlement/entitl
 import { HolidayRepository } from '../../src/features/holiday/holiday.db.js';
 import { LeaveDecisionRepository } from '../../src/features/leave-request/leave-decision.db.js';
 import { LeaveRequestRepository } from '../../src/features/leave-request/leave-request.db.js';
+import { ReclassificationRepository } from '../../src/features/leave-request/reclassification.db.js';
 import { LeaveRoutingRepository } from '../../src/features/leave-request/routing.db.js';
 import { LeaveRequestDraftRepository } from '../../src/features/leave-request/draft.db.js';
 import { AttachmentRepository } from '../../src/features/leave-request/attachment.db.js';
@@ -177,6 +178,8 @@ beforeAll(async () => {
       decisions,
       new LeaveRoutingRepository(db),
       new WithdrawalRepository(db),
+      /** FR 32c, LMS 507. */
+      new ReclassificationRepository(db),
       new AttachmentRepository(db),
       new RoleRepository(db),
       delegationService(db, guard),
