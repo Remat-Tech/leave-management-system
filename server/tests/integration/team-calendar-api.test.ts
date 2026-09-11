@@ -24,6 +24,7 @@ import { InMemoryStorage } from '../support/in-memory-storage.js';
 import { WithdrawalRepository } from '../../src/features/leave-request/withdrawal.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { LedgerRepository } from '../../src/features/balance/ledger.db.js';
 import { NotificationRepository } from '../../src/features/notification/notification.db.js';
 import { OrganisationRepository } from '../../src/features/organisation/organisation.db.js';
 import { RoleRepository } from '../../src/features/role/role.db.js';
@@ -122,6 +123,9 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: cached,
+    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    ledger: new LedgerRepository(db),
+    adjustments: balances,
     employees,
     departments: new DepartmentRepository(db),
     types,
@@ -172,17 +176,14 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  /* Closes, and nothing else. `databaseForThisFile` drops this file's database next, so
+     tidying its rows here is work that cannot matter — and a statement that throws leaves a
+     connection open for that drop's FORCE to terminate, which surfaces as an unhandled 57P01. */
   await new Promise<void>((resolve) => {
     server.close(() => {
       resolve();
     });
   });
-
-  await admin.query('TRUNCATE leave_balance');
-  await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, attachment_access, attachment_download_link, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
-  );
-  await restoreYears();
 
   await db?.destroy();
   await admin?.end();

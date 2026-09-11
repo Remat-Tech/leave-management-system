@@ -36,6 +36,11 @@ import type { HolidayRepository } from '../features/holiday/holiday.db.js';
 import { HolidayService } from '../features/holiday/holiday.service.js';
 import { earliestOpenDayFrom } from '../features/leave-year/leave-year.service.js';
 import { balanceRoutes } from '../features/balance/routes.js';
+import { BalanceAdjustmentService } from '../features/balance/adjustment.service.js';
+import { balanceAdjustmentRoutes } from '../features/balance/adjustment.routes.js';
+import { LedgerService } from '../features/balance/ledger.service.js';
+import type { LedgerRepository } from '../features/balance/ledger.db.js';
+import type { BalanceService } from '../features/balance/balance.service.js';
 import { entitlementRuleRoutes } from '../features/entitlement/routes.js';
 import { holidayRoutes } from '../features/holiday/routes.js';
 import { leaveTypeRoutes } from '../features/leave-type/routes.js';
@@ -56,6 +61,15 @@ export interface Application {
   guard: Guard;
   signIn: SignInService;
   balances: BalanceRepository;
+  /** FR 27, LMS 506. The movements a cached balance is made of. */
+  ledger: LedgerRepository;
+  /**
+   * FR 37, LMS 506. The one door a balance moves through, handed in whole as `leaveRequests` is.
+   *
+   * The same instance the write door below holds, so an adjustment and a request movement
+   * cannot disagree about what a movement does to a cached figure.
+   */
+  adjustments: BalanceService;
   employees: EmployeeRepository;
   /** FR 57, LMS 409. What the away calendar is scoped to, and what HR filters it by. */
   departments: DepartmentRepository;
@@ -143,6 +157,31 @@ export function buildApp(parts: Application): Express {
         parts.types,
         parts.years,
       ),
+    }),
+  );
+
+  /* FR 37, FR 27, LMS 506. Putting a balance right by hand, with a reason that stays on it.
+     Reading a ledger is the person's own, their manager's and HR's, and posting an adjustment
+     is an HR Administrator's — `ledgerPolicy` decides both rather than the mounting. The write
+     door is handed in rather than built, so this is the same `BalanceService` a request
+     movement goes through. */
+  app.use(
+    '/api',
+    balanceAdjustmentRoutes({
+      adjustments: new BalanceAdjustmentService(
+        new BalanceStatementService(
+          parts.balances,
+          parts.guard,
+          parts.employees,
+          parts.types,
+          parts.years,
+        ),
+        new LedgerService(parts.ledger, parts.guard, parts.employees),
+        parts.guard,
+        parts.employees,
+        parts.types,
+      ),
+      balances: parts.adjustments,
     }),
   );
 

@@ -74,6 +74,16 @@ const MAY_POST = [
   'features/balance/balance.service.ts',
 ];
 
+/**
+ * The two files that assemble the application, and may therefore name any repository.
+ *
+ * Exempt from the "holds one" check below and from nothing else. They contain no rule and
+ * write no row: what they do with a `LedgerRepository` is hand it to `LedgerService`, which
+ * the test two below asserts cannot post. Since LMS 506 they have to name it, because the
+ * adjustment screen reads a ledger and `buildApp` is where a read service is built.
+ */
+const ASSEMBLY = ['main.ts', 'http/app.ts'];
+
 describe('one writer of balance movements', () => {
   it('there is source to read', () => {
     expect(sources.length).toBeGreaterThan(20);
@@ -95,6 +105,7 @@ describe('one writer of balance movements', () => {
     const holding = sources.filter(
       ({ file, code }) =>
         !MAY_POST.includes(file) &&
+        !ASSEMBLY.includes(file) &&
         file !== 'features/balance/ledger.service.ts' &&
         /LedgerRepository/.test(code),
     );

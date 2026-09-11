@@ -23,6 +23,7 @@ import { LeaveRoutingRepository } from '../../src/features/leave-request/routing
 import { WithdrawalRepository } from '../../src/features/leave-request/withdrawal.db.js';
 import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
+import { LedgerRepository } from '../../src/features/balance/ledger.db.js';
 import { NotificationRepository } from '../../src/features/notification/notification.db.js';
 import { OrganisationRepository } from '../../src/features/organisation/organisation.db.js';
 import { RoleRepository } from '../../src/features/role/role.db.js';
@@ -113,6 +114,9 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: new BalanceRepository(db),
+    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    ledger: new LedgerRepository(db),
+    adjustments: balances,
     employees,
     departments: new DepartmentRepository(db),
     types,

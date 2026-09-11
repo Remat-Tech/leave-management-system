@@ -19,6 +19,7 @@ import { WithdrawalRepository } from './features/leave-request/withdrawal.db.js'
 import { LeaveRequestRepository } from './features/leave-request/leave-request.db.js';
 import { LeaveTypeRepository } from './features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from './features/leave-year/leave-year.db.js';
+import { LedgerRepository } from './features/balance/ledger.db.js';
 import { NotificationRepository } from './features/notification/notification.db.js';
 import { OrganisationRepository } from './features/organisation/organisation.db.js';
 import { RoleRepository } from './features/role/role.db.js';
@@ -92,6 +93,17 @@ const delegations = new ApprovalDelegationService(
 const mailer = createMailer();
 
 /**
+ * The one place a balance moves. §5.7, FR 37, LMS 506.
+ *
+ * Built once and handed to both doors below it, so an adjustment posted from the HR screen
+ * and a day held by a leave request are the same act against the same cache.
+ */
+const movements = new BalanceService(balances, guard, employees, new Transactions(db));
+
+/** FR 27, LMS 506. The movements behind a balance, which the adjustment screen reads. */
+const ledger = new LedgerRepository(db);
+
+/**
  * The write door, built once here. LMS 301, LMS 403.
  *
  * Everything below it is what asking for leave actually needs: a balance service to hold the
@@ -101,7 +113,7 @@ const mailer = createMailer();
  * exist for a balance screen to render — see `RequestFormService`, which argues it.
  */
 const leaveRequests = new LeaveRequestService(
-  new BalanceService(balances, guard, employees, new Transactions(db)),
+  movements,
   guard,
   employees,
   types,
@@ -122,6 +134,9 @@ const app = buildApp({
   guard,
   signIn: new SignInService(accounts, employees, roles, mailer, guard),
   balances,
+  /** FR 27, FR 37, LMS 506. */
+  ledger,
+  adjustments: movements,
   employees,
   departments,
   types,

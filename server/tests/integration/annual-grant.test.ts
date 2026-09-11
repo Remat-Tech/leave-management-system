@@ -105,10 +105,9 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
-  await restoreYears();
-
+  /* Closes, and nothing else. `databaseForThisFile` drops this file's database next, so
+     tidying its rows here is work that cannot matter — and a statement that throws leaves a
+     connection open for that drop's FORCE to terminate, which surfaces as an unhandled 57P01. */
   await db?.destroy();
   await admin?.end();
 });

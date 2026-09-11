@@ -1623,6 +1623,15 @@ refusal costs nothing.
 service. It is the only way to put a settled figure right, and taking it away would
 leave a psql prompt as the alternative.
 
+**Since LMS 506 it is a screen**, **Adjustments**, beside the other configuration tabs, and
+the ledger is on it rather than behind a second click. That is the story's second criterion
+rather than a layout choice: the movement cannot be removed afterwards, only compensated, so
+the figures being corrected and the correction are read in one place. The screen states the
+direction in words — *give days back* or *take days away* — and composes the sign from it,
+because a single signed box is one keystroke away from adding the days that were meant to come
+off. Nothing on it is totalled in the browser: what the balance became is the write's own
+answer, which is why `POST /api/balance-adjustments` sends the balance back beside the entry.
+
 **The story says HR Officer and the code says HR Administrator.** LMS 216 is written "as
 an HR Officer"; §10's authorisation matrix has an ✗ against that column and every other
 one. The matrix is what `ledgerPolicy.adjust` follows, for the reason argued under [Who
