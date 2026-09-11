@@ -967,15 +967,18 @@ Both ends of a move are judged. Dragging a stale day out of last year and droppi
 one into it are two different wrongs, and a check on the new date alone would permit
 the first — which is the likelier of the two, because it looks like tidying up.
 
-**What the calendar does not do yet.** It does not count anything: what a day off
-costs is the leave calculator of §7.3, reading a working pattern, the leave type's
+**What the calendar does not do.** It does not count anything: what a day off costs is
+the leave calculator of §7.3, reading a working pattern, the leave type's
 `counting_basis` and this table, and a `CALENDAR_DAYS` type like maternity leave
-does not skip a holiday at all. It does not recalculate: FR 25 gives a day back on
-an already approved request when a holiday is declared inside it, "only to working
-day leave types", and that needs requests, which is §8. What this story leaves for
-it is the audit entries — a recalculation nobody can explain is a recalculation
-nobody accepts, and for a removed day the log is the only record the day was ever
-there.
+does not skip a holiday at all.
+
+It does not recalculate *on save* either, and that is a decision rather than a gap. FR
+25 gives a day back on an already approved request when a holiday is declared inside
+it, "only to working day leave types" — and since LMS 508 that is a button HR presses,
+beside the day, once the row exists. See [A public holiday declared too
+late](#a-public-holiday-declared-too-late). What this story left for it is the audit
+entries: a recalculation nobody can explain is a recalculation nobody accepts, and for
+a removed day the log is the only record the day was ever there.
 
 ### The day calculator
 
@@ -1157,6 +1160,10 @@ rule the table has.
 `RECLASSIFICATION` is [sickness during annual leave](#sickness-during-annual-leave), FR 32c: one
 entry per side of days moving between two leave types, under one reason and one
 `correlation_id`, and the only kind besides an `ADJUSTMENT` whose sign is free.
+
+`RECALCULATION` has two writers and they credit days back for opposite reasons:
+[withdrawing leave that was agreed](#withdrawing-leave-that-has-been-approved), FR 47, and
+[a public holiday declared too late](#a-public-holiday-declared-too-late), FR 25.
 
 **`EXPIRY` and `LAPSE` are two clocks with similar names, and they are two entry
 types because they put their days back in different places.** LMS 218, and
@@ -4180,6 +4187,84 @@ correction to both rather than a decision at a desk. Nobody moves their own.
 the employee's part of it and HR records the move. And leave whose days have *all* been moved
 cannot afterwards be withdrawn: there is nothing left in that balance to give back, and
 `NotEnoughTaken` refuses it rather than crediting days twice.
+
+---
+
+### A public holiday declared too late
+
+**A day the country was not working is not a day anybody is charged leave for, even when the
+gazette says so after the leave was approved.** FR 25, §8.8, LMS 508. The day goes back into
+the balance the leave was charged to, and nothing about the leave itself changes.
+
+**HR triggers it, and that is the story's first criterion rather than a convenience.** A day
+declared for next March affects nobody yet; a day declared for last Tuesday affects everybody
+who was on leave over it. Nothing recalculates on save — `POST /api/holidays/:id/recalculation`
+is a deliberate act by the desk that keeps the calendar, with the same standing as declaring
+the day. It is preceded by a `GET` of the same address, which says how many days go to how
+many people and what it would leave alone, so the button is never pressed blind.
+
+**The figure is the difference the calendar makes, and nothing counts it twice.**
+`whatAHolidayCredits` asks `countLeaveDays` what the leave costs with the day on the calendar
+and what it cost without it, over the request's own period and on the basis it was priced
+under. That is the use [the day calculator](#the-day-calculator) was told it would have — "a
+recalculation asks what a period costs *now* and compares" — and it is why that function
+answers nought rather than throwing.
+
+**Working day types only, and it falls out of the arithmetic rather than being imposed on
+it.** A `CALENDAR_DAYS` type never consults the calendar, so both counts are the same and
+there is nothing to credit: maternity leave is not shortened by Christmas. The same is true of
+a holiday landing on somebody's rest day — the pattern is asked before the calendar, so the
+day was free already. Which of the two it was is still said in words, because "nothing
+changed" is not an answer HR can check the gazette against and "Boxing Day is a Saturday for
+Abena" is.
+
+**Agreed leave only.** `RECALCULATE` has one row in [the table](#the-state-machine),
+out of `APPROVED` and back to it. A request still being decided is holding its days rather
+than having spent them, so there is nothing to credit; it keeps the figure it was submitted at
+either way. `leave_request_recalculation_credits_agreed_leave` says the same to every other
+writer.
+
+**One `RECALCULATION` per person, and the second writer of that entry type.** The first is
+[FR 47's withdrawal](#withdrawing-leave-that-has-been-approved), which gives days back for the
+opposite reason, and `leave_request_gives_back_no_more_than_it_took` already covered this one —
+the note against it said "when it arrives". The reason on the entry names the gazetted day,
+because the question asked of that line next March is *why did I get a day back*, and
+"Independence Day" answers it where "recalculated" does not.
+
+**The leave itself is untouched.** Its dates, its price and its status stand, exactly as they
+do under [a reclassification](#sickness-during-annual-leave):
+`leave_request_says_what_it_said` is not bent, and nothing is added to the end of the holiday.
+What comes back is a day of balance, and the notice says so in those words because it is what
+somebody assumes otherwise.
+
+**The button is safe to press twice**, which it has to be — HR declares a day, recalculates,
+and then declares the next one. `leave_request_recalculation_credits_a_holiday_once` is what
+makes that true rather than the read in front of it; the read only stops a second press
+producing a hundred and forty refusals.
+
+**One transaction per person, not one for the run.** A hundred and forty balances are a
+hundred and forty independent corrections, and one failure among them is not a reason for the
+other hundred and thirty nine to stay wrong. What failed is reported per request rather than
+thrown, so nothing fails quietly — the same shape [the reporting line
+walk](#leave-that-follows-the-reporting-line) uses.
+
+**A closed leave year is refused for the whole run**, before anything moves. §8.9: every
+request over a day in one was counted against the calendar as it stood. It is the same
+refusal, with the same sentence, that the calendar gives when a day is typed into a settled
+year — and it is reachable only one way, since a holiday cannot be *declared* into a closed
+year at all: Boxing Day gazetted in December, the year closed in January, HR running the
+recalculation a week too late.
+
+**A day that has credited somebody stops being editable.** The foreign key refuses the delete
+and `holiday_stays_where_it_was_credited` refuses the move, because the days are in people's
+balances against that date and nothing here takes a credited day back off anybody. Renaming it
+is still HR's — nothing was priced against the name. Where the gazette really did withdraw the
+day, the correction is an adjustment per person with a reason on it.
+
+**What is deliberately not here.** Nothing extends anybody's leave by the day it gave back,
+and nothing offers to. Nothing walks requests that are still being decided. And nothing runs
+on a schedule: a calendar that recalculated itself nightly would be a balance moving with
+nobody's name against it, which is [exactly what the ledger is for](#the-balance-ledger).
 
 ---
 

@@ -42,6 +42,7 @@ import {
   isTheLastWord,
   type LeaveRequest,
   LeaveRequestNotFound,
+  recalculationTo,
   reclassificationTo,
   type ReleasingAction,
   type ReleasingStatus,
@@ -54,6 +55,9 @@ import {
   assertTheDaysAreNotAlreadyMoved,
   type Reclassification,
 } from '../leave-request/reclassification.js';
+import type { Holiday } from '../holiday/holiday.js';
+import { holidayPolicy } from '../holiday/policy.js';
+import type { Recalculation } from '../holiday/recalculation.js';
 import { reassignmentFor, type ReportingLineMove } from '../leave-request/reassignment.js';
 import type { RecordedReassignment } from '../leave-request/reassignment.db.js';
 import type { DeskOccupants, DesksAvailable } from '../leave-request/routing.js';
@@ -248,6 +252,26 @@ export interface LeaveReclassified {
   balance: BalanceWithAvailable;
   /** §8.6b. Permitted to be negative. */
   into: BalanceWithAvailable;
+}
+
+/** What `HolidayRecalculationService` supplies to credit a late holiday back. FR 25, LMS 508. */
+export interface RequestToRecalculate {
+  request: LeaveRequest;
+  /** The day the gazette declared after this leave was agreed. */
+  holiday: Holiday;
+  /** The difference the calendar makes, counted rather than chosen. FR 11, FR 25. */
+  days: number;
+  /** FR 27. The sentence the entry carries. */
+  reason: string;
+}
+
+/** The credit, the entry it wrote, and where it left the balance. FR 25, LMS 508. */
+export interface LeaveRecalculated {
+  request: LeaveRequest;
+  recalculation: Recalculation;
+  /** The `RECALCULATION` itself. */
+  credited: LedgerEntry;
+  balance: BalanceWithAvailable;
 }
 
 /** An ask on the record, and the balance it did not move. FR 47, LMS 324. */
@@ -1069,6 +1093,79 @@ export class BalanceService {
         charged,
         balance: withAvailable(await repositories.balances.forOne(from)),
         into: withAvailable(await repositories.balances.forOne(to)),
+      };
+    });
+  }
+
+  /**
+   * Credits back a public holiday declared inside agreed leave. FR 25, §8.8, §8.2. LMS 508.
+   *
+   * The eighth door, and the second writer of a `RECALCULATION` — the first being FR 47's
+   * withdrawal, which gives back days for the opposite reason. One entry, against `taken`,
+   * for the difference the gazette made.
+   *
+   * **Nothing happens to the request.** Its dates, its price and its status stand, exactly
+   * as they do under a reclassification. The leave was taken; a day inside it stopped being
+   * a working day, and that is a fact about the balance rather than about the leave.
+   *
+   * The status is re-read inside the lock and asked of {@link recalculationTo}, and the
+   * credit is written under `leave_request_recalculation_credits_a_holiday_once` — so two
+   * officers pressing the button together are ordered and the second meets
+   * {@link DayAlreadyCredited}. That is what makes the run safe to repeat, which it has to
+   * be: HR declares a holiday, recalculates, and then declares the next one.
+   */
+  async recalculateForHoliday(
+    actor: Actor,
+    credit: RequestToRecalculate,
+  ): Promise<LeaveRecalculated> {
+    const { request, holiday, days, reason } = credit;
+    const owner = await this.ownerOf(request.employeeId);
+
+    this.guard.enforce(holidayPolicy.recalculate(actor));
+    this.guard.enforce(ledgerPolicy.giveBackTakenDays(actor, owner));
+
+    const key = keyOf(request);
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      const held = await repositories.balances.holdStill(key);
+
+      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. */
+      const current = await repositories.requests.holdStill(request.id);
+
+      /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
+      if (current === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      /* Asked for its refusal: agreed leave is the only state with a row for this verb. */
+      recalculationTo(current);
+
+      const credited = await repositories.entries.post(
+        actor,
+        validateNewLedgerEntry({
+          ...key,
+          entryType: 'RECALCULATION',
+          /* Positive, out of `taken`, and no more than this leave ever spent there. */
+          days: daysToGiveBackFromTaken(held, days),
+          /* FR 32a, LMS 312. Certified days come back first, as on a withdrawal. */
+          certifiedDays: certifiedDaysGivenBack(current.certifiedDays, days),
+          reason,
+          leaveRequestId: current.id,
+        }),
+      );
+
+      return {
+        request: current,
+        recalculation: await repositories.recalculations.record(actor, {
+          leaveRequestId: current.id,
+          holidayId: holiday.id,
+          holidayDate: holiday.date,
+          days,
+          reason,
+          ledgerEntryId: credited.id,
+        }),
+        credited,
+        balance: withAvailable(await repositories.balances.forOne(key)),
       };
     });
   }

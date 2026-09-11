@@ -3451,6 +3451,52 @@ select[aria-invalid='true'] {
   padding-top: 0;
 }
 
+/* FR 25, §8.8, LMS 508. Crediting a late-declared day back. Its own line under the row,
+   because the answer is a list of people rather than a figure and it has to be read
+   before the button is pressed. */
+.recalculation {
+  flex: 1 0 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.recalculation > .card-actions {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.recalculation .notice,
+.recalculation > .muted {
+  margin: 0;
+}
+
+.affected {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.affected li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--card) 60%, var(--page));
+}
+
+/* Leave the run deliberately left alone. Quieter, and it carries the reason rather than
+   a figure — the same choice `.holiday.is-fixed` makes above. */
+.affected li.is-untouched {
+  background: none;
+}
+
 /* The row stacks on a phone: a date, a name and the buttons under each other read fine,
    where a fixed 11rem date column beside them does not. */
 @media (max-width: 46rem) {

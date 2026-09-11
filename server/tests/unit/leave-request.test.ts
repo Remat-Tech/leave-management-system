@@ -1723,6 +1723,8 @@ describe('where this story stops', () => {
       'REFUSE_WITHDRAWAL',
       /** FR 32c, §8.6c, LMS 507. Sickness during it, moved to sick leave. */
       'RECLASSIFY',
+      /** FR 25, §8.8, LMS 508. A public holiday declared inside it, credited back. */
+      'RECALCULATE',
     ]);
 
     for (const verb of ['WITHDRAW', 'CANCEL', 'REFUSE', 'APPROVE', 'ROUTE'] as const) {

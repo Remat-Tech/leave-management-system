@@ -44,6 +44,13 @@ export const NOTICE_EVENTS = [
    * person needs told is that a holiday they spent unwell is back in their annual balance.
    */
   'LEAVE_RECLASSIFIED',
+  /**
+   * A public holiday declared inside leave they already had. FR 25, §8.8, LMS 508.
+   *
+   * The story's fourth criterion. Not `LEAVE_AMENDED` either: nothing came off the books
+   * and nobody agreed to anything. A day the country was not working stopped being charged.
+   */
+  'LEAVE_RECALCULATED',
 ] as const;
 
 export type NoticeEvent = (typeof NOTICE_EVENTS)[number];
@@ -74,6 +81,8 @@ const GAVE_THE_DAYS_BACK: readonly NoticeEvent[] = [
   'LEAVE_AMENDED',
   /** FR 32c. Into one balance, and out of another. LMS 507. */
   'LEAVE_RECLASSIFIED',
+  /** FR 25. Into the balance the day was charged to, out of nothing. LMS 508. */
+  'LEAVE_RECALCULATED',
 ];
 
 /** Whether this is news that the balance has days again. */
@@ -192,6 +201,8 @@ export interface WhatHappened {
   daysBack?: number | null;
   /** FR 32c. What the days became, and what that balance holds now. LMS 507. */
   movedInto?: { typeName: string; availableAfter: number } | null;
+  /** FR 25. The day the gazette declared late, on the one event that is about that. LMS 508. */
+  declared?: { name: string; date: CalendarDate } | null;
 }
 
 /**
@@ -429,6 +440,31 @@ export function noticeOf(happened: WhatHappened): NewNotice {
                 `past its allowance is granted on a certificate rather than refused.`,
             'The rest of this leave stands exactly as it was booked. Nothing has been moved ' +
               'to later dates: if you want those days back as time off, ask for them.',
+          ],
+        };
+      }
+
+      /* FR 25, §8.8, LMS 508. The day is back and the leave is untouched. What the person
+         most needs to know is that nothing about their dates has changed and they are one
+         day better off than the balance told them last week. */
+      case 'LEAVE_RECALCULATED': {
+        const back = inDays(happened.daysBack ?? 1);
+        const day = happened.declared;
+
+        return {
+          subject: `${back} of your ${typeName} for ${period} ${
+            happened.daysBack === 1 ? 'has' : 'have'
+          } been credited back`,
+          paragraphs: [
+            day === null || day === undefined
+              ? `A public holiday has been declared on a day inside your ${cost}.`
+              : `${formatDay(day.date)} has been declared ${day.name}, and it falls inside ` +
+                `your ${cost}.`,
+            'The country was not working that day, so you are not charged leave for it — ' +
+              'even though the leave was already approved when the day was gazetted.',
+            `The ${back} ${happened.daysBack === 1 ? 'is' : 'are'} back in your balance. ${left}`,
+            'Your leave itself has not changed. The dates you booked are the dates you ' +
+              'have, and nothing has been added to the end of it.',
           ],
         };
       }

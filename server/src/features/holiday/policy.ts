@@ -50,6 +50,26 @@ export const holidayPolicy = {
         );
   },
 
+  /**
+   * Crediting a late-declared day back into leave people already had. FR 25, §8.8, LMS 508.
+   *
+   * The same desk that declares the day, because it is the same act finished: a holiday on
+   * the calendar that nobody has been credited for is a day the office was closed and
+   * everybody was charged leave for.
+   */
+  recalculate(actor: Actor): Decision {
+    return holdsAny(actor, ...MAINTAINS_THE_CALENDAR)
+      ? about.allow(actor, 'recalculate')
+      : about.refuseOpenly(
+          actor,
+          'recalculate',
+          null,
+          'holds no role that keeps the holiday calendar',
+          'A public holiday declared after leave was approved is credited back by HR, ' +
+            'across everybody it affects at once. Ask an HR Officer. FR 25.',
+        );
+  },
+
   /** Taking a day off the calendar. */
   remove(actor: Actor, holidayId: string): Decision {
     return holdsAny(actor, ...MAINTAINS_THE_CALENDAR)

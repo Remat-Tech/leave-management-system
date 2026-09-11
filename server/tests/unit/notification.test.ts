@@ -85,7 +85,7 @@ function happened(overrides: Partial<WhatHappened> = {}): WhatHappened {
 describe('the events somebody is told about', () => {
   /* FR 59's list, and LMS 318 brought the two the notification migration said were coming.
      See the CHECK in that migration, which says the same thing. */
-  it('are the sixteen FR 59 names that this system can actually produce', () => {
+  it('are the seventeen FR 59 names that this system can actually produce', () => {
     expect(NOTICE_EVENTS).toEqual([
       'SUBMITTED',
       'STAGE_APPROVED',
@@ -108,6 +108,8 @@ describe('the events somebody is told about', () => {
       'STILL_WAITING',
       /** FR 32c, §8.6c, LMS 507. Days of agreed leave that became sick leave. */
       'LEAVE_RECLASSIFIED',
+      /** FR 25, §8.8, LMS 508. A public holiday declared inside agreed leave. */
+      'LEAVE_RECALCULATED',
     ]);
   });
 
@@ -141,7 +143,7 @@ describe('the events somebody is told about', () => {
 
   /* FR 47, LMS 324. `LEAVE_AMENDED` is the one where days came back and the leave still
      went ahead, which is why the list is named for what the balance did. */
-  it('and six of them mean the days are back', () => {
+  it('and seven of them mean the days are back', () => {
     const back = NOTICE_EVENTS.filter(givesTheDaysBack);
 
     expect(back).toEqual([
@@ -152,6 +154,8 @@ describe('the events somebody is told about', () => {
       'LEAVE_AMENDED',
       /** FR 32c, LMS 507. Into one balance, and out of another. */
       'LEAVE_RECLASSIFIED',
+      /** FR 25, LMS 508. Into the balance the day was charged to, out of nothing. */
+      'LEAVE_RECALCULATED',
     ]);
   });
 
@@ -545,6 +549,14 @@ const MAY_NOTIFY = [
   'features/notification/notification.db.ts',
   'features/notification/notification.service.ts',
   'features/leave-request/leave-request.service.ts',
+  /**
+   * FR 25, §8.8, LMS 508. The second thing occasioned by something happening to leave.
+   *
+   * It calls the door once per person and tells each of them after that person's
+   * transaction has returned, exactly as the request service does — the loop is over
+   * people, not inside one transaction, so no SMTP handshake sits inside a `holdStill`.
+   */
+  'features/holiday/recalculation.service.ts',
   /**
    * FR 50, LMS 330. The daily chase, which is the second thing that occasions a notice and
    * the first that is not occasioned by anything happening.

@@ -48,6 +48,8 @@ export interface Telling {
   daysBack?: number | null;
   /** FR 32c. What the days became, and what that balance holds now. LMS 507. */
   movedInto?: { typeName: string; availableAfter: number } | null;
+  /** FR 25. The day the gazette declared late. LMS 508. */
+  declared?: { name: string; date: CalendarDate } | null;
 }
 
 /** One approver chased about one request on one day. FR 50, FR 60, LMS 330. */
@@ -156,6 +158,8 @@ export class NotificationService {
       daysBack: telling.daysBack ?? null,
       /** FR 32c, LMS 507. */
       movedInto: telling.movedInto ?? null,
+      /** FR 25, LMS 508. */
+      declared: telling.declared ?? null,
     });
 
     const notice = await this.write(composed);

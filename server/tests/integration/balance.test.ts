@@ -107,7 +107,7 @@ beforeEach(async () => {
      which is the door both migrations leave open for exactly this. */
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
-    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, attachment_access, attachment_download_link, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
+    'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, attachment_access, attachment_download_link, leave_request_recalculation, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
   );
   await restoreYears();
 

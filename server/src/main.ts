@@ -9,6 +9,7 @@ import { DepartmentRepository } from './features/department/department.db.js';
 import { EmployeeRepository } from './features/employee/employee.db.js';
 import { EntitlementRuleRepository } from './features/entitlement/entitlement-rule.db.js';
 import { HolidayRepository } from './features/holiday/holiday.db.js';
+import { HolidayRecalculationRepository } from './features/holiday/recalculation.db.js';
 import { ApprovalDelegationRepository } from './features/leave-request/delegation.db.js';
 import { AttachmentRepository } from './features/leave-request/attachment.db.js';
 import { AttachmentLinkRepository } from './features/leave-request/attachment-link.db.js';
@@ -32,7 +33,9 @@ import { createScanner } from './scanning/index.js';
 import { createStorage } from './storage/index.js';
 import { sessionSecretFrom } from './features/sign-in/session-cookie.routes.js';
 import { BalanceService } from './features/balance/balance.service.js';
+import { HolidayRecalculationService } from './features/holiday/recalculation.service.js';
 import { LeaveCalculatorService } from './features/leave-calculator/leave-calculator.service.js';
+import { earliestOpenDayFrom } from './features/leave-year/leave-year.service.js';
 import { ApprovalDelegationService } from './features/leave-request/delegation.service.js';
 import { LeaveRequestService } from './features/leave-request/leave-request.service.js';
 import { NotificationService } from './features/notification/notification.service.js';
@@ -76,6 +79,8 @@ const routing = new LeaveRoutingRepository(db);
 const withdrawals = new WithdrawalRepository(db);
 /** FR 32c, LMS 507. */
 const reclassifications = new ReclassificationRepository(db);
+/** FR 25, LMS 508. The holidays declared late and credited back. */
+const recalculations = new HolidayRecalculationRepository(db);
 /** FR 19, LMS 302. Requests started and not finished. */
 const drafts = new LeaveRequestDraftRepository(db);
 /** FR 12, LMS 310. */
@@ -93,6 +98,9 @@ const delegations = new ApprovalDelegationService(
   roles,
 );
 
+/** FR 23. Which days each person works. */
+const patterns = new WorkPatternRepository(db);
+
 const mailer = createMailer();
 
 /**
@@ -105,6 +113,14 @@ const movements = new BalanceService(balances, guard, employees, new Transaction
 
 /** FR 27, LMS 506. The movements behind a balance, which the adjustment screen reads. */
 const ledger = new LedgerRepository(db);
+
+/**
+ * FR 59. Built once here, as the mailer is, and handed to both doors that write news.
+ *
+ * LMS 508 is the second caller: a holiday credited back is told in the same words and
+ * through the same retry as an approval, and a second instance would be a second backoff.
+ */
+const notifications = new NotificationService(new NotificationRepository(db), mailer, guard);
 
 /**
  * The write door, built once here. LMS 301, LMS 403.
@@ -130,8 +146,28 @@ const leaveRequests = new LeaveRequestService(
   roles,
   delegations,
   organisation,
-  new LeaveCalculatorService(new WorkPatternRepository(db), holidays, guard),
-  new NotificationService(new NotificationRepository(db), mailer, guard),
+  new LeaveCalculatorService(patterns, holidays, guard),
+  notifications,
+);
+
+/**
+ * FR 25, §8.8, LMS 508. The second write door, built here for the same reason the first is.
+ *
+ * Crediting a holiday back moves a balance and tells everybody it moved, so it needs the
+ * transaction door and the notifier — and `buildApp` is deliberately not a place either is
+ * reachable from.
+ */
+const holidayRecalculations = new HolidayRecalculationService(
+  holidays,
+  recalculations,
+  requests,
+  employees,
+  types,
+  patterns,
+  movements,
+  notifications,
+  guard,
+  earliestOpenDayFrom(years),
 );
 
 const app = buildApp({
@@ -147,6 +183,8 @@ const app = buildApp({
   years,
   entitlementRules,
   holidays,
+  /** FR 25, §8.8, LMS 508. */
+  holidayRecalculations,
   requests,
   leaveRequests,
   decisions,

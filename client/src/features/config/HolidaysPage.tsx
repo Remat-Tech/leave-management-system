@@ -1,12 +1,17 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import {
   addHoliday,
+  type AffectedLeave,
   editHoliday,
   type Holiday,
   type HolidayCalendar,
   type HolidayFields,
   holidayCalendar,
+  holidayRecalculationPreview,
   isNotSignedIn,
+  type RecalculationPreview,
+  type RecalculationRun,
+  recalculateForHoliday,
   removeHoliday,
   type Year,
 } from '../../api';
@@ -251,40 +256,46 @@ function HolidayRow({
       </div>
 
       {holiday.mayBeChanged ? (
-        <div className="card-actions">
-          <button type="button" disabled={busy} onClick={onEdit}>
-            Edit
-          </button>
+        <>
+          <div className="card-actions">
+            <button type="button" disabled={busy} onClick={onEdit}>
+              Edit
+            </button>
 
-          {asking ? (
-            <>
-              <button type="button" className="danger" disabled={busy} onClick={clear}>
-                Yes, it is a working day
-              </button>
+            {asking ? (
+              <>
+                <button type="button" className="danger" disabled={busy} onClick={clear}>
+                  Yes, it is a working day
+                </button>
+                <button
+                  type="button"
+                  className="linkish"
+                  disabled={busy}
+                  onClick={() => {
+                    setAsking(false);
+                  }}
+                >
+                  Keep it
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
                 className="linkish"
                 disabled={busy}
                 onClick={() => {
-                  setAsking(false);
+                  setAsking(true);
                 }}
               >
-                Keep it
+                Remove
               </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="linkish"
-              disabled={busy}
-              onClick={() => {
-                setAsking(true);
-              }}
-            >
-              Remove
-            </button>
-          )}
-        </div>
+            )}
+          </div>
+
+          {/* FR 25, §8.8, LMS 508. Leave that was already approved when this day was
+              gazetted is still charged for it until somebody says so. */}
+          <Recalculation holiday={holiday} onProblem={onProblem} />
+        </>
       ) : (
         /* Not a disabled button with a title on it: the reason is the point, so it is read
            out rather than hovered for. */
@@ -295,6 +306,154 @@ function HolidayRow({
       )}
     </li>
   );
+}
+
+/**
+ * Crediting a late-declared day back into leave people already had. FR 25, §8.8. LMS 508.
+ *
+ * The story's first criterion is that HR triggers this, so it is a button rather than
+ * something the calendar does on save — a day declared for next March affects nobody yet,
+ * and a day declared for last Tuesday affects everybody who was on leave over it.
+ *
+ * **Nothing is pressed blind.** The preview is fetched first and says how many days go to
+ * how many people, and what it would leave alone with the server's own sentence beside each
+ * one — which is where the second criterion is read: a maternity leave over the same day
+ * appears here and says why it is charged exactly what it was.
+ *
+ * Nothing is counted in the browser. Every figure and every sentence on this panel is the
+ * server's, for the reason the balance screen gives: a day count computed twice is a day
+ * count that eventually disagrees with the ledger.
+ */
+function Recalculation({
+  holiday,
+  onProblem,
+}: {
+  holiday: Holiday;
+  onProblem: (error: unknown) => void;
+}) {
+  const [preview, setPreview] = useState<RecalculationPreview | undefined>(undefined);
+  const [run, setRun] = useState<RecalculationRun | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+
+  const look = (): void => {
+    setBusy(true);
+
+    holidayRecalculationPreview(holiday.id)
+      .then(setPreview)
+      .catch(onProblem)
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+
+  const credit = (): void => {
+    setBusy(true);
+
+    recalculateForHoliday(holiday.id)
+      .then((done) => {
+        setRun(done);
+        setPreview(undefined);
+      })
+      .catch(onProblem)
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+
+  if (run !== undefined) {
+    return (
+      <div className="recalculation">
+        <p className="notice" role="status">
+          {run.days === 0
+            ? 'Nothing was credited. Everybody this day falls inside the leave of has already ' +
+              'had it back, or was never charged for it.'
+            : `${countOf(run.days)} credited back to ${peopleIn(run.people)}. ` +
+              'Everybody it touched has been told.'}
+        </p>
+
+        {run.failed.length === 0 ? null : (
+          <ul className="muted">
+            {run.failed.map((one) => (
+              <li key={one.leaveRequestId}>{one.because}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  if (preview === undefined) {
+    return (
+      <div className="recalculation">
+        <button type="button" className="linkish" disabled={busy} onClick={look}>
+          {busy ? 'Checking…' : 'Who was charged for this day?'}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="recalculation">
+      <p className={preview.days === 0 ? 'muted' : 'notice warning'} role="status">
+        {preview.days === 0
+          ? 'Nobody is charged leave for this day. Either no approved leave covers it, or ' +
+            'everybody it covers has already had it back.'
+          : `${peopleIn(preview.people)} ${preview.people === 1 ? 'is' : 'are'} still charged ` +
+            `${countOf(preview.days)} of leave for this day. Their leave was already approved ` +
+            'when it was gazetted.'}
+      </p>
+
+      {preview.affected.length === 0 ? null : (
+        <ul className="affected">
+          {preview.affected.map((leave) => (
+            <AffectedRow key={leave.leaveRequestId} leave={leave} />
+          ))}
+        </ul>
+      )}
+
+      <div className="card-actions">
+        {preview.days === 0 ? null : (
+          <button type="button" className="primary" disabled={busy} onClick={credit}>
+            {busy ? 'Crediting…' : `Credit the day back to ${peopleIn(preview.people)}`}
+          </button>
+        )}
+
+        <button
+          type="button"
+          className="linkish"
+          disabled={busy}
+          onClick={() => {
+            setPreview(undefined);
+          }}
+        >
+          {preview.days === 0 ? 'Close' : 'Not now'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** One person's leave over the day, credited or deliberately left alone. */
+function AffectedRow({ leave }: { leave: AffectedLeave }) {
+  return (
+    <li className={leave.days === 0 ? 'is-untouched' : ''}>
+      <b>{leave.employeeName}</b>
+      <span className="muted">
+        {leave.typeName}, {leave.from} to {leave.to}
+      </span>
+      {/* The reason is the point on a row that gets nothing, so it is read out rather than
+          hovered for — the same choice `fixedReason` makes above. */}
+      {leave.inWords === null ? (
+        <span className="tag">{countOf(leave.days)} back</span>
+      ) : (
+        <span className="muted">{leave.inWords}</span>
+      )}
+    </li>
+  );
+}
+
+function peopleIn(people: number): string {
+  return `${String(people)} ${people === 1 ? 'person' : 'people'}`;
 }
 
 /** So an input a refusal named can point at the sentence. NFR USA 03. */

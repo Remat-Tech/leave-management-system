@@ -42,6 +42,7 @@ import { SignInService } from '../../src/features/sign-in/sign-in.service.js';
 import { signedInAs } from '../../src/auth/actor.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { holidayRecalculationService } from '../support/holiday-recalculations.js';
 import { delegationService } from '../support/delegations.js';
 
 /**
@@ -173,6 +174,8 @@ beforeAll(async () => {
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
+    /** FR 25, §8.8, LMS 508. */
+    holidayRecalculations: holidayRecalculationService(db, guard, balances),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
     accounts,

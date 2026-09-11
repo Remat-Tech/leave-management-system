@@ -93,7 +93,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
+  await admin.query(
+    'TRUNCATE leave_request_recalculation, leave_entitlement_event, leave_ledger_entry',
+  );
   await restoreYears();
 
   people = (await seed(admin)) as Record<string, string>;

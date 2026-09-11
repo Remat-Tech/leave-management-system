@@ -34,6 +34,7 @@ import type { Storage } from '../storage/index.js';
 import type { EntitlementRuleRepository } from '../features/entitlement/entitlement-rule.db.js';
 import type { HolidayRepository } from '../features/holiday/holiday.db.js';
 import { HolidayService } from '../features/holiday/holiday.service.js';
+import type { HolidayRecalculationService } from '../features/holiday/recalculation.service.js';
 import { earliestOpenDayFrom } from '../features/leave-year/leave-year.service.js';
 import { balanceRoutes } from '../features/balance/routes.js';
 import { BalanceAdjustmentService } from '../features/balance/adjustment.service.js';
@@ -79,6 +80,15 @@ export interface Application {
   entitlementRules: EntitlementRuleRepository;
   /** FR 22, LMS 504. The gazetted days the office is closed. */
   holidays: HolidayRepository;
+  /**
+   * FR 25, §8.8, LMS 508. Crediting a late-declared holiday back into leave people had.
+   *
+   * A service rather than a repository, and passed in whole for the reason `leaveRequests`
+   * is: a credit moves a balance and tells somebody about it, so it needs a transaction and
+   * a mailer. Building it here would put a mailer within reach of a balance screen, which
+   * is the property `RequestFormService` was separated out to keep.
+   */
+  holidayRecalculations: HolidayRecalculationService;
   /** FR 54. */
   requests: LeaveRequestRepository;
   /**
@@ -222,6 +232,9 @@ export function buildApp(parts: Application): Express {
         parts.years,
       ),
       years: parts.years,
+      /* FR 25, §8.8, LMS 508. Crediting a late-declared day back is the same desk's act as
+         declaring it, so it hangs off the calendar's own router. */
+      recalculations: parts.holidayRecalculations,
     }),
   );
 
