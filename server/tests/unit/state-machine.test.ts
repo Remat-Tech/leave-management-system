@@ -226,8 +226,9 @@ describe('the transitions a request may make', () => {
          FR 07, LMS 325. `ROUTE` was among them until the reporting line was allowed to move
          a request nobody has answered. */
       /* FR 32c, LMS 507. `RECLASSIFY` is the fifth: days are moved to sick leave out of
-         leave that was agreed and taken, and a request still being decided has taken none. */
-      if (isAboutAWithdrawal(action) || action === 'RECLASSIFY') {
+         leave that was agreed and taken, and a request still being decided has taken none.
+         FR 25, LMS 508. `RECALCULATE` is the sixth, for the same reason. */
+      if (isAboutAWithdrawal(action) || action === 'RECLASSIFY' || action === 'RECALCULATE') {
         expect(transitionFor('SUBMITTED', action)).toBeUndefined();
         continue;
       }
@@ -354,6 +355,8 @@ describe('the transitions a request may make', () => {
       'REFUSE_WITHDRAWAL',
       /** FR 32c, LMS 507. It moves two balances and leaves the request exactly as it was. */
       'RECLASSIFY',
+      /** FR 25, LMS 508. It moves one, and leaves the request exactly as it was. */
+      'RECALCULATE',
     ]);
     expect([...new Set(live.map((transition) => transition.to))]).toEqual([
       'APPROVED',
@@ -1017,13 +1020,22 @@ describe('the table, written out', () => {
         to: 'APPROVED',
         by: ['LEAVE_ADMINISTRATION'],
       },
+
+      /* FR 25, §8.8, LMS 508. A public holiday declared inside agreed leave, and the second
+         row that moves no request: what changes is one balance. */
+      {
+        from: 'APPROVED',
+        action: 'RECALCULATE',
+        to: 'APPROVED',
+        by: ['LEAVE_ADMINISTRATION'],
+      },
     ]);
   });
 
   /* And the vocabulary it is keyed by, for the same reason. A standing added here
      without a branch in `hasStanding` does not compile; one added and left out of every
      row is a concept nothing uses. */
-  it('and is keyed by the twelve actions and the four standings there are', () => {
+  it('and is keyed by the thirteen actions and the four standings there are', () => {
     expect([...REQUEST_ACTIONS]).toEqual([
       'WITHDRAW',
       'REFUSE',
@@ -1040,6 +1052,8 @@ describe('the table, written out', () => {
       'REFUSE_WITHDRAWAL',
       /** FR 32c, LMS 507. */
       'RECLASSIFY',
+      /** FR 25, LMS 508. */
+      'RECALCULATE',
     ]);
     expect([...STANDINGS]).toEqual([
       'THE_REQUESTER',

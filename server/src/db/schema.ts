@@ -452,6 +452,25 @@ export interface LeaveRequestReclassificationTable {
   recorded_at: Timestamp;
 }
 
+/** A public holiday declared inside agreed leave, credited back. FR 25, §8.8, LMS 508. */
+export interface LeaveRequestRecalculationTable {
+  id: Generated<string>;
+  /** The leave the day fell inside. Its dates and its price are untouched. */
+  leave_request_id: ColumnType<string, string, never>;
+  holiday_id: ColumnType<string, string, never>;
+  /** The day as it stood when the credit was given. NFR DAT 03. */
+  holiday_date: ColumnType<string, string, never>;
+  /** What the leave cost, less what it costs now. FR 24, FR 25. */
+  days: ColumnType<number, number, never>;
+  /** FR 27. The sentence the ledger entry carries. */
+  reason: ColumnType<string, string, never>;
+  /** The credit itself. */
+  ledger_entry_id: ColumnType<string, string, never>;
+  recorded_by: ColumnType<string, never, never>;
+  recorded_by_employee_id: ColumnType<string | null, never, never>;
+  recorded_at: Timestamp;
+}
+
 /** One stage of a request's chain that another desk answered. FR 48b, §8.6a, LMS 320. */
 export interface LeaveRequestRoutingTable {
   id: Generated<string>;
@@ -560,6 +579,7 @@ export interface Database {
   leave_request_decision: LeaveRequestDecisionTable;
   leave_request_draft: LeaveRequestDraftTable;
   leave_request_reassignment: LeaveRequestReassignmentTable;
+  leave_request_recalculation: LeaveRequestRecalculationTable;
   leave_request_reclassification: LeaveRequestReclassificationTable;
   leave_request_routing: LeaveRequestRoutingTable;
   leave_request_withdrawal: LeaveRequestWithdrawalTable;

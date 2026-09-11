@@ -106,7 +106,9 @@ beforeEach(async () => {
   /* The cache first and the ledger second, which is the order they depend in, and
      both by TRUNCATE because each table refuses a DELETE on every connection. */
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
+  await admin.query(
+    'TRUNCATE leave_request_recalculation, leave_entitlement_event, leave_ledger_entry',
+  );
   await restoreYears();
 
   people = (await seed(admin)) as Record<string, string>;

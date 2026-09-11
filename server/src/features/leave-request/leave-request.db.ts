@@ -18,6 +18,7 @@ import {
   type ValidatedLeaveRequest,
 } from './leave-request.js';
 import type { CountingBasis } from '../leave-type/leave-type.js';
+import type { CalendarDate } from '../../shared/time.js';
 import { recording } from '../../db/recording.js';
 
 /** Postgres `restrict_violation`, which every refusal in this schema raises. */
@@ -246,6 +247,30 @@ export class LeaveRequestRepository {
       .where('end_date', '>=', span.from)
       .where('start_date', '<=', span.to)
       .orderBy('start_date')
+      .orderBy('id')
+      .execute();
+
+    return rows.map(toRequest);
+  }
+
+  /**
+   * Every piece of agreed leave in the company that covers this day. FR 25, LMS 508.
+   *
+   * `APPROVED` alone, and the whole company: what a late holiday affects is leave whose
+   * days have been spent, wherever it is. A request still being decided is holding its days
+   * and is priced again by nothing — it keeps the figure it was submitted at, which is the
+   * same figure a recalculation would put right, so §8.8 leaves it out.
+   *
+   * Both ends of the request inclusive, as every period in this schema is.
+   */
+  async agreedLeaveCovering(day: CalendarDate): Promise<LeaveRequest[]> {
+    const rows = await this.db
+      .selectFrom('leave_request')
+      .selectAll()
+      .where('status', '=', 'APPROVED')
+      .where('start_date', '<=', day)
+      .where('end_date', '>=', day)
+      .orderBy('employee_id')
       .orderBy('id')
       .execute();
 

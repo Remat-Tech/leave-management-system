@@ -72,6 +72,31 @@ export class DuplicateHoliday extends Error {
   }
 }
 
+/**
+ * A day being taken off the calendar after it has been credited back to somebody. FR 25, LMS 508.
+ *
+ * The one refusal the recalculation story adds to the calendar itself. Clearing the row
+ * would leave `RECALCULATION` entries in the ledger explaining themselves by a holiday that
+ * is not there, and the days would stay credited either way — nothing here takes a day back
+ * off somebody. Where the gazette really did withdraw the day, the correction is an
+ * adjustment per person, with a reason on it.
+ */
+export class HolidayAlreadyCredited extends Error {
+  readonly field = 'date';
+  readonly holidayId: string;
+
+  constructor(holiday: Holiday) {
+    super(
+      `${formatDay(holiday.date)} has already been credited back into leave people had ` +
+        `approved, so ${holiday.name} cannot be cleared or moved. The days are in their ` +
+        `balances and nothing here takes them away again. If the gazette withdrew the day, ` +
+        `put each balance right with an adjustment and a reason. FR 25, FR 27.`,
+    );
+    this.name = 'HolidayAlreadyCredited';
+    this.holidayId = holiday.id;
+  }
+}
+
 /** A holiday added to, taken out of, or moved into a leave year that has been closed. */
 export class HolidayInASettledYear extends Error {
   readonly date: CalendarDate;

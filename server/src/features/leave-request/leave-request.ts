@@ -352,6 +352,13 @@ export const REQUEST_ACTIONS = [
    * price, and what moves is two balances.
    */
   'RECLASSIFY',
+  /**
+   * Crediting back a public holiday declared inside agreed leave. FR 25, §8.8, LMS 508.
+   *
+   * Moves nothing about the request either. What changes is one balance, by the difference
+   * between what the leave cost and what it costs now.
+   */
+  'RECALCULATE',
 ] as const;
 
 export type RequestAction = (typeof REQUEST_ACTIONS)[number];
@@ -378,6 +385,9 @@ export function actionInWords(action: RequestAction): string {
     /** FR 32c, LMS 507. */
     case 'RECLASSIFY':
       return 'move days of it to sick leave';
+    /** FR 25, LMS 508. */
+    case 'RECALCULATE':
+      return 'credit back a public holiday inside it';
     default:
       return action.toLowerCase();
   }
@@ -618,6 +628,13 @@ export const TRANSITIONS: readonly Transition[] = [
      makes them days there is something to move. `to` is `APPROVED` for the same reason
      `AMEND`'s is — the leave still happened, and its dates are not the system's to shift. */
   { from: 'APPROVED', action: 'RECLASSIFY', to: 'APPROVED', by: ['LEAVE_ADMINISTRATION'] },
+
+  /* A public holiday declared inside agreed leave. FR 25, §8.8. LMS 508.
+
+     Agreed leave only: days that were held are priced again if they are ever approved, and
+     days that were never spent have nothing to credit. `to` is `APPROVED` for the reason
+     `RECLASSIFY`'s is — the leave happened, and only what it cost has changed. */
+  { from: 'APPROVED', action: 'RECALCULATE', to: 'APPROVED', by: ['LEAVE_ADMINISTRATION'] },
 ];
 
 /**
@@ -764,6 +781,22 @@ export function reclassificationTo(request: LeaveRequest): RequestStatus {
 
   if (transition === undefined) {
     throw refuseTheMove(request, 'RECLASSIFY');
+  }
+
+  return transition.to;
+}
+
+/**
+ * Where crediting back a late public holiday leaves it. FR 25, §6. LMS 508.
+ *
+ * Asked for its refusal, as {@link reclassificationTo} is, and the answer is the status it
+ * already has.
+ */
+export function recalculationTo(request: LeaveRequest): RequestStatus {
+  const transition = transitionFor(request.status, 'RECALCULATE');
+
+  if (transition === undefined) {
+    throw refuseTheMove(request, 'RECALCULATE');
   }
 
   return transition.to;

@@ -41,6 +41,7 @@ import { NotificationService } from '../../src/features/notification/notificatio
 import { SignInService } from '../../src/features/sign-in/sign-in.service.js';
 import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
+import { holidayRecalculationService } from '../support/holiday-recalculations.js';
 import { delegationService } from '../support/delegations.js';
 
 /**
@@ -194,6 +195,8 @@ beforeAll(async () => {
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
+    /** FR 25, §8.8, LMS 508. */
+    holidayRecalculations: holidayRecalculationService(db, guard, movements),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
     accounts,
@@ -217,7 +220,9 @@ beforeEach(async () => {
   /* The cache first and the ledger second, which is the order they depend in, and both by
      TRUNCATE because each table refuses a DELETE on every connection. */
   await admin.query('TRUNCATE leave_balance');
-  await admin.query('TRUNCATE leave_entitlement_event, leave_ledger_entry');
+  await admin.query(
+    'TRUNCATE leave_request_recalculation, leave_entitlement_event, leave_ledger_entry',
+  );
 
   /* CASCADE, because a year is the heading a run of ledger entries is filed under. Put back
      rather than left, so the test that closes one cannot decide the next one. */

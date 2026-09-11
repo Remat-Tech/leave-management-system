@@ -181,6 +181,13 @@ a day of annual leave for an afternoon nobody worked. `SYS_ADMIN` is deliberatel
 not on it either: keeping the calendar is HR's job, not a power that comes with
 being able to reach the database.
 
+**And crediting a late-declared day back is the same desk.** FR 25, LMS 508.
+`holidayPolicy.recalculate` holds the roles that keep the calendar, because it is the
+same act finished: a day on the calendar that nobody has been credited for is a day the
+office was closed and everybody was still charged leave for. It moves balances, so the
+door asks `ledgerPolicy.giveBackTakenDays` as well — the same standing as answering a
+withdrawal, and the two lists are the same two roles.
+
 **Granting a year is the same desk that writes the figures, and so is carrying one
 forward.** LMS 214 and LMS 217. A grant and an adjustment are the same act from the
 balance's point of view — days arriving with no request behind them and no way to take

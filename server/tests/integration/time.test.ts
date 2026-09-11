@@ -181,8 +181,12 @@ describe('the columns', () => {
      The two from LMS 507 are the days of a holiday a certificate moved to sick leave. They
      are days for the same reason and for one more: they are compared against the request's
      own two, and a zone between the two pairs would put a day outside the leave it is
-     part of. FR 32c. */
-  it('the seventeen dates there are today are the ones expected', async () => {
+     part of. FR 32c.
+
+     The one from LMS 508 is the gazetted day a credit was given for, kept beside the
+     credit rather than read back through the holiday — a zone here would credit somebody
+     for the day before the country stopped working. FR 25. */
+  it('the eighteen dates there are today are the ones expected', async () => {
     const dates = (await temporalColumns())
       .filter((column) => column.data_type === 'date')
       .map((column) => `${column.table_name}.${column.column_name}`);
@@ -203,6 +207,8 @@ describe('the columns', () => {
       /** FR 19, LMS 302. */
       'leave_request_draft.end_date',
       'leave_request_draft.start_date',
+      /** FR 25, LMS 508. The gazetted day a credit was given for, frozen as it stood. */
+      'leave_request_recalculation.holiday_date',
       /** FR 32c, LMS 507. Which days of a holiday became sick leave. */
       'leave_request_reclassification.end_date',
       'leave_request_reclassification.start_date',

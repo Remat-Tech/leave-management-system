@@ -2,6 +2,12 @@
 
 import { type Request, type Response, Router } from 'express';
 import type { HolidayService } from './holiday.service.js';
+import type {
+  AffectedLeave,
+  HolidayRecalculationService,
+  RecalculationPreview,
+  RecalculationRun,
+} from './recalculation.service.js';
 import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
 import {
   closedYearsInWords,
@@ -19,6 +25,8 @@ export interface HolidayRoutes {
   holidays: HolidayService;
   /** FR 22. Where the closed years end, and what each day is filed under. */
   years: LeaveYearRepository;
+  /** FR 25, §8.8. Crediting a late-declared day back into leave people already had. LMS 508. */
+  recalculations: HolidayRecalculationService;
 }
 
 /** The fields a change may name. */
@@ -91,7 +99,83 @@ export function holidayRoutes(parts: HolidayRoutes): Router {
       .catch(next);
   });
 
+  /* FR 25, §8.8, LMS 508. What crediting this day back would do, before HR does it. A read
+     rather than a dry run of the write: nothing here opens a transaction. */
+  routes.get('/holidays/:id/recalculation', (request: Request, response: Response, next) => {
+    void parts.recalculations
+      .whatWouldChange(actorOf(response), asString(request.params.id))
+      .then((preview) => {
+        response.json(previewAsJson(preview));
+      })
+      .catch(next);
+  });
+
+  /* FR 25, §8.8, LMS 508. The story's first criterion: HR presses this, and it is safe to
+     press twice — the second run credits nobody and says so. */
+  routes.post('/holidays/:id/recalculation', (request: Request, response: Response, next) => {
+    void parts.recalculations
+      .recalculate(actorOf(response), asString(request.params.id))
+      .then((run) => {
+        response.status(201).json(runAsJson(run));
+      })
+      .catch(next);
+  });
+
   return routes;
+}
+
+/** What the button would do, as the screen needs it. FR 25, NFR USA 03. */
+function previewAsJson(preview: RecalculationPreview): unknown {
+  return {
+    holidayId: preview.holiday.id,
+    name: preview.holiday.name,
+    date: preview.holiday.date,
+    inWords: formatDay(preview.holiday.date),
+    /** The two figures the confirmation is written from. */
+    days: preview.days,
+    people: preview.people,
+    affected: preview.affected.map(affectedAsJson),
+  };
+}
+
+/** What it did. The same shape, with what each person was actually credited. */
+function runAsJson(run: RecalculationRun): unknown {
+  return {
+    holidayId: run.holiday.id,
+    name: run.holiday.name,
+    date: run.holiday.date,
+    inWords: formatDay(run.holiday.date),
+    days: run.days,
+    people: new Set(run.credited.map((one) => one.employee.id)).size,
+    credited: run.credited.map((one) => ({
+      leaveRequestId: one.request.id,
+      employeeId: one.employee.id,
+      employeeName: `${one.employee.firstName} ${one.employee.lastName}`,
+      typeName: one.typeName,
+      days: one.recalculation.days,
+      reason: one.recalculation.reason,
+      /** The balance the credit left, from the transaction that moved it. */
+      availableAfter: one.balance.available,
+      ledgerEntryId: one.credited.id,
+    })),
+    /** FR 25's second criterion, read here: the leave the run deliberately left alone. */
+    untouched: run.untouched.map(affectedAsJson),
+    failed: run.failed,
+  };
+}
+
+function affectedAsJson(leave: AffectedLeave): unknown {
+  return {
+    leaveRequestId: leave.request.id,
+    employeeId: leave.employee.id,
+    employeeName: `${leave.employee.firstName} ${leave.employee.lastName}`,
+    typeName: leave.typeName,
+    from: leave.request.from,
+    to: leave.request.to,
+    days: leave.days,
+    because: leave.because,
+    inWords: leave.inWords,
+  };
 }
 
 /** One day as the screen needs it: the columns, and the sentences they add up to. */

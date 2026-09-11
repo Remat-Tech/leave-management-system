@@ -7,6 +7,7 @@ import type { Attribution } from '../audit/audit.js';
 import {
   DuplicateHoliday,
   type Holiday,
+  HolidayAlreadyCredited,
   InvalidHoliday,
   type ValidatedHoliday,
 } from './holiday.js';
@@ -24,8 +25,15 @@ const CHECK_VIOLATION = '23514';
  */
 const RESTRICT_VIOLATION = '23001';
 
+/** Postgres `foreign_key_violation`, which a credited day's recalculations raise on a delete. */
+const FOREIGN_KEY_VIOLATION = '23503';
+
 const ONE_PER_DAY = 'holiday_one_per_day';
 const SETTLED_YEARS = 'holiday_leaves_settled_years_alone';
+
+/** FR 25, LMS 508. The two ways a day that has credited somebody refuses to be changed. */
+const ALREADY_CREDITED_MOVE = 'holiday_stays_where_it_was_credited';
+const ALREADY_CREDITED_CLEAR = 'leave_request_recalculation_holiday_id_fkey';
 
 /** Which field a refused row is reported against. */
 const CHECKED_FIELDS: Record<string, string> = {
@@ -68,29 +76,37 @@ export class HolidayRepository {
       return this.findById(holiday.id);
     }
 
-    return this.catchRefusals(changes.date ?? holiday.date, async () => {
-      const row = await recording(this.db, by, (on) =>
-        on
-          .updateTable('holiday')
-          .set(values)
-          .where('id', '=', holiday.id)
-          .returningAll()
-          .executeTakeFirst(),
-      );
+    return this.catchRefusals(
+      changes.date ?? holiday.date,
+      async () => {
+        const row = await recording(this.db, by, (on) =>
+          on
+            .updateTable('holiday')
+            .set(values)
+            .where('id', '=', holiday.id)
+            .returningAll()
+            .executeTakeFirst(),
+        );
 
-      return row === undefined ? undefined : toHoliday(row);
-    });
+        return row === undefined ? undefined : toHoliday(row);
+      },
+      holiday,
+    );
   }
 
   /** Takes a day off the calendar. */
   async remove(by: Attribution, holiday: Holiday): Promise<boolean> {
-    return this.catchRefusals(holiday.date, async () => {
-      const deleted = await recording(this.db, by, (on) =>
-        on.deleteFrom('holiday').where('id', '=', holiday.id).executeTakeFirst(),
-      );
+    return this.catchRefusals(
+      holiday.date,
+      async () => {
+        const deleted = await recording(this.db, by, (on) =>
+          on.deleteFrom('holiday').where('id', '=', holiday.id).executeTakeFirst(),
+        );
 
-      return deleted.numDeletedRows > 0n;
-    });
+        return deleted.numDeletedRows > 0n;
+      },
+      holiday,
+    );
   }
 
   async findById(id: string): Promise<Holiday | undefined> {
@@ -131,11 +147,28 @@ export class HolidayRepository {
   /**
    * Runs a write and turns whatever the database refused it for into the domain error for that refusal.
    */
-  private async catchRefusals<T>(day: CalendarDate, write: () => Promise<T>): Promise<T> {
+  private async catchRefusals<T>(
+    day: CalendarDate,
+    write: () => Promise<T>,
+    /** The row being changed, where there is one. FR 25, LMS 508. */
+    holiday?: Holiday,
+  ): Promise<T> {
     try {
       return await write();
     } catch (error) {
       const violation = violationOf(error);
+
+      /* FR 25, LMS 508. A day people have already been credited for, being moved or
+         cleared. The foreign key answers the delete and the trigger answers the move. */
+      if (
+        holiday !== undefined &&
+        ((violation?.code === RESTRICT_VIOLATION &&
+          violation.constraint === ALREADY_CREDITED_MOVE) ||
+          (violation?.code === FOREIGN_KEY_VIOLATION &&
+            violation.constraint === ALREADY_CREDITED_CLEAR))
+      ) {
+        throw new HolidayAlreadyCredited(holiday);
+      }
 
       if (violation?.code === UNIQUE_VIOLATION && violation.constraint === ONE_PER_DAY) {
         /* Named, because "rename the one that is there" needs the one that is there. It is

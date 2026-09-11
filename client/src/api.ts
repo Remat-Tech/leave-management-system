@@ -1014,6 +1014,74 @@ export async function removeHoliday(id: string): Promise<void> {
   await request<void>('DELETE', `/api/holidays/${encodeURIComponent(id)}`);
 }
 
+/** ---------- a day declared after leave was approved. FR 25, §8.8, LMS 508 */
+
+/** One piece of agreed leave the day falls inside, and what it is worth to that person. */
+export interface AffectedLeave {
+  leaveRequestId: string;
+  employeeId: string;
+  employeeName: string;
+  typeName: string;
+  from: string;
+  to: string;
+  /** The difference, and nought where the day cost them nothing anyway. */
+  days: number;
+  /**
+   * Why it credits nothing: `ALREADY_CREDITED`, `COUNTS_CALENDAR_DAYS`, `NOT_A_DAY_THEY_WORK`.
+   *
+   * Null where there is a credit. The sentence beside it is the server's, so the screen
+   * never renders a token.
+   */
+  because: string | null;
+  inWords: string | null;
+}
+
+/** What pressing the button would do. Nothing moves until it is pressed. FR 25. */
+export interface RecalculationPreview {
+  holidayId: string;
+  name: string;
+  date: string;
+  inWords: string;
+  /** The two figures the confirmation is written from. */
+  days: number;
+  people: number;
+  affected: AffectedLeave[];
+}
+
+/** One person's leave the run put right. */
+export interface LeaveCredited {
+  leaveRequestId: string;
+  employeeId: string;
+  employeeName: string;
+  typeName: string;
+  days: number;
+  reason: string;
+  /** The balance the credit left, from the transaction that moved it. */
+  availableAfter: number;
+  ledgerEntryId: string;
+}
+
+/** What the run did. FR 25, §8.8. */
+export interface RecalculationRun extends Omit<RecalculationPreview, 'affected'> {
+  credited: LeaveCredited[];
+  /** The leave it deliberately left alone, and why. */
+  untouched: AffectedLeave[];
+  failed: { leaveRequestId: string; employeeId: string; because: string }[];
+}
+
+/** What crediting this day back would do, before HR does any of it. */
+export async function holidayRecalculationPreview(id: string): Promise<RecalculationPreview> {
+  return request<RecalculationPreview>(
+    'GET',
+    `/api/holidays/${encodeURIComponent(id)}/recalculation`,
+  );
+}
+
+/** Credits it back to everybody who was charged for it. Safe to send twice. */
+export async function recalculateForHoliday(id: string): Promise<RecalculationRun> {
+  return request<RecalculationRun>('POST', `/api/holidays/${encodeURIComponent(id)}/recalculation`);
+}
+
 /** --------------- the settings that are about the company. FR 44, FR 48c, NFR SEC 06, LMS 505 */
 
 /** Every org-wide setting, with the sentence each one adds up to. */
