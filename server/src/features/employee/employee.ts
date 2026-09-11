@@ -445,20 +445,29 @@ export interface ReportingLineMove {
   to: string | null;
 }
 
+/** Somebody who has just been recorded as having left. FR 06, FR 46, LMS 509. */
+export interface Exit {
+  employeeId: string;
+  exitDate: CalendarDate;
+}
+
 /**
- * What follows an employee when their reporting line moves. FR 07, §8.4, LMS 325.
+ * What happens to leave when a record changes. FR 07, §8.4, FR 46, LMS 325, LMS 509.
  *
  * The port `LeaveRequestService` fills. Declared here rather than imported, so this
  * feature keeps its own dependency direction.
  */
 export interface LeaveThatFollows {
   followTheReportingLine(actor: Actor, move: ReportingLineMove): Promise<unknown>;
+  /** FR 46, §8.7. Requests nobody has decided, ended by the exit. LMS 509. */
+  cancelWhatIsPending(actor: Actor, exit: Exit): Promise<unknown>;
 }
 
 /** For a caller with no leave to carry: a seed, a test about departments. LMS 325. */
 export function noLeaveFollows(): LeaveThatFollows {
   return {
     followTheReportingLine: () => Promise.resolve([]),
+    cancelWhatIsPending: () => Promise.resolve([]),
   };
 }
 

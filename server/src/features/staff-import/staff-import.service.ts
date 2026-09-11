@@ -14,6 +14,7 @@ import {
   DuplicateWorkEmail,
   type Employee,
   type EmployeeChanges,
+  type Exit,
   InvalidEmployee,
   type LeaveThatFollows,
   ManagerHasLeft,
@@ -157,6 +158,14 @@ export class StaffImportService {
        lines this import wrote rather than the ones it is still writing. LMS 325. */
     for (const move of written.linesMoved) {
       await this.leave.followTheReportingLine(actor, move);
+    }
+
+    /* FR 46, §8.7. And the same for an exit a spreadsheet recorded: a row that marks
+       somebody as having left ends their undecided leave, exactly as EmployeeService does.
+       After the commit for the same reason, and because cancelling opens its own
+       transaction. LMS 509. */
+    for (const exit of written.exits) {
+      await this.leave.cancelWhatIsPending(actor, exit);
     }
 
     return written.outcome;
@@ -524,7 +533,7 @@ export class StaffImportService {
     repositories: Repositories,
     plan: ImportPlan,
     organisation: Organisation,
-  ): Promise<{ outcome: ImportOutcome; linesMoved: ReportingLineMove[] }> {
+  ): Promise<{ outcome: ImportOutcome; linesMoved: ReportingLineMove[]; exits: Exit[] }> {
     /* The same guard this service was built with, so that a row refused four
        hundred deep is written to the same log as anything else. The actor is the
        HR officer who confirmed the import, carried down rather than replaced by
@@ -567,6 +576,8 @@ export class StaffImportService {
     const changed: Employee[] = [];
     /** FR 07, §8.4. The lines that actually moved, for the leave to follow. LMS 325. */
     const linesMoved: ReportingLineMove[] = [];
+    /** FR 46, §8.7. The rows that recorded somebody leaving. LMS 509. */
+    const exits: Exit[] = [];
 
     for (const operation of orderForWriting(plan, reportingLinesAfter(plan, organisation))) {
       if (operation.kind === 'create') {
@@ -598,6 +609,16 @@ export class StaffImportService {
         });
       }
 
+      /** FR 46, §8.7. A row that turned somebody into a leaver. LMS 509. */
+      if (
+        before !== undefined &&
+        before.employmentStatus !== 'TERMINATED' &&
+        updated.employmentStatus === 'TERMINATED' &&
+        updated.exitDate !== null
+      ) {
+        exits.push({ employeeId: updated.id, exitDate: updated.exitDate });
+      }
+
       changed.push(updated);
     }
 
@@ -609,6 +630,7 @@ export class StaffImportService {
         skipped: plan.rejected,
       },
       linesMoved,
+      exits,
     };
   }
 }

@@ -148,6 +148,20 @@ export class EmployeeService {
       });
     }
 
+    /* FR 46, §8.7. Leave nobody has decided ends with the employment, after the record
+       saying so is written. Asked of the record rather than of the verb, so an exit
+       entered as an ordinary correction cancels as terminate() does. LMS 509. */
+    if (
+      current.employmentStatus !== 'TERMINATED' &&
+      updated.employmentStatus === 'TERMINATED' &&
+      updated.exitDate !== null
+    ) {
+      await this.leave.cancelWhatIsPending(actor, {
+        employeeId: updated.id,
+        exitDate: updated.exitDate,
+      });
+    }
+
     return updated;
   }
 

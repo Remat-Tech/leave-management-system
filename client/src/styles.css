@@ -3737,3 +3737,107 @@ select[aria-invalid='true'] {
     flex-wrap: wrap;
   }
 }
+
+/* FR 37a, §8.7, LMS 509. The leaver figure, and the working that reaches it. */
+
+.leaver-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 var(--gap);
+}
+
+.leaver-figure b {
+  font-family: var(--face-heading);
+  font-size: 2.25rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaver-figure b.overdrawn {
+  color: var(--warn);
+}
+
+.leaver-figure span {
+  color: var(--ink-faint);
+  font-size: 0.875rem;
+}
+
+/* Numbered, because the order the sum is performed in is part of what is being checked. */
+.working {
+  list-style: none;
+  margin: 0 0 var(--gap);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.working-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap);
+  padding: 0.6rem var(--gap);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* The steps that enter the sum, told from the ones that only explain it. */
+.working-step.is-adds {
+  border-left: 3px solid var(--go);
+}
+
+.working-step.is-takes {
+  border-left: 3px solid var(--warn);
+}
+
+.working-step.is-explains {
+  background: none;
+}
+
+/* The answer, which is the last step and reads as one. */
+.working-step.is-explains:last-child {
+  background: var(--card);
+  border-left: 3px solid var(--accent);
+}
+
+.working-days {
+  width: 6rem;
+  flex: none;
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.working-days b {
+  font-family: var(--face-heading);
+  font-size: 1.125rem;
+}
+
+.working-what {
+  flex: 1 1 18rem;
+}
+
+.working-what h3 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.working-what .muted {
+  margin: 0.2rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 46rem) {
+  .working-step {
+    flex-wrap: wrap;
+  }
+
+  .working-days {
+    width: auto;
+    text-align: left;
+  }
+}

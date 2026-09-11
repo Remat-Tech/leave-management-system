@@ -39,6 +39,8 @@ import { earliestOpenDayFrom } from '../features/leave-year/leave-year.service.j
 import { balanceRoutes } from '../features/balance/routes.js';
 import { BalanceAdjustmentService } from '../features/balance/adjustment.service.js';
 import { balanceAdjustmentRoutes } from '../features/balance/adjustment.routes.js';
+import { LeaverStatementService } from '../features/balance/leaver-statement.service.js';
+import { leaverRoutes } from '../features/balance/leaver-statement.routes.js';
 import { LedgerService } from '../features/balance/ledger.service.js';
 import type { LedgerRepository } from '../features/balance/ledger.db.js';
 import type { BalanceService } from '../features/balance/balance.service.js';
@@ -192,6 +194,29 @@ export function buildApp(parts: Application): Express {
         parts.types,
       ),
       balances: parts.adjustments,
+    }),
+  );
+
+  /* FR 37a, §8.6d, §8.7, LMS 509. What a leaver is owed on their last day, with its working.
+     A read service built from repositories: the figure writes nothing, so it needs no
+     transaction and no mailer. The read rule is the balance's — theirs, their manager's and
+     HR's — and the picker is the directory's, which `ledgerPolicy` and `employeePolicy`
+     decide rather than the mounting does. */
+  app.use(
+    '/api',
+    leaverRoutes({
+      leavers: new LeaverStatementService(
+        parts.balances,
+        parts.guard,
+        parts.employees,
+        parts.types,
+        parts.years,
+        new EntitlementRuleService(
+          parts.entitlementRules,
+          parts.guard,
+          earliestOpenDayFrom(parts.years),
+        ),
+      ),
     }),
   );
 

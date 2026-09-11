@@ -1270,6 +1270,81 @@ export async function adjustBalance(fields: AdjustmentFields): Promise<Adjusted>
   return request<Adjusted>('POST', '/api/balance-adjustments', fields);
 }
 
+/** ------------------------------------------- the leaver figure. FR 37a, §8.7, LMS 509 */
+
+/** Somebody who has left. FR 06. */
+export interface Leaver {
+  id: string;
+  name: string;
+  employeeNumber: string;
+  jobTitle: string | null;
+  exitDate: string | null;
+}
+
+/** Which way one step of the working moves the figure. */
+export type SettlementPart = 'ADDS' | 'TAKES' | 'EXPLAINS';
+
+/** One step of the working, in the order the server put them. */
+export interface SettlementStep {
+  label: string;
+  /** Signed as it enters the sum. An `EXPLAINS` step enters no sum. */
+  days: number;
+  part: SettlementPart;
+  says: string;
+}
+
+/** One kind of leave settled on exit. Every figure the server's. FR 37a. */
+export interface SettlementLine {
+  leaveTypeId: string;
+  code: string;
+  name: string;
+  countingBasis: CountingBasis;
+  countingBasisLabel: string;
+
+  fullYearDays: number;
+  /** §8.6d, to the exit date. */
+  accrued: number;
+  granted: number;
+  /** `granted − accrued`. */
+  grantedAhead: number;
+  carriedOver: number;
+  adjustment: number;
+  taken: number;
+  pending: number;
+  /** The figure the final payment is checked against. */
+  owed: number;
+  /** What the balance screen shows, which is a different question. */
+  availableOnTheBalance: number;
+
+  working: SettlementStep[];
+}
+
+/** One leaver's final figure, with its working. */
+export interface LeaverSettlement {
+  employeeId: string;
+  employeeNumber: string;
+  name: string;
+  jobTitle: string | null;
+  startDate: string;
+  exitDate: string;
+  year: Year;
+  /** The part of that year they were employed for. */
+  portion: { from: string; to: string };
+  /** LMS 013. The figure says which rule produced it. */
+  proRataRule: { name: string; says: string };
+  lines: SettlementLine[];
+}
+
+/** Who has left. Refused for anybody who does not read every record. */
+export async function whoHasLeft(): Promise<{ leavers: Leaver[] }> {
+  return request<{ leavers: Leaver[] }>('GET', '/api/leavers');
+}
+
+/** One leaver's figure. Theirs, their manager's and HR's, as their balance is. */
+export async function leaverFigure(employeeId: string): Promise<LeaverSettlement> {
+  return request<LeaverSettlement>('GET', `/api/leavers/${employeeId}`);
+}
+
 /** Who the session belongs to. */
 export interface Me {
   employeeId: string;
