@@ -74,6 +74,8 @@ export interface LeaveRequestListOptions {
   leaveTypeId?: string;
   leaveYearId?: string;
   status?: RequestStatus;
+  /** Any of several, where one status is not the question. LMS 509. */
+  statuses?: readonly RequestStatus[];
   /** Requests overlapping this period. */
   from?: string;
   to?: string;
@@ -142,6 +144,9 @@ export class LeaveRequestRepository {
     }
     if (options.status !== undefined) {
       query = query.where('status', '=', options.status);
+    }
+    if (options.statuses !== undefined) {
+      query = query.where('status', 'in', [...options.statuses]);
     }
 
     if (options.from !== undefined) {

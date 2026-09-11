@@ -418,6 +418,8 @@ describe('cycle detection during the import', () => {
 
           committedWhenTold = rows[0].manager === move.to;
         },
+        /** FR 46, LMS 509. Nothing here records anybody leaving. */
+        cancelWhatIsPending: () => Promise.resolve([]),
       },
       { domains: DOMAINS },
     );

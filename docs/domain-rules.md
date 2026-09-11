@@ -1580,11 +1580,11 @@ precision and the precision §8.6d quotes its example to. A proportion that roun
 nothing is reported rather than posted, because a ledger entry of no days is not a
 movement.
 
-**What is not here.** The final settlement when somebody leaves — FR 37a, which compares
-what they were granted with what the part year they actually worked is worth and posts
-the difference. The formula it needs is the one above, called with the exit date, and
-the decision about what happens to the difference (paid, clawed back, forgiven) is that
-story's.
+**The final settlement when somebody leaves is [the leaver figure](#the-leaver-figure)**,
+FR 37a and LMS 509, and it is this formula called with the exit date. It compares what they
+were granted with what the part year they actually worked is worth. What it does with the
+difference is *show* it: paid, clawed back or forgiven is payroll's decision, and the figure
+exists so that it can be made against something checkable.
 
 ---
 
@@ -4806,3 +4806,107 @@ and withdrawn leave is not on it at all: `liveOverlapping` is the read, as every
 **And the screen is a tab like the others**, offered to everybody, for the reason
 [LMS 404](#the-approver-queue) gives. It is now the only calendar: "My team" is not a tab, and
 what was only on it is drawn inside the card of anybody who reports to the reader.
+
+---
+
+### The leaver figure
+
+**What somebody is owed on their last day, with the sum written out.** FR 37a, §8.6d, §8.7,
+LMS 509. `GET /api/leavers/:employeeId` answers it and the **Leavers** screen draws it. The
+story's "so that" is the whole design brief: *the final payment can be checked rather than
+taken on trust*, and a single number nobody can take apart is exactly what that is not.
+
+**The figure is `accrued + carried over + adjustments − taken`.** The accrual is
+[the pro rata formula](#pro-rating-a-part-year) called with the exit date, so §8.6d answers
+the joiner and the leaver with one implementation and nothing here knows which of the two it
+is looking at.
+
+**It is the accrual, not the grant, and that difference is the story.** The annual run grants
+a whole year in January to somebody who then leaves in July. Their balance says fifteen days
+are left; what they accrued is eleven and a half. `grantedAhead` is the subtraction between
+the two, and it is a line of the working rather than a term of the sum — the grant is already
+in the balance, and adding it would be counting the year twice. FR 37a's "compares what they
+were granted with what the part year is worth" is that line.
+
+**Carried days are owed in full.** FR 36. They were accrued in the year before and carried in
+as a `CARRY_FORWARD`, so this year's exit date has nothing to say about them. Pro rating a
+carry a second time would take days away twice, from somebody who has already left.
+
+**Only the leave that accrues, and it is a column rather than a code.** FR 37a says annual
+leave. What the code asks is `leave_entitlement_rule.prorate_on_join` — the flag that decides
+whether a part year is worth part of the figure at all, and the one annual leave carries and
+nothing else shipped does. Sick leave's three days are not on a settlement because a sick day
+is not something anybody accrues, which is the same sentence the entitlement migration wrote
+beside the column. A second accruing type HR writes next year is settled with nothing edited,
+and `unit/migrations.test.ts` still fails if a type code appears anywhere under `server/src`.
+
+**Nothing is posted.** The settlement is a reading: no `ADJUSTMENT`, no ledger entry, no
+movement of any kind. Two reasons, and the second is the load-bearing one. A leaver's balance
+is not spent again — they cannot sign in and cannot request leave — so a correcting entry buys
+no accuracy anybody acts on. And what happens to the difference is a decision the system has
+not been given: paying nine days, recovering them, or writing them off are three different
+acts with three different figures, and a movement posted before somebody chooses would be this
+system deciding by default. Where HR does decide, the entry goes through
+[the adjustments screen](#moving-a-balance-by-hand) with the reason on it, which is FR 37's
+door and already exists.
+
+**One year, the one the exit date falls in.** A balance is per person, per leave type, per
+leave year, so settling "the whole of their employment" would be settling years that were
+closed and carried forward years ago. An exit date in a year nobody has defined is
+`NoLeaveYearCoversTheExitDate` — a 409 naming the gap, as `NoLeaveYearToShow` is, because what
+is missing is a row only HR can write.
+
+**Somebody still here is refused rather than estimated.** `StillEmployed`, and the sentence
+says to record the leaving first. A figure accrued to a date somebody typed into a box is not
+a figure anybody can check against a record, which is the one thing this screen is for.
+
+#### Pending requests are cancelled by the exit
+
+**FR 46, §8.7, and it is the fourth criterion rather than housekeeping.** Recording that
+somebody has left cancels every request nobody has decided: `EmployeeService` calls
+`LeaveRequestService.cancelWhatIsPending` once the record saying they have gone is written,
+each one goes through the same `settle` door HR cancels one by hand with, and the days come
+back as a `RELEASE`.
+
+**It is the figure's precondition.** Days still `pending` are days held out of `available` and
+counted in neither `taken` nor the accrual, so a settlement computed with a request still
+sitting in a manager's queue is a figure that changes the moment somebody clicks. The working
+says so where it happens — a `Still being decided` step appears only when the figure is not
+nought, and it says what should have left it nought.
+
+**Approved leave is untouched.** Those days are `taken` rather than `pending`, so giving them
+back is a movement against the `DEDUCTION` and HR's judgement — FR 47's door, with a reason on
+it — rather than a consequence of a date. Leave somebody took stays taken, and the figure
+counts it.
+
+**Asked of the record rather than of the verb.** The hook is in `EmployeeService.change`,
+which both `terminate()` and an ordinary `update()` go through, so an exit entered as a
+correction cancels exactly as terminating does. `StaffImportService` carries the same call
+beside `followTheReportingLine`, for the rows of a spreadsheet that mark somebody as gone —
+after the import commits, because cancelling opens its own transaction.
+
+**A request another act settled in between is skipped rather than thrown.** The termination
+has already committed by then, and one raced row is not a reason to leave the rest of
+somebody's queue standing.
+
+#### What is on the screen
+
+**Every step of the sum, in the order it is performed**, each carrying the figure, whether it
+adds, takes or only explains, and a sentence. The accrual step writes out the arithmetic —
+*212 of the year's 365 days* — because 11.62 against twenty days is the figure a person
+queries and that is the answer. `unit/leaver-statement.test.ts` sums the steps that enter the
+sum and asserts they reach `owed`, which is what "showing its working" has to mean if a
+payment is going to be checked against it.
+
+**And it says why this is not the number on the balance screen**, which is the first thing
+anybody asks. One is what could still have been booked against a whole year's grant; the other
+is what the part year worked is worth.
+
+**Nothing is totalled across lines and nothing is computed in the browser.** The first for the
+reason [My balances](#my-balances) gives — two leave types counted on different bases are not
+a number of anything — and the second because a figure computed in a browser is a second
+implementation of a rule, running where no test in this repository can reach.
+
+**The figure goes below nought where more was taken than accrued**, rather than stopping
+there. Somebody who took their year in January and left in March has been overpaid, and a
+number clamped at nought would hide the case FR 37a exists to surface.

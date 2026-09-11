@@ -88,7 +88,9 @@ export function problemFor(error: unknown): { status: number; body: Problem } {
   if (
     error.name === 'NoLeaveYearToShow' ||
     error.name === 'NoLeaveYearForTheTeam' ||
-    error.name === 'NoLeaveYearForTheCalendar'
+    error.name === 'NoLeaveYearForTheCalendar' ||
+    /** FR 37a, LMS 509. The same gap, met at the exit date. */
+    error.name === 'NoLeaveYearCoversTheExitDate'
   ) {
     return { status: 409, body: { error: error.name, message: error.message } };
   }
@@ -324,6 +326,15 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
 
   /** FR 48c, LMS 505. The picker is the fix: an empty box names nobody. */
   ChiefExecutiveCannotBeCleared: 400,
+
+  /**
+   * FR 37a, LMS 509. A figure asked for about somebody who has not left.
+   *
+   * 409: the id is right and the person is real, and what refuses it is the record — there
+   * is no exit date for an accrual to stop at. Recording the leaving is the fix, which the
+   * sentence says.
+   */
+  StillEmployed: 409,
 
   /**
    * FR 44, FR 48c, LMS 505. The three the policy settings screen meets that are not a typo.

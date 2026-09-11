@@ -7,6 +7,7 @@ import { ApprovalChainsPage } from './features/config/ApprovalChainsPage';
 import { BalanceAdjustmentsPage } from './features/config/BalanceAdjustmentsPage';
 import { EntitlementRulesPage } from './features/config/EntitlementRulesPage';
 import { HolidaysPage } from './features/config/HolidaysPage';
+import { LeaversPage } from './features/config/LeaversPage';
 import { LeaveTypesPage } from './features/config/LeaveTypesPage';
 import { PolicySettingsPage } from './features/config/PolicySettingsPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
@@ -95,6 +96,14 @@ const SCREENS = [
    * the person's own; the button is an HR Administrator's, refused with the server's sentence.
    */
   { id: 'adjustments', label: 'Adjustments', icon: 'pencil' },
+  /**
+   * FR 37a, §8.6d, §8.7, LMS 509. What somebody who has left is owed.
+   *
+   * Beside "Adjustments" rather than beside "My balances": both are about one person's
+   * figures rather than about a rule, and this is the one a final payment is checked against.
+   * Its reading is the balance's — theirs, their manager's and HR's — and it writes nothing.
+   */
+  { id: 'leavers', label: 'Leavers', icon: 'people' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -292,6 +301,7 @@ export function App() {
         {screen === 'holidays' ? <HolidaysPage onSignedOut={ranOut} /> : null}
         {screen === 'policy' ? <PolicySettingsPage onSignedOut={ranOut} /> : null}
         {screen === 'adjustments' ? <BalanceAdjustmentsPage onSignedOut={ranOut} /> : null}
+        {screen === 'leavers' ? <LeaversPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );

@@ -66,6 +66,8 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | The public holiday calendar | anybody signed in | `HR_OFFICER`, `HR_ADMIN` |
 | Every movement in one person's balance | yourself, your manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | `HR_ADMIN` only, for an adjustment |
 | Every balance in the company, checked against the ledger | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
+| A leaver's final figure. FR 37a | yourself, your manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | — nothing is posted |
+| Who has left. FR 06 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | Granting a year's entitlement | | `HR_ADMIN` only |
 | Carrying last year's unused days forward | | `HR_ADMIN` only |
 | Recording an event and granting what it brings | | `HR_OFFICER`, `HR_ADMIN` |
@@ -144,6 +146,15 @@ server comes back. The person a notice was written to cannot run it, which looks
 strict for somebody asking for their own message to be sent again and is not: the
 retry re-sends what is already written and composes nothing, so there is nothing
 in it for them that reading their own notifications does not already give.
+
+**A leaver's figure adds no rule of its own.** FR 37a, LMS 509. It is that person's balance
+settled rather than a new kind of record, so it is decided by `ledgerPolicy.read` — the same
+three standings the balance has — and the picker in front of it is `employeePolicy.list`, the
+same directory the adjustment screen asks for. The row has no write side: nothing is posted,
+and where HR decides the difference should move a balance, that is an adjustment and an
+`HR_ADMIN`'s. Cancelling the leave an exit ends borrows no standing either — it is
+`leaveRequestPolicy.cancel`, asked of the person recording the leaving, who holds
+`MAINTAINS_EMPLOYEE_RECORDS` because terminating asks for it too.
 
 **A manager sees their reports because of the record, never because of a
 role.** `employee.managerId` is read off the record in hand, so moving a

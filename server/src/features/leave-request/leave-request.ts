@@ -81,6 +81,17 @@ export type ReleasingStatus = (typeof RELEASING_STATUSES)[number];
  */
 export const LIVE_STATUSES: readonly RequestStatus[] = ['SUBMITTED', 'APPROVED', 'UNROUTABLE'];
 
+/**
+ * Live, and nobody has decided it yet. FR 46, §8.7, LMS 509.
+ *
+ * What an exit cancels. Derived from the two lists rather than written out, because
+ * "pending" is exactly "holds days and is not approved" — a fourth live status added to
+ * `LIVE_STATUSES` is one an exit should cancel too.
+ */
+export const UNDECIDED_STATUSES: readonly RequestStatus[] = LIVE_STATUSES.filter(
+  (status) => status !== 'APPROVED',
+);
+
 /** Whether a request in this state still holds the days it covers. FR 15. */
 export function blocksTheCalendar(status: RequestStatus): boolean {
   return LIVE_STATUSES.includes(status);

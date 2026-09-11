@@ -16,7 +16,7 @@ import {
 } from './bulk-decision.js';
 import type { BalanceOwner } from '../balance/policy.js';
 import type { Decision, Guard } from '../../auth/policy.js';
-import type { Employee } from '../employee/employee.js';
+import type { Employee, Exit } from '../employee/employee.js';
 import { EmployeeNotFound } from '../employee/employee.js';
 import type { DayCount, LeavePeriod } from '../leave-calculator/leave-calculator.js';
 import { validateLeavePeriod } from '../leave-calculator/leave-calculator.js';
@@ -66,6 +66,7 @@ import {
   grantingAction,
   InvalidLeaveRequest,
   lateEntryFor,
+  LeaveAlreadySettled,
   LeaveCannotBeMoved,
   LeaveCrossesAYearEnd,
   type LeaveRequest,
@@ -89,6 +90,7 @@ import {
   type ReleasingAction,
   settlementTo,
   StillNobodyToDecideIt,
+  UNDECIDED_STATUSES,
   validateLeaveRequestChanges,
   validateNewLeaveRequest,
   whatIsLeftOf,
@@ -573,6 +575,61 @@ export class LeaveRequestService {
    */
   async cancel(actor: Actor, id: string): Promise<LeaveReleased> {
     return this.settle(actor, id, 'CANCEL', (owner) => leaveRequestPolicy.cancel(actor, owner));
+  }
+
+  /**
+   * Ends every request nobody has decided, because the person has left. FR 46, §8.7. LMS 509.
+   *
+   * The port `EmployeeService` calls once the record saying they have gone is written. Each
+   * one goes through {@link LeaveRequestService.settle}, so the days come back, the desk is
+   * emptied and the requester is told, exactly as HR cancelling one by hand does.
+   *
+   * **Approved leave is not touched.** Those days are `taken` rather than `pending`, so
+   * giving them back is a movement against the `DEDUCTION` and HR's judgement rather than a
+   * consequence of the date — FR 47's door, with a reason on it.
+   *
+   * Sequential, for the reason {@link LeaveRequestService.decideMany} is: each cancellation
+   * takes the balance lock and then the request.
+   *
+   * A request another act settled between the read and the write is skipped rather than
+   * thrown, because the termination has already committed and one raced row is not a reason
+   * to leave the rest of somebody's queue standing.
+   */
+  async cancelWhatIsPending(actor: Actor, exit: Exit): Promise<LeaveReleased[]> {
+    const employee = await this.employeeFor(exit.employeeId);
+
+    this.guard.enforce(leaveRequestPolicy.cancel(actor, ownerOf(employee)));
+
+    const waiting = await this.requests.list({
+      employeeId: exit.employeeId,
+      statuses: UNDECIDED_STATUSES,
+    });
+
+    const note =
+      `${employee.firstName} ${employee.lastName} left on ${exit.exitDate}, and leave ` +
+      `nobody had decided ends with the employment. FR 46.`;
+
+    const cancelled: LeaveReleased[] = [];
+
+    for (const request of waiting) {
+      try {
+        cancelled.push(
+          await this.settle(
+            actor,
+            request.id,
+            'CANCEL',
+            (owner) => leaveRequestPolicy.cancel(actor, owner),
+            note,
+          ),
+        );
+      } catch (error) {
+        if (!(error instanceof LeaveAlreadySettled)) {
+          throw error;
+        }
+      }
+    }
+
+    return cancelled;
   }
 
   /**
@@ -1687,6 +1744,8 @@ export class LeaveRequestService {
     id: string,
     action: ReleasingAction,
     decide: (owner: BalanceOwner) => Decision,
+    /** FR 27. What put the ending on the record, where it is not the pressing of a button. */
+    note?: string,
   ): Promise<LeaveReleased> {
     const request = await this.requests.findById(id);
 
@@ -1713,7 +1772,8 @@ export class LeaveRequestService {
        the same string is the one an email says it to somebody about. */
     const typeName = type?.name ?? 'leave';
 
-    const reason = reasonForRelease(typeName, request, request.days, to);
+    const base = reasonForRelease(typeName, request, request.days, to);
+    const reason = note === undefined ? base : `${base}: ${note}`;
 
     const settled = await this.balances.releaseForRequest(actor, { request, action, to, reason });
 

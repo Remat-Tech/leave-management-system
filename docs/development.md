@@ -900,6 +900,16 @@ guards against is not a rogue `UPDATE` — the database has refused those since 
 — it is an honest second service posting an honest `DEDUCTION` without the lock that
 made the first one safe.
 
+**`unit/leaver-statement.test.ts` carries nearly all of LMS 509, and the integration suite
+beside it carries the two halves arithmetic cannot have.** The figure is a formula over two
+dates and five stored columns, so the accrual, the working and the rule that decides which
+leave types are settled are all pure. What needs a server is that the figures are the ones a
+*real* ledger produced — a grant, an absence approved through its whole chain, and a
+correction, then the settlement read back off the cache those three moved — and that recording
+an exit really does cancel what nobody had decided while leaving approved leave exactly where
+it is. That last one is a claim about two rows and a `RELEASE`, made through the same door HR
+records a leaving with, and it cannot be made without one.
+
 **`unit/policy.test.ts` is where authorisation is actually proved.** Policies are
 pure functions, so every role can be enumerated against every action rather than
 sampled — a fifth role added without a decision about what it may do fails there.
