@@ -99,6 +99,7 @@ function aCertificate(overrides: Partial<LeaveRequestAttachment> = {}): LeaveReq
     uploadedBy: 'employee ama',
     uploadedByEmployeeId: 'ama',
     uploadedAt: new Date('2026-03-09T09:00:00Z'),
+    fileDeletedAt: null,
     ...overrides,
   };
 }

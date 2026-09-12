@@ -362,6 +362,8 @@ export interface LeaveRequestAttachmentTable {
   uploaded_by: ColumnType<string, never, never>;
   uploaded_by_employee_id: ColumnType<string | null, never, never>;
   uploaded_at: Timestamp;
+  /** When retention deleted the stored file. Set once. NFR SEC 06, LMS 514. */
+  file_deleted_at: ColumnType<Date | null, never, Date>;
 }
 
 /** A short-lived address for one attachment's bytes. NFR SEC 04, NFR SEC 06, LMS 407. */

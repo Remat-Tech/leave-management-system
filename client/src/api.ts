@@ -2003,6 +2003,8 @@ export interface Attachment {
   downloadable: boolean;
   uploadedBy: string | null;
   uploadedAt: string;
+  /** NFR SEC 06. When retention deleted the stored file. LMS 514. */
+  fileDeletedAt: string | null;
 }
 
 /** FR 13. Whether this leave's documentation rule is met by what is attached. */

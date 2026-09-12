@@ -302,10 +302,13 @@ function attachmentAsJson(attachment: LeaveRequestAttachment): unknown {
     scanSignature: attachment.scanSignature,
     scannedBy: attachment.scannedBy,
     scannedAt: attachment.scannedAt === null ? null : attachment.scannedAt.toISOString(),
-    /** NFR SEC 07. What a screen greys the download out on. */
-    downloadable: attachment.scanStatus === 'CLEAN',
+    /** NFR SEC 06, NFR SEC 07. What a screen greys the download out on. */
+    downloadable: attachment.scanStatus === 'CLEAN' && attachment.fileDeletedAt === null,
     uploadedBy: attachment.uploadedByEmployeeId,
     uploadedAt: attachment.uploadedAt.toISOString(),
+    /** NFR SEC 06, LMS 514. */
+    fileDeletedAt:
+      attachment.fileDeletedAt === null ? null : attachment.fileDeletedAt.toISOString(),
   };
 }
 

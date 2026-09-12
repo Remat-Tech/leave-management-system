@@ -30,6 +30,7 @@ import {
   whyNotUsable,
 } from './attachment-link.js';
 import {
+  AttachmentFileDeleted,
   AttachmentIsInfected,
   AttachmentNotFound,
   AttachmentNotScanned,
@@ -324,6 +325,11 @@ export class AttachmentService {
     const { request } = await this.readable(actor, leaveRequestId);
     const attachment = await this.onThisRequest(request, attachmentId);
 
+    /** NFR SEC 06, LMS 514. */
+    if (attachment.fileDeletedAt !== null) {
+      throw new AttachmentFileDeleted(attachment);
+    }
+
     if (attachment.scanStatus !== 'CLEAN') {
       throw new AttachmentNotScanned(attachment);
     }
@@ -393,6 +399,12 @@ export class AttachmentService {
         'the link was still good and the standing behind it was not',
       );
       throw error;
+    }
+
+    /* Deleted under retention after the link was minted. LMS 514. */
+    if (attachment.fileDeletedAt !== null) {
+      await this.wroteDown(actor, link, 'REFUSED', 'the file was deleted under retention');
+      throw new AttachmentFileDeleted(attachment);
     }
 
     if (attachment.scanStatus !== 'CLEAN') {
@@ -485,7 +497,8 @@ export class AttachmentService {
 
   /** One more look at a `PENDING` file, wherever it is sitting. NFR SEC 07. */
   private async scanAgain(attachment: LeaveRequestAttachment): Promise<LeaveRequestAttachment> {
-    if (attachment.scanStatus !== 'PENDING') {
+    /* A deleted file has no bytes to scan. LMS 514. */
+    if (attachment.scanStatus !== 'PENDING' || attachment.fileDeletedAt !== null) {
       return attachment;
     }
 

@@ -4973,3 +4973,19 @@ Reading is `HR_OFFICER`, `HR_ADMIN` and `SYS_ADMIN`; changing it is `HR_OFFICER`
 | Wording that cannot be read, or fills in blank, sends the original | nobody goes untold because of a template |
 
 **The next email uses it.** One already sent keeps its words, because a notice stores them.
+
+### Deleting certificates after retention
+
+**A stored certificate is deleted once the retention period has passed.** NFR SEC 06,
+LMS 514. `AttachmentPurge` deletes the file on the day `fileDeletedOn` gives: the period
+after the leave ends.
+
+| Rule | Why |
+|---|---|
+| 24 months unless HR sets another period on the policy screen | empty keeps files indefinitely |
+| Only decided or ended leave | a request still being decided needs its evidence |
+| The row stays, with `file_deleted_at` | history still says what was attached |
+| Bytes first, then the row | a run that fails part way is finished by the next |
+| A deleted file cannot be downloaded or brought back | `leave_request_attachment_file_is_deleted_once` |
+
+**Files waiting for a request are not swept.** They have no leave to count from.

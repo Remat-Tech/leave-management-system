@@ -13,6 +13,7 @@ import {
   attachmentSatisfiesADocumentationRule,
   DocumentationCannotBeRemoved,
   evidenceOn,
+  fileDeletedOn,
   type LeaveRequestAttachment,
   nextFreeSlot,
   sniffContentType,
@@ -102,6 +103,7 @@ function anAttachment(overrides: Partial<LeaveRequestAttachment> = {}): LeaveReq
     uploadedBy: 'employee ama',
     uploadedByEmployeeId: 'ama',
     uploadedAt: new Date('2026-02-25T09:00:00Z'),
+    fileDeletedAt: null,
     ...overrides,
   };
 }
@@ -495,5 +497,16 @@ describe('the scanner the environment builds', () => {
     expect(() => createScanner({ SCANNER_DRIVER: 'clamav' } as NodeJS.ProcessEnv)).toThrow(
       /Unknown SCANNER_DRIVER/,
     );
+  });
+});
+
+/* NFR SEC 06, LMS 514. */
+describe('when a stored file is deleted', () => {
+  it('is the retention period after the leave ends', () => {
+    expect(fileDeletedOn('2026-03-06', 24)).toBe('2028-03-06');
+  });
+
+  it('and lands on the last day of a shorter month', () => {
+    expect(fileDeletedOn('2026-08-31', 6)).toBe('2027-02-28');
   });
 });
