@@ -3861,3 +3861,22 @@ select[aria-invalid='true'] {
 .pagehead .filter input {
   min-width: 9rem;
 }
+
+/* FR 64, LMS 511. Saving what is on screen. */
+
+.export-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.export-buttons button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.export-buttons svg {
+  width: 1rem;
+  height: 1rem;
+}

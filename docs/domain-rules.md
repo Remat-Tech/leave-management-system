@@ -4933,3 +4933,25 @@ read only, all `HR_OFFICER`, `HR_ADMIN` and `SYS_ADMIN`, served from `/api/repor
 another figure from the screen. It is not a stored policy setting yet.
 
 **Nothing is totalled across leave types**, for the reason [My balances](#my-balances) gives.
+
+### Filters and export
+
+**Every report narrows by department and leave type, and saves as CSV or XLSX.** FR 58,
+FR 64, LMS 511. `departmentId` and `leaveTypeId` on any `/api/reports/*`; an id that does
+not exist is a 404. Each response carries `choices`, the departments and types to pick from.
+
+| Report | Its date range |
+|---|---|
+| Leave taken | `from` and `to`, the month leave starts |
+| Requests past the turnaround | `from` and `to` on the day it was submitted, either end open |
+| The three balance reports | the leave year |
+
+**An export is the report as one table**, at `/export?format=csv|xlsx` beside it, with the
+same filters. The liability export ends with the whole company's lines.
+
+**Employees save their own** balances at `/api/me/balances/export` and requests at
+`/api/me/requests/export`. The reads are the screens', so nobody exports anybody else's.
+
+**No library writes the workbook.** One sheet, inline strings and a zip from `node:zlib`.
+Text is never a formula: CSV cells starting `= + - @` get a leading `'`, and XLSX text is
+an inline string. Files are sent `Cache-Control: no-store`.

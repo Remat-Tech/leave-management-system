@@ -4,10 +4,12 @@ import {
   type History,
   isNotSignedIn,
   myRequests,
+  myRequestsExportPath,
   type RequestEntry,
   type TrailStep,
   type Year,
 } from '../../api';
+import { ExportButtons } from '../../ExportButtons';
 import { inDays, moment, period, sentenceCase, statusLabel } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
@@ -80,6 +82,13 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
             onPick={(leaveYearId) => {
               load(leaveYearId);
             }}
+          />
+
+          {/* FR 64, LMS 511. */}
+          <ExportButtons
+            path={myRequestsExportPath(history.year?.id)}
+            onSignedOut={onSignedOut}
+            onProblem={setProblem}
           />
         </div>
       </div>

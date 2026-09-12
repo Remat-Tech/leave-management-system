@@ -13,21 +13,25 @@ import {
   type OverdueRequestsReport,
   overdueRequestsReport,
   type PersonLine,
+  type ReportChoices,
+  reportExportPath,
+  type ReportQuery,
   usageReport,
   type Year,
 } from '../../api';
+import { ExportButtons } from '../../ExportButtons';
 import { day, days, period } from '../../format';
 import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
-/** HR's reports on leave across the company. FR 63, LMS 510. Every figure is the server's. */
+/** HR's reports on leave across the company. FR 63, LMS 510, FR 58, FR 64, LMS 511. */
 
 const REPORTS = [
-  { id: 'liability', label: 'Leave liability by department' },
-  { id: 'taken', label: 'Leave taken by type and period' },
-  { id: 'overdue', label: 'Requests past the turnaround' },
-  { id: 'usage', label: 'Zero or excessive leave taken' },
-  { id: 'carried', label: 'Carried over balances' },
+  { id: 'liability', path: 'liability', label: 'Leave liability by department' },
+  { id: 'taken', path: 'leave-taken', label: 'Leave taken by type and period' },
+  { id: 'overdue', path: 'overdue-requests', label: 'Requests past the turnaround' },
+  { id: 'usage', path: 'usage', label: 'Zero or excessive leave taken' },
+  { id: 'carried', path: 'carried-over', label: 'Carried over balances' },
 ] as const;
 
 type ReportId = (typeof REPORTS)[number]['id'];
@@ -44,6 +48,8 @@ interface Asked {
   from: string;
   to: string;
   turnaround: string;
+  departmentId: string;
+  leaveTypeId: string;
 }
 
 const DESKS: Record<Desk, string> = { MANAGER: 'Line manager', HR: 'HR', CEO: 'Chief Executive' };
@@ -51,20 +57,27 @@ const DESKS: Record<Desk, string> = { MANAGER: 'Line manager', HR: 'HR', CEO: 'C
 export function ReportsPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [chosen, setChosen] = useState<ReportId>('liability');
   const [years, setYears] = useState<Year[]>([]);
+  const [choices, setChoices] = useState<ReportChoices>({ departments: [], types: [] });
   const [yearId, setYearId] = useState<string | undefined>(undefined);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [turnaround, setTurnaround] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [leaveTypeId, setLeaveTypeId] = useState('');
   const [loaded, setLoaded] = useState<Loaded | undefined>(undefined);
   const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
+  const asked: Asked = { yearId, from, to, turnaround, departmentId, leaveTypeId };
+  const query = queryFor(chosen, asked);
+
   const load = useCallback(() => {
     setLoading(true);
 
-    reportFor(chosen, { yearId, from, to, turnaround })
+    reportFor(chosen, queryFor(chosen, { yearId, from, to, turnaround, departmentId, leaveTypeId }))
       .then((next) => {
         setLoaded(next);
+        setChoices(next.report.choices);
         setProblem(undefined);
 
         if ('years' in next.report) {
@@ -83,12 +96,13 @@ export function ReportsPage({ onSignedOut }: { onSignedOut: () => void }) {
       .finally(() => {
         setLoading(false);
       });
-  }, [chosen, yearId, from, to, turnaround, onSignedOut]);
+  }, [chosen, yearId, from, to, turnaround, departmentId, leaveTypeId, onSignedOut]);
 
   useEffect(load, [load]);
 
   const showing = loaded?.id === chosen ? loaded : undefined;
   const overAYear = chosen === 'liability' || chosen === 'usage' || chosen === 'carried';
+  const path = REPORTS.find((one) => one.id === chosen)?.path ?? chosen;
 
   return (
     <div className="page">
@@ -134,10 +148,44 @@ export function ReportsPage({ onSignedOut }: { onSignedOut: () => void }) {
             </label>
           ) : null}
 
-          {chosen === 'taken' ? (
+          <label className="filter">
+            <span className="visually-hidden">Department</span>
+            <select
+              value={departmentId}
+              onChange={(event) => {
+                setDepartmentId(event.target.value);
+              }}
+            >
+              <option value="">All departments</option>
+              {choices.departments.map((one) => (
+                <option key={one.id} value={one.id}>
+                  {one.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="filter">
+            <span className="visually-hidden">Leave type</span>
+            <select
+              value={leaveTypeId}
+              onChange={(event) => {
+                setLeaveTypeId(event.target.value);
+              }}
+            >
+              <option value="">All leave types</option>
+              {choices.types.map((one) => (
+                <option key={one.id} value={one.id}>
+                  {one.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {chosen === 'taken' || chosen === 'overdue' ? (
             <>
               <label className="filter">
-                <span className="muted">From</span>
+                <span className="muted">{chosen === 'overdue' ? 'Submitted from' : 'From'}</span>
                 <input
                   type="date"
                   value={from}
@@ -174,6 +222,12 @@ export function ReportsPage({ onSignedOut }: { onSignedOut: () => void }) {
               />
             </label>
           ) : null}
+
+          <ExportButtons
+            path={reportExportPath(path, query)}
+            onSignedOut={onSignedOut}
+            onProblem={setProblem}
+          />
         </div>
       </div>
 
@@ -320,39 +374,17 @@ function Overdue({ report }: { report: OverdueRequestsReport }) {
 /* ----------------------------------------------------------------------- usage */
 
 function Usage({ report }: { report: LeaveUsageReport }) {
-  const [typeId, setTypeId] = useState(report.types[0]?.leaveTypeId ?? '');
-
-  const ofType = (lines: PersonLine[]) => lines.filter((line) => line.leaveTypeId === typeId);
-
   return (
     <>
-      <div className="controls">
-        <label className="filter">
-          <span className="visually-hidden">Leave type</span>
-          <select
-            value={typeId}
-            onChange={(event) => {
-              setTypeId(event.target.value);
-            }}
-          >
-            {report.types.map((type) => (
-              <option key={type.leaveTypeId} value={type.leaveTypeId}>
-                {type.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
       <Section title="Took none" aside={`given days in ${report.year.label} and took none of them`}>
-        <People lines={ofType(report.zero)} empty="Everybody given days has taken some." />
+        <People lines={report.zero} empty="Everybody given days has taken some." withType />
       </Section>
 
       <Section
         title="Took more than given"
         aside="taken is more than granted, carried and adjusted"
       >
-        <People lines={ofType(report.excessive)} empty="Nobody took more than they were given." />
+        <People lines={report.excessive} empty="Nobody took more than they were given." withType />
       </Section>
     </>
   );
@@ -497,18 +529,37 @@ function monthLabel(month: string): string {
   return written.slice(written.indexOf(' ') + 1);
 }
 
-async function reportFor(id: ReportId, asked: Asked): Promise<Loaded> {
+/** Only what the chosen report reads, so the export matches the screen. */
+function queryFor(id: ReportId, asked: Asked): ReportQuery {
+  const narrowing = { departmentId: asked.departmentId, leaveTypeId: asked.leaveTypeId };
+
+  switch (id) {
+    case 'taken':
+      return { ...narrowing, from: asked.from, to: asked.to };
+    case 'overdue':
+      return {
+        ...narrowing,
+        from: asked.from,
+        to: asked.to,
+        turnaroundDays: asked.turnaround,
+      };
+    default:
+      return { ...narrowing, leaveYearId: asked.yearId };
+  }
+}
+
+async function reportFor(id: ReportId, query: ReportQuery): Promise<Loaded> {
   switch (id) {
     case 'liability':
-      return { id, report: await liabilityReport(asked.yearId) };
+      return { id, report: await liabilityReport(query) };
     case 'taken':
-      return { id, report: await leaveTakenReport(asked.from, asked.to) };
+      return { id, report: await leaveTakenReport(query) };
     case 'overdue':
-      return { id, report: await overdueRequestsReport(asked.turnaround) };
+      return { id, report: await overdueRequestsReport(query) };
     case 'usage':
-      return { id, report: await usageReport(asked.yearId) };
+      return { id, report: await usageReport(query) };
     case 'carried':
-      return { id, report: await carriedOverReport(asked.yearId) };
+      return { id, report: await carriedOverReport(query) };
   }
 }
 

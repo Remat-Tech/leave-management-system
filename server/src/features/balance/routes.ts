@@ -5,6 +5,9 @@ import type { BalanceStatement, BalanceStatementLine } from './balance-statement
 import type { LeaveYear } from '../leave-year/leave-year.js';
 import type { BalanceStatementService } from './balance-statement.service.js';
 import { actorOf } from '../../http/identify.js';
+import { readExportFormat } from '../../export/table.js';
+import { sendTable } from '../../http/download.js';
+import { statementTable } from './statement-export.js';
 
 export interface BalanceRoutes {
   statements: BalanceStatementService;
@@ -26,6 +29,26 @@ export function balanceRoutes({ statements }: BalanceRoutes): Router {
       .forEmployee(actor, actor.employeeId, { leaveYearId: oneYearIn(request) })
       .then((statement) => {
         response.json(asJson(statement));
+      })
+      .catch(next);
+  });
+
+  /** My balances for one leave year, as a file. FR 64, LMS 511. */
+  routes.get('/me/balances/export', (request: Request, response: Response, next) => {
+    void Promise.resolve()
+      .then(async () => {
+        const format = readExportFormat(request.query.format);
+        const actor = actorOf(response);
+
+        if (actor.employeeId === null) {
+          throw new Error('This route was reached by an actor with no employee behind it.');
+        }
+
+        const statement = await statements.forEmployee(actor, actor.employeeId, {
+          leaveYearId: oneYearIn(request),
+        });
+
+        sendTable(response, statementTable(statement), format);
       })
       .catch(next);
   });

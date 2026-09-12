@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { type BalanceLine, isNotSignedIn, myBalances, type Statement, type Year } from '../../api';
+import {
+  type BalanceLine,
+  isNotSignedIn,
+  myBalances,
+  myBalancesExportPath,
+  type Statement,
+  type Year,
+} from '../../api';
+import { ExportButtons } from '../../ExportButtons';
 import { days, period } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
@@ -75,6 +83,15 @@ export function BalancesPage({
           {statement.year.label} · {period(statement.year.startDate, statement.year.endDate)}
           {statement.year.isClosed ? ' · this year has been closed' : ''}
         </p>
+
+        {/* FR 64, LMS 511. */}
+        <div className="controls">
+          <ExportButtons
+            path={myBalancesExportPath(statement.year.id)}
+            onSignedOut={onSignedOut}
+            onProblem={setProblem}
+          />
+        </div>
       </div>
 
       {problem === undefined ? null : (
