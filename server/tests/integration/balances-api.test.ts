@@ -30,6 +30,7 @@ import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db
 import { LedgerRepository } from '../../src/features/balance/ledger.db.js';
 import { NotificationRepository } from '../../src/features/notification/notification.db.js';
 import { EmailWordingRepository } from '../../src/features/notification/wording.db.js';
+import { AuditRepository } from '../../src/features/audit/audit.db.js';
 import { OrganisationRepository } from '../../src/features/organisation/organisation.db.js';
 import { RoleRepository } from '../../src/features/role/role.db.js';
 import { SignInAccountRepository } from '../../src/features/sign-in/sign-in-account.db.js';
@@ -177,6 +178,7 @@ beforeAll(async () => {
     delegations: delegationService(db, guard),
     organisation: new OrganisationRepository(db),
     emailWording: new EmailWordingRepository(db),
+    audit: new AuditRepository(db),
     secret: SECRET,
   });
 

@@ -15,6 +15,7 @@ import {
   READS_EVERY_RECORD,
   type RoleCode,
   ROLE_CODES,
+  SEARCHES_THE_AUDIT_LOG,
   SETS_UP_THE_ORGANISATION,
 } from '../../src/features/role/roles.js';
 import { entitlementRulePolicy } from '../../src/features/entitlement/policy.js';
@@ -866,6 +867,17 @@ describe('the audit log', () => {
         READS_EVERY_RECORD.includes(code),
       );
     }
+  });
+
+  it('keeps the audit log screen to HR Administrators and System Administrators. LMS 513', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      expect(auditPolicy.search(employee('adwoa', roles)).allowed).toBe(
+        SEARCHES_THE_AUDIT_LOG.includes(code),
+      );
+    }
+
+    expect(SEARCHES_THE_AUDIT_LOG).toEqual(['HR_ADMIN', 'SYS_ADMIN']);
+    expect(auditPolicy.search(manager('kofi')).told).toContain('LMS 513');
   });
 });
 

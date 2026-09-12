@@ -41,6 +41,9 @@ import { BalanceAdjustmentService } from '../features/balance/adjustment.service
 import { balanceAdjustmentRoutes } from '../features/balance/adjustment.routes.js';
 import { LeaverStatementService } from '../features/balance/leaver-statement.service.js';
 import { leaverRoutes } from '../features/balance/leaver-statement.routes.js';
+import type { AuditRepository } from '../features/audit/audit.db.js';
+import { AuditService } from '../features/audit/audit.service.js';
+import { auditRoutes } from '../features/audit/routes.js';
 import { ReportService } from '../features/report/report.service.js';
 import { reportRoutes } from '../features/report/routes.js';
 import { LedgerService } from '../features/balance/ledger.service.js';
@@ -132,6 +135,8 @@ export interface Application {
   organisation: OrganisationRepository;
   /** FR 61, LMS 512. HR's wording of the emails. */
   emailWording: EmailWordingRepository;
+  /** NFR AUD 01, LMS 513. */
+  audit: AuditRepository;
   /** Where a 500 is written down. */
   failures?: FailureLog;
   /** Read from `SESSION_SECRET` when not given. */
@@ -240,6 +245,14 @@ export function buildApp(parts: Application): Express {
         parts.balances,
         parts.requests,
       ),
+    }),
+  );
+
+  /* NFR AUD 01, LMS 513. The audit log, searched. Read only. */
+  app.use(
+    '/api',
+    auditRoutes({
+      audit: new AuditService(parts.audit, parts.employees, parts.accounts, parts.guard),
     }),
   );
 

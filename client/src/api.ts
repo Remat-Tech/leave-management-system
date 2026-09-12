@@ -1566,6 +1566,48 @@ export async function saveExport(path: string, format: ExportFormat): Promise<vo
   }, 1000);
 }
 
+/** ------------------------------------------------------ the audit log. LMS 513 */
+
+/** One field that moved. */
+export interface AuditChange {
+  field: string;
+  from: unknown;
+  to: unknown;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  /** An instant, ISO 8601. */
+  occurredAt: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  entity: string;
+  entityLabel: string;
+  entityId: string;
+  /** Who, in words. */
+  actor: string;
+  actorEmployeeId: string | null;
+  changes: AuditChange[];
+}
+
+/** What the log may be searched by, left out where empty. */
+export interface AuditSearch {
+  entity?: string;
+  entityId?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface AuditLog {
+  entries: AuditLogEntry[];
+  entities: { name: string; label: string }[];
+  longestSearch: number;
+  moreThanShown: boolean;
+}
+
+export async function searchAuditLog(asked: AuditSearch): Promise<AuditLog> {
+  return request<AuditLog>('GET', `/api/audit${query({ ...asked })}`);
+}
+
 /** A query string from the values that were given. */
 function query(values: Record<string, string | undefined>): string {
   const given = Object.entries(values).filter(

@@ -39,7 +39,9 @@ export type IconName =
   /* LMS 510. */
   | 'report'
   /* LMS 511. */
-  | 'download';
+  | 'download'
+  /* LMS 513. */
+  | 'history';
 
 const PATHS: Record<IconName, string> = {
   /** What you have: a calendar with days counted on it. */
@@ -93,6 +95,8 @@ const PATHS: Record<IconName, string> = {
   report: 'M4 20h16M7 16v-5M12 16V6M17 16v-8',
   /** LMS 511. Saving a file: `upload` the other way. */
   download: 'M12 4v12m0 0-4-4m4 4 4-4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
+  /** LMS 513. The audit log: a clock turning back. */
+  history: 'M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 3.5V8H8M12 7.5V12l3 2',
 };
 
 export function Icon({ name }: { name: IconName }) {
