@@ -12,6 +12,7 @@ import { LeaveTypesPage } from './features/config/LeaveTypesPage';
 import { PolicySettingsPage } from './features/config/PolicySettingsPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
 import { RequestsPage } from './features/requests/RequestsPage';
+import { ReportsPage } from './features/reports/ReportsPage';
 import { SignIn } from './features/session/SignIn';
 import { Icon } from './Icon';
 
@@ -104,6 +105,8 @@ const SCREENS = [
    * Its reading is the balance's — theirs, their manager's and HR's — and it writes nothing.
    */
   { id: 'leavers', label: 'Leavers', icon: 'people' },
+  /** FR 63, LMS 510. HR's reports on leave across the company. */
+  { id: 'reports', label: 'Reports', icon: 'report' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -302,6 +305,7 @@ export function App() {
         {screen === 'policy' ? <PolicySettingsPage onSignedOut={ranOut} /> : null}
         {screen === 'adjustments' ? <BalanceAdjustmentsPage onSignedOut={ranOut} /> : null}
         {screen === 'leavers' ? <LeaversPage onSignedOut={ranOut} /> : null}
+        {screen === 'reports' ? <ReportsPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );

@@ -68,6 +68,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Every balance in the company, checked against the ledger | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
 | A leaver's final figure. FR 37a | yourself, your manager, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` | — nothing is posted |
 | Who has left. FR 06 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
+| HR reports on leave across the company. FR 63 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — nothing is posted |
 | Granting a year's entitlement | | `HR_ADMIN` only |
 | Carrying last year's unused days forward | | `HR_ADMIN` only |
 | Recording an event and granting what it brings | | `HR_OFFICER`, `HR_ADMIN` |
