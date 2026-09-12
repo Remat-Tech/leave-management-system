@@ -3,6 +3,7 @@
  */
 
 import type { LeaveType } from '../leave-type/leave-type.js';
+import { type CalendarDate, monthsAfter } from '../../shared/time.js';
 import { type LeaveRequest, isSettled } from './leave-request.js';
 
 /** FR 12. What is accepted, as the bytes say it rather than as the name claims it. */
@@ -78,6 +79,8 @@ export interface LeaveRequestAttachment {
   uploadedBy: string;
   uploadedByEmployeeId: string | null;
   uploadedAt: Date;
+  /** When retention deleted the stored file. The row stays. NFR SEC 06, LMS 514. */
+  fileDeletedAt: Date | null;
 }
 
 /** What a validated upload holds, before it is written. */
@@ -169,6 +172,20 @@ function evidenceInWords(
         `${MAX_ATTACHMENTS_PER_REQUEST} files.`
     : `This ${type.name.toLowerCase()} needed supporting documentation, and ${usable} ` +
         `${usable === 1 ? 'file' : 'files'} can stand as it.${unscanned}`;
+}
+
+/* ----------------------------------------------------------------- retention */
+
+/** A stored file on leave that is decided or ended. NFR SEC 06, LMS 514. */
+export interface KeptAttachment {
+  attachment: LeaveRequestAttachment;
+  leaveRequestId: string;
+  leaveEndedOn: CalendarDate;
+}
+
+/** The day the stored file is deleted: the retention period after the leave ends. LMS 514. */
+export function fileDeletedOn(leaveEndedOn: CalendarDate, retentionMonths: number): CalendarDate {
+  return monthsAfter(leaveEndedOn, retentionMonths);
 }
 
 /* ------------------------------------------------------------------ the seats */
@@ -299,6 +316,21 @@ export class AttachmentNotScanned extends Error {
     this.name = 'AttachmentNotScanned';
     this.attachmentId = attachment.id;
     this.scanStatus = attachment.scanStatus;
+  }
+}
+
+/** NFR SEC 06. Deleted under retention; the name and details stay. LMS 514. */
+export class AttachmentFileDeleted extends Error {
+  readonly code = 'FILE_DELETED';
+  readonly attachmentId: string;
+
+  constructor(attachment: LeaveRequestAttachment) {
+    super(
+      `This file was deleted once the retention period had passed, so it can no longer be ` +
+        `downloaded. Its name and details stay on the request. NFR SEC 06.`,
+    );
+    this.name = 'AttachmentFileDeleted';
+    this.attachmentId = attachment.id;
   }
 }
 

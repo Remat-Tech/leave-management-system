@@ -157,6 +157,9 @@ function FileOnARequest({
         <button type="button" className="linkish" disabled={opening} onClick={open}>
           {opening ? 'Fetching…' : 'Download'}
         </button>
+      ) : attachment.fileDeletedAt !== null ? (
+        /* NFR SEC 06, LMS 514. The name stays; the file is gone. */
+        <span className="tag">File deleted after the retention period</span>
       ) : (
         /* NFR SEC 07. Greyed off `downloadable`, which the server decides. A screen that
            worked out for itself whether a scan had passed would be a second copy of a rule

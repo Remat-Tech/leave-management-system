@@ -167,10 +167,14 @@ describe('the retention window', () => {
     expect(retentionInWords(18)).toContain('18 months');
   });
 
-  /* NFR SEC 06. Nothing sweeps on this figure yet, and the screen has to say so rather
-     than let somebody believe certificates are being removed. */
-  it('and says nothing removes files on it yet', () => {
-    expect(retentionInWords(24)).toContain('yet');
+  /* NFR SEC 06, LMS 514. */
+  it('and says the file is deleted and its details stay', () => {
+    expect(retentionInWords(24)).toContain('deleted');
+    expect(retentionInWords(24)).toContain('details stay');
+  });
+
+  it('is 24 months where nobody has set it', () => {
+    expect(UNCONFIGURED.attachmentRetentionMonths).toBe(24);
   });
 });
 

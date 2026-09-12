@@ -17,7 +17,8 @@ export interface OrganisationSettings {
 export const UNCONFIGURED: Omit<OrganisationSettings, 'updatedAt'> = {
   chiefExecutiveId: null,
   overridesAreAllowed: true,
-  attachmentRetentionMonths: null,
+  /** NFR SEC 06, LMS 514. */
+  attachmentRetentionMonths: 24,
 };
 
 /** The settings that are not the Chief Executive. That one has its own door. LMS 505. */
@@ -173,8 +174,8 @@ export function retentionInWords(months: number | null): string {
 
   return (
     `Certificates and supporting documents are kept for ${inMonths(months)} after the ` +
-    'request they are attached to ends. Nothing removes them on that window yet. It is the ' +
-    'figure the retention sweep will read.'
+    'leave they are attached to ends. Then the file is deleted, and its name and details ' +
+    'stay on the request.'
   );
 }
 

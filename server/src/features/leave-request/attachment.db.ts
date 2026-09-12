@@ -7,9 +7,12 @@ import type { Attribution } from '../audit/audit.js';
 import type { Database } from '../../db/index.js';
 import type { LeaveRequestAttachmentTable } from '../../db/schema.js';
 import { recording } from '../../db/recording.js';
+import type { CalendarDate } from '../../shared/time.js';
+import { UNDECIDED_STATUSES } from './leave-request.js';
 import {
   type AcceptedContentType,
   InvalidAttachment,
+  type KeptAttachment,
   type LeaveRequestAttachment,
   type NewAttachment,
   type ScanStatus,
@@ -163,6 +166,39 @@ export class AttachmentRepository {
     return row === undefined ? undefined : toAttachment(row);
   }
 
+  /** Stored files on decided or ended leave that ended before this day. NFR SEC 06, LMS 514. */
+  async keptOnLeaveEndedBefore(day: CalendarDate): Promise<KeptAttachment[]> {
+    const rows = await this.db
+      .selectFrom('leave_request_attachment as attachment')
+      .innerJoin('leave_request as request', 'request.id', 'attachment.leave_request_id')
+      .selectAll('attachment')
+      .select(['request.id as request_id', 'request.end_date as leave_ended_on'])
+      .where('attachment.file_deleted_at', 'is', null)
+      .where('request.status', 'not in', [...UNDECIDED_STATUSES])
+      .where('request.end_date', '<', day)
+      .orderBy('attachment.id', 'asc')
+      .execute();
+
+    return rows.map(({ request_id: leaveRequestId, leave_ended_on: leaveEndedOn, ...row }) => ({
+      attachment: toAttachment(row),
+      leaveRequestId,
+      leaveEndedOn,
+    }));
+  }
+
+  /** Records the stored file as deleted. Undefined where it already was. LMS 514. */
+  async markFileDeleted(id: string): Promise<LeaveRequestAttachment | undefined> {
+    const row = await this.db
+      .updateTable('leave_request_attachment')
+      .set({ file_deleted_at: new Date() })
+      .where('id', '=', id)
+      .where('file_deleted_at', 'is', null)
+      .returningAll()
+      .executeTakeFirst();
+
+    return row === undefined ? undefined : toAttachment(row);
+  }
+
   /** Takes the row off. The bytes are the service's to remove. */
   async remove(id: string): Promise<boolean> {
     const result = await this.db
@@ -226,5 +262,6 @@ function toAttachment(row: AttachmentRow): LeaveRequestAttachment {
     uploadedBy: row.uploaded_by,
     uploadedByEmployeeId: row.uploaded_by_employee_id,
     uploadedAt: row.uploaded_at,
+    fileDeletedAt: row.file_deleted_at,
   };
 }

@@ -270,6 +270,8 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   AttachmentIsInfected: 409,
   /** NFR SEC 07. Nothing about the file changes this; the scan has to run. LMS 310. */
   AttachmentNotScanned: 409,
+  /** NFR SEC 06. Deleted under retention, for good. LMS 514. */
+  AttachmentFileDeleted: 410,
   /** FR 12. The request has moved past the point evidence goes on or comes off. LMS 310. */
   AttachmentsAreClosed: 409,
   /**
