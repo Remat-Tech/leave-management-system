@@ -41,6 +41,8 @@ import { BalanceAdjustmentService } from '../features/balance/adjustment.service
 import { balanceAdjustmentRoutes } from '../features/balance/adjustment.routes.js';
 import { LeaverStatementService } from '../features/balance/leaver-statement.service.js';
 import { leaverRoutes } from '../features/balance/leaver-statement.routes.js';
+import { ReportService } from '../features/report/report.service.js';
+import { reportRoutes } from '../features/report/routes.js';
 import { LedgerService } from '../features/balance/ledger.service.js';
 import type { LedgerRepository } from '../features/balance/ledger.db.js';
 import type { BalanceService } from '../features/balance/balance.service.js';
@@ -216,6 +218,22 @@ export function buildApp(parts: Application): Express {
           parts.guard,
           earliestOpenDayFrom(parts.years),
         ),
+      ),
+    }),
+  );
+
+  /* FR 63, LMS 510. HR's reports. Read only, built from repositories. */
+  app.use(
+    '/api',
+    reportRoutes({
+      reports: new ReportService(
+        parts.guard,
+        parts.employees,
+        parts.departments,
+        parts.types,
+        parts.years,
+        parts.balances,
+        parts.requests,
       ),
     }),
   );

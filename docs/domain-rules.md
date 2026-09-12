@@ -4910,3 +4910,26 @@ implementation of a rule, running where no test in this repository can reach.
 **The figure goes below nought where more was taken than accrued**, rather than stopping
 there. Somebody who took their year in January and left in March has been overpaid, and a
 number clamped at nought would hide the case FR 37a exists to surface.
+
+---
+
+### HR reports
+
+**Five reports on leave across the company, on the Reports screen.** FR 63, LMS 510. All
+read only, all `HR_OFFICER`, `HR_ADMIN` and `SYS_ADMIN`, served from `/api/reports/*`.
+
+| Report | What it counts |
+|---|---|
+| Leave liability by department | per department and paid leave type with a yearly balance: `entitled + carriedOver + adjustment − taken` |
+| Leave taken by type and period | approved requests, their days counted in the month the leave starts |
+| Requests past the turnaround | `SUBMITTED` and `UNROUTABLE` requests waiting more calendar days than the turnaround since they were submitted |
+| Zero or excessive leave taken | per type: given days and took none, or took more than `entitled + carriedOver + adjustment` |
+| Carried over balances | every balance with `carriedOver` not nought, and the total per type |
+
+**Leavers are left out of the balance reports.** What they are owed is the
+[leaver figure](#the-leaver-figure), not a liability.
+
+**The agreed turnaround is five calendar days**, `AGREED_TURNAROUND_DAYS`. HR can report on
+another figure from the screen. It is not a stored policy setting yet.
+
+**Nothing is totalled across leave types**, for the reason [My balances](#my-balances) gives.

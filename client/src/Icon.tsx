@@ -35,7 +35,9 @@ export type IconName =
   | 'plus'
   | 'pencil'
   | 'up'
-  | 'down';
+  | 'down'
+  /* LMS 510. */
+  | 'report';
 
 const PATHS: Record<IconName, string> = {
   /** What you have: a calendar with days counted on it. */
@@ -85,6 +87,8 @@ const PATHS: Record<IconName, string> = {
   /** LMS 503. A step moving up or down an approval chain. */
   up: 'M6 15l6-6 6 6',
   down: 'M6 9l6 6 6-6',
+  /** LMS 510. HR's reports: a bar chart. */
+  report: 'M4 20h16M7 16v-5M12 16V6M17 16v-8',
 };
 
 export function Icon({ name }: { name: IconName }) {

@@ -15,6 +15,7 @@ import {
   LeaveOverlapsAnother,
   LIVE_STATUSES,
   type RequestStatus,
+  UNDECIDED_STATUSES,
   type ValidatedLeaveRequest,
 } from './leave-request.js';
 import type { CountingBasis } from '../leave-type/leave-type.js';
@@ -276,6 +277,34 @@ export class LeaveRequestRepository {
       .where('start_date', '<=', day)
       .where('end_date', '>=', day)
       .orderBy('employee_id')
+      .orderBy('id')
+      .execute();
+
+    return rows.map(toRequest);
+  }
+
+  /** Every request nobody has decided, anywhere in the company, oldest first. FR 63, LMS 510. */
+  async undecided(): Promise<LeaveRequest[]> {
+    const rows = await this.db
+      .selectFrom('leave_request')
+      .selectAll()
+      .where('status', 'in', [...UNDECIDED_STATUSES])
+      .orderBy('submitted_at')
+      .orderBy('id')
+      .execute();
+
+    return rows.map(toRequest);
+  }
+
+  /** Every approved request starting in this span, company wide. FR 63, LMS 510. */
+  async approvedStartingBetween(span: LeavePeriod): Promise<LeaveRequest[]> {
+    const rows = await this.db
+      .selectFrom('leave_request')
+      .selectAll()
+      .where('status', '=', 'APPROVED')
+      .where('start_date', '>=', span.from)
+      .where('start_date', '<=', span.to)
+      .orderBy('start_date')
       .orderBy('id')
       .execute();
 

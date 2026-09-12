@@ -1345,6 +1345,128 @@ export async function leaverFigure(employeeId: string): Promise<LeaverSettlement
   return request<LeaverSettlement>('GET', `/api/leavers/${employeeId}`);
 }
 
+/** ------------------------------------------------------ HR reports. FR 63, LMS 510 */
+
+/** One kind of leave, as a report line is headed. */
+export interface ReportLeaveType {
+  leaveTypeId: string;
+  name: string;
+  countingBasis: CountingBasis;
+  countingBasisLabel: string;
+  isPaid: boolean;
+}
+
+export interface LiabilityLine extends ReportLeaveType {
+  people: number;
+  entitled: number;
+  carriedOver: number;
+  adjustment: number;
+  taken: number;
+  pending: number;
+  /** `entitled + carriedOver + adjustment − taken`. */
+  unused: number;
+}
+
+export interface LiabilityReport {
+  year: Year;
+  years: Year[];
+  departments: { departmentId: string; name: string; headcount: number; lines: LiabilityLine[] }[];
+  company: LiabilityLine[];
+}
+
+export interface LeaveTakenReport {
+  from: string;
+  to: string;
+  /** `YYYY-MM`. */
+  months: string[];
+  lines: (ReportLeaveType & { requests: number; days: number; byMonth: number[] })[];
+}
+
+export interface OverdueRequest {
+  requestId: string;
+  employeeId: string;
+  name: string;
+  department: string;
+  typeName: string;
+  from: string;
+  to: string;
+  days: number;
+  status: RequestStatus;
+  /** Null where nobody could be found to decide it. */
+  awaiting: Desk | null;
+  submittedOn: string;
+  daysWaiting: number;
+}
+
+export interface OverdueRequestsReport {
+  asAt: string;
+  turnaroundDays: number;
+  requests: OverdueRequest[];
+}
+
+/** One person's figures for one kind of leave. */
+export interface PersonLine {
+  employeeId: string;
+  name: string;
+  department: string;
+  leaveTypeId: string;
+  typeName: string;
+  given: number;
+  carriedOver: number;
+  taken: number;
+  pending: number;
+  available: number;
+}
+
+export interface LeaveUsageReport {
+  year: Year;
+  years: Year[];
+  types: ReportLeaveType[];
+  zero: PersonLine[];
+  excessive: PersonLine[];
+}
+
+export interface CarriedOverReport {
+  year: Year;
+  years: Year[];
+  totals: (ReportLeaveType & { people: number; carriedOver: number })[];
+  balances: PersonLine[];
+}
+
+export async function liabilityReport(leaveYearId?: string): Promise<LiabilityReport> {
+  return request<LiabilityReport>('GET', `/api/reports/liability${query({ leaveYearId })}`);
+}
+
+export async function leaveTakenReport(from?: string, to?: string): Promise<LeaveTakenReport> {
+  return request<LeaveTakenReport>('GET', `/api/reports/leave-taken${query({ from, to })}`);
+}
+
+export async function overdueRequestsReport(
+  turnaroundDays?: string,
+): Promise<OverdueRequestsReport> {
+  return request<OverdueRequestsReport>(
+    'GET',
+    `/api/reports/overdue-requests${query({ turnaroundDays })}`,
+  );
+}
+
+export async function usageReport(leaveYearId?: string): Promise<LeaveUsageReport> {
+  return request<LeaveUsageReport>('GET', `/api/reports/usage${query({ leaveYearId })}`);
+}
+
+export async function carriedOverReport(leaveYearId?: string): Promise<CarriedOverReport> {
+  return request<CarriedOverReport>('GET', `/api/reports/carried-over${query({ leaveYearId })}`);
+}
+
+/** A query string from the values that were given. */
+function query(values: Record<string, string | undefined>): string {
+  const given = Object.entries(values).filter(
+    (entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== '',
+  );
+
+  return given.length === 0 ? '' : `?${new URLSearchParams(given).toString()}`;
+}
+
 /** Who the session belongs to. */
 export interface Me {
   employeeId: string;

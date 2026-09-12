@@ -3841,3 +3841,23 @@ select[aria-invalid='true'] {
     text-align: left;
   }
 }
+
+/* FR 63, LMS 510. HR's reports. Tables scroll inside themselves on a phone. */
+
+.report-table {
+  overflow-x: auto;
+  margin: 0 0 var(--gap-lg);
+}
+
+.report-table .figures-table {
+  min-width: 36rem;
+  margin-top: 0;
+}
+
+.figures-table .is-text {
+  text-align: left;
+}
+
+.pagehead .filter input {
+  min-width: 9rem;
+}

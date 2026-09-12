@@ -90,7 +90,9 @@ export function problemFor(error: unknown): { status: number; body: Problem } {
     error.name === 'NoLeaveYearForTheTeam' ||
     error.name === 'NoLeaveYearForTheCalendar' ||
     /** FR 37a, LMS 509. The same gap, met at the exit date. */
-    error.name === 'NoLeaveYearCoversTheExitDate'
+    error.name === 'NoLeaveYearCoversTheExitDate' ||
+    /** FR 63, LMS 510. */
+    error.name === 'NoLeaveYearForTheReport'
   ) {
     return { status: 409, body: { error: error.name, message: error.message } };
   }
