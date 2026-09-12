@@ -65,6 +65,8 @@ const SEEDED_TABLES = [
   'leave_entitlement_rule',
   // FR 48c. Points at an employee, so the CASCADE empties it either way. LMS 321.
   'organisation_setting',
+  // FR 61, LMS 512. Back to the original wording.
+  'notification_template',
 ];
 
 /**

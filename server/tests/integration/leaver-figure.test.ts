@@ -28,6 +28,7 @@ import { LeaveTypeRepository } from '../../src/features/leave-type/leave-type.db
 import { LeaveYearRepository } from '../../src/features/leave-year/leave-year.db.js';
 import { LedgerRepository } from '../../src/features/balance/ledger.db.js';
 import { NotificationRepository } from '../../src/features/notification/notification.db.js';
+import { EmailWordingRepository } from '../../src/features/notification/wording.db.js';
 import { OrganisationRepository } from '../../src/features/organisation/organisation.db.js';
 import { RoleRepository } from '../../src/features/role/role.db.js';
 import { SignInAccountRepository } from '../../src/features/sign-in/sign-in-account.db.js';
@@ -223,6 +224,7 @@ beforeAll(async () => {
     roles,
     delegations: delegationService(db, guard),
     organisation: new OrganisationRepository(db),
+    emailWording: new EmailWordingRepository(db),
     secret: SECRET,
   });
 

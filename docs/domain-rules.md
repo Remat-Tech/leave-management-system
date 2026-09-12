@@ -4955,3 +4955,21 @@ same filters. The liability export ends with the whole company's lines.
 **No library writes the workbook.** One sheet, inline strings and a zip from `node:zlib`.
 Text is never a formula: CSV cells starting `= + - @` get a leading `'`, and XLSX text is
 an inline string. Files are sent `Cache-Control: no-store`.
+
+### Email wording
+
+**HR rewords any email the system sends, without a deployment.** FR 61, LMS 512. Each email
+is a subject line and a message with `{{placeholders}}`, served from `/api/email-wording`.
+Reading is `HR_OFFICER`, `HR_ADMIN` and `SYS_ADMIN`; changing it is `HR_OFFICER` and `HR_ADMIN`.
+
+**No row is the original wording**, which lives in `wording.ts`. Saving writes a
+`notification_template` row and putting it back deletes it. Both are audited.
+
+| Rule | Why |
+|---|---|
+| Only the placeholders an email offers are saved | a typo would be sent as `{{firstNmae}}` |
+| A paragraph that fills in to nothing is left out | `{{comment}}` with nothing said leaves no gap |
+| `{{DecidedBy}}` is `{{decidedBy}}` starting a sentence | "your manager" opening one reads as a typo |
+| Wording that cannot be read, or fills in blank, sends the original | nobody goes untold because of a template |
+
+**The next email uses it.** One already sent keeps its words, because a notice stores them.

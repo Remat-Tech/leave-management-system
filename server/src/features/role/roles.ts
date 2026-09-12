@@ -28,6 +28,9 @@ export const MAINTAINS_THE_CALENDAR: readonly RoleCode[] = ['HR_OFFICER', 'HR_AD
 /** The roles that staff the HR desk in a leave type's approval chain. FR 38a, LMS 314, FR 04. */
 export const APPROVES_AS_HR: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN'];
 
+/** The roles that word the emails sent in the company's name. FR 61, LMS 512. */
+export const WORDS_THE_COMPANY_EMAILS: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN'];
+
 /** The roles that set a joiner up with a login and reset a forgotten password. LMS 112. */
 export const PROVIDES_LOGINS: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN', 'SYS_ADMIN'];
 

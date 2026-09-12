@@ -95,6 +95,7 @@ describe('the entities an entry can be about', () => {
          the question `user_role` is audited for is asked of it too: who could decide what,
          and when they could. */
       'approval_delegation',
+      'notification_template',
     ]);
   });
 });

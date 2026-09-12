@@ -35,6 +35,8 @@ export const AUDITED_ENTITIES = [
   'organisation_setting',
   /** FR 49, LMS 327. */
   'approval_delegation',
+  /** FR 61, LMS 512. */
+  'notification_template',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];

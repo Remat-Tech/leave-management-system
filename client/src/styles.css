@@ -3880,3 +3880,58 @@ select[aria-invalid='true'] {
   width: 1rem;
   height: 1rem;
 }
+
+/* ------------------------------------------ the wording of the emails. FR 61, LMS 512 */
+
+.pick-email {
+  max-width: 26rem;
+  margin: 0 0 var(--gap);
+}
+
+.policy.wording > label {
+  max-width: none;
+}
+
+.wording textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.placeholders {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.placeholders li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.placeholders button {
+  padding: 0.15rem 0.45rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+}
+
+.email-preview {
+  padding: var(--gap);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-small);
+}
+
+.email-preview p {
+  margin: 0 0 0.75rem;
+}
+
+.email-preview pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+}

@@ -5,6 +5,16 @@
 import { type ApproverRole, deskInWords, possessively } from '../leave-type/approval-chain.js';
 import type { LeaveRequest } from '../leave-request/leave-request.js';
 import { type CalendarDate, formatDay } from '../../shared/time.js';
+import {
+  emailFor,
+  fillIn,
+  ORIGINAL_WORDING,
+  type PlaceholderValues,
+  type Wording,
+} from './wording.js';
+
+/** How every message ends. */
+export { SIGN_OFF } from './wording.js';
 
 /** The things somebody is told about. FR 59, FR 44. */
 export const NOTICE_EVENTS = [
@@ -206,329 +216,107 @@ export interface WhatHappened {
 }
 
 /**
- * The message, for both channels. FR 59.
+ * The message, for both channels, in HR's wording where there is some. FR 59, FR 61, LMS 512.
  *
- * Pure, and every event is a branch of one function rather than six composers, so that the
- * things every message has to get right — the type, the dates, the day count, the balance —
- * are written once. Six functions would be six places for "6 days" to become "6 day".
- *
- * ## What every message does, in this order
- *
- *   **Says what happened, in the subject.** Somebody scanning a mailbox on a phone reads
- *   the subject and nothing else, so it carries the news rather than the reference: "Your
- *   Annual Leave for 2 March to 10 March is approved", never "Leave request 4471 updated".
- *
- *   **Says whether the leave is theirs to take.** The one sentence the story is about, and
- *   it is present in every branch including the ones where it is obvious. `STAGE_APPROVED`
- *   says *do not book anything on it* in those words, next to the good news, because the
- *   good news is exactly what makes somebody stop reading.
- *
- *   **Says what the balance did.** A held day, a taken day and a returned day are three
- *   different things and none of them is visible from a status. `availableAfter` is what
- *   the person actually wants — how many days they may book now — rather than an arithmetic
- *   they have to do.
- *
- *   **Says what to do next, where there is anything.** A refusal points at asking again on
- *   different dates, because the days are back and nothing about those dates is blocked any
- *   more. A cancellation points at HR, because it is not a judgement about the leave and
- *   the likeliest reader thinks it is.
- *
- * ## The reason is quoted rather than summarised
- *
- * FR 39's comment is reproduced whole, on its own indented line, in the words the approver
- * wrote. That is the same rule ./leave-decision.ts holds the column to and for the same
- * reason: it is the only account of the decision that will exist when somebody asks about
- * it next year, and a message that paraphrased it would be a second version of a sentence
- * that is supposed to have one.
+ * Pure. The words live in ./wording.ts; this works out what fills them in.
  */
-export function noticeOf(happened: WhatHappened): NewNotice {
-  const { event, employee, request, typeName, decidedBy, comment, availableAfter } = happened;
+export function noticeOf(happened: WhatHappened, wording?: Wording): NewNotice {
+  const { event, employee, request } = happened;
 
-  /** FR 44, FR 60. The person being told, who is the requester on every event but one. */
+  if (!(NOTICE_EVENTS as readonly string[]).includes(event)) {
+    throw notAnEvent(event);
+  }
+
+  /* FR 50, LMS 330. A reminder says nothing happened, so ./reminder.ts composes it. */
+  if (isAReminder(event)) {
+    throw new InvalidNotice(
+      'event',
+      `${event} is not news of anything happening to a request, so it is not composed here.`,
+    );
+  }
+
+  /** FR 44, FR 60. The person being told, who is not always the requester. */
   const reader = happened.recipient ?? employee;
-
-  const period = periodInWords(request.from, request.to);
-  const cost = `${inDays(request.days)} of ${typeName}, ${period}`;
-  const held = inDays(request.days);
-  const left = `You have ${inDays(availableAfter)} to book.`;
-  /* FR 39, quoted whole and set apart, in the words the approver wrote. */
-  const said = comment === null ? [] : ['They said:', `    ${comment}`];
-  const decided = deskOrSomebody(decidedBy);
-
-  const message = ((): { subject: string; paragraphs: string[] } => {
-    switch (event) {
-      case 'SUBMITTED':
-        return {
-          subject: `Your ${typeName} for ${period} has been submitted`,
-          paragraphs: [
-            `You have asked for ${cost}.`,
-            `It is now with ${withWhom(request)}. This leave is not agreed yet, so do not book anything on it.`,
-            `The ${held} are being held while it is decided. ${left}`,
-            'You will hear again the moment anything happens to it.',
-          ],
-        };
-
-      case 'STAGE_APPROVED':
-        return {
-          subject:
-            `${sentenceCase(decided)} approved your ${typeName} — ` +
-            `it still needs ${withWhom(request)}`,
-          paragraphs: [
-            `${sentenceCase(decided)} has approved your request for ${cost}.`,
-            `It is not agreed yet, so do not book anything on it. It has gone on to ${withWhom(request)}.`,
-            ...said,
-            `Your balance has not moved — the ${held} are still being held while it is decided. ${left}`,
-          ],
-        };
-
-      case 'APPROVED':
-        return {
-          subject: `Your ${typeName} for ${period} is approved`,
-          paragraphs: [
-            `Your request for ${cost} is approved.`,
-            `Every approver has said yes — ${decided} was the last — so this leave is agreed and is yours to take.`,
-            ...said,
-            `The ${held} have come off your balance. ${left}`,
-          ],
-        };
-
-      /* FR 44, LMS 318. A stage said no and the request carried on to the next desk. The
-         days are still held and the leave is not over, which is exactly the thing somebody
-         reading "turned down" would otherwise get wrong. */
-      case 'STAGE_REFUSED':
-        return {
-          subject:
-            `${sentenceCase(decided)} turned down your ${typeName} — ` +
-            `it has gone to ${withWhom(request)}`,
-          paragraphs: [
-            `${sentenceCase(decided)} has turned down your request for ${cost}.`,
-            `That is not the end of it. Every stage decides, and it has gone on to ${withWhom(request)}, who will make the final call.`,
-            ...said,
-            `Your balance has not moved — the ${held} are still being held while it is decided. ${left}`,
-          ],
-        };
-
-      case 'REFUSED':
-        return {
-          subject: `Your ${typeName} for ${period} was turned down`,
-          paragraphs: [
-            `Your request for ${cost} has been turned down at ${possessive(decidedBy)} stage.`,
-            ...said,
-            `The ${held} are back in your balance. ${left}`,
-            'Nothing is blocking those dates now, so if you still need the time off you can ask for it again — for the same days or for different ones.',
-          ],
-        };
-
-      /* FR 44, §7.2, LMS 318. The one message written to somebody other than the person
-         taking the leave: the manager whose decision was reversed. It names the
-         justification in full, which is the whole of what they are owed. */
-      case 'DECISION_OVERTURNED': {
-        const theirs = happened.overturned?.said === 'APPROVE' ? 'approved' : 'turned down';
-        const now = request.status === 'APPROVED' ? 'approved' : 'turned down';
-
-        return {
-          subject: `${decided} overturned your decision on ${possessively(employee.name)} ${typeName}`,
-          paragraphs: [
-            `You ${theirs} ${possessively(employee.name)} request for ${cost}, and ${decided} has decided otherwise. The leave is ${now}.`,
-            ...said,
-            'This is a record of a decision, not a question. If you think it was made on the wrong facts, speak to HR — the reason above and your own are both on the request for good.',
-          ],
-        };
-      }
-
-      /* FR 48b, §8.6a, LMS 320. Two readers: the person whose leave has stopped, and
-         whoever can change the organisation so that it has not. The comment carries the
-         routing's own account of which desk was empty and what would fill it. */
-      case 'UNROUTABLE': {
-        const theirs = reader.id === employee.id;
-
-        return {
-          subject: theirs
-            ? `Your ${typeName} for ${period} has nobody who can decide it`
-            : `${possessively(employee.name)} ${typeName} for ${period} has nobody who can decide it`,
-          paragraphs: theirs
-            ? [
-                `Your request for ${cost} has stopped: there is no approver left who could ` +
-                  `decide it, so nobody has approved or turned it down.`,
-                ...said,
-                `Nothing is wrong with the request and nobody has judged it. The ${held} ` +
-                  `are still held while this is sorted out. ${left}`,
-                'HR has been told and will put it back to an approver. If you no longer need the time off, withdraw it.',
-              ]
-            : [
-                `${employee.name} asked for ${cost}, and the approval chain for it has run ` +
-                  `out of people who could decide it. The request has not been approved and ` +
-                  `has not been turned down.`,
-                ...said,
-                `Their ${held} are still held, so this is not costing them anything yet — ` +
-                  'but nothing will happen to it until somebody can be asked.',
-                'Once there is, send the request back to its approvers. Nobody may decide their own leave, whatever roles they hold. FR 48b.',
-              ],
-        };
-      }
-
-      /* FR 07, §8.4, LMS 325. Written to the manager who has just inherited the decision.
-         It says the balance nothing about, because the days are somebody else's. */
-      case 'REASSIGNED':
-        return {
-          subject: `${possessively(employee.name)} ${typeName} for ${period} is now yours to decide`,
-          paragraphs: [
-            `${employee.name} asked for ${cost}, and you are now their manager, so the request is waiting on you.`,
-            ...said,
-            'Nothing has been decided at your stage. Any approval an earlier stage has already given stands, in the name of whoever gave it.',
-            `Their ${held} are held while it is decided, so an answer either way is worth having soon.`,
-          ],
-        };
-
-      /* FR 47, LMS 324. HR's copy, and the only message in this file that asks somebody to
-         do something. It carries the employee's own account whole, in their words, because
-         that is what HR is being asked to decide on. */
-      case 'WITHDRAWAL_ASKED':
-        return {
-          subject: `${possessively(employee.name)} ${typeName} for ${period} — they have asked for it to be taken off the books`,
-          paragraphs: [
-            `${employee.name} has asked for their agreed leave — ${cost} — to be taken off the books. It was approved, so the ${held} are already out of their balance.`,
-            ...said,
-            `If the leave has not started, agreeing puts all ${held} back. If it has, what is left of it comes back and the days already taken stay taken — which needs a reason in writing, because they are being told some of their leave is spent.`,
-            'Nobody answers their own ask, whatever roles they hold.',
-          ],
-        };
-
-      /* The leave had not started, so all of it comes off the books. Told apart from
-         `WITHDRAWN` because somebody *did* have to agree to this one. */
-      case 'WITHDRAWAL_GRANTED':
-        return {
-          subject: `Your ${typeName} for ${period} has been taken off the books`,
-          paragraphs: [
-            `HR has agreed to take your request for ${cost} off the books. It had not started, so all of it comes back.`,
-            ...said,
-            `The ${held} are back in your balance. ${left}`,
-            'Nothing is blocking those dates now, so you can ask for them again — or for different ones — if you change your mind.',
-          ],
-        };
-
-      /* FR 47's third criterion. The half nobody expects: some of the days are spent. */
-      case 'LEAVE_AMENDED':
-        return {
-          subject: `Your ${typeName} for ${period} has been amended`,
-          paragraphs: [
-            `HR has agreed to take back what was left of your leave. It had already started, so it stays on the record as ${cost} — the days you were away for are days you took.`,
-            ...said,
-            `Of that, ${inDays(happened.daysBack ?? request.days)} had not been taken, and ${happened.daysBack === 1 ? 'that day is' : 'those days are'} back in your balance. ${left}`,
-            'If you think the split is wrong, speak to HR — the dates and the reason above are both on the request for good.',
-          ],
-        };
-
-      /* FR 32c, §8.6c, LMS 507. The days are back and the dates are not: what the person
-         most needs to know is that the rest of the holiday still stands as booked. */
-      case 'LEAVE_RECLASSIFIED': {
-        const moved = inDays(happened.daysBack ?? request.days);
-        const into = happened.movedInto;
-
-        return {
-          subject:
-            `${moved} of your ${typeName} for ${period} ` +
-            `${happened.daysBack === 1 ? 'is' : 'are'} now ${into?.typeName ?? 'sick leave'}`,
-          paragraphs: [
-            `${moved} of your ${cost} have been recorded as ` +
-              `${into?.typeName ?? 'sick leave'} on your medical certificate.`,
-            `The ${moved} are back in your ${typeName} balance. ${left}`,
-            into === null || into === undefined
-              ? 'The same days have been taken off the balance they moved to.'
-              : `They have come off your ${into.typeName} balance instead, which now stands ` +
-                `at ${inDays(into.availableAfter)}. That figure can be negative — sick leave ` +
-                `past its allowance is granted on a certificate rather than refused.`,
-            'The rest of this leave stands exactly as it was booked. Nothing has been moved ' +
-              'to later dates: if you want those days back as time off, ask for them.',
-          ],
-        };
-      }
-
-      /* FR 25, §8.8, LMS 508. The day is back and the leave is untouched. What the person
-         most needs to know is that nothing about their dates has changed and they are one
-         day better off than the balance told them last week. */
-      case 'LEAVE_RECALCULATED': {
-        const back = inDays(happened.daysBack ?? 1);
-        const day = happened.declared;
-
-        return {
-          subject: `${back} of your ${typeName} for ${period} ${
-            happened.daysBack === 1 ? 'has' : 'have'
-          } been credited back`,
-          paragraphs: [
-            day === null || day === undefined
-              ? `A public holiday has been declared on a day inside your ${cost}.`
-              : `${formatDay(day.date)} has been declared ${day.name}, and it falls inside ` +
-                `your ${cost}.`,
-            'The country was not working that day, so you are not charged leave for it — ' +
-              'even though the leave was already approved when the day was gazetted.',
-            `The ${back} ${happened.daysBack === 1 ? 'is' : 'are'} back in your balance. ${left}`,
-            'Your leave itself has not changed. The dates you booked are the dates you ' +
-              'have, and nothing has been added to the end of it.',
-          ],
-        };
-      }
-
-      case 'WITHDRAWAL_REFUSED':
-        return {
-          subject: `Your ${typeName} for ${period} still stands`,
-          paragraphs: [
-            `You asked for your request for ${cost} to be taken off the books, and HR has not agreed.`,
-            ...said,
-            `Your balance has not moved — the ${held} stay taken and this leave is still yours. ${left}`,
-            'If circumstances change again, ask again: the ask above and this answer are both on the record.',
-          ],
-        };
-
-      case 'WITHDRAWN':
-        return {
-          subject: `Your ${typeName} for ${period} has been taken back`,
-          paragraphs: [
-            `The request for ${cost} has been withdrawn, and nobody has to approve anything for that to take effect.`,
-            `The ${held} are back in your balance. ${left}`,
-            'If this was not you, it was HR taking it back on your behalf. Ask them why.',
-          ],
-        };
-
-      case 'CANCELLED':
-        return {
-          subject: `Your ${typeName} for ${period} has been cancelled`,
-          paragraphs: [
-            `The request for ${cost} has been cancelled by HR.`,
-            'A cancellation is HR taking a record off the books — leave entered twice, or against the wrong person, or in the wrong year. It is not a decision about whether you may have the time off, and nobody has turned anything down.',
-            `The ${held} are back in your balance. ${left}`,
-            'If you were expecting this leave to happen, speak to HR.',
-          ],
-        };
-
-      /* FR 50, LMS 330. A reminder says nothing happened, so ./reminder.ts composes it and
-         the fall-through that would have made it a cancellation is refused here. */
-      default:
-        throw new InvalidNotice(
-          'event',
-          `${event} is not news of anything happening to a request, so it is not composed here.`,
-        );
-    }
-  })();
+  const email = emailFor(event, reader.id === employee.id);
+  const filled = fillIn(wording ?? ORIGINAL_WORDING[email], placeholderValuesOf(happened));
 
   return validateNotice({
-    /** FR 44, FR 60. The recipient rather than the subject; the two differ on one event. */
     employeeId: reader.id,
     leaveRequestId: request.id,
     event,
-    subject: message.subject,
-    body: [`Hello ${reader.firstName},`, ...message.paragraphs, SIGN_OFF].join('\n\n'),
+    subject: filled.subject,
+    body: filled.body,
   });
 }
 
-/**
- * How every message ends, in the same words the sign in code uses.
- *
- * One constant rather than a line in six branches, because it is the part a reader uses to
- * decide the message is genuine — and a phishing message is much easier to write against a
- * system whose own emails end differently each time.
- */
-export const SIGN_OFF = 'Remat Holdings Leave';
+/** The placeholders every email about one request can use. FR 61, LMS 512. */
+export function leaveInWords(leave: {
+  firstName: string;
+  employeeName: string;
+  request: LeaveRequest;
+  typeName: string;
+}): Record<
+  'firstName' | 'employeeName' | 'employeeNamePossessive' | 'typeName' | 'period' | 'cost' | 'days',
+  string
+> {
+  const period = periodInWords(leave.request.from, leave.request.to);
+
+  return {
+    firstName: leave.firstName,
+    employeeName: leave.employeeName,
+    employeeNamePossessive: possessively(leave.employeeName),
+    typeName: leave.typeName,
+    period,
+    cost: `${inDays(leave.request.days)} of ${leave.typeName}, ${period}`,
+    days: inDays(leave.request.days),
+  };
+}
+
+/** What fills in the placeholders for one piece of news. */
+function placeholderValuesOf(happened: WhatHappened): PlaceholderValues {
+  const { event, employee, request, decidedBy, comment } = happened;
+  const reader = happened.recipient ?? employee;
+
+  const leave = leaveInWords({
+    firstName: reader.firstName,
+    employeeName: employee.name,
+    request,
+    typeName: happened.typeName,
+  });
+
+  const oneDayBack = happened.daysBack === 1;
+  const into = happened.movedInto ?? null;
+  const day = happened.declared ?? null;
+
+  return {
+    ...leave,
+    daysLeftToBook: inDays(happened.availableAfter),
+    decidedBy: deskOrSomebody(decidedBy),
+    decidedByPossessive: possessive(decidedBy),
+    nowWith: withWhom(request),
+    /* FR 39, quoted whole and set apart, in the words the approver wrote. */
+    comment: comment === null ? '' : `They said:\n\n    ${comment}`,
+    theirDecision: happened.overturned?.said === 'APPROVE' ? 'approved' : 'turned down',
+    finalDecision: request.status === 'APPROVED' ? 'approved' : 'turned down',
+    /* FR 25. A holiday credits back one day unless told otherwise. */
+    daysBack: inDays(happened.daysBack ?? (event === 'LEAVE_RECALCULATED' ? 1 : request.days)),
+    isOrAre: oneDayBack ? 'is' : 'are',
+    hasOrHave: oneDayBack ? 'has' : 'have',
+    thoseDaysAre: oneDayBack ? 'that day is' : 'those days are',
+    movedIntoTypeName: into?.typeName ?? 'sick leave',
+    movedIntoBalance:
+      into === null
+        ? 'The same days have been taken off the balance they moved to.'
+        : `They have come off your ${into.typeName} balance instead, which now stands ` +
+          `at ${inDays(into.availableAfter)}. That figure can be negative — sick leave ` +
+          `past its allowance is granted on a certificate rather than refused.`,
+    declaredHoliday:
+      day === null
+        ? `A public holiday has been declared on a day inside your ${leave.cost}.`
+        : `${formatDay(day.date)} has been declared ${day.name}, and it falls inside ` +
+          `your ${leave.cost}.`,
+  };
+}
 
 /**
  * Checks a notice on its way to being written.
@@ -562,14 +350,17 @@ export function validateNotice(input: NewNotice): NewNotice {
   }
 
   if (!(NOTICE_EVENTS as readonly string[]).includes(input.event)) {
-    throw new InvalidNotice(
-      'event',
-      `${String(input.event)} is not something anybody is told about. The events are ` +
-        `${NOTICE_EVENTS.join(', ')}.`,
-    );
+    throw notAnEvent(input.event);
   }
 
   return { ...input, subject, body };
+}
+
+function notAnEvent(event: string): InvalidNotice {
+  return new InvalidNotice(
+    'event',
+    `${event} is not something anybody is told about. The events are ${NOTICE_EVENTS.join(', ')}.`,
+  );
 }
 
 /**
@@ -667,9 +458,4 @@ function possessive(desk: ApproverRole | null): string {
 /** "6 days", "1 day". The pluralisation every message needs and none of them repeats. */
 export function inDays(days: number): string {
   return `${days} ${days === 1 ? 'day' : 'days'}`;
-}
-
-/** A phrase that starts a sentence. "your manager" opening one reads as a typo. */
-function sentenceCase(words: string): string {
-  return words.charAt(0).toUpperCase() + words.slice(1);
 }

@@ -558,6 +558,16 @@ export interface NotificationTable {
   created_at: Generated<Date>;
 }
 
+/** HR's wording for one email. No row is the original. FR 61, LMS 512. */
+export interface NotificationTemplateTable {
+  id: Generated<string>;
+  name: string;
+  subject: string;
+  body: string;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
 export interface Database {
   app_user: AppUserTable;
   /** FR 49, LMS 327. */
@@ -587,6 +597,8 @@ export interface Database {
   leave_type_approval_step: LeaveTypeApprovalStepTable;
   leave_year: LeaveYearTable;
   notification: NotificationTable;
+  /** FR 61, LMS 512. */
+  notification_template: NotificationTemplateTable;
   organisation_setting: OrganisationSettingTable;
   role: RoleTable;
   user_role: UserRoleTable;
