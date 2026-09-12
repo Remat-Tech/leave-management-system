@@ -4,6 +4,7 @@ import { config as loadEnv } from 'dotenv';
 import { Guard } from './auth/policy.js';
 import { createDatabase } from './db/index.js';
 import { createMailer } from './mail/mailer.js';
+import { AuditRepository } from './features/audit/audit.db.js';
 import { BalanceRepository } from './features/balance/balance.db.js';
 import { DepartmentRepository } from './features/department/department.db.js';
 import { EmployeeRepository } from './features/employee/employee.db.js';
@@ -204,6 +205,8 @@ const app = buildApp({
   organisation,
   /** FR 61, LMS 512. */
   emailWording: new EmailWordingRepository(db),
+  /** NFR AUD 01, LMS 513. */
+  audit: new AuditRepository(db),
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process
      before a socket is opened rather than while the first request is being served. */
   secret: sessionSecretFrom(),

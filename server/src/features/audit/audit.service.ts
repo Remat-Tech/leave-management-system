@@ -1,13 +1,29 @@
-/** Reading the account of what happened. NFR AUD 01, NFR AUD 02, LMS 113. */
+/** Reading the account of what happened. NFR AUD 01, NFR AUD 02, LMS 113, LMS 513. */
 
 import { auditPolicy } from './policy.js';
 import type { Actor } from '../../auth/actor.js';
 import type { Guard } from '../../auth/policy.js';
-import type { AuditEntry } from './audit.js';
+import { displayTimezone } from '../../shared/time.js';
+import {
+  type AuditEntry,
+  type AuditSearch,
+  LONGEST_SEARCH,
+  type NamedAuditEntry,
+  readAuditSearch,
+} from './audit.js';
 import { EmployeeNotFound } from '../employee/employee.js';
 import type { AuditRepository, HistoryOptions } from './audit.db.js';
 import type { EmployeeRepository } from '../employee/employee.db.js';
 import type { SignInAccountRepository } from '../sign-in/sign-in-account.db.js';
+
+/** A search as it arrived. LMS 513. */
+export type AuditQuery = Partial<Record<keyof AuditSearch, string>>;
+
+export interface AuditSearchResult {
+  entries: NamedAuditEntry[];
+  /** More matched than {@link LONGEST_SEARCH}. */
+  moreThanShown: boolean;
+}
 
 export class AuditService {
   constructor(
@@ -90,6 +106,23 @@ export class AuditService {
     this.guard.enforce(auditPolicy.browse(actor));
 
     return this.entries.recent(options);
+  }
+
+  /** The log searched by record and date, newest first. LMS 513. */
+  async search(
+    actor: Actor,
+    asked: AuditQuery,
+    zone: string = displayTimezone(),
+  ): Promise<AuditSearchResult> {
+    this.guard.enforce(auditPolicy.search(actor));
+
+    const search = readAuditSearch(asked);
+    const found = await this.entries.search(search, zone, LONGEST_SEARCH + 1);
+
+    return {
+      entries: found.slice(0, LONGEST_SEARCH),
+      moreThanShown: found.length > LONGEST_SEARCH,
+    };
   }
 
   /** How many times this record has changed. */

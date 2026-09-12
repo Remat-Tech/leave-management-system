@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { currentSession, type Me, signOut, type Year } from './api';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
+import { AuditLogPage } from './features/audit/AuditLogPage';
 import { BalancesPage } from './features/balances/BalancesPage';
 import { CalendarPage } from './features/calendar/CalendarPage';
 import { ApprovalChainsPage } from './features/config/ApprovalChainsPage';
@@ -110,6 +111,8 @@ const SCREENS = [
   { id: 'reports', label: 'Reports', icon: 'report' },
   /** FR 61, LMS 512. The words the system's emails go out in. */
   { id: 'email-wording', label: 'Email wording', icon: 'send' },
+  /** NFR AUD 01, LMS 513. Who changed what. HR Administrators and System Administrators. */
+  { id: 'audit', label: 'Audit log', icon: 'history' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -310,6 +313,7 @@ export function App() {
         {screen === 'leavers' ? <LeaversPage onSignedOut={ranOut} /> : null}
         {screen === 'reports' ? <ReportsPage onSignedOut={ranOut} /> : null}
         {screen === 'email-wording' ? <EmailWordingPage onSignedOut={ranOut} /> : null}
+        {screen === 'audit' ? <AuditLogPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );

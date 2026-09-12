@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   AUDITED_ENTITIES,
+  AUDITED_ENTITY_LABELS,
   type AuditEntry,
   changedFields,
+  InvalidAuditSearch,
   isRedacted,
+  readAuditSearch,
   REDACTED,
   UNATTRIBUTED,
 } from '../../src/features/audit/audit.js';
@@ -209,5 +212,57 @@ describe('an entry nobody claimed', () => {
 
     expect(unattributed.actor).toBe(UNATTRIBUTED);
     expect(UNATTRIBUTED).not.toBe('');
+  });
+});
+
+describe('searching the log. LMS 513', () => {
+  /** The field a search was refused on. */
+  function refusedOn(asked: Parameters<typeof readAuditSearch>[0]): string {
+    try {
+      readAuditSearch(asked);
+    } catch (error) {
+      expect(error).toBeInstanceOf(InvalidAuditSearch);
+      return (error as InvalidAuditSearch).field;
+    }
+
+    throw new Error('Expected the search to be refused, and it was not.');
+  }
+
+  it('reads blank as no filter, so an empty form searches everything', () => {
+    expect(readAuditSearch({ entity: '', entityId: ' ', from: '', to: '' })).toEqual({
+      entity: undefined,
+      entityId: undefined,
+      from: undefined,
+      to: undefined,
+    });
+  });
+
+  it('takes a kind of record, an id and a period', () => {
+    expect(
+      readAuditSearch({
+        entity: 'employee',
+        entityId: ' 42 ',
+        from: '2026-03-01',
+        to: '2026-03-31',
+      }),
+    ).toEqual({ entity: 'employee', entityId: '42', from: '2026-03-01', to: '2026-03-31' });
+  });
+
+  it('refuses a kind of record the log does not keep', () => {
+    expect(refusedOn({ entity: 'audit_log' })).toBe('entity');
+  });
+
+  it('refuses an id without its kind, because ids repeat across tables', () => {
+    expect(refusedOn({ entityId: '42' })).toBe('entity');
+  });
+
+  it('refuses a date that is not a date, and a period that ends before it starts', () => {
+    expect(refusedOn({ from: '01/03/2026' })).toBe('from');
+    expect(refusedOn({ to: '2026-02-30' })).toBe('to');
+    expect(refusedOn({ from: '2026-03-02', to: '2026-03-01' })).toBe('to');
+  });
+
+  it('names every kind of record the log keeps', () => {
+    expect(Object.keys(AUDITED_ENTITY_LABELS).sort()).toEqual([...AUDITED_ENTITIES].sort());
   });
 });

@@ -37,6 +37,9 @@ export const PROVIDES_LOGINS: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN', '
 /** The roles that decide who may get in and what they may do. LMS 112. */
 export const ADMINISTERS_ACCESS: readonly RoleCode[] = ['HR_ADMIN', 'SYS_ADMIN'];
 
+/** The roles that search the whole audit log. NFR AUD 01, LMS 513. */
+export const SEARCHES_THE_AUDIT_LOG: readonly RoleCode[] = ['HR_ADMIN', 'SYS_ADMIN'];
+
 /** What somebody is, for the purposes of deciding what they may do. */
 export interface Authority {
   roles: RoleCode[];

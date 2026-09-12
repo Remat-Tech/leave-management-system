@@ -2,7 +2,7 @@
 
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';
-import { ADMINISTERS_ACCESS, READS_EVERY_RECORD } from '../role/roles.js';
+import { ADMINISTERS_ACCESS, READS_EVERY_RECORD, SEARCHES_THE_AUDIT_LOG } from '../role/roles.js';
 import type { Employee } from '../employee/employee.js';
 
 const about = policyFor('audit log');
@@ -73,5 +73,18 @@ export const auditPolicy = {
     return holdsAny(actor, ...READS_EVERY_RECORD)
       ? about.allow(actor, 'browse')
       : about.refuse(actor, 'browse', null, 'holds no role that reads everybody');
+  },
+
+  /** Searching the audit log screen. LMS 513. */
+  search(actor: Actor): Decision {
+    return holdsAny(actor, ...SEARCHES_THE_AUDIT_LOG)
+      ? about.allow(actor, 'search')
+      : about.refuseOpenly(
+          actor,
+          'search',
+          null,
+          'holds no role that searches the audit log',
+          'The audit log is searched by an HR Administrator or a System Administrator. LMS 513.',
+        );
   },
 };

@@ -3935,3 +3935,29 @@ select[aria-invalid='true'] {
   font: inherit;
   white-space: pre-wrap;
 }
+
+/* NFR AUD 01, LMS 513. The audit log. */
+
+.audit-table td {
+  vertical-align: top;
+}
+
+.audit-table td small {
+  display: block;
+  color: var(--ink-faint);
+}
+
+.audit-changes {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.audit-changes .was {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}

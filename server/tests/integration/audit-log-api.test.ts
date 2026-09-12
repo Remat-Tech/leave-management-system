@@ -3,6 +3,7 @@ import type { Server } from 'node:http';
 import { Client } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { databaseForThisFile } from '../setup/test-database.js';
+import { calendarDateIn, dayAfter, dayBefore, displayTimezone } from '../../src/shared/time.js';
 import type { Kysely } from 'kysely';
 import { Guard } from '../../src/auth/policy.js';
 import { databaseFor } from '../../src/db/index.js';
@@ -45,7 +46,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { holidayRecalculationService } from '../support/holiday-recalculations.js';
 import { delegationService } from '../support/delegations.js';
 
-/** The email wording screen, over HTTP. FR 61, LMS 512. What an email says is ../unit/wording.test.ts. */
+/** The audit log screen, over HTTP. NFR AUD 01, NFR AUD 02, LMS 513. */
 
 const testDatabaseUrl = await databaseForThisFile();
 
@@ -59,22 +60,19 @@ let server: Server;
 let origin: string;
 let people: Record<string, string>;
 
-interface JsonEmail {
-  name: string;
-  label: string;
-  readBy: string;
-  subject: string;
-  body: string;
-  original: { subject: string; body: string };
-  isReworded: boolean;
-  updatedAt: string | null;
-  placeholders: { name: string; meaning: string }[];
+interface JsonAuditLog {
+  entries: {
+    entity: string;
+    entityLabel: string;
+    entityId: string;
+    action: string;
+    actor: string;
+    actorEmployeeId: string | null;
+    changes: { field: string; from: unknown; to: unknown }[];
+  }[];
+  entities: { name: string; label: string }[];
+  moreThanShown: boolean;
 }
-
-const REWORDED = {
-  subject: 'We have your request for {{period}}',
-  body: 'Dear {{firstName}},\n\nThank you. It is with {{nowWith}}.\n\nRemat Holdings HR',
-};
 
 beforeAll(async () => {
   db = databaseFor(testDatabaseUrl);
@@ -174,107 +172,124 @@ afterAll(async () => {
 
 describe('the line everything is mounted behind', () => {
   it('answers 401 without a session', async () => {
-    expect((await fetch(`${origin}/api/email-wording`)).status).toBe(401);
+    expect((await fetch(`${origin}/api/audit`)).status).toBe(401);
   });
 });
 
-describe('reading the wording', () => {
-  it('lists every email in the words it is sent in, with what it can fill in', async () => {
-    const response = await send('GET', '/api/email-wording', people.hrOfficer);
-    const page = (await response.json()) as { emails: JsonEmail[] };
-
-    expect(response.status).toBe(200);
-
-    const submitted = page.emails.find((one) => one.name === 'SUBMITTED');
-
-    expect(page.emails.length).toBe(18);
-    expect(submitted?.isReworded).toBe(false);
-    expect(submitted?.subject).toBe('Your {{typeName}} for {{period}} has been submitted');
-    expect(submitted?.placeholders.map((one) => one.name)).toContain('nowWith');
+describe('who may search it', () => {
+  it('is an HR Administrator', async () => {
+    expect((await send('GET', '/api/audit', people.headOfHr)).status).toBe(200);
   });
 
-  it('is refused, with a sentence, for somebody with no HR role', async () => {
-    const response = await send('GET', '/api/email-wording', people.teamLead);
+  it('is a System Administrator', async () => {
+    await grant(people.engineer, 'SYS_ADMIN');
 
-    expect(response.status).toBe(403);
-    expect(((await response.json()) as { message: string }).message).toContain('FR 61');
+    expect((await send('GET', '/api/audit', people.engineer)).status).toBe(200);
+  });
+
+  it('is not an HR Officer, a manager or anybody else, and they are told who is', async () => {
+    for (const who of [people.hrOfficer, people.teamLead, people.officer]) {
+      const response = await send('GET', '/api/audit', who);
+
+      expect(response.status).toBe(403);
+      expect(((await response.json()) as { message: string }).message).toContain('LMS 513');
+    }
   });
 });
 
-describe('rewording an email', () => {
-  it('is an HR Officer’s, and the next notice is composed from it', async () => {
-    const response = await send('PUT', '/api/email-wording/SUBMITTED', people.hrOfficer, REWORDED);
-    const saved = (await response.json()) as JsonEmail;
+describe('searching by record', () => {
+  it('finds every change to one record, with who made it and what moved', async () => {
+    await retitle(people.officer, 'Senior Operations Officer', people.headOfHr);
 
-    expect(response.status).toBe(200);
-    expect(saved.isReworded).toBe(true);
-    expect(saved.subject).toBe(REWORDED.subject);
-    expect(saved.original.subject).toBe('Your {{typeName}} for {{period}} has been submitted');
+    const log = await search({ entity: 'employee', entityId: people.officer });
+    const [latest] = log.entries;
 
-    expect(await new NotificationRepository(db).wordingFor('SUBMITTED')).toEqual(REWORDED);
+    expect(log.entries.every((one) => one.entityId === people.officer)).toBe(true);
+    expect(latest.action).toBe('UPDATE');
+    expect(latest.entityLabel).toBe('Employee');
+    expect(latest.actorEmployeeId).toBe(people.headOfHr);
+    expect(latest.actor).not.toMatch(/^employee \d+$/);
+    expect(latest.changes).toEqual([
+      { field: 'job_title', from: 'Operations Officer', to: 'Senior Operations Officer' },
+    ]);
   });
 
-  it('is written down in the audit log, against who did it', async () => {
-    await send('PUT', '/api/email-wording/SUBMITTED', people.hrOfficer, REWORDED);
+  it('offers every kind of record the log keeps', async () => {
+    const log = await search({});
 
-    const { rows } = await admin.query<{ action: string; actor_employee_id: string }>(
-      "SELECT action, actor_employee_id::text FROM audit_log WHERE entity = 'notification_template'",
-    );
-
-    expect(rows).toEqual([{ action: 'CREATE', actor_employee_id: people.hrOfficer }]);
+    expect(log.entities.map((one) => one.name)).toContain('leave_request');
   });
 
-  it('is refused for somebody with no HR role', async () => {
-    const response = await send('PUT', '/api/email-wording/SUBMITTED', people.teamLead, REWORDED);
-
-    expect(response.status).toBe(403);
-    expect(await new NotificationRepository(db).wordingFor('SUBMITTED')).toBeUndefined();
-  });
-
-  it('refuses a placeholder the email cannot fill in, naming the field', async () => {
-    const response = await send('PUT', '/api/email-wording/SUBMITTED', people.hrOfficer, {
-      ...REWORDED,
-      body: 'Hello {{firstNmae}}',
-    });
+  it('refuses an id without its kind, naming the field', async () => {
+    const response = await send('GET', `/api/audit?entityId=${people.officer}`, people.headOfHr);
 
     expect(response.status).toBe(400);
-    expect(((await response.json()) as { field: string }).field).toBe('body');
-  });
-
-  it('answers 404 for an email the system does not send', async () => {
-    const response = await send('PUT', '/api/email-wording/BIRTHDAY', people.hrOfficer, REWORDED);
-
-    expect(response.status).toBe(404);
+    expect(((await response.json()) as { field: string }).field).toBe('entity');
   });
 });
 
-describe('previewing and putting back', () => {
-  it('fills the wording in on a made up request, and saves nothing', async () => {
-    const response = await send(
-      'POST',
-      '/api/email-wording/SUBMITTED/preview',
-      people.hrOfficer,
-      REWORDED,
-    );
-    const filled = (await response.json()) as { subject: string; body: string };
+describe('searching by date', () => {
+  it('finds today’s changes and none outside the period', async () => {
+    await retitle(people.officer, 'Senior Operations Officer', people.headOfHr);
 
-    expect(response.status).toBe(200);
-    expect(filled.subject).toBe('We have your request for 2 March 2026 to 10 March 2026');
-    expect(await new NotificationRepository(db).wordingFor('SUBMITTED')).toBeUndefined();
+    const today = calendarDateIn(new Date(), displayTimezone());
+    const narrowed = { entity: 'employee', entityId: people.officer };
+
+    expect((await search({ ...narrowed, from: today, to: today })).entries).not.toHaveLength(0);
+    expect((await search({ ...narrowed, from: dayAfter(today) })).entries).toHaveLength(0);
+    expect((await search({ ...narrowed, to: dayBefore(today) })).entries).toHaveLength(0);
   });
 
-  it('puts the original wording back', async () => {
-    await send('PUT', '/api/email-wording/SUBMITTED', people.hrOfficer, REWORDED);
+  it('refuses a period that ends before it starts', async () => {
+    const response = await send('GET', '/api/audit?from=2026-03-02&to=2026-03-01', people.headOfHr);
 
-    const response = await send('DELETE', '/api/email-wording/SUBMITTED', people.hrOfficer);
-    const email = (await response.json()) as JsonEmail;
-
-    expect(response.status).toBe(200);
-    expect(email.isReworded).toBe(false);
-    expect(email.subject).toBe(email.original.subject);
-    expect(await new NotificationRepository(db).wordingFor('SUBMITTED')).toBeUndefined();
+    expect(response.status).toBe(400);
   });
 });
+
+describe('read only, NFR AUD 02', () => {
+  it('has nowhere to write, even for an administrator', async () => {
+    await grant(people.headOfHr, 'SYS_ADMIN');
+
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      const response = await send(method, '/api/audit', people.headOfHr, {});
+
+      expect(response.status).toBe(404);
+    }
+  });
+});
+
+/** Searches as the HR Administrator. */
+async function search(asked: Record<string, string>): Promise<JsonAuditLog> {
+  const response = await send(
+    'GET',
+    `/api/audit?${new URLSearchParams(asked).toString()}`,
+    people.headOfHr,
+  );
+
+  expect(response.status).toBe(200);
+
+  return (await response.json()) as JsonAuditLog;
+}
+
+/** Changes a job title, attributed to somebody. */
+async function retitle(employeeId: string, jobTitle: string, by: string): Promise<void> {
+  await admin.query('BEGIN');
+  await admin.query(
+    "SELECT set_config('lms.audit.actor', $1, true), set_config('lms.audit.actor_employee_id', $2, true)",
+    [`employee ${by}`, by],
+  );
+  await admin.query('UPDATE employee SET job_title = $1 WHERE id = $2', [jobTitle, employeeId]);
+  await admin.query('COMMIT');
+}
+
+async function grant(employeeId: string, code: string): Promise<void> {
+  await admin.query(
+    `INSERT INTO user_role (user_id, role_id)
+     SELECT u.id, r.id FROM app_user u, role r WHERE u.employee_id = $1 AND r.code = $2`,
+    [employeeId, code],
+  );
+}
 
 function send(
   method: string,

@@ -1,9 +1,15 @@
 /** Reading the audit log. NFR AUD 01, LMS 113. */
 
-import type { Kysely, Selectable } from 'kysely';
+import { type Kysely, type Selectable, sql } from 'kysely';
 import type { Database } from '../../db/index.js';
 import type { AuditLogTable } from '../../db/schema.js';
-import type { AuditAction, AuditedEntity, AuditEntry } from './audit.js';
+import type {
+  AuditAction,
+  AuditedEntity,
+  AuditEntry,
+  AuditSearch,
+  NamedAuditEntry,
+} from './audit.js';
 
 type AuditRow = Selectable<AuditLogTable>;
 
@@ -83,6 +89,50 @@ export class AuditRepository {
       .execute();
 
     return rows.map(toEntry);
+  }
+
+  /** Entries matching a search, newest first, with the day boundaries in `zone`. LMS 513. */
+  async search(search: AuditSearch, zone: string, limit: number): Promise<NamedAuditEntry[]> {
+    let query = this.db
+      .selectFrom('audit_log')
+      .leftJoin('employee', 'employee.id', 'audit_log.actor_employee_id')
+      .selectAll('audit_log')
+      .select(['employee.first_name', 'employee.last_name']);
+
+    if (search.entity !== undefined) {
+      query = query.where('audit_log.entity', '=', search.entity);
+    }
+    if (search.entityId !== undefined) {
+      query = query.where('audit_log.entity_id', '=', search.entityId);
+    }
+    if (search.from !== undefined) {
+      query = query.where(
+        'audit_log.occurred_at',
+        '>=',
+        sql<Date>`(${search.from}::date)::timestamp AT TIME ZONE ${zone}`,
+      );
+    }
+    if (search.to !== undefined) {
+      query = query.where(
+        'audit_log.occurred_at',
+        '<',
+        sql<Date>`(${search.to}::date + 1)::timestamp AT TIME ZONE ${zone}`,
+      );
+    }
+
+    const rows = await query
+      .orderBy('audit_log.occurred_at', 'desc')
+      .orderBy('audit_log.id', 'desc')
+      .limit(limit)
+      .execute();
+
+    return rows.map((row) => ({
+      ...toEntry(row),
+      actorName:
+        row.first_name === null || row.last_name === null
+          ? null
+          : `${row.first_name} ${row.last_name}`,
+    }));
   }
 
   /** How many entries there are for a record. */
