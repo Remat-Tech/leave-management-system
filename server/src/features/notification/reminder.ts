@@ -5,13 +5,12 @@
 import { type LeaveRequest, noticeGiven } from '../leave-request/leave-request.js';
 import {
   inDays,
+  leaveInWords,
   type NewNotice,
   type NoticeEvent,
-  periodInWords,
-  SIGN_OFF,
   validateNotice,
 } from './notification.js';
-import { possessively } from '../leave-type/approval-chain.js';
+import { fillIn, ORIGINAL_WORDING, type Wording } from './wording.js';
 import { type CalendarDate, calendarDateIn, formatDay } from '../../shared/time.js';
 
 /** The one event a reminder is written under. FR 50. */
@@ -57,41 +56,39 @@ export function alreadyReminded(
 }
 
 /**
- * The reminder, for both channels. FR 50, FR 59, FR 60.
+ * The reminder, for both channels, in HR's wording where there is some. FR 50, FR 59, FR 60, FR 61.
  *
- * Composed apart from `noticeOf` because it is the one message about nothing having
- * happened: no desk decided, no day moved, and the last paragraph says so in those words.
+ * Apart from `noticeOf` because it is the one message about nothing having happened.
  */
-export function reminderOf(waiting: WhatIsWaiting): NewNotice {
+export function reminderOf(waiting: WhatIsWaiting, wording?: Wording): NewNotice {
   const { approver, employee, request, typeName, asAt } = waiting;
 
-  const period = periodInWords(request.from, request.to);
-  const cost = `${inDays(request.days)} of ${typeName}, ${period}`;
-  const held = inDays(request.days);
+  const leave = leaveInWords({
+    firstName: approver.firstName,
+    employeeName: employee.name,
+    request,
+    typeName,
+  });
+
   const waited = daysWaiting(request, asAt);
 
-  const asked =
-    waited <= 0
-      ? `${employee.name} asked for ${cost} today, and it is waiting on you.`
-      : `${employee.name} asked for ${cost} ${inDays(waited)} ago, on ` +
-        `${formatDay(calendarDateIn(request.submittedAt, 'UTC'))}, and it is still waiting on you.`;
+  const filled = fillIn(wording ?? ORIGINAL_WORDING.STILL_WAITING, {
+    ...leave,
+    whenAsked:
+      waited <= 0
+        ? `${employee.name} asked for ${leave.cost} today, and it is waiting on you.`
+        : `${employee.name} asked for ${leave.cost} ${inDays(waited)} ago, on ` +
+          `${formatDay(calendarDateIn(request.submittedAt, 'UTC'))}, and it is still waiting on you.`,
+    whenItStarts: whenItStarts(request, asAt),
+  });
 
   return validateNotice({
     /** FR 60. The approver being chased, never the person whose leave it is. */
     employeeId: approver.id,
     leaveRequestId: request.id,
     event: REMINDER_EVENT,
-    subject: `${possessively(employee.name)} ${typeName} for ${period} is still waiting on you`,
-    body: [
-      `Hello ${approver.firstName},`,
-      asked,
-      whenItStarts(request, asAt),
-      `Nothing has been decided at your stage. Their ${held} are held while it waits, so ` +
-        'they are days nobody can book anything else on.',
-      'This is a reminder and nothing else: it approves nothing and turns nothing down. ' +
-        'Approve it or turn it down and it stops; until then you will hear from me every day.',
-      SIGN_OFF,
-    ].join('\n\n'),
+    subject: filled.subject,
+    body: filled.body,
   });
 }
 

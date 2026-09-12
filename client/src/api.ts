@@ -1161,6 +1161,55 @@ export async function nameChiefExecutive(employeeId: string): Promise<PolicySett
   return request<PolicySettings>('PUT', '/api/policy-settings/chief-executive', { employeeId });
 }
 
+/** ------------------------------------------ the wording of the emails. FR 61, LMS 512 */
+
+/** A subject line and a message, with `{{placeholders}}`. */
+export interface Wording {
+  subject: string;
+  body: string;
+}
+
+/** One email the system sends, in the words it is sent in. */
+export interface EmailWording extends Wording {
+  name: string;
+  label: string;
+  readBy: string;
+  original: Wording;
+  isReworded: boolean;
+  updatedAt: string | null;
+  placeholders: { name: string; meaning: string }[];
+}
+
+export interface EmailWordingPage {
+  emails: EmailWording[];
+  longestSubject: number;
+  longestBody: number;
+}
+
+/** Every email. Reading is HR's; changing it an HR Officer's or Administrator's. */
+export async function emailWording(): Promise<EmailWordingPage> {
+  return request<EmailWordingPage>('GET', '/api/email-wording');
+}
+
+/** Rewords one email. The next one sent uses it. */
+export async function rewordEmail(name: string, wording: Wording): Promise<EmailWording> {
+  return request<EmailWording>('PUT', `/api/email-wording/${encodeURIComponent(name)}`, wording);
+}
+
+/** Puts one email back to its original wording. */
+export async function putBackEmailWording(name: string): Promise<EmailWording> {
+  return request<EmailWording>('DELETE', `/api/email-wording/${encodeURIComponent(name)}`);
+}
+
+/** The wording filled in on a made up request. Saves nothing. */
+export async function previewEmail(name: string, wording: Wording): Promise<Wording> {
+  return request<Wording>(
+    'POST',
+    `/api/email-wording/${encodeURIComponent(name)}/preview`,
+    wording,
+  );
+}
+
 /** ------------------------------ putting a balance right by hand. FR 37, FR 27, LMS 506 */
 
 /** Every kind of movement a balance is made of. §5.7. */

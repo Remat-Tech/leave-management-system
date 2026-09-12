@@ -23,6 +23,7 @@ import { LeaveTypeRepository } from './features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from './features/leave-year/leave-year.db.js';
 import { LedgerRepository } from './features/balance/ledger.db.js';
 import { NotificationRepository } from './features/notification/notification.db.js';
+import { EmailWordingRepository } from './features/notification/wording.db.js';
 import { OrganisationRepository } from './features/organisation/organisation.db.js';
 import { RoleRepository } from './features/role/role.db.js';
 import { SignInAccountRepository } from './features/sign-in/sign-in-account.db.js';
@@ -201,6 +202,8 @@ const app = buildApp({
   roles,
   delegations,
   organisation,
+  /** FR 61, LMS 512. */
+  emailWording: new EmailWordingRepository(db),
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process
      before a socket is opened rather than while the first request is being served. */
   secret: sessionSecretFrom(),

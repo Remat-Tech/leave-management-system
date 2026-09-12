@@ -88,6 +88,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | A notification. FR 59 | the person it was sent to, and nobody else at all | the person it was sent to marks it read |
 | Everything the company is waiting on, and chasing it. FR 50 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` — and the nightly job | the same, and a reminder decides nothing |
 | Sending again what the mail server refused. FR 59 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` — and the job that drains it | the same, and a retry sends only what was already written |
+| The wording of the emails. FR 61 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | `HR_OFFICER`, `HR_ADMIN` |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |

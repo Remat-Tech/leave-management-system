@@ -6,6 +6,7 @@ import type { NotificationTable } from '../../db/schema.js';
 import type { Undelivered } from './delivery.js';
 import type { NewNotice, Notice, NoticeEvent } from './notification.js';
 import { REMINDER_EVENT, type ReminderSent } from './reminder.js';
+import type { EmailName, Wording } from './wording.js';
 
 type NoticeRow = Selectable<NotificationTable>;
 
@@ -31,6 +32,15 @@ export type EmailOutcome =
 
 export class NotificationRepository {
   constructor(private readonly db: Kysely<Database>) {}
+
+  /** HR's wording for one email, or undefined where it is the original. FR 61, LMS 512. */
+  async wordingFor(name: EmailName): Promise<Wording | undefined> {
+    return this.db
+      .selectFrom('notification_template')
+      .select(['subject', 'body'])
+      .where('name', '=', name)
+      .executeTakeFirst();
+  }
 
   /** Writes one notice. */
   async write(notice: NewNotice): Promise<Notice> {

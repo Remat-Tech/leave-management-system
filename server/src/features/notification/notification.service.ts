@@ -12,7 +12,9 @@ import {
   type NoticeEvent,
   NoticeNotFound,
   noticeOf,
+  type WhatHappened,
 } from './notification.js';
+import { type EmailName, emailFor, type Wording } from './wording.js';
 import { type ReminderSent, reminderOf } from './reminder.js';
 import {
   DRAIN_LIMIT,
@@ -140,7 +142,7 @@ export class NotificationService {
     /** FR 44, FR 60. The requester on every event but the one written to their manager. */
     const reader = telling.recipient ?? employee;
 
-    const composed = noticeOf({
+    const happened: WhatHappened = {
       event: telling.event,
       employee: {
         id: employee.id,
@@ -160,7 +162,12 @@ export class NotificationService {
       movedInto: telling.movedInto ?? null,
       /** FR 25, LMS 508. */
       declared: telling.declared ?? null,
-    });
+    };
+
+    const composed = await this.compose(
+      emailFor(telling.event, reader.id === employee.id),
+      (wording) => noticeOf(happened, wording),
+    );
 
     const notice = await this.write(composed);
 
@@ -182,13 +189,18 @@ export class NotificationService {
 
     const { approver, employee } = reminding;
 
-    const composed = reminderOf({
-      approver: { id: approver.id, firstName: approver.firstName },
-      employee: { name: `${employee.firstName} ${employee.lastName}` },
-      request: reminding.request,
-      typeName: reminding.typeName,
-      asAt: reminding.asAt,
-    });
+    const composed = await this.compose('STILL_WAITING', (wording) =>
+      reminderOf(
+        {
+          approver: { id: approver.id, firstName: approver.firstName },
+          employee: { name: `${employee.firstName} ${employee.lastName}` },
+          request: reminding.request,
+          typeName: reminding.typeName,
+          asAt: reminding.asAt,
+        },
+        wording,
+      ),
+    );
 
     const notice = await this.write(composed);
 
@@ -331,6 +343,28 @@ export class NotificationService {
     return (await this.notices.forRequest(leaveRequestId)).filter(
       (notice) => notice.employeeId === employeeId,
     );
+  }
+
+  /**
+   * Composes in HR's wording, or the original where there is none. FR 61, LMS 512.
+   *
+   * Wording that cannot be read, or fills in to nothing, sends the original.
+   */
+  private async compose(
+    email: EmailName,
+    composer: (wording?: Wording) => NewNotice,
+  ): Promise<NewNotice> {
+    try {
+      const wording = await this.notices.wordingFor(email);
+
+      if (wording !== undefined) {
+        return composer(wording);
+      }
+    } catch {
+      /* The original, below. */
+    }
+
+    return composer();
   }
 
   /** Writes the notice down, or records that it could not be. */

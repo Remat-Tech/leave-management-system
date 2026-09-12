@@ -4,9 +4,14 @@
 
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';
-import { READS_EVERY_RECORD } from '../role/roles.js';
+import { READS_EVERY_RECORD, WORDS_THE_COMPANY_EMAILS } from '../role/roles.js';
 
 const about = policyFor('notification');
+
+/** Said openly: the wording is no secret, only whose it is to change. FR 61. */
+const WORDING_IS_HRS =
+  'The emails the system sends go out in the company’s name, so they are worded by an HR ' +
+  'Officer or an HR Administrator. Ask one. FR 61.';
 
 /** Whose post this is. */
 export interface NoticeOwner {
@@ -66,6 +71,32 @@ export const notificationPolicy = {
       null,
       'holds no role that sends the company’s undelivered post',
     );
+  },
+
+  /** Reading the wording of the emails. FR 61, LMS 512. */
+  readWording(actor: Actor): Decision {
+    return holdsAny(actor, ...READS_EVERY_RECORD)
+      ? about.allow(actor, 'read the email wording')
+      : about.refuseOpenly(
+          actor,
+          'read the email wording',
+          null,
+          'holds no role that reads the email wording',
+          WORDING_IS_HRS,
+        );
+  },
+
+  /** Changing it, or putting it back. FR 61, LMS 512. */
+  changeWording(actor: Actor, email: string): Decision {
+    return holdsAny(actor, ...WORDS_THE_COMPANY_EMAILS)
+      ? about.allow(actor, 'change the email wording', email)
+      : about.refuseOpenly(
+          actor,
+          'change the email wording',
+          email,
+          'holds no role that words the company’s emails',
+          WORDING_IS_HRS,
+        );
   },
 
   /** Marking one read, or putting it back to unread. */

@@ -51,6 +51,9 @@ import { holidayRoutes } from '../features/holiday/routes.js';
 import { leaveTypeRoutes } from '../features/leave-type/routes.js';
 import { organisationRoutes } from '../features/organisation/routes.js';
 import { OrganisationService } from '../features/organisation/organisation.service.js';
+import type { EmailWordingRepository } from '../features/notification/wording.db.js';
+import { EmailWordingService } from '../features/notification/wording.service.js';
+import { emailWordingRoutes } from '../features/notification/wording.routes.js';
 import { teamRoutes } from '../features/team/routes.js';
 import { TeamService } from '../features/team/team.service.js';
 import { teamCalendarRoutes } from '../features/team/team-calendar.routes.js';
@@ -127,6 +130,8 @@ export interface Application {
   delegations: ApprovalDelegationService;
   /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
   organisation: OrganisationRepository;
+  /** FR 61, LMS 512. HR's wording of the emails. */
+  emailWording: EmailWordingRepository;
   /** Where a 500 is written down. */
   failures?: FailureLog;
   /** Read from `SESSION_SECRET` when not given. */
@@ -292,6 +297,12 @@ export function buildApp(parts: Application): Express {
       organisation: new OrganisationService(parts.organisation, parts.guard, parts.employees),
       types: new LeaveTypeService(parts.types, parts.guard),
     }),
+  );
+
+  /* FR 61, LMS 512. The wording of the emails. Reading is HR's, changing it an HR Officer's. */
+  app.use(
+    '/api',
+    emailWordingRoutes({ wording: new EmailWordingService(parts.emailWording, parts.guard) }),
   );
 
   /* FR 55, FR 56, LMS 405. A read service built from repositories, as the two above are:

@@ -5,6 +5,7 @@ import { BalancesPage } from './features/balances/BalancesPage';
 import { CalendarPage } from './features/calendar/CalendarPage';
 import { ApprovalChainsPage } from './features/config/ApprovalChainsPage';
 import { BalanceAdjustmentsPage } from './features/config/BalanceAdjustmentsPage';
+import { EmailWordingPage } from './features/config/EmailWordingPage';
 import { EntitlementRulesPage } from './features/config/EntitlementRulesPage';
 import { HolidaysPage } from './features/config/HolidaysPage';
 import { LeaversPage } from './features/config/LeaversPage';
@@ -107,6 +108,8 @@ const SCREENS = [
   { id: 'leavers', label: 'Leavers', icon: 'people' },
   /** FR 63, LMS 510. HR's reports on leave across the company. */
   { id: 'reports', label: 'Reports', icon: 'report' },
+  /** FR 61, LMS 512. The words the system's emails go out in. */
+  { id: 'email-wording', label: 'Email wording', icon: 'send' },
 ] as const;
 
 type Screen = (typeof SCREENS)[number]['id'];
@@ -306,6 +309,7 @@ export function App() {
         {screen === 'adjustments' ? <BalanceAdjustmentsPage onSignedOut={ranOut} /> : null}
         {screen === 'leavers' ? <LeaversPage onSignedOut={ranOut} /> : null}
         {screen === 'reports' ? <ReportsPage onSignedOut={ranOut} /> : null}
+        {screen === 'email-wording' ? <EmailWordingPage onSignedOut={ranOut} /> : null}
       </div>
     </div>
   );
