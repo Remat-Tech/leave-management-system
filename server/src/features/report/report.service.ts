@@ -1,4 +1,4 @@
-/** HR's reports, assembled. FR 63, LMS 510. */
+/** HR's reports, assembled. FR 63, LMS 510, FR 58, LMS 511. */
 
 import type { Actor } from '../../auth/actor.js';
 import type { Guard } from '../../auth/policy.js';
@@ -15,6 +15,10 @@ import {
   liabilityByDepartment,
   NoLeaveYearForTheReport,
   type OverdueRequestsReport,
+  type ReportChoices,
+  reportChoicesOf,
+  readOpenEndedPeriod,
+  readReportFilter,
   readReportPeriod,
   readTurnaroundDays,
   type ReportYear,
@@ -31,8 +35,21 @@ import type { LeaveRequestRepository } from '../leave-request/leave-request.db.j
 import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
 
+/** What a report may be asked, as it arrived. */
+export interface ReportQuery {
+  leaveYearId?: string;
+  from?: string;
+  to?: string;
+  turnaroundDays?: string;
+  departmentId?: string;
+  leaveTypeId?: string;
+}
+
+/** A report with what its filters offer. */
+export type WithChoices<T> = T & { choices: ReportChoices };
+
 /** A report over one leave year, with the years it could have been. */
-export type WithYears<T> = T & { years: ReportYear[] };
+export type WithYears<T> = WithChoices<T> & { years: ReportYear[] };
 
 export class ReportService {
   constructor(
@@ -47,78 +64,97 @@ export class ReportService {
   ) {}
 
   /** Leave liability by department. */
-  async liability(actor: Actor, leaveYearId?: string): Promise<WithYears<LiabilityReport>> {
+  async liability(actor: Actor, asked: ReportQuery = {}): Promise<WithYears<LiabilityReport>> {
     this.guard.enforce(reportPolicy.read(actor));
 
-    return this.overYear(leaveYearId, liabilityByDepartment);
+    return this.overYear(asked, liabilityByDepartment);
   }
 
   /** Leave taken by type and period, the current leave year where no period is given. */
-  async leaveTaken(
-    actor: Actor,
-    period: { from?: unknown; to?: unknown },
-  ): Promise<LeaveTakenReport> {
+  async leaveTaken(actor: Actor, asked: ReportQuery = {}): Promise<WithChoices<LeaveTakenReport>> {
     this.guard.enforce(reportPolicy.read(actor));
 
     const year = this.yearToShow(await this.sortedYears(), undefined);
-    const { from, to } = readReportPeriod(period.from, period.to, {
+    const { from, to } = readReportPeriod(asked.from, asked.to, {
       from: year.startDate,
       to: year.endDate,
     });
+    const departments = await this.departments.list();
+    const types = await this.types.list();
 
-    return leaveTakenByTypeAndPeriod({
-      from,
-      to,
-      types: await this.types.list(),
-      approved: await this.requests.approvedStartingBetween({ from, to }),
-    });
+    return {
+      ...leaveTakenByTypeAndPeriod({
+        from,
+        to,
+        employees: await this.employees.list(),
+        types,
+        approved: await this.requests.approvedStartingBetween({ from, to }),
+        filter: readReportFilter(asked, departments, types),
+      }),
+      choices: reportChoicesOf(departments, types),
+    };
   }
 
-  /** Requests pending beyond the agreed turnaround. */
-  async overdueRequests(actor: Actor, turnaroundDays?: unknown): Promise<OverdueRequestsReport> {
+  /** Requests pending beyond the agreed turnaround, narrowed by when they were submitted. */
+  async overdueRequests(
+    actor: Actor,
+    asked: ReportQuery = {},
+  ): Promise<WithChoices<OverdueRequestsReport>> {
     this.guard.enforce(reportPolicy.read(actor));
 
-    return requestsPastTurnaround({
-      asAt: this.today(),
-      turnaroundDays: readTurnaroundDays(turnaroundDays),
-      undecided: await this.requests.undecided(),
-      employees: await this.employees.list(),
-      departments: await this.departments.list(),
-      types: await this.types.list(),
-    });
+    const departments = await this.departments.list();
+    const types = await this.types.list();
+
+    return {
+      ...requestsPastTurnaround({
+        asAt: this.today(),
+        turnaroundDays: readTurnaroundDays(asked.turnaroundDays),
+        undecided: await this.requests.undecided(),
+        employees: await this.employees.list(),
+        departments,
+        types,
+        filter: readReportFilter(asked, departments, types),
+        submitted: readOpenEndedPeriod(asked.from, asked.to),
+      }),
+      choices: reportChoicesOf(departments, types),
+    };
   }
 
   /** Employees with zero or excessive leave taken. */
-  async usage(actor: Actor, leaveYearId?: string): Promise<WithYears<LeaveUsageReport>> {
+  async usage(actor: Actor, asked: ReportQuery = {}): Promise<WithYears<LeaveUsageReport>> {
     this.guard.enforce(reportPolicy.read(actor));
 
-    return this.overYear(leaveYearId, leaveUsage);
+    return this.overYear(asked, leaveUsage);
   }
 
   /** Carried over balances. */
-  async carriedOver(actor: Actor, leaveYearId?: string): Promise<WithYears<CarriedOverReport>> {
+  async carriedOver(actor: Actor, asked: ReportQuery = {}): Promise<WithYears<CarriedOverReport>> {
     this.guard.enforce(reportPolicy.read(actor));
 
-    return this.overYear(leaveYearId, carriedOverBalances);
+    return this.overYear(asked, carriedOverBalances);
   }
 
   /** Gathers one year's balances and hands them to a report. */
   private async overYear<T>(
-    leaveYearId: string | undefined,
+    asked: ReportQuery,
     report: (facts: BalanceFacts) => T,
   ): Promise<WithYears<T>> {
     const years = await this.sortedYears();
-    const year = this.yearToShow(years, leaveYearId);
+    const year = this.yearToShow(years, asked.leaveYearId);
+    const departments = await this.departments.list();
+    const types = await this.types.list();
 
     return {
       ...report({
         year,
         employees: await this.employees.list(),
-        departments: await this.departments.list(),
-        types: await this.types.list(),
+        departments,
+        types,
         balances: await this.balances.forYear(year.id),
+        filter: readReportFilter(asked, departments, types),
       }),
       years: years.map(reportYearOf),
+      choices: reportChoicesOf(departments, types),
     };
   }
 

@@ -1367,14 +1367,32 @@ export interface LiabilityLine extends ReportLeaveType {
   unused: number;
 }
 
+/** What a report's filters offer. FR 58, LMS 511. */
+export interface ReportChoices {
+  departments: { id: string; name: string }[];
+  types: { id: string; name: string }[];
+}
+
+/** What a report may be asked, left out where empty. */
+export interface ReportQuery {
+  leaveYearId?: string;
+  from?: string;
+  to?: string;
+  turnaroundDays?: string;
+  departmentId?: string;
+  leaveTypeId?: string;
+}
+
 export interface LiabilityReport {
   year: Year;
   years: Year[];
+  choices: ReportChoices;
   departments: { departmentId: string; name: string; headcount: number; lines: LiabilityLine[] }[];
   company: LiabilityLine[];
 }
 
 export interface LeaveTakenReport {
+  choices: ReportChoices;
   from: string;
   to: string;
   /** `YYYY-MM`. */
@@ -1399,6 +1417,7 @@ export interface OverdueRequest {
 }
 
 export interface OverdueRequestsReport {
+  choices: ReportChoices;
   asAt: string;
   turnaroundDays: number;
   requests: OverdueRequest[];
@@ -1421,6 +1440,7 @@ export interface PersonLine {
 export interface LeaveUsageReport {
   year: Year;
   years: Year[];
+  choices: ReportChoices;
   types: ReportLeaveType[];
   zero: PersonLine[];
   excessive: PersonLine[];
@@ -1429,33 +1449,72 @@ export interface LeaveUsageReport {
 export interface CarriedOverReport {
   year: Year;
   years: Year[];
+  choices: ReportChoices;
   totals: (ReportLeaveType & { people: number; carriedOver: number })[];
   balances: PersonLine[];
 }
 
-export async function liabilityReport(leaveYearId?: string): Promise<LiabilityReport> {
-  return request<LiabilityReport>('GET', `/api/reports/liability${query({ leaveYearId })}`);
+export async function liabilityReport(asked: ReportQuery): Promise<LiabilityReport> {
+  return request<LiabilityReport>('GET', `/api/reports/liability${query({ ...asked })}`);
 }
 
-export async function leaveTakenReport(from?: string, to?: string): Promise<LeaveTakenReport> {
-  return request<LeaveTakenReport>('GET', `/api/reports/leave-taken${query({ from, to })}`);
+export async function leaveTakenReport(asked: ReportQuery): Promise<LeaveTakenReport> {
+  return request<LeaveTakenReport>('GET', `/api/reports/leave-taken${query({ ...asked })}`);
 }
 
-export async function overdueRequestsReport(
-  turnaroundDays?: string,
-): Promise<OverdueRequestsReport> {
+export async function overdueRequestsReport(asked: ReportQuery): Promise<OverdueRequestsReport> {
   return request<OverdueRequestsReport>(
     'GET',
-    `/api/reports/overdue-requests${query({ turnaroundDays })}`,
+    `/api/reports/overdue-requests${query({ ...asked })}`,
   );
 }
 
-export async function usageReport(leaveYearId?: string): Promise<LeaveUsageReport> {
-  return request<LeaveUsageReport>('GET', `/api/reports/usage${query({ leaveYearId })}`);
+export async function usageReport(asked: ReportQuery): Promise<LeaveUsageReport> {
+  return request<LeaveUsageReport>('GET', `/api/reports/usage${query({ ...asked })}`);
 }
 
-export async function carriedOverReport(leaveYearId?: string): Promise<CarriedOverReport> {
-  return request<CarriedOverReport>('GET', `/api/reports/carried-over${query({ leaveYearId })}`);
+export async function carriedOverReport(asked: ReportQuery): Promise<CarriedOverReport> {
+  return request<CarriedOverReport>('GET', `/api/reports/carried-over${query({ ...asked })}`);
+}
+
+/** ------------------------------------------------------- exports. FR 64, LMS 511 */
+
+export type ExportFormat = 'csv' | 'xlsx';
+
+export function reportExportPath(report: string, asked: ReportQuery): string {
+  return `/api/reports/${report}/export${query({ ...asked })}`;
+}
+
+export function myBalancesExportPath(leaveYearId?: string): string {
+  return `/api/me/balances/export${query({ leaveYearId })}`;
+}
+
+export function myRequestsExportPath(leaveYearId?: string): string {
+  return `/api/me/requests/export${query({ leaveYearId })}`;
+}
+
+/** Fetches an export and hands it to the browser to save, named as the server named it. */
+export async function saveExport(path: string, format: ExportFormat): Promise<void> {
+  const response = await send(`${path}${path.includes('?') ? '&' : '?'}format=${format}`, {
+    method: 'GET',
+    credentials: 'same-origin',
+  });
+
+  if (!response.ok) {
+    throw errorFrom(response.status, await response.json().catch(() => undefined));
+  }
+
+  const named = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '');
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = named?.[1] ?? `export.${format}`;
+  link.click();
+
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
 }
 
 /** A query string from the values that were given. */

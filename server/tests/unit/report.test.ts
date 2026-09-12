@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { type LeaveBalance, noMovementsYet } from '../../src/features/balance/balance.js';
-import type { Department } from '../../src/features/department/department.js';
+import { type Department, DepartmentNotFound } from '../../src/features/department/department.js';
 import type { Employee } from '../../src/features/employee/employee.js';
 import type {
   LeaveRequest,
   RequestStatus,
 } from '../../src/features/leave-request/leave-request.js';
-import type { LeaveType } from '../../src/features/leave-type/leave-type.js';
+import { type LeaveType, LeaveTypeNotFound } from '../../src/features/leave-type/leave-type.js';
 import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
 import {
   AGREED_TURNAROUND_DAYS,
@@ -17,6 +17,8 @@ import {
   leaveUsage,
   liabilityByDepartment,
   monthsBetween,
+  readOpenEndedPeriod,
+  readReportFilter,
   readReportPeriod,
   readTurnaroundDays,
   requestsPastTurnaround,
@@ -95,6 +97,7 @@ describe('leave taken by type and period', () => {
   const report = leaveTakenByTypeAndPeriod({
     from: '2026-03-01',
     to: '2026-04-30',
+    employees: EMPLOYEES,
     types: TYPES,
     approved: [
       request('one', AMA, ANNUAL, '2026-03-02', 5),
@@ -120,6 +123,7 @@ describe('leave taken by type and period', () => {
     const lines = leaveTakenByTypeAndPeriod({
       from: '2026-03-01',
       to: '2026-03-31',
+      employees: EMPLOYEES,
       types: [ANNUAL, retired],
       approved: [],
     }).lines;
@@ -215,6 +219,86 @@ describe('carried over balances', () => {
     expect(report.totals).toEqual([
       expect.objectContaining({ name: 'Annual Leave', people: 2, carriedOver: 42 }),
     ]);
+  });
+});
+
+describe('narrowed by department, type and date. FR 58, LMS 511', () => {
+  const balances = [
+    balance(AMA, ANNUAL, { entitled: 20 }),
+    balance(AMA, SICK, { entitled: 5 }),
+    balance(EFE, ANNUAL, { entitled: 20 }),
+  ];
+
+  it('keeps one department and one type in a balance report', () => {
+    const report = liabilityByDepartment({
+      year: YEAR,
+      employees: EMPLOYEES,
+      departments: DEPARTMENTS,
+      types: TYPES,
+      balances,
+      filter: { departmentId: OPERATIONS.id, leaveTypeId: ANNUAL.id },
+    });
+
+    expect(report.departments.map((one) => one.name)).toEqual(['Operations']);
+    expect(report.company.map((line) => [line.name, line.entitled])).toEqual([
+      ['Annual Leave', 20],
+    ]);
+  });
+
+  it('keeps one department in leave taken', () => {
+    const report = leaveTakenByTypeAndPeriod({
+      from: '2026-03-01',
+      to: '2026-03-31',
+      employees: EMPLOYEES,
+      types: TYPES,
+      approved: [
+        request('ops', AMA, ANNUAL, '2026-03-02', 5),
+        request('fin', EFE, ANNUAL, '2026-03-03', 2),
+      ],
+      filter: { departmentId: FINANCE.id },
+    });
+
+    expect(report.lines.find((line) => line.leaveTypeId === ANNUAL.id)?.days).toBe(2);
+  });
+
+  it('keeps the overdue requests submitted inside the dates', () => {
+    const report = requestsPastTurnaround({
+      asAt: '2026-03-31',
+      turnaroundDays: 5,
+      employees: EMPLOYEES,
+      departments: DEPARTMENTS,
+      types: TYPES,
+      undecided: [
+        request('early', AMA, ANNUAL, '2026-04-01', 1, { submittedAt: '2026-03-01' }),
+        request('later', AMA, ANNUAL, '2026-04-01', 1, { submittedAt: '2026-03-10' }),
+        request('sick', AMA, SICK, '2026-04-01', 1, { submittedAt: '2026-03-10' }),
+      ],
+      filter: { leaveTypeId: ANNUAL.id },
+      submitted: { from: '2026-03-05' },
+    });
+
+    expect(report.requests.map((one) => one.requestId)).toEqual(['later']);
+  });
+
+  it('refuses a department or type that does not exist', () => {
+    expect(readReportFilter({ departmentId: FINANCE.id }, DEPARTMENTS, TYPES)).toEqual({
+      departmentId: FINANCE.id,
+      leaveTypeId: undefined,
+    });
+    expect(() => readReportFilter({ departmentId: 'nowhere' }, DEPARTMENTS, TYPES)).toThrow(
+      DepartmentNotFound,
+    );
+    expect(() => readReportFilter({ leaveTypeId: 'nothing' }, DEPARTMENTS, TYPES)).toThrow(
+      LeaveTypeNotFound,
+    );
+  });
+
+  it('reads a period with either end open', () => {
+    expect(readOpenEndedPeriod(undefined, '2026-06-30')).toEqual({
+      from: undefined,
+      to: '2026-06-30',
+    });
+    expect(() => readOpenEndedPeriod('2026-06-30', '2026-06-01')).toThrow(InvalidReportPeriod);
   });
 });
 

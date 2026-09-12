@@ -1,7 +1,7 @@
-/** HR's reports on leave across the company. FR 63, LMS 510. */
+/** HR's reports on leave across the company. FR 63, LMS 510, FR 58, LMS 511. */
 
 import { available, type LeaveBalance, owed } from '../balance/balance.js';
-import type { Department } from '../department/department.js';
+import { type Department, DepartmentNotFound } from '../department/department.js';
 import type { Employee } from '../employee/employee.js';
 import type { ApproverRole } from '../leave-type/approval-chain.js';
 import {
@@ -11,6 +11,7 @@ import {
   hasRunningBalance,
   isEligible,
   type LeaveType,
+  LeaveTypeNotFound,
 } from '../leave-type/leave-type.js';
 import type { LeaveYear } from '../leave-year/leave-year.js';
 import {
@@ -65,6 +66,18 @@ export class InvalidTurnaroundDays extends Error {
 }
 
 /* ------------------------------------------------------------------- the shapes */
+
+/** One department or leave type a report may be narrowed to. FR 58, LMS 511. */
+export interface ReportFilter {
+  departmentId?: string;
+  leaveTypeId?: string;
+}
+
+/** What the filters offer. */
+export interface ReportChoices {
+  departments: { id: string; name: string }[];
+  types: { id: string; name: string }[];
+}
 
 /** A leave year as a report names it. */
 export interface ReportYear {
@@ -195,14 +208,16 @@ export interface BalanceFacts {
   departments: readonly Department[];
   types: readonly LeaveType[];
   balances: readonly LeaveBalance[];
+  filter?: ReportFilter;
 }
 
 /* ------------------------------------------------------------------ the reports */
 
 /** Unused days by department, per kind of paid leave. Leavers are settled apart. FR 37a. */
 export function liabilityByDepartment(facts: BalanceFacts): LiabilityReport {
-  const types = paidRunningTypes(facts.types);
-  const staff = stillEmployed(facts.employees);
+  const filter = facts.filter ?? {};
+  const types = paidRunningTypes(facts.types).filter(isTheChosenType(filter));
+  const staff = stillEmployed(facts.employees).filter(isInTheChosenDepartment(filter));
   const balances = balancesOf(facts, staff, types);
 
   const departments = [...facts.departments]
@@ -236,16 +251,24 @@ export function liabilityByDepartment(facts: BalanceFacts): LiabilityReport {
 export function leaveTakenByTypeAndPeriod(facts: {
   from: CalendarDate;
   to: CalendarDate;
+  employees: readonly Employee[];
   types: readonly LeaveType[];
   approved: readonly LeaveRequest[];
+  filter?: ReportFilter;
 }): LeaveTakenReport {
+  const filter = facts.filter ?? {};
   const months = monthsBetween(facts.from, facts.to);
+  const isOfTheChosenDepartment = requestInTheChosenDepartment(facts.employees, filter);
   const inPeriod = facts.approved.filter(
     (request) =>
-      request.status === 'APPROVED' && request.from >= facts.from && request.from <= facts.to,
+      request.status === 'APPROVED' &&
+      request.from >= facts.from &&
+      request.from <= facts.to &&
+      isOfTheChosenDepartment(request),
   );
 
   const lines = [...facts.types]
+    .filter(isTheChosenType(filter))
     .sort(byDisplayOrder)
     .map((type) => {
       const ofType = inPeriod.filter((request) => request.leaveTypeId === type.id);
@@ -268,7 +291,7 @@ export function leaveTakenByTypeAndPeriod(facts: {
   return { from: facts.from, to: facts.to, months, lines };
 }
 
-/** Undecided requests waiting longer than the turnaround, longest first. */
+/** Undecided requests waiting longer than the turnaround, longest first. Dated by submission. */
 export function requestsPastTurnaround(facts: {
   asAt: CalendarDate;
   turnaroundDays: number;
@@ -276,12 +299,22 @@ export function requestsPastTurnaround(facts: {
   employees: readonly Employee[];
   departments: readonly Department[];
   types: readonly LeaveType[];
+  filter?: ReportFilter;
+  submitted?: { from?: CalendarDate; to?: CalendarDate };
 }): OverdueRequestsReport {
+  const filter = facts.filter ?? {};
+  const submitted = facts.submitted ?? {};
   const people = new Map(facts.employees.map((one) => [one.id, one]));
   const departments = new Map(facts.departments.map((one) => [one.id, one.name]));
   const types = new Map(facts.types.map((one) => [one.id, one.name]));
+  const isOfTheChosenDepartment = requestInTheChosenDepartment(facts.employees, filter);
 
   const requests = facts.undecided
+    .filter(
+      (request) =>
+        (filter.leaveTypeId === undefined || request.leaveTypeId === filter.leaveTypeId) &&
+        isOfTheChosenDepartment(request),
+    )
     .map((request) => {
       const submittedOn = calendarDateIn(request.submittedAt, 'UTC');
       const employee = people.get(request.employeeId);
@@ -301,7 +334,12 @@ export function requestsPastTurnaround(facts: {
         daysWaiting: noticeGiven(submittedOn, facts.asAt),
       };
     })
-    .filter((request) => request.daysWaiting > facts.turnaroundDays)
+    .filter(
+      (request) =>
+        request.daysWaiting > facts.turnaroundDays &&
+        (submitted.from === undefined || request.submittedOn >= submitted.from) &&
+        (submitted.to === undefined || request.submittedOn <= submitted.to),
+    )
     .sort(
       (one, other) =>
         other.daysWaiting - one.daysWaiting || one.requestId.localeCompare(other.requestId),
@@ -312,8 +350,8 @@ export function requestsPastTurnaround(facts: {
 
 /** Who took none of what they were given, and who took more than it. */
 export function leaveUsage(facts: BalanceFacts): LeaveUsageReport {
-  const types = [...facts.types].filter(hasRunningBalance).sort(byDisplayOrder);
-  const staff = stillEmployed(facts.employees);
+  const types = runningTypes(facts);
+  const staff = staffInScope(facts);
   const lines = personLines(facts, staff, types);
 
   return {
@@ -326,8 +364,8 @@ export function leaveUsage(facts: BalanceFacts): LeaveUsageReport {
 
 /** Every balance with days carried into this year, and the totals per type. FR 36, FR 36a. */
 export function carriedOverBalances(facts: BalanceFacts): CarriedOverReport {
-  const types = [...facts.types].filter(hasRunningBalance).sort(byDisplayOrder);
-  const staff = stillEmployed(facts.employees);
+  const types = runningTypes(facts);
+  const staff = staffInScope(facts);
   const balances = personLines(facts, staff, types).filter((line) => line.carriedOver !== 0);
 
   return {
@@ -392,6 +430,53 @@ export function readReportPeriod(
   return { from: start, to: end };
 }
 
+/** A period either end of which may be left open. */
+export function readOpenEndedPeriod(
+  from: unknown,
+  to: unknown,
+): { from?: CalendarDate; to?: CalendarDate } {
+  const start = optionalDate(from, 'from');
+  const end = optionalDate(to, 'to');
+
+  if (start !== undefined && end !== undefined && end < start) {
+    throw new InvalidReportPeriod('to', `The period ends on ${end}, before it starts on ${start}.`);
+  }
+
+  return { from: start, to: end };
+}
+
+/** The department and type asked for, each checked to exist. FR 58. */
+export function readReportFilter(
+  asked: { departmentId?: string; leaveTypeId?: string },
+  departments: readonly Department[],
+  types: readonly LeaveType[],
+): ReportFilter {
+  const { departmentId, leaveTypeId } = asked;
+
+  if (departmentId !== undefined && !departments.some((one) => one.id === departmentId)) {
+    throw new DepartmentNotFound(departmentId);
+  }
+
+  if (leaveTypeId !== undefined && !types.some((one) => one.id === leaveTypeId)) {
+    throw new LeaveTypeNotFound(leaveTypeId);
+  }
+
+  return { departmentId, leaveTypeId };
+}
+
+/** Every department and type, by name and display order. */
+export function reportChoicesOf(
+  departments: readonly Department[],
+  types: readonly LeaveType[],
+): ReportChoices {
+  return {
+    departments: [...departments]
+      .sort((one, other) => one.name.localeCompare(other.name))
+      .map((one) => ({ id: one.id, name: one.name })),
+    types: [...types].sort(byDisplayOrder).map((one) => ({ id: one.id, name: one.name })),
+  };
+}
+
 /* --------------------------------------------------------------------- helpers */
 
 export function reportYearOf(year: LeaveYear): ReportYear {
@@ -425,8 +510,12 @@ export function monthsBetween(from: CalendarDate, to: CalendarDate): string[] {
 }
 
 function dateOr(value: unknown, fallback: CalendarDate, field: 'from' | 'to'): CalendarDate {
+  return optionalDate(value, field) ?? fallback;
+}
+
+function optionalDate(value: unknown, field: 'from' | 'to'): CalendarDate | undefined {
   if (value === undefined || value === '') {
-    return fallback;
+    return undefined;
   }
 
   if (!isCalendarDate(value)) {
@@ -434,6 +523,37 @@ function dateOr(value: unknown, fallback: CalendarDate, field: 'from' | 'to'): C
   }
 
   return value;
+}
+
+function isTheChosenType(filter: ReportFilter) {
+  return (type: LeaveType): boolean =>
+    filter.leaveTypeId === undefined || type.id === filter.leaveTypeId;
+}
+
+function isInTheChosenDepartment(filter: ReportFilter) {
+  return (employee: Employee): boolean =>
+    filter.departmentId === undefined || employee.departmentId === filter.departmentId;
+}
+
+function requestInTheChosenDepartment(employees: readonly Employee[], filter: ReportFilter) {
+  const departmentOf = new Map(employees.map((one) => [one.id, one.departmentId]));
+
+  return (request: LeaveRequest): boolean =>
+    filter.departmentId === undefined ||
+    departmentOf.get(request.employeeId) === filter.departmentId;
+}
+
+/** Types with a yearly balance, narrowed to the one chosen. */
+function runningTypes(facts: BalanceFacts): LeaveType[] {
+  return [...facts.types]
+    .filter(hasRunningBalance)
+    .filter(isTheChosenType(facts.filter ?? {}))
+    .sort(byDisplayOrder);
+}
+
+/** Still employed, narrowed to the department chosen. */
+function staffInScope(facts: BalanceFacts): Employee[] {
+  return stillEmployed(facts.employees).filter(isInTheChosenDepartment(facts.filter ?? {}));
 }
 
 function reportLeaveTypeOf(type: LeaveType): ReportLeaveType {

@@ -39,6 +39,9 @@ import type { RequestFormService } from './request-form.service.js';
 import type { RequestHistoryService } from './request-history.service.js';
 import { actorOf } from '../../http/identify.js';
 import { type FailureLog, failuresToStderr, problemInABatch } from '../../http/problems.js';
+import { readExportFormat } from '../../export/table.js';
+import { sendTable } from '../../http/download.js';
+import { historyTable } from './history-export.js';
 
 export interface RequestRoutes {
   history: RequestHistoryService;
@@ -446,6 +449,20 @@ export function requestRoutes({
       })
       .then((found) => {
         response.json(historyAsJson(found));
+      })
+      .catch(next);
+  });
+
+  /** My requests, as a file. FR 64, LMS 511. */
+  routes.get('/me/requests/export', (request: Request, response: Response, next) => {
+    void Promise.resolve()
+      .then(async () => {
+        const format = readExportFormat(request.query.format);
+        const found = await history.forEmployee(actorOf(response), employeeIdOf(response), {
+          leaveYearId: oneYearIn(request),
+        });
+
+        sendTable(response, historyTable(found), format);
       })
       .catch(next);
   });
