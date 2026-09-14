@@ -1,0 +1,99 @@
+name: Backup
+
+# LMS 604, NFR AVL 02. Daily: dump production, restore into a clean Postgres 17, verify, keep encrypted.
+# Procedure: docs/backup-and-restore.md
+
+on:
+  schedule:
+    - cron: '0 1 * * *' # 01:00 UTC, which is 01:00 in Accra
+  workflow_dispatch:
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Back up, restore, verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      # The clean environment. Destroyed with the run.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PG_BIN: /usr/lib/postgresql/17/bin
+      HUSKY: 0
+
+    steps:
+      - name: Refuse to run without the secrets
+        env:
+          PRODUCTION_DATABASE_MIGRATION_URL: ${{ secrets.PRODUCTION_DATABASE_MIGRATION_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          test -n "$PRODUCTION_DATABASE_MIGRATION_URL" || { echo "PRODUCTION_DATABASE_MIGRATION_URL is not set"; exit 1; }
+          test -n "$BACKUP_PASSPHRASE" || { echo "BACKUP_PASSPHRASE is not set"; exit 1; }
+
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exactly what the lockfile says
+        run: npm ci
+
+      # The runner's own client is older, and pg_dump refuses a newer server.
+      - name: Install the PostgreSQL 17 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Back up production
+        env:
+          DATABASE_MIGRATION_URL: ${{ secrets.PRODUCTION_DATABASE_MIGRATION_URL }}
+        run: npm run backup -- backups
+
+      - name: Restore into a clean database and verify
+        env:
+          BACKUP_RESTORE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: npm run restore -- backups/*.manifest.json lms_restore
+
+      - name: Encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          for file in backups/*; do
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+              --symmetric --cipher-algo AES256 --output "$file.gpg" "$file" <<< "$BACKUP_PASSPHRASE"
+            rm "$file"
+          done
+
+      - name: Keep
+        uses: actions/upload-artifact@v4
+        with:
+          name: lms-backup-${{ github.run_id }}
+          path: backups/*.gpg
+          retention-days: 35
+          if-no-files-found: error

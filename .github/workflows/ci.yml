@@ -122,7 +122,17 @@ jobs:
           npm run web:install
           npm run web:build
 
+      # LMS 604. pg_dump must match the server's major version.
+      - name: Install the PostgreSQL 17 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+
       # Builds and drops its own database inside the service container above,
       # and sends its mail to the Mailpit container.
       - name: Integration tests
+        env:
+          PG_BIN: /usr/lib/postgresql/17/bin
         run: npm run test:int

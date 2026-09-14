@@ -148,3 +148,6 @@ vite.config.ts.timestamp-*
 # Attachments written by the local storage driver. These are real uploads,
 # medical certificates among them, and must never be committed. NFR SEC 06.
 .storage/
+
+# Database dumps. Everyone's leave records. LMS 604.
+backups/

@@ -25,7 +25,9 @@
     "walkthrough": "vitest run --config vitest.walkthrough.mts",
     "chart": "vitest run --config vitest.walkthrough.mts server/tests/walkthrough/org-chart.ts",
     "mail": "node scripts/mailpit.mjs",
-    "seed": "node server/seeds/seed.mjs"
+    "seed": "node server/seeds/seed.mjs",
+    "backup": "tsx scripts/backup.ts",
+    "restore": "tsx scripts/restore.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
