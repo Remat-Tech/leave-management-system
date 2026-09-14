@@ -61,7 +61,8 @@ export function problemFor(error: unknown): { status: number; body: Problem } {
      number belongs to anybody — the pair of this and a silent refusal has to be one
      answer. Every other `NotFound` is about configuration, which anybody signed in may
      read anyway, so it keeps its own sentence. */
-  if (error.name === 'EmployeeNotFound') {
+  /* A request id too, or a colleague could walk the sequence. LMS 602. */
+  if (error.name === 'EmployeeNotFound' || error.name === 'LeaveRequestNotFound') {
     return { status: 404, body: { error: 'NotFound', message: NOT_AUTHORISED_MESSAGE } };
   }
 
