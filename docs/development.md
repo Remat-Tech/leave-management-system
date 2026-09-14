@@ -1014,6 +1014,8 @@ one has to be a decision rather than an accident.
 
 Concurrency tests matter more than they look. Two approvers deciding one request, and two requests submitted against a thin balance, are the defects that never appear in manual testing and only surface as a balance that is quietly wrong.
 
+**`integration/performance.test.ts` carries LMS 603.** NFR PRF 01: API p95 under 500 ms and landing page load p95 under 2 s, at 25 users at once. Needs `npm run web:build` first. Logs p50 and p95 for each check.
+
 ---
 
 ## Build order

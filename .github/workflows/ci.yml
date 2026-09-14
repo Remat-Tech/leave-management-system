@@ -116,6 +116,12 @@ jobs:
           echo "Mailpit did not start within 30s"
           exit 1
 
+      # LMS 603. The page load check serves client/dist.
+      - name: Build the client
+        run: |
+          npm run web:install
+          npm run web:build
+
       # Builds and drops its own database inside the service container above,
       # and sends its mail to the Mailpit container.
       - name: Integration tests
