@@ -290,6 +290,9 @@ reports `EmployeeNotFound`. HR gets the useful answer, which is what makes a
 mistyped id a five second problem. Everybody else gets one sentence whatever they
 type.
 
+A leave request id is the same over HTTP: missing and refused are one 404. A move or an
+attach refused to somebody who cannot see the request is silent. LMS 602.
+
 **A refusal aimed at somebody who can see the record but may not do that to it
 says what the rule is.** A manager who has just read their report's record
 and then tries to change it is told "employee records are changed by HR", which

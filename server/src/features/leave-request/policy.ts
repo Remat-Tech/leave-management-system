@@ -263,6 +263,22 @@ function desksOf(
   });
 }
 
+/** Whether a refusal may say why. Nobody else learns the request exists. LMS 602. */
+function canSee(actor: Actor, subject: StandingFacts): boolean {
+  const desk = subject.awaiting;
+
+  return (
+    isSelf(actor, subject.employeeId) ||
+    isSelf(actor, subject.managerId) ||
+    holdsAny(actor, ...READS_EVERY_RECORD) ||
+    isAt(actor, subject) ||
+    /* A delegate covering the desk already sees the row in their queue. FR 49. */
+    (desk !== null &&
+      desk !== undefined &&
+      (subject.standingIn ?? []).some((one) => one.desks.includes(desk)))
+  );
+}
+
 /** Whether this actor may make this move, decided against the table. §6., LMS 313. */
 function mayMove(
   actor: Actor,
@@ -283,7 +299,9 @@ function mayMove(
 
   return standingsFor(action).some((standing) => hasStanding(actor, subject, standing))
     ? about.allow(actor, said, subject.employeeId)
-    : about.refuseOpenly(actor, said, subject.employeeId, words.because, words.told);
+    : canSee(actor, subject)
+      ? about.refuseOpenly(actor, said, subject.employeeId, words.because, words.told)
+      : about.refuse(actor, said, subject.employeeId, words.because);
 }
 
 /** Said openly to everybody it refuses, including a manager. */
@@ -598,6 +616,15 @@ export const leaveRequestPolicy = {
   attach(actor: Actor, owner: BalanceOwner): Decision {
     if (isSelf(actor, owner.employeeId) || holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)) {
       return about.allow(actor, 'attach', owner.employeeId);
+    }
+
+    if (!canSee(actor, owner)) {
+      return about.refuse(
+        actor,
+        'attach',
+        owner.employeeId,
+        'not their own leave, and holds no role that keeps records for somebody else',
+      );
     }
 
     return about.refuseOpenly(
