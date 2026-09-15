@@ -1712,6 +1712,25 @@ export async function changeMyPassword(
   await request<void>('POST', '/api/session/password', { currentPassword, newPassword });
 }
 
+/**
+ * A code to somebody who has forgotten their password. NFR SEC 01.
+ *
+ * The sentence it answers with is the same whatever the server found, so nothing here may
+ * treat it as confirmation that the address has a login.
+ */
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  return request<{ message: string }>('POST', '/api/session/forgot', { email });
+}
+
+/** The new password, with the code from that email. It does not sign anybody in. */
+export async function resetPasswordWithCode(
+  email: string,
+  code: string,
+  newPassword: string,
+): Promise<void> {
+  await request<void>('POST', '/api/session/reset', { email, code, newPassword });
+}
+
 export async function signIn(email: string, password: string): Promise<SignedIn | CodeSent> {
   return request<SignedIn | CodeSent>('POST', '/api/session', { email, password });
 }

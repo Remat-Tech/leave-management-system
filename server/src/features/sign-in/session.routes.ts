@@ -59,6 +59,38 @@ export function publicSessionRoutes({ signIn, secret }: SessionRoutes): Router {
       });
   });
 
+  /**
+   * A code to somebody who has forgotten their password. NFR SEC 01.
+   *
+   * 202 and the same sentence whatever it found. Answering differently for an address that
+   * has a login would make this the cheapest way to find out who works here, and it is a door
+   * anybody at all can knock on.
+   */
+  routes.post('/session/forgot', (request: Request, response: Response, next) => {
+    void signIn
+      .forgotPassword(stringIn(request.body, 'email'))
+      .then(() => {
+        response.status(202).json({
+          message:
+            'If that address has a login, a code is on its way to it. It works once, and ' +
+            'only for the next few minutes.',
+        });
+      })
+      .catch(next);
+  });
+
+  /** The new password, with the code from that email. NFR SEC 01. */
+  routes.post('/session/reset', (request: Request, response: Response, next) => {
+    const { email, code } = codeIn(request.body);
+
+    void signIn
+      .resetPasswordWithCode(email, code, stringIn(request.body, 'newPassword'))
+      .then(() => {
+        response.status(204).end();
+      })
+      .catch(next);
+  });
+
   return routes;
 }
 

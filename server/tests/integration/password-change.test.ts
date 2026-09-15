@@ -10,7 +10,7 @@ import { EmployeeRepository } from '../../src/features/employee/employee.db.js';
 import { RoleRepository } from '../../src/features/role/role.db.js';
 import { SignInAccountRepository } from '../../src/features/sign-in/sign-in-account.db.js';
 import { SignInService } from '../../src/features/sign-in/sign-in.service.js';
-import { recordingMailer } from '../support/recording-mailer.js';
+import { recordingMailer, type RecordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
@@ -31,6 +31,7 @@ let db: Kysely<Database>;
 let admin: Client;
 let logins: SignInService;
 let accounts: SignInAccountRepository;
+let mailer: RecordingMailer;
 let people: Record<string, string>;
 
 beforeAll(async () => {
@@ -39,11 +40,12 @@ beforeAll(async () => {
   await admin.connect();
 
   accounts = new SignInAccountRepository(db);
+  mailer = recordingMailer();
   logins = new SignInService(
     accounts,
     new EmployeeRepository(db),
     new RoleRepository(db),
-    recordingMailer(),
+    mailer,
     new Guard(),
   );
 });
@@ -159,5 +161,109 @@ describe('changing it', () => {
   it('is nobody else’s to do, whatever they hold', async () => {
     // hr is theSystem, which holds every role there is — and still may not.
     await expect(logins.changeMyPassword(hr, FIRST, THEIRS)).rejects.toThrow();
+  });
+});
+
+describe('forgetting it', () => {
+  const ADWOA = 'adwoa.frimpong@rematholdings.com';
+
+  beforeEach(async () => {
+    await logins.setPassword(hr, anEmployee(), FIRST);
+    mailer.sent.length = 0;
+  });
+
+  /** The code as it was emailed, read out of the message. */
+  function codeThatWasSent(): string {
+    const text = mailer.sent.at(-1)?.text ?? '';
+
+    return /\b(\d{6})\b/.exec(text)?.[1] ?? '';
+  }
+
+  it('emails a code, and the code is not written down anywhere readable', async () => {
+    await logins.forgotPassword(ADWOA);
+
+    expect(mailer.sent).toHaveLength(1);
+    expect(codeThatWasSent()).toMatch(/^\d{6}$/);
+
+    // Hashed at rest, as the password is: a copy of the table is not a list of live codes.
+    const { rows } = await admin.query<{ hash: string }>(
+      'SELECT reset_code_hash AS hash FROM app_user WHERE company_email = $1',
+      [ADWOA],
+    );
+    expect(rows[0].hash).not.toContain(codeThatWasSent());
+  });
+
+  it('sets the password, and the new one is what signs them in', async () => {
+    await logins.forgotPassword(ADWOA);
+    await logins.resetPasswordWithCode(ADWOA, codeThatWasSent(), THEIRS);
+
+    expect((await logins.signIn(ADWOA, THEIRS)).status).toBe('SIGNED_IN');
+  });
+
+  it('is theirs rather than HR’s, so nothing is left to change afterwards', async () => {
+    await logins.forgotPassword(ADWOA);
+    await logins.resetPasswordWithCode(ADWOA, codeThatWasSent(), THEIRS);
+
+    const account = await accounts.findByEmployeeId(anEmployee());
+    expect(account?.mustChangePassword).toBe(false);
+  });
+
+  it('spends the code, so the same one cannot be used twice', async () => {
+    await logins.forgotPassword(ADWOA);
+    const code = codeThatWasSent();
+
+    await logins.resetPasswordWithCode(ADWOA, code, THEIRS);
+
+    await expect(
+      logins.resetPasswordWithCode(ADWOA, code, 'another password again'),
+    ).rejects.toThrow(/no code waiting/i);
+  });
+
+  it('burns the code after five wrong answers, because six digits is a million guesses', async () => {
+    await logins.forgotPassword(ADWOA);
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await expect(logins.resetPasswordWithCode(ADWOA, '000000', THEIRS)).rejects.toThrow();
+    }
+
+    // Even the right code, now.
+    await expect(logins.resetPasswordWithCode(ADWOA, codeThatWasSent(), THEIRS)).rejects.toThrow(
+      /too many|expired|no code/i,
+    );
+  });
+
+  it('refuses a code that has run out', async () => {
+    const longAgo = new Date(Date.now() - 60 * 60_000);
+
+    await logins.forgotPassword(ADWOA, longAgo);
+
+    await expect(logins.resetPasswordWithCode(ADWOA, codeThatWasSent(), THEIRS)).rejects.toThrow(
+      /expired/i,
+    );
+  });
+
+  it('says nothing and sends nothing for an address with no login', async () => {
+    // The door anybody can knock on, so it must not answer who works here.
+    await logins.forgotPassword('nobody.at.all@rematholdings.com');
+
+    expect(mailer.sent).toHaveLength(0);
+  });
+
+  it('says nothing and sends nothing for somebody who has left', async () => {
+    await logins.forgotPassword('kojo.antwi@rematholdings.com');
+
+    expect(mailer.sent).toHaveLength(0);
+  });
+
+  it('refuses a new password too short to be worth having, and keeps the code', async () => {
+    await logins.forgotPassword(ADWOA);
+
+    await expect(logins.resetPasswordWithCode(ADWOA, codeThatWasSent(), 'short')).rejects.toThrow(
+      /at least/,
+    );
+
+    // The code survives: a refused password must not cost somebody the code they were sent.
+    await logins.resetPasswordWithCode(ADWOA, codeThatWasSent(), THEIRS);
+    expect((await logins.signIn(ADWOA, THEIRS)).status).toBe('SIGNED_IN');
   });
 });

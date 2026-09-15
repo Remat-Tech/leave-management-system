@@ -55,6 +55,8 @@ export interface SignInCredentials {
   account: SignInAccount;
   passwordHash: string | null;
   challenge: CodeChallenge;
+  /** The forgotten-password code, which is never the sign in one. NFR SEC 01. */
+  reset: CodeChallenge;
 }
 
 export class SignInAccountRepository {
@@ -122,6 +124,34 @@ export class SignInAccountRepository {
       .set({ mfa_code_hash: hash, mfa_code_expires_at: expiresAt, mfa_code_attempts: 0 })
       .where('id', '=', id)
       .execute();
+  }
+
+  /** The code for a forgotten password, and what it is answered against. NFR SEC 01. */
+  async startReset(id: string, hash: string, expiresAt: Date): Promise<void> {
+    await this.db
+      .updateTable('app_user')
+      .set({ reset_code_hash: hash, reset_code_expires_at: expiresAt, reset_code_attempts: 0 })
+      .where('id', '=', id)
+      .execute();
+  }
+
+  async clearReset(id: string): Promise<void> {
+    await this.db
+      .updateTable('app_user')
+      .set({ reset_code_hash: null, reset_code_expires_at: null, reset_code_attempts: 0 })
+      .where('id', '=', id)
+      .execute();
+  }
+
+  async countFailedResetAttempt(id: string): Promise<number> {
+    const row = await this.db
+      .updateTable('app_user')
+      .set((eb) => ({ reset_code_attempts: eb('reset_code_attempts', '+', 1) }))
+      .where('id', '=', id)
+      .returning('reset_code_attempts')
+      .executeTakeFirst();
+
+    return row?.reset_code_attempts ?? 0;
   }
 
   /** Ends a challenge, whether it was answered or abandoned. */
@@ -280,6 +310,11 @@ function toCredentials(row: AppUserRow): SignInCredentials {
       hash: row.mfa_code_hash,
       expiresAt: row.mfa_code_expires_at,
       attempts: row.mfa_code_attempts,
+    },
+    reset: {
+      hash: row.reset_code_hash,
+      expiresAt: row.reset_code_expires_at,
+      attempts: row.reset_code_attempts,
     },
   };
 }

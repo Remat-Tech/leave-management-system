@@ -241,6 +241,31 @@ export function expiryFrom(now: Date, ttlMinutes: number): Date {
  *   clicking links in sign in emails is normal, which is the exact habit every
  *   phishing attack against them will rely on.
  */
+/**
+ * The message a forgotten password's code goes in. NFR SEC 01.
+ *
+ * No link, for the reason {@link codeEmail} carries none — and it matters more here, since
+ * this is the email that ends with somebody typing a new password. What it does carry is the
+ * sentence worth reading: a code nobody asked for means somebody is trying to get in.
+ */
+export function resetEmail(to: string, code: string, ttlMinutes: number): Mail {
+  return {
+    to,
+    subject: `${code} is your Remat Holdings leave password reset code`,
+    text: [
+      `Your password reset code is ${code}.`,
+      '',
+      `It works once, and only for the next ${ttlMinutes} minutes. Type it into the`,
+      'page you asked for it on, along with the new password you want.',
+      '',
+      'If you did not ask to reset your password, somebody else is trying to get',
+      'into your account. Do not use this code, and tell IT.',
+      '',
+      'Remat Holdings Leave',
+    ].join('\n'),
+  };
+}
+
 export function codeEmail(to: string, code: string, ttlMinutes: number): Mail {
   return {
     to,

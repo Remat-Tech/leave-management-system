@@ -231,6 +231,13 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   /** NFR SEC 01. A longer one is the fix, and the message says how long. */
   WeakPassword: 400,
   /**
+   * LMS 110, NFR SEC 01. A wrong, expired or spent one time code — signing in, or resetting.
+   *
+   * A 400 rather than a 401: the code is what was wrong, and the message says which of the
+   * four it was without saying whose account it belongs to.
+   */
+  CodeRefused: 400,
+  /**
    * NFR SEC 01. Proving who they are is the fix, not choosing differently.
    *
    * A 403 rather than a 401: the session is fine and stays open. What was refused is one act

@@ -114,6 +114,10 @@ export interface AppUserTable {
   last_login_at: Date | null;
   /** Whether the password on it is still the one somebody else set. NFR SEC 01. */
   must_change_password: Generated<boolean>;
+  /** A forgotten password's code. Its own columns, never the sign in code's. NFR SEC 01. */
+  reset_code_hash: string | null;
+  reset_code_expires_at: Date | null;
+  reset_code_attempts: Generated<number>;
   created_at: Timestamp;
   updated_at: Timestamp;
 }

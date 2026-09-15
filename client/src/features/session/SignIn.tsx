@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
 import { type CodeSent, signIn, submitCode } from '../../api';
 import { Notice, type Problem, problemFrom } from '../../problem';
+import { ForgottenPassword } from './ForgottenPassword';
 
 /** Signing in. LMS 109, LMS 110. */
 export function SignIn({
@@ -17,6 +18,17 @@ export function SignIn({
   const [sent, setSent] = useState<CodeSent | undefined>(undefined);
   const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const [forgotten, setForgotten] = useState(false);
+
+  if (forgotten) {
+    return (
+      <ForgottenPassword
+        onDone={() => {
+          setForgotten(false);
+        }}
+      />
+    );
+  }
 
   function attempt(what: Promise<unknown>, onDone: (outcome: unknown) => void): void {
     setBusy(true);
@@ -138,6 +150,18 @@ export function SignIn({
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        {/* NFR SEC 01. A code to the mailbox this system already trusts, rather than an
+            administrator with a terminal. */}
+        <button
+          type="button"
+          className="linkish"
+          onClick={() => {
+            setForgotten(true);
+          }}
+        >
+          Forgotten your password?
+        </button>
       </div>
     </main>
   );

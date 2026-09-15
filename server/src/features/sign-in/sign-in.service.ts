@@ -23,6 +23,7 @@ import {
   holdsMandatoryRole,
   isCodeRequired,
   MAX_CODE_ATTEMPTS,
+  resetEmail,
 } from './mfa.js';
 import { hashPassword, needsRehash, verifyPassword } from './password.js';
 import {
@@ -34,6 +35,7 @@ import {
   SignInAccountNotFound,
   SignInRefused,
   WeakPassword,
+  whyNotSignIn,
 } from './sign-in.js';
 import type { Guard } from '../../auth/policy.js';
 import { signInPolicy } from './policy.js';
@@ -268,6 +270,91 @@ export class SignInService {
     }
 
     return updated;
+  }
+
+  /**
+   * A code to whoever has forgotten their password. NFR SEC 01.
+   *
+   * **It answers the same way whatever it finds.** No login, a closed one, a leaver, a
+   * mistyped address: all of them return quietly and send nothing. A door that says "no such
+   * account" is a way of finding out who works here, and this one is reachable without
+   * signing in at all — it has to be the most careful door in the system, not the least.
+   *
+   * The mailbox is what answers, which is the trust this system already places in it at sign
+   * in. Somebody who has taken over the company mailbox can take the account; that was true
+   * before this existed, and it is the reason `MAIL_OVERRIDE_RECIPIENT` exists for every
+   * environment pointed at real staff.
+   */
+  async forgotPassword(email: string, now: Date = new Date()): Promise<void> {
+    const found = await this.accounts.credentialsByEmail(email.trim().toLowerCase());
+
+    if (found === undefined) {
+      return;
+    }
+
+    const employee = await this.employees.findById(found.account.employeeId);
+
+    /* The same conditions that refuse a sign in refuse a reset: there is no point handing a
+       new password to somebody whose account is closed or who has left. */
+    if (employee === undefined || whyNotSignIn(found.account, employee) !== null) {
+      return;
+    }
+
+    const code = generateCode(this.code.length);
+
+    await this.accounts.startReset(
+      found.account.id,
+      await hashCode(code),
+      expiryFrom(now, this.code.ttlMinutes),
+    );
+
+    await this.mailer.send(resetEmail(found.account.companyEmail, code, this.code.ttlMinutes));
+  }
+
+  /**
+   * The new password, with the code that was emailed. NFR SEC 01.
+   *
+   * Single use and finite, as the sign in code is: the challenge is cleared by the statement
+   * that sets the password, a wrong answer is counted, and five of them burn it. Six digits is
+   * a million guesses, and a limit that leaves the code alive is not a limit.
+   *
+   * What it does not do is sign them in. They arrive at the sign in box and use the password
+   * they just chose, which is one more proof that they know it.
+   */
+  async resetPasswordWithCode(
+    email: string,
+    code: string,
+    newPassword: string,
+    now: Date = new Date(),
+  ): Promise<void> {
+    const found = await this.accounts.credentialsByEmail(email.trim().toLowerCase());
+
+    if (found === undefined) {
+      /* Indistinguishable from a wrong code, for the reason forgotPassword is silent. */
+      throw new CodeRefused('NO_CHALLENGE');
+    }
+
+    const notLive = challengeIsLive(found.reset.expiresAt, found.reset.attempts, now);
+
+    if (notLive !== null) {
+      throw new CodeRefused(notLive);
+    }
+
+    if (!(await checkCode(code, found.reset.hash))) {
+      const attempts = await this.accounts.countFailedResetAttempt(found.account.id);
+      const remaining = MAX_CODE_ATTEMPTS - attempts;
+
+      throw new CodeRefused(remaining <= 0 ? 'TOO_MANY_ATTEMPTS' : 'WRONG_CODE', remaining);
+    }
+
+    /* Checked before the code is spent, so a password the rules refuse does not cost somebody
+       the code they were sent. */
+    const hashed = await hashPassword(assertUsablePassword(newPassword));
+
+    const owner = signedInAs(found.account.employeeId, { roles: [], isManager: false });
+
+    await this.accounts.setPassword(owner, found.account.id, hashed, false);
+    await this.accounts.clearReset(found.account.id);
   }
 
   /**
