@@ -98,7 +98,8 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 | `MFA_CODE_*` | Length and lifetime of the sign in code. Both have safe defaults; a value that is present and nonsense is refused |
 | `DISPLAY_TIMEZONE` | The zone instants are *shown* in. NFR DAT 03. Display only: everything is stored in UTC and every leave date has no zone at all, so changing it moves nothing in the database. Defaults to `Africa/Accra`; a name this Node does not know is refused rather than quietly falling back |
 | `SMTP_*` | Mail settings. Points at Mailpit in development |
-| `STORAGE_*` | Object storage for attachments. Local directory in development |
+| `STORAGE_*` | Which attachment storage runs, and the local directory development writes to |
+| `SUPABASE_*` | Supabase Storage, when `STORAGE_DRIVER=supabase`. URL, service role key and bucket. The bucket is private and the key is server only |
 | `PG_BIN` | Folder holding `pg_dump` and `pg_restore` 17. Blank means `PATH`. LMS 604 |
 | `BACKUP_RESTORE_URL` | Owner connection to the server a restore creates its new database on. Never production. LMS 604 |
 | `SCANNER_DRIVER` | Which virus scanner attachments go through. NFR SEC 07. `signature` in development flags the EICAR test file and calls everything else clean; `off` answers nothing, so every upload stays unscanned. **Production must set neither of those** |
@@ -343,7 +344,14 @@ actual colleagues. Leave it blank in production.
 
 Attachments go through the `Storage` interface in `server/src/storage`. In
 development `STORAGE_DRIVER=local` writes them to `.storage`, which is git
-ignored. Production will set a different driver and change nothing else.
+ignored. Production sets `STORAGE_DRIVER=supabase` with `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_BUCKET`, and changes nothing else.
+
+**The bucket must be private, and the service role key belongs only to the
+server.** That key bypasses every storage policy, so a copy of it in the client
+bundle is every medical certificate in the company. Nothing above the interface
+learns which driver it got, so neither driver's configuration is readable from
+anywhere else.
 
 ```ts
 const storage = createStorage(); // the only place that knows which driver runs

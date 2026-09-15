@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LocalStorage } from '../../src/storage/local-storage.js';
+import { SupabaseStorage } from '../../src/storage/supabase-storage.js';
 import { createStorage, InvalidKey, ObjectNotFound } from '../../src/storage/index.js';
 
 /**
@@ -128,6 +129,100 @@ describe('refusing keys it did not issue', () => {
   });
 });
 
+/* ------------------------------------------------------------------ supabase */
+
+interface Call {
+  url: string;
+  method: string;
+}
+
+/** The driver against a stubbed fetch, so this stays a unit test. */
+function supabaseStorage(respond: (call: Call) => Response) {
+  const calls: Call[] = [];
+
+  const stub: typeof globalThis.fetch = (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const call = { url, method: init?.method ?? 'GET' };
+    calls.push(call);
+    return Promise.resolve(respond(call));
+  };
+
+  const storage = new SupabaseStorage({
+    url: 'https://a-project.supabase.co',
+    serviceRoleKey: 'a-service-role-key-for-a-test',
+    bucket: 'attachments',
+    fetch: stub,
+  });
+
+  return { storage, calls };
+}
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+const missing = () =>
+  json({ statusCode: '404', error: 'not_found', message: 'Object not found' }, 404);
+
+describe('the supabase driver', () => {
+  it('writes into the bucket at a path the key decides', async () => {
+    const { storage, calls } = supabaseStorage(() => json({ Key: 'stored' }));
+    const content = Buffer.from('a medical certificate, as far as this test cares');
+
+    const stored = await storage.put(content);
+
+    expect(stored.size).toBe(content.byteLength);
+    expect(stored.checksumSha256).toBe(createHash('sha256').update(content).digest('hex'));
+    expect(stored.key).toMatch(/^[0-9a-f]{64}$/);
+    // Fanned out, inside the bucket, and named by the key alone.
+    const path = `${stored.key.slice(0, 2)}/${stored.key.slice(2, 4)}/${stored.key}`;
+    expect(calls[0].url).toContain(`/object/attachments/${path}`);
+    expect(calls[0].method).toBe('POST');
+  });
+
+  it('reads the same bytes back', async () => {
+    const content = randomBytes(512);
+    const { storage } = supabaseStorage((call) =>
+      call.method === 'POST' ? json({ Key: 'stored' }) : new Response(content),
+    );
+
+    const stored = await storage.put(content);
+
+    expect(await storage.get(stored.key)).toEqual(content);
+  });
+
+  it('reports a missing object rather than returning nothing', async () => {
+    const { storage } = supabaseStorage(() => missing());
+
+    await expect(storage.get(randomBytes(32).toString('hex'))).rejects.toThrow(ObjectNotFound);
+  });
+
+  it('does not complain about deleting what is already gone', async () => {
+    const { storage } = supabaseStorage(() => missing());
+
+    // The retention job of NFR SEC 06 reruns over its own work.
+    await expect(storage.delete(randomBytes(32).toString('hex'))).resolves.toBeUndefined();
+  });
+
+  it('says so when storage itself fails', async () => {
+    const { storage } = supabaseStorage(() => json({ message: 'service unavailable' }, 503));
+
+    await expect(storage.get(randomBytes(32).toString('hex'))).rejects.toThrow(/Could not read/);
+  });
+
+  it.each([
+    ['traversal', '../../../../etc/passwd'],
+    ['a path of its own', 'attachments/somebody-elses-file'],
+    ['empty', ''],
+    ['right characters, wrong length', 'abcdef'],
+  ])('refuses %s before it reaches the network', async (_label, key) => {
+    const { storage, calls } = supabaseStorage(() => json({}));
+
+    await expect(storage.get(key)).rejects.toThrow(InvalidKey);
+    await expect(storage.delete(key)).rejects.toThrow(InvalidKey);
+    expect(calls).toEqual([]);
+  });
+});
+
 describe('choosing an implementation by configuration', () => {
   it('builds local storage when the driver says local', async () => {
     const storageFromEnv = createStorage({
@@ -153,4 +248,30 @@ describe('choosing an implementation by configuration', () => {
       /STORAGE_LOCAL_PATH/,
     );
   });
+
+  it('builds supabase storage when the driver says supabase', () => {
+    const storageFromEnv = createStorage({
+      STORAGE_DRIVER: 'supabase',
+      SUPABASE_URL: 'https://a-project.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'a-service-role-key-for-a-test',
+      SUPABASE_BUCKET: 'attachments',
+    } as NodeJS.ProcessEnv);
+
+    expect(storageFromEnv).toBeInstanceOf(SupabaseStorage);
+  });
+
+  it.each(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_BUCKET'])(
+    'will not start without %s',
+    (missingKey) => {
+      const env = {
+        STORAGE_DRIVER: 'supabase',
+        SUPABASE_URL: 'https://a-project.supabase.co',
+        SUPABASE_SERVICE_ROLE_KEY: 'a-service-role-key-for-a-test',
+        SUPABASE_BUCKET: 'attachments',
+      } as NodeJS.ProcessEnv;
+      delete env[missingKey];
+
+      expect(() => createStorage(env)).toThrow(new RegExp(missingKey));
+    },
+  );
 });
