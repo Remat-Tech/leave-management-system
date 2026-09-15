@@ -20,7 +20,7 @@
 # status 200 is a rewrite rather than a redirect — the address in the bar stays this site's.
 [[redirects]]
   from = "/api/*"
-  to = "https://REPLACE-with-your-api.onrender.com/api/:splat"
+  to = "https://leave-management-system-819m.onrender.com/api/:splat"
   status = 200
   force = true
 
