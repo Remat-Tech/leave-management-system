@@ -34,6 +34,7 @@ function account(overrides: Partial<SignInAccount> = {}): SignInAccount {
     companyEmail: 'ama.mensah@rematholdings.com',
     isActive: true,
     mfaEnabled: false,
+    mustChangePassword: false,
     lastLoginAt: null,
     createdAt: new Date('2026-01-05T09:00:00Z'),
     updatedAt: new Date('2026-01-05T09:00:00Z'),

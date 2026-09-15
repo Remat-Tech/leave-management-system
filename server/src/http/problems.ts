@@ -228,6 +228,23 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   /** FR 32c, §8.6b. The type is the fix: days move into one whose allowance may be exceeded. */
   NotATypeToMoveInto: 400,
 
+  /** NFR SEC 01. A longer one is the fix, and the message says how long. */
+  WeakPassword: 400,
+  /**
+   * NFR SEC 01. Proving who they are is the fix, not choosing differently.
+   *
+   * A 403 rather than a 401: the session is fine and stays open. What was refused is one act
+   * inside it, and answering with a 401 would sign somebody out for a typo.
+   */
+  CurrentPasswordWrong: 403,
+  /**
+   * NFR SEC 01. Every other door while a password somebody else set is still on the account.
+   *
+   * A 403 and not a 401 for the same reason: they are signed in, and the one thing they may
+   * do is change it.
+   */
+  PasswordMustChange: 403,
+
   /** FR 51. The other verb is the fix; an override is decided one request at a time. LMS 328. */
   NotABulkAction: 400,
   /** FR 51. Nothing was selected, and the selection is the fix. LMS 328. */

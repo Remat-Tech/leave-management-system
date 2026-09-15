@@ -112,6 +112,8 @@ export interface AppUserTable {
   mfa_code_attempts: Generated<number>;
   is_active: Generated<boolean>;
   last_login_at: Date | null;
+  /** Whether the password on it is still the one somebody else set. NFR SEC 01. */
+  must_change_password: Generated<boolean>;
   created_at: Timestamp;
   updated_at: Timestamp;
 }

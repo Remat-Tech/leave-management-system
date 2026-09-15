@@ -64,15 +64,22 @@ export function publicSessionRoutes({ signIn, secret }: SessionRoutes): Router {
 
 export interface SignedInSessionRoutes {
   guard: Guard;
+  signIn: SignInService;
   /** The desks this person answers at, read the same way the queue screen reads them. */
   desksFor: (actor: Actor) => Promise<DesksStaffed>;
 }
 
 /** The routes that need a session, mounted behind `identify`. */
-export function signedInSessionRoutes({ guard, desksFor }: SignedInSessionRoutes): Router {
+export function signedInSessionRoutes({ guard, signIn, desksFor }: SignedInSessionRoutes): Router {
   const routes = Router();
 
-  /** Who this is. §10. */
+  /**
+   * Who this is. §10.
+   *
+   * `mustChangePassword` is the one thing here that is not a name, and it is not a role by
+   * another name either: it says which screen the person is owed, and the server refuses
+   * every other route while it stands rather than trusting the page to. NFR SEC 01.
+   */
   routes.get('/me', (_request: Request, response: Response) => {
     const actor = actorOf(response);
     const employee = employeeOf(response);
@@ -81,7 +88,20 @@ export function signedInSessionRoutes({ guard, desksFor }: SignedInSessionRoutes
       employeeId: actor.employeeId,
       firstName: employee.firstName,
       lastName: employee.lastName,
+      mustChangePassword: response.locals.mustChangePassword === true,
     });
+  });
+
+  /** Somebody replacing their own password. NFR SEC 01. */
+  routes.post('/session/password', (request: Request, response: Response, next) => {
+    const { currentPassword, newPassword } = passwordsIn(request.body);
+
+    void signIn
+      .changeMyPassword(actorOf(response), currentPassword, newPassword)
+      .then(() => {
+        response.status(204).end();
+      })
+      .catch(next);
   });
 
   /**
@@ -142,6 +162,13 @@ function credentialsIn(body: unknown): { email: string; password: string } {
   return {
     email: stringIn(body, 'email'),
     password: stringIn(body, 'password'),
+  };
+}
+
+function passwordsIn(body: unknown): { currentPassword: string; newPassword: string } {
+  return {
+    currentPassword: stringIn(body, 'currentPassword'),
+    newPassword: stringIn(body, 'newPassword'),
   };
 }
 

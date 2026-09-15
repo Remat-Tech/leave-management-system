@@ -356,7 +356,14 @@ describe('who the server thinks you are', () => {
       await get('/api/me', { cookie: mintSession(people.headOfHr, SECRET) })
     ).json();
 
-    expect(Object.keys(body as object).sort()).toEqual(['employeeId', 'firstName', 'lastName']);
+    expect(Object.keys(body as object).sort()).toEqual([
+      'employeeId',
+      'firstName',
+      'lastName',
+      /* NFR SEC 01. Which screen they are owed, not what they hold: the server refuses every
+         other route while it is true, so the page is reading an answer rather than making one. */
+      'mustChangePassword',
+    ]);
   });
 
   /**

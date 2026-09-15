@@ -62,7 +62,7 @@ import { teamRoutes } from '../features/team/routes.js';
 import { TeamService } from '../features/team/team.service.js';
 import { teamCalendarRoutes } from '../features/team/team-calendar.routes.js';
 import { TeamCalendarService } from '../features/team/team-calendar.service.js';
-import { identify } from './identify.js';
+import { identify, insistOnANewPassword } from './identify.js';
 import { answerProblems, type FailureLog } from './problems.js';
 import { requestRoutes } from '../features/leave-request/routes.js';
 import { publicSessionRoutes, signedInSessionRoutes } from '../features/sign-in/session.routes.js';
@@ -170,10 +170,15 @@ export function buildApp(parts: Application): Express {
     }),
   );
 
+  /* NFR SEC 01. Nothing but changing it, while the password is still somebody else's. Behind
+     identify and in front of every route that needs one, so forgetting is not possible. */
+  app.use('/api', insistOnANewPassword());
+
   app.use(
     '/api',
     signedInSessionRoutes({
       guard: parts.guard,
+      signIn: parts.signIn,
       /* FR 40, FR 49, LMS 321. The same two reads the queue makes, so the rail and the screen
          cannot disagree about whether somebody staffs a desk. */
       desksFor: async (actor) =>

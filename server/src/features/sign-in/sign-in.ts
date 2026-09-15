@@ -14,6 +14,8 @@ export interface SignInAccount {
   mfaEnabled: boolean;
   /** When this login was last used. */
   lastLoginAt: Date | null;
+  /** The password on it was set by somebody else, and only changing it opens anything. */
+  mustChangePassword: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -141,6 +143,30 @@ export class SignInAddressMustBeTheWorkAddress extends Error {
 }
 
 /** A password this system will not store. */
+/**
+ * The current password, answered wrongly, where somebody is changing their own.
+ *
+ * Its own error rather than a {@link WeakPassword}: nothing is wrong with what they chose, and
+ * the fix is to prove who they are rather than to think of a better password.
+ */
+export class CurrentPasswordWrong extends Error {
+  constructor() {
+    super('That is not your current password.');
+    this.name = 'CurrentPasswordWrong';
+  }
+}
+
+/** The password on this account is still the one somebody else set. NFR SEC 01. */
+export class PasswordMustChange extends Error {
+  constructor() {
+    super(
+      'Your password was set for you, so it has to be replaced before anything else opens. ' +
+        'Choose a new one.',
+    );
+    this.name = 'PasswordMustChange';
+  }
+}
+
 export class WeakPassword extends Error {
   constructor(message: string) {
     super(message);

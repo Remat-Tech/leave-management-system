@@ -39,6 +39,8 @@ export interface NewSignInAccount {
   employeeId: string;
   companyEmail: string;
   passwordHash: string | null;
+  /** NFR SEC 01. Whether the owner has to replace what it was created with. */
+  mustChangePassword?: boolean;
 }
 
 /** A one time code challenge as it stands on the row. LMS 110. */
@@ -68,6 +70,7 @@ export class SignInAccountRepository {
             employee_id: record.employeeId,
             company_email: record.companyEmail,
             password_hash: record.passwordHash,
+            must_change_password: record.mustChangePassword ?? false,
           })
           .returningAll()
           .executeTakeFirstOrThrow(),
@@ -163,15 +166,20 @@ export class SignInAccountRepository {
   }
 
   /** Sets or replaces the password. */
+  /**
+   * @param mustChange whether the owner has to replace it before anything opens. True where HR
+   * set it and false where the owner chose it themselves. NFR SEC 01.
+   */
   async setPassword(
     by: Attribution,
     id: string,
     passwordHash: string,
+    mustChange: boolean,
   ): Promise<SignInAccount | undefined> {
     const row = await recording(this.db, by, (on) =>
       on
         .updateTable('app_user')
-        .set({ password_hash: passwordHash })
+        .set({ password_hash: passwordHash, must_change_password: mustChange })
         .where('id', '=', id)
         .returningAll()
         .executeTakeFirst(),
@@ -285,6 +293,7 @@ function toAccount(row: AppUserRow): SignInAccount {
     isActive: row.is_active,
     mfaEnabled: row.mfa_enabled,
     lastLoginAt: row.last_login_at,
+    mustChangePassword: row.must_change_password,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

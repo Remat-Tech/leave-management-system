@@ -1622,6 +1622,8 @@ export interface Me {
   employeeId: string;
   firstName: string;
   lastName: string;
+  /** NFR SEC 01. The password was set by somebody else and opens nothing until replaced. */
+  mustChangePassword: boolean;
 }
 
 export interface SignedIn {
@@ -1695,6 +1697,19 @@ export async function currentSession(): Promise<Me> {
 export async function mySections(): Promise<string[]> {
   const { sections } = await request<{ sections: string[] }>('GET', '/api/me/sections');
   return sections;
+}
+
+/**
+ * Replacing your own password. NFR SEC 01.
+ *
+ * The current one goes with it: a session is not proof of who is sitting at the machine, and
+ * the server proves it rather than taking the page's word for it.
+ */
+export async function changeMyPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  await request<void>('POST', '/api/session/password', { currentPassword, newPassword });
 }
 
 export async function signIn(email: string, password: string): Promise<SignedIn | CodeSent> {

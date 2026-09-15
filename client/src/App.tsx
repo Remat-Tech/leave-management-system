@@ -21,6 +21,7 @@ import { PolicySettingsPage } from './features/config/PolicySettingsPage';
 import { NewRequestPage } from './features/requests/NewRequestPage';
 import { RequestsPage } from './features/requests/RequestsPage';
 import { ReportsPage } from './features/reports/ReportsPage';
+import { ChangePassword } from './features/session/ChangePassword';
 import { SignIn } from './features/session/SignIn';
 import { Icon } from './Icon';
 
@@ -175,6 +176,12 @@ export function App() {
 
   if (me === undefined) {
     return <SignIn onSignedIn={ask} ended={ended} />;
+  }
+
+  /* NFR SEC 01. Instead of the application, not beside it: the server refuses every other
+     route while this stands, so a rail drawn here would be tabs that all answer 403. */
+  if (me.mustChangePassword) {
+    return <ChangePassword onChanged={ask} />;
   }
 
   /* Every tab the server said this person may reach: the four everybody has, "Waiting on me"

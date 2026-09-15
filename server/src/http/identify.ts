@@ -2,7 +2,7 @@
 
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { type Actor, signedInAs } from '../auth/actor.js';
-import { whyNotSignIn } from '../features/sign-in/sign-in.js';
+import { PasswordMustChange, whyNotSignIn } from '../features/sign-in/sign-in.js';
 import type { RoleCode } from '../features/role/roles.js';
 import type { Employee } from '../features/employee/employee.js';
 import type { EmployeeRepository } from '../features/employee/employee.db.js';
@@ -28,7 +28,32 @@ declare module 'express' {
   interface Locals {
     actor?: Actor;
     employee?: Employee;
+    /** NFR SEC 01. The password on this login is still the one somebody else set. */
+    mustChangePassword?: boolean;
   }
+}
+
+/**
+ * Every door but the one that changes it, while a password somebody else set is on the account.
+ *
+ * Mounted behind {@link identify}, so it is the whole signed-in surface rather than a habit
+ * each route has to remember. The three it lets through are what changing a password takes:
+ * knowing who you are, changing it, and leaving.
+ *
+ * The screen asks for the change as well — but a screen is a request somebody may not make,
+ * and the account holds a certificate somebody else's doctor wrote. NFR SEC 01.
+ */
+export function insistOnANewPassword(): RequestHandler {
+  const openAnyway = new Set(['/me', '/session', '/session/password']);
+
+  return (request: Request, response: Response, next: NextFunction) => {
+    if (response.locals.mustChangePassword !== true || openAnyway.has(request.path)) {
+      next();
+      return;
+    }
+
+    next(new PasswordMustChange());
+  };
 }
 
 /** The actor for this request, or a failure that is a bug rather than a refusal. */
@@ -113,6 +138,7 @@ async function establish(
   ]);
 
   response.locals.employee = employee;
+  response.locals.mustChangePassword = account.mustChangePassword;
 
   return signedInAs(employee.id, { roles: roles as RoleCode[], isManager: reports > 0 });
 }

@@ -57,6 +57,19 @@ export const signInPolicy = {
     return settingUp(actor, 'setPassword', employeeId);
   },
 
+  /**
+   * Somebody replacing their own, which nobody may do for anybody else. NFR SEC 01.
+   *
+   * The narrowest decision in this file, and deliberately not `settingUp` widened by self: HR
+   * resetting a password is a different act with a different record, and this one proves the
+   * current password first.
+   */
+  changeOwnPassword(actor: Actor, employeeId: string): Decision {
+    return isSelf(actor, employeeId)
+      ? about.allow(actor, 'changeOwnPassword', employeeId)
+      : about.refuse(actor, 'changeOwnPassword', employeeId, 'is not the owner of this login');
+  },
+
   /** Shutting a login for a reason of its own. */
   close(actor: Actor, employeeId: string): Decision {
     return lock(actor, 'close', employeeId);

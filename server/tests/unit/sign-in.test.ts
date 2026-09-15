@@ -28,6 +28,7 @@ function account(overrides: Partial<SignInAccount> = {}): SignInAccount {
     isActive: true,
     mfaEnabled: false,
     lastLoginAt: null,
+    mustChangePassword: false,
     createdAt: new Date('2026-01-05T09:00:00Z'),
     updatedAt: new Date('2026-01-05T09:00:00Z'),
     ...overrides,

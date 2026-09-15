@@ -2,7 +2,7 @@
  * Signing in with a company email address, and the one time code that follows it. NFR SEC 01, LMS 109, LMS 110, LMS 112.
  */
 
-import { type Actor, signedInAs } from '../../auth/actor.js';
+import { type Actor, isSelf, signedInAs } from '../../auth/actor.js';
 import {
   allowedDomains,
   assertCompanyEmail,
@@ -28,10 +28,12 @@ import { hashPassword, needsRehash, verifyPassword } from './password.js';
 import {
   assertCanSignIn,
   assertUsablePassword,
+  CurrentPasswordWrong,
   EmploymentHasEnded,
   type SignInAccount,
   SignInAccountNotFound,
   SignInRefused,
+  WeakPassword,
 } from './sign-in.js';
 import type { Guard } from '../../auth/policy.js';
 import { signInPolicy } from './policy.js';
@@ -240,6 +242,10 @@ export class SignInService {
       employeeId: employee.id,
       companyEmail: employee.workEmail.trim().toLowerCase(),
       passwordHash,
+      /* A login handed over with a password in it is a password HR knows. The owner replaces
+         it before anything opens; an account created without one has nothing to replace and
+         waits for HR to set the first. NFR SEC 01. */
+      mustChangePassword: passwordHash !== null,
     });
   }
 
@@ -252,7 +258,55 @@ export class SignInService {
       actor,
       account.id,
       await hashPassword(assertUsablePassword(password)),
+      /* Somebody other than the owner chose it, so it opens nothing until they replace it —
+         unless the owner is who asked, which is {@link changeMyPassword}'s door. NFR SEC 01. */
+      !isSelf(actor, employeeId),
     );
+
+    if (updated === undefined) {
+      throw new SignInAccountNotFound(`employee ${employeeId}`);
+    }
+
+    return updated;
+  }
+
+  /**
+   * The owner replacing their own password, which is the only way a password stops being
+   * somebody else's. NFR SEC 01.
+   *
+   * **The current one is proved first**, and that is the whole of what makes this safe to
+   * offer without HR: a session left open on an unlocked laptop is not authority to take the
+   * account over, and asking for the password somebody already has costs nothing to anybody
+   * who is actually them.
+   *
+   * The refusal for a wrong current password is deliberately the same sentence a wrong
+   * password at the sign in box gets, for the same reason: it is answered on behalf of
+   * whoever is sitting there, who may not be the owner.
+   */
+  async changeMyPassword(
+    actor: Actor,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<SignInAccount> {
+    const employeeId = actor.employeeId ?? '';
+
+    this.guard.enforce(signInPolicy.changeOwnPassword(actor, employeeId));
+
+    const account = await this.requireAccount(employeeId);
+    const credentials = await this.accounts.credentialsByEmail(account.companyEmail);
+    const stored = credentials?.passwordHash ?? null;
+
+    if (!(await verifyPassword(currentPassword, stored))) {
+      throw new CurrentPasswordWrong();
+    }
+
+    if (await verifyPassword(newPassword, stored)) {
+      throw new WeakPassword('Choose a password you are not already using.');
+    }
+
+    const hashed = await hashPassword(assertUsablePassword(newPassword));
+
+    const updated = await this.accounts.setPassword(actor, account.id, hashed, false);
 
     if (updated === undefined) {
       throw new SignInAccountNotFound(`employee ${employeeId}`);
