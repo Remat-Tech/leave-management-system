@@ -13,6 +13,8 @@ export interface SupabaseStorageOptions {
   /** Service role. Never leaves the server. */
   serviceRoleKey: string;
   bucket: string;
+  /** How long a direct link lives. NFR SEC 04. */
+  signedUrlSeconds?: number;
   /** For tests. */
   fetch?: typeof globalThis.fetch;
 }
@@ -21,8 +23,10 @@ export interface SupabaseStorageOptions {
 export class SupabaseStorage implements Storage {
   readonly #client: SupabaseClient;
   readonly #bucket: string;
+  readonly #signedUrlSeconds: number;
 
-  constructor({ url, serviceRoleKey, bucket, fetch }: SupabaseStorageOptions) {
+  constructor({ url, serviceRoleKey, bucket, signedUrlSeconds, fetch }: SupabaseStorageOptions) {
+    this.#signedUrlSeconds = signedUrlSeconds ?? 300;
     this.#client = createClient(url, serviceRoleKey, {
       // A server with no user to keep signed in.
       auth: { persistSession: false, autoRefreshToken: false },
@@ -65,6 +69,29 @@ export class SupabaseStorage implements Storage {
     }
 
     return Buffer.from(await data.arrayBuffer());
+  }
+
+  /**
+   * A signed URL straight to the object, good for {@link SupabaseStorageOptions.signedUrlSeconds}.
+   *
+   * What it saves is a whole transfer of the file: without it every certificate is pulled into
+   * the application and sent on again, so a reader waits for the same bytes twice. The URL
+   * carries its own signature, expires, and names nothing but this object.
+   */
+  async linkTo(key: string): Promise<string | undefined> {
+    const { data, error } = await this.#objects().createSignedUrl(
+      this.#pathFor(key),
+      this.#signedUrlSeconds,
+    );
+
+    if (error) {
+      if (isMissing(error)) throw new ObjectNotFound(key);
+      throw new Error(`Could not mint a link to the attachment: ${error.message}`, {
+        cause: error,
+      });
+    }
+
+    return data.signedUrl;
   }
 
   async delete(key: string): Promise<void> {

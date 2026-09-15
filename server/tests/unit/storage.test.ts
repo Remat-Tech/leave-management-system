@@ -163,6 +163,36 @@ const json = (body: unknown, status = 200) =>
 const missing = () =>
   json({ statusCode: '404', error: 'not_found', message: 'Object not found' }, 404);
 
+describe('an address the bytes may be fetched from directly', () => {
+  it('is not offered by a directory, which has none', async () => {
+    const stored = await storage.put(Buffer.from('relayed, not linked'));
+
+    // The caller then reads the bytes and sends them on, as it always did.
+    expect(await storage.linkTo(stored.key)).toBeUndefined();
+  });
+
+  it('is refused for a key the storage did not issue, as every other path is', async () => {
+    await expect(storage.linkTo('../../../../etc/passwd')).rejects.toThrow(InvalidKey);
+  });
+
+  it('is signed, expiring and names one object where the driver can mint one', async () => {
+    const signed =
+      'https://a-project.supabase.co/storage/v1/object/sign/attachments/ab/cd/x?token=y';
+    const { storage: supabase, calls } = supabaseStorage((call) =>
+      call.method === 'POST' && call.url.includes('/object/sign/')
+        ? json({ signedURL: new URL(signed).pathname + new URL(signed).search })
+        : json({ Key: 'stored' }),
+    );
+
+    const stored = await supabase.put(Buffer.from('x'));
+    const url = await supabase.linkTo(stored.key);
+
+    const path = `${stored.key.slice(0, 2)}/${stored.key.slice(2, 4)}/${stored.key}`;
+    expect(calls[1].url).toContain(`/object/sign/attachments/${path}`);
+    expect(url).toContain('token=');
+  });
+});
+
 describe('the supabase driver', () => {
   it('writes into the bucket at a path the key decides', async () => {
     const { storage, calls } = supabaseStorage(() => json({ Key: 'stored' }));

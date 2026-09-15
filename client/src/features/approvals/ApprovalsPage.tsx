@@ -342,15 +342,6 @@ function QueueCard({
           <TeamLine team={item.team} />
         </section>
 
-        <section className="fact">
-          <h4>
-            <Icon name="stage" />
-            Stage
-          </h4>
-          <p>{item.stageInWords}</p>
-          <Chain item={item} />
-        </section>
-
         {item.actionable ? (
           <section className="decide">
             <div className="decide-buttons">
@@ -408,25 +399,6 @@ function QueueCard({
           against the approver's name. Shut until somebody decides to look. */}
       <AttachedFiles requestId={item.requestId} onSignedOut={onSignedOut} />
     </li>
-  );
-}
-
-/** FR 38a. Who has signed, who is being asked, and who comes after. */
-function Chain({ item }: { item: QueueItem }) {
-  return (
-    <ol className="chain">
-      {item.chain.map((desk) => {
-        const done = item.approvedBy.includes(desk);
-        const here = desk === item.desk;
-
-        return (
-          <li key={desk} className={done ? 'is-done' : here ? 'is-here' : 'is-waiting'}>
-            {deskLabel(desk)}
-            <small>{done ? 'approved' : here ? 'you, now' : 'after'}</small>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 

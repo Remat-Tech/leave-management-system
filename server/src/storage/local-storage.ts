@@ -50,6 +50,14 @@ export class LocalStorage implements Storage {
     }
   }
 
+  /** A directory has no address to hand out. The caller sends the bytes itself. */
+  async linkTo(key: string): Promise<string | undefined> {
+    // Checked even though nothing is opened, so a bad key is refused by every path.
+    this.#pathFor(key);
+
+    return undefined;
+  }
+
   async delete(key: string): Promise<void> {
     // force ignores a missing file, which is the idempotence the interface
     // promises.

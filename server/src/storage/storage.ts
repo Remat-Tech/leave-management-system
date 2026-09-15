@@ -37,6 +37,20 @@ export interface Storage {
   get(key: string): Promise<Buffer>;
 
   /**
+   * A short lived address the bytes may be fetched from directly, where the driver has one.
+   *
+   * `undefined` from a driver that cannot mint one, and the caller then reads the bytes and
+   * sends them on itself. That is the only thing above this interface that may know the
+   * difference, and it knows it as "there is an address or there is not" rather than as which
+   * driver is running or where anything lives.
+   *
+   * It exists because relaying a file through the application costs a second transfer of it.
+   * Whoever mints one has already decided the caller may have the file: this is a faster way
+   * to hand over bytes that were being handed over anyway, never a way to reach them.
+   */
+  linkTo(key: string): Promise<string | undefined>;
+
+  /**
    * Removes the object. Succeeds whether or not it was there, so the retention
    * job of NFR SEC 06 can run repeatedly without special casing a file somebody
    * already removed.

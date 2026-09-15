@@ -50,6 +50,13 @@ export class InMemoryStorage implements Storage {
       : Promise.resolve(content);
   }
 
+  /** A Map has no address to hand out, as a directory has none. The caller sends the bytes. */
+  linkTo(key: string): Promise<string | undefined> {
+    this.#checked(key);
+
+    return Promise.resolve(undefined);
+  }
+
   delete(key: string): Promise<void> {
     this.#objects.delete(this.#checked(key));
 

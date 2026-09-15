@@ -14,6 +14,24 @@ function required(env: NodeJS.ProcessEnv, key: string): string {
   return value;
 }
 
+/** A lifetime in seconds, refused rather than coerced. Blank means the driver's own. */
+function seconds(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 3600) {
+    throw new Error(
+      `STORAGE_SIGNED_URL_TTL_SECONDS is ${value}, which is not a whole number of seconds ` +
+        'between 1 and 3600. See .env.example.',
+    );
+  }
+
+  return parsed;
+}
+
 /** Builds the storage the environment asks for. */
 export function createStorage(env: NodeJS.ProcessEnv = process.env): Storage {
   const driver = env.STORAGE_DRIVER ?? 'local';
@@ -32,6 +50,7 @@ export function createStorage(env: NodeJS.ProcessEnv = process.env): Storage {
         url: required(env, 'SUPABASE_URL'),
         serviceRoleKey: required(env, 'SUPABASE_SERVICE_ROLE_KEY'),
         bucket: required(env, 'SUPABASE_BUCKET'),
+        signedUrlSeconds: seconds(env.STORAGE_SIGNED_URL_TTL_SECONDS),
       });
 
     default:

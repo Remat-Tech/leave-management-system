@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type Attachment,
   type Attachments,
@@ -14,6 +14,7 @@ import {
   rescanEvidence,
 } from '../../api';
 import { Icon } from '../../Icon';
+import { Modal } from '../../Modal';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
@@ -128,35 +129,117 @@ function FileOnARequest({
 }) {
   const [opening, setOpening] = useState(false);
   const [refusal, setRefusal] = useState<Problem | undefined>(undefined);
+  const [preview, setPreview] = useState<string | undefined>(undefined);
 
-  const open = useCallback(() => {
-    setOpening(true);
-    setRefusal(undefined);
+  /**
+   * The file, fetched once. NFR SEC 04, LMS 407.
+   *
+   * Fetched as this row appears — which is when somebody expanded the attachments on this
+   * request, not when the queue loaded — so that pressing View shows the certificate rather
+   * than starting the two calls it takes to get one. Nothing is fetched for a request whose
+   * files were never opened.
+   *
+   * **The access record still says what happened**: the link is minted and spent here, which
+   * is the server watching bytes leave rather than the page reporting a button press. What
+   * changed is when somebody asks for them, not what is written down. FR 12, NFR SEC 04.
+   */
+  const held = useRef<{ blob: Blob; filename: string; url?: string } | undefined>(undefined);
 
-    fetchAttachment(requestId, attachment.attachmentId)
-      .then(save)
-      .catch((error: unknown) => {
-        if (isNotSignedIn(error)) {
-          onSignedOut();
-          return;
-        }
+  /** A document this browser renders itself. Anything else is still worth keeping. */
+  const canPreview = PREVIEWABLE.some((type) => attachment.contentType === type);
 
-        setRefusal(problemFrom(error));
-      })
-      .finally(() => {
-        setOpening(false);
-      });
-  }, [requestId, attachment.attachmentId, onSignedOut]);
+  const fetchIt = useCallback(
+    (use?: (file: { blob: Blob; filename: string }) => void) => {
+      if (held.current !== undefined) {
+        use?.(held.current);
+        return;
+      }
+
+      setOpening(true);
+      setRefusal(undefined);
+
+      fetchAttachment(requestId, attachment.attachmentId)
+        .then((file) => {
+          held.current = file;
+          use?.(file);
+        })
+        .catch((error: unknown) => {
+          if (isNotSignedIn(error)) {
+            onSignedOut();
+            return;
+          }
+
+          setRefusal(problemFrom(error));
+        })
+        .finally(() => {
+          setOpening(false);
+        });
+    },
+    [requestId, attachment.attachmentId, onSignedOut],
+  );
+
+  /* On the way in, so the wait is spent while somebody reads the file name. A refusal shows
+     here as it would have on the press. */
+  useEffect(() => {
+    if (attachment.downloadable) {
+      fetchIt();
+    }
+  }, [attachment.downloadable, fetchIt]);
+
+  const download = useCallback(() => {
+    fetchIt(save);
+  }, [fetchIt]);
+
+  /**
+   * The same two calls, held rather than saved. NFR SEC 04.
+   *
+   * The type is the attachment's own, sniffed server side, rather than whatever the bytes
+   * arrived labelled as: the response is deliberately `octet-stream` so that nothing renders
+   * it on the way past, and a certificate is worth looking at without keeping a copy of it
+   * on the machine somebody happens to be sitting at.
+   */
+  const view = useCallback(() => {
+    fetchIt(({ blob }) => {
+      held.current ??= { blob, filename: attachment.filename };
+      held.current.url ??= URL.createObjectURL(new Blob([blob], { type: attachment.contentType }));
+
+      setPreview(held.current.url);
+    });
+  }, [fetchIt, attachment.contentType, attachment.filename]);
+
+  /* Let go when this row goes rather than when the window closes: shutting a certificate is
+     not being finished with it, and opening it again must not be a second access. */
+  useEffect(
+    () => () => {
+      if (held.current?.url !== undefined) {
+        URL.revokeObjectURL(held.current.url);
+      }
+    },
+    [],
+  );
 
   return (
     <li className="file">
-      <span className="file-name">{attachment.filename}</span>
+      {attachment.downloadable && canPreview ? (
+        <button type="button" className="linkish file-name" disabled={opening} onClick={view}>
+          {attachment.filename}
+        </button>
+      ) : (
+        <span className="file-name">{attachment.filename}</span>
+      )}
       <span className="muted">{megabytes(attachment.sizeBytes)}</span>
 
       {attachment.downloadable ? (
-        <button type="button" className="linkish" disabled={opening} onClick={open}>
-          {opening ? 'Fetching…' : 'Download'}
-        </button>
+        <>
+          {canPreview ? (
+            <button type="button" className="linkish" disabled={opening} onClick={view}>
+              {opening ? 'Fetching…' : 'View'}
+            </button>
+          ) : null}
+          <button type="button" className="linkish" disabled={opening} onClick={download}>
+            {opening && !canPreview ? 'Fetching…' : 'Download'}
+          </button>
+        </>
       ) : attachment.fileDeletedAt !== null ? (
         /* NFR SEC 06, LMS 514. The name stays; the file is gone. */
         <span className="tag">File deleted after the retention period</span>
@@ -168,13 +251,37 @@ function FileOnARequest({
       )}
 
       {/* NFR SEC 04, LMS 407. A link is meant to stop working, so the retry is the whole
-          answer here: pressing Download again mints a new one. */}
+          answer here: asking again mints a new one. */}
       {refusal === undefined ? null : (
-        <Notice problem={refusal} retrying={opening} onRetry={open} />
+        <Notice problem={refusal} retrying={opening} onRetry={canPreview ? view : download} />
+      )}
+
+      {/* Held in the page rather than handed to the machine. The copy is let go on close. */}
+      {preview === undefined ? null : (
+        <Modal
+          title={attachment.filename}
+          onClose={() => {
+            setPreview(undefined);
+          }}
+          actions={
+            <button type="button" className="linkish" disabled={opening} onClick={download}>
+              Download
+            </button>
+          }
+        >
+          {attachment.contentType === 'application/pdf' ? (
+            <iframe className="preview" src={preview} title={attachment.filename} />
+          ) : (
+            <img className="preview" src={preview} alt={attachment.filename} />
+          )}
+        </Modal>
       )}
     </li>
   );
 }
+
+/** What a browser renders on its own. A DOCX is not one, so it stays a download. */
+const PREVIEWABLE = ['application/pdf', 'image/jpeg', 'image/png'];
 
 /* ------------------------------------------------ uploading before there is a request */
 

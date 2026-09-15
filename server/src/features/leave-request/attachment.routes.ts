@@ -180,7 +180,20 @@ export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
   routes.get('/attachments/downloads/:token', (request: Request, response: Response, next) => {
     void attachments
       .downloadVia(actorOf(response), asString(request.params.token))
-      .then(({ attachment, content }) => {
+      .then(({ attachment, content, url }) => {
+        /* NFR SEC 04. The bytes come from storage itself, one transfer rather than two. The
+           address is signed, short lived and names one object; the access has already been
+           recorded, and the link that got here is spent. */
+        if (url !== undefined) {
+          response
+            .status(302)
+            .set('Cache-Control', 'no-store')
+            .set('Referrer-Policy', 'no-referrer')
+            .location(url)
+            .end();
+          return;
+        }
+
         response
           .status(200)
           .set('Content-Type', 'application/octet-stream')

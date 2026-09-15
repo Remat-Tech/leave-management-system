@@ -69,7 +69,10 @@ export interface AttachmentsWaiting {
 /** One file, with its bytes, for a download. */
 export interface AttachmentContent {
   attachment: LeaveRequestAttachment;
-  content: Buffer;
+  /** The bytes, where the caller has to send them on. One of these two is always set. */
+  content?: Buffer;
+  /** Where storage will hand them over itself, saving a second transfer of the file. */
+  url?: string;
 }
 
 /** Where one person may fetch one file, for the next two minutes. NFR SEC 04, LMS 407. */
@@ -421,11 +424,16 @@ export class AttachmentService {
       throw new DownloadLinkNotUsable('ALREADY_USED');
     }
 
-    const content = await this.storage.get(attachment.storageKey);
+    /* Straight from storage where the driver can mint an address, because relaying a file
+       through here costs a second transfer of it. The access is written down either way: the
+       link has been minted and spent by this point, and nothing beyond it is a second chance
+       to reach the file. NFR SEC 04, LMS 407. */
+    const url = await this.storage.linkTo(attachment.storageKey);
+    const content = url === undefined ? await this.storage.get(attachment.storageKey) : undefined;
 
     await this.wroteDown(actor, link, 'DOWNLOADED', null);
 
-    return { attachment, content };
+    return { attachment, content, url };
   }
 
   /** Who reached for this file and what came of it. NFR SEC 04, LMS 407. */

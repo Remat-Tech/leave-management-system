@@ -1949,10 +1949,10 @@ select[aria-invalid='true'] {
   color: var(--ink-soft);
 }
 
-/** The four columns a decision is made across. FR 39. */
+/** The columns a decision is made across, with the buttons in the last of them. FR 39. */
 .deciding {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 15rem);
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 15rem);
   gap: var(--gap) var(--gap-lg);
   padding-top: var(--gap);
   border-top: 1px solid var(--line);
@@ -2073,6 +2073,9 @@ select[aria-invalid='true'] {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  /* The last column, whatever the facts beside it come to: deciding is the right hand edge
+     of the card and stays there when a fact is added or taken away. */
+  grid-column: -2 / -1;
 }
 
 .decide-buttons {
@@ -2146,11 +2149,16 @@ select[aria-invalid='true'] {
   white-space: nowrap;
 }
 
-/* Below 68rem the four columns are two, then one: a decision read three words to a line is
+/* Below 68rem the columns are two, then one: a decision read three words to a line is
    not a decision anybody makes confidently. */
 @media (max-width: 68rem) {
   .deciding {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Across the foot rather than in a column, so the buttons keep their width. */
+  .decide {
+    grid-column: 1 / -1;
   }
 }
 
@@ -3998,4 +4006,29 @@ select[aria-invalid='true'] {
 /* Back to the cards from a section, which no longer has a tab of its own. */
 .topbar .back {
   text-decoration: none;
+}
+
+/* ------------------------------------------------- a certificate, read in the page
+   NFR SEC 04. Held as a blob and let go on close, so looking at one leaves nothing behind. */
+
+.preview {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-small);
+  background: var(--page);
+}
+
+img.preview {
+  max-height: 70vh;
+  object-fit: contain;
+}
+
+iframe.preview {
+  height: 70vh;
+}
+
+/* The name doubles as the way in where the browser can render the file. */
+button.linkish.file-name {
+  text-align: left;
 }
