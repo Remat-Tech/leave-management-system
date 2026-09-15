@@ -99,6 +99,8 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 | `DISPLAY_TIMEZONE` | The zone instants are *shown* in. NFR DAT 03. Display only: everything is stored in UTC and every leave date has no zone at all, so changing it moves nothing in the database. Defaults to `Africa/Accra`; a name this Node does not know is refused rather than quietly falling back |
 | `SMTP_*` | Mail settings. Points at Mailpit in development |
 | `STORAGE_*` | Object storage for attachments. Local directory in development |
+| `PG_BIN` | Folder holding `pg_dump` and `pg_restore` 17. Blank means `PATH`. LMS 604 |
+| `BACKUP_RESTORE_URL` | Owner connection to the server a restore creates its new database on. Never production. LMS 604 |
 | `SCANNER_DRIVER` | Which virus scanner attachments go through. NFR SEC 07. `signature` in development flags the EICAR test file and calls everything else clean; `off` answers nothing, so every upload stays unscanned. **Production must set neither of those** |
 
 **Never commit a real `.env`.** A credential committed once stays in git history after it is deleted.
@@ -1015,6 +1017,8 @@ one has to be a decision rather than an accident.
 Concurrency tests matter more than they look. Two approvers deciding one request, and two requests submitted against a thin balance, are the defects that never appear in manual testing and only surface as a balance that is quietly wrong.
 
 **`integration/performance.test.ts` carries LMS 603.** NFR PRF 01: API p95 under 500 ms and landing page load p95 under 2 s, at 25 users at once. Needs `npm run web:build` first. Logs p50 and p95 for each check.
+
+**`integration/backup.test.ts` carries LMS 604.** Backs up, restores into a new database, verifies, and proves verification catches a tampered restore. Needs `PG_BIN`. Procedure: [backup-and-restore.md](backup-and-restore.md).
 
 ---
 
