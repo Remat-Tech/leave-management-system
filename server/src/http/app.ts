@@ -3,6 +3,7 @@
 import express, { type Express, type Request, type Response } from 'express';
 import type { Guard } from '../auth/policy.js';
 import { ApproverQueueService } from '../features/leave-request/approver-queue.service.js';
+import { desksStaffedBy } from '../features/leave-request/policy.js';
 import { BalanceStatementService } from '../features/balance/balance-statement.service.js';
 import { EntitlementRuleService } from '../features/entitlement/entitlement-rule.service.js';
 import { LeaveTypeService } from '../features/leave-type/leave-type.service.js';
@@ -169,7 +170,20 @@ export function buildApp(parts: Application): Express {
     }),
   );
 
-  app.use('/api', signedInSessionRoutes());
+  app.use(
+    '/api',
+    signedInSessionRoutes({
+      guard: parts.guard,
+      /* FR 40, FR 49, LMS 321. The same two reads the queue makes, so the rail and the screen
+         cannot disagree about whether somebody staffs a desk. */
+      desksFor: async (actor) =>
+        desksStaffedBy(
+          actor,
+          await parts.organisation.chiefExecutiveId(),
+          await parts.delegations.standingInFor(actor.employeeId),
+        ),
+    }),
+  );
 
   app.use(
     '/api',

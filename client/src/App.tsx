@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { currentSession, type Me, signOut, type Year } from './api';
+import { currentSession, type Me, mySections, signOut, type Year } from './api';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { AuditLogPage } from './features/audit/AuditLogPage';
 import { BalancesPage } from './features/balances/BalancesPage';
@@ -9,6 +9,12 @@ import { BalanceAdjustmentsPage } from './features/config/BalanceAdjustmentsPage
 import { EmailWordingPage } from './features/config/EmailWordingPage';
 import { EntitlementRulesPage } from './features/config/EntitlementRulesPage';
 import { HolidaysPage } from './features/config/HolidaysPage';
+import {
+  hasHrSection,
+  HR_GROUPS,
+  HrSettingsPage,
+  type HrSectionId,
+} from './features/config/HrSettingsPage';
 import { LeaversPage } from './features/config/LeaversPage';
 import { LeaveTypesPage } from './features/config/LeaveTypesPage';
 import { PolicySettingsPage } from './features/config/PolicySettingsPage';
@@ -21,106 +27,61 @@ import { Icon } from './Icon';
 /** The application, and the places there are to go. LMS 401 to LMS 406, LMS 409. */
 
 /**
- * The places there are to go, and the labels on them.
+ * The rail: what somebody does with their own leave, in the order they do it.
  *
- * In the order somebody uses them rather than the order they were built: what you have, then
- * asking for some, then what became of what you asked for, then what is waiting on you.
- *
- * **"Waiting on me" is offered to everybody**, which looks like an omission and is not.
- * Whether somebody staffs an approver desk turns on a reporting line, an HR role and FR 04's
- * seat, and `integration/balances-api.test.ts` pins the fields of `/api/me` so that no
- * `canApprove` ever appears there — "a screen that knew its own roles would start deciding
- * what to draw from them, and the day the two disagree the server is right and the page has
- * been lying". So the tab is a link like the others, and somebody who approves nothing gets
- * the server's own sentence saying what an approver is. FR 40, NFR USA 03.
+ * **"Waiting on me" is drawn only for somebody who answers at a desk.** FR 40. That turns on a
+ * reporting line, an HR role, FR 04's seat and any delegation running this morning — none of
+ * which this page can work out, and it does not try: `/api/me/sections` asks
+ * `leaveRequestPolicy.queue`, the screen's own decision. `/api/me` still carries no roles, so
+ * the page holds nothing it could decide from, and the screen refuses on its own account for
+ * anybody who reaches its address anyway.
  *
  * **"My team" is not a tab any more.** LMS 409. It drew the same calendar as "Who is away"
  * over different people. What was only on it, FR 55 and FR 56, is on "Who is away" now.
  */
-const SCREENS = [
+const MAIN_SCREENS = [
   { id: 'balances', label: 'My balances', icon: 'balances' },
   { id: 'ask', label: 'Ask for leave', icon: 'ask' },
   { id: 'requests', label: 'My requests', icon: 'requests' },
   /** FR 55, FR 56, FR 57, LMS 406, LMS 409. Everybody's, scoped to a department. */
   { id: 'calendar', label: 'Who is away', icon: 'calendar' },
   { id: 'approvals', label: 'Waiting on me', icon: 'approvals' },
-  /**
-   * FR 31, FR 32, LMS 501. Setting the kinds of leave up.
-   *
-   * Offered to everybody, for the reason "Waiting on me" is: reading a leave type is open to
-   * anybody signed in, and every button on the screen is refused for anybody but an HR
-   * Administrator with the server's own sentence. A tab hidden on this page's idea of
-   * somebody's roles would be a second answer to a question the server owns.
-   */
-  { id: 'leave-types', label: 'Leave types', icon: 'settings' },
-  /**
-   * FR 31, LMS 502. What each of those types is worth, and from when.
-   *
-   * Its own screen rather than a panel on the one above, because it is a different kind of
-   * record: a leave type is edited in place, and an entitlement figure is never edited at
-   * all — it is superseded by a rule from a later date, and both stay.
-   *
-   * Offered to everybody for the reason the tab above is, though this one's *reading* is HR's:
-   * the rules include personal arrangements, and somebody without the standing gets the
-   * server's own sentence rather than a tab that quietly is not there.
-   */
-  { id: 'entitlements', label: 'Entitlements', icon: 'balances' },
-  /**
-   * FR 38a, LMS 503. Who approves each of those types, and in what order.
-   *
-   * Its own screen rather than a fieldset on "Leave types": a chain is read across types, and
-   * that was answerable only by opening each form in turn.
-   */
-  { id: 'approval-chains', label: 'Approval chains', icon: 'stage' },
-  /**
-   * FR 22, LMS 504. The days the office is closed, which nobody is charged leave for.
-   *
-   * Last of the configuration tabs and not beside "Who is away", though both draw dates:
-   * that screen is a reading of what people asked for, and this is a record HR keeps. Its
-   * *reading* is everybody's — a holiday is what a leave quote is priced against — and the
-   * writes are HR's, refused with the server's own sentence.
-   */
-  { id: 'holidays', label: 'Holidays', icon: 'holiday' },
-  /**
-   * FR 44, FR 48c, NFR SEC 06, LMS 505. What the system does for everybody.
-   *
-   * Last of the configuration tabs: these are set once and revisited when the policy changes,
-   * where the four above are kept.
-   */
-  { id: 'policy', label: 'Policy', icon: 'settings' },
-  /**
-   * FR 37, FR 27, LMS 506. Putting one person's figures right.
-   *
-   * Last, and not beside "Entitlements" though both are about what somebody is owed: the five
-   * above are rules that apply to everybody, and this is one correction to one balance. It is
-   * the only configuration screen that writes a movement rather than a setting.
-   *
-   * Offered to everybody for the reason the others are. Its reading is HR's and a manager's and
-   * the person's own; the button is an HR Administrator's, refused with the server's sentence.
-   */
-  { id: 'adjustments', label: 'Adjustments', icon: 'pencil' },
-  /**
-   * FR 37a, §8.6d, §8.7, LMS 509. What somebody who has left is owed.
-   *
-   * Beside "Adjustments" rather than beside "My balances": both are about one person's
-   * figures rather than about a rule, and this is the one a final payment is checked against.
-   * Its reading is the balance's — theirs, their manager's and HR's — and it writes nothing.
-   */
-  { id: 'leavers', label: 'Leavers', icon: 'people' },
-  /** FR 63, LMS 510. HR's reports on leave across the company. */
-  { id: 'reports', label: 'Reports', icon: 'report' },
-  /** FR 61, LMS 512. The words the system's emails go out in. */
-  { id: 'email-wording', label: 'Email wording', icon: 'send' },
-  /** NFR AUD 01, LMS 513. Who changed what. HR Administrators and System Administrators. */
-  { id: 'audit', label: 'Audit log', icon: 'history' },
 ] as const;
 
-type Screen = (typeof SCREENS)[number]['id'];
+/**
+ * The way into the configuration screens, which used to be ten tabs of their own.
+ *
+ * Drawn only for somebody the server said has a section to reach, from `/api/me/sections`.
+ * That is not the page deciding: it asks, and each section's own policy answers. Opening a
+ * section's address directly still meets the refusal it always gave, so nothing here is a
+ * second answer to a question the server owns.
+ */
+const HR_HUB = { id: 'hr', label: 'HR settings', icon: 'settings' } as const;
+
+type MainScreen = (typeof MAIN_SCREENS)[number]['id'];
+type Screen = MainScreen | typeof HR_HUB.id | HrSectionId;
+
+const HR_SECTIONS = HR_GROUPS.flatMap((group) => group.sections);
+
+/** Rail tabs that are drawn only where the server named them. */
+const CONDITIONAL = new Set<string>(['approvals']);
+
+/** Every address there is, and what the heading says on it. */
+const LABELS = new Map<string, string>([
+  ...MAIN_SCREENS.map((one) => [one.id, one.label] as const),
+  [HR_HUB.id, HR_HUB.label],
+  ...HR_SECTIONS.map((one) => [one.id, one.label] as const),
+]);
 
 /** The screens a leave year decides the contents of, and so the ones the picker appears on. */
 const YEAR_SCOPED = new Set<Screen>(['balances', 'calendar']);
 
 const DEFAULT_SCREEN: Screen = 'balances';
+
+/** The hub stays lit while you are on one of its sections. */
+function isHrSection(screen: Screen): boolean {
+  return HR_SECTIONS.some((one) => one.id === screen);
+}
 
 /**
  * What somebody is told when the session ran out under them. NFR USA 03, LMS 410.
@@ -138,6 +99,8 @@ export function App() {
   const [asked, setAsked] = useState(false);
   /** LMS 410. Set only where the session ended on its own, never where somebody signed out. */
   const [ended, setEnded] = useState<string | undefined>(undefined);
+  /** The server's answer, not this page's. Empty until it has answered. */
+  const [sections, setSections] = useState<string[]>([]);
 
   /**
    * The leave year, held here rather than on each screen. LMS 409.
@@ -161,12 +124,15 @@ export function App() {
 
   const ask = useCallback(() => {
     currentSession()
-      .then((who) => {
+      .then(async (who) => {
         setMe(who);
         setEnded(undefined);
+        // A rail without the hub is better than a rail that guesses at one.
+        setSections(await mySections().catch(() => []));
       })
       .catch(() => {
         setMe(undefined);
+        setSections([]);
       })
       .finally(() => {
         setAsked(true);
@@ -178,12 +144,14 @@ export function App() {
   /** Signing out on purpose. Nothing went wrong, so nothing is said. */
   const forget = useCallback(() => {
     setMe(undefined);
+    setSections([]);
     setEnded(undefined);
   }, []);
 
   /** LMS 410. What every screen calls on a 401. Not the same act as signing out. */
   const ranOut = useCallback(() => {
     setMe(undefined);
+    setSections([]);
     setEnded(SESSION_ENDED);
   }, []);
 
@@ -209,7 +177,12 @@ export function App() {
     return <SignIn onSignedIn={ask} ended={ended} />;
   }
 
-  const here = SCREENS.find((one) => one.id === screen) ?? SCREENS[0];
+  /* Every tab the server said this person may reach: the four everybody has, "Waiting on me"
+     for whoever staffs a desk, and the hub for whoever has a card in it. */
+  const tabs = [
+    ...MAIN_SCREENS.filter((one) => !CONDITIONAL.has(one.id) || sections.includes(one.id)),
+    ...(hasHrSection(sections) ? [HR_HUB] : []),
+  ];
 
   return (
     <div className="shell">
@@ -229,12 +202,16 @@ export function App() {
             can be middle clicked, copied, bookmarked and gone back from, and none of that
             is behaviour this file has to write. */}
         <nav className="screens" aria-label="Sections" ref={screens}>
-          {SCREENS.map((one) => (
+          {tabs.map((one) => (
             <a
               key={one.id}
               href={`#/${one.id}`}
               className="screen-tab"
-              aria-current={screen === one.id ? 'page' : undefined}
+              aria-current={
+                screen === one.id || (one.id === HR_HUB.id && isHrSection(screen))
+                  ? 'page'
+                  : undefined
+              }
             >
               <Icon name={one.icon} />
               {one.label}
@@ -248,7 +225,14 @@ export function App() {
           <div className="topbar-inner">
             {/* The screen you are on, as the page's heading. The rail says which tab is lit;
                 this is the one `h1`, and it is what a screen reader lands on. */}
-            <h1>{here.label}</h1>
+            <h1>{LABELS.get(screen) ?? LABELS.get(DEFAULT_SCREEN)}</h1>
+
+            {/* Back to the cards, from a section that no longer has a tab of its own. */}
+            {isHrSection(screen) ? (
+              <a className="linkish back" href={`#/${HR_HUB.id}`}>
+                {HR_HUB.label}
+              </a>
+            ) : null}
 
             {/* LMS 409. Only on the screens it means something on: a picker over "Ask for
                 leave" would be a control that changes nothing. */}
@@ -304,6 +288,7 @@ export function App() {
           <CalendarPage onSignedOut={ranOut} yearId={yearId} onYears={yearsKnown} />
         ) : null}
         {screen === 'approvals' ? <ApprovalsPage onSignedOut={ranOut} /> : null}
+        {screen === 'hr' ? <HrSettingsPage sections={sections} /> : null}
         {screen === 'leave-types' ? <LeaveTypesPage onSignedOut={ranOut} /> : null}
         {screen === 'entitlements' ? <EntitlementRulesPage onSignedOut={ranOut} /> : null}
         {screen === 'approval-chains' ? <ApprovalChainsPage onSignedOut={ranOut} /> : null}
@@ -365,9 +350,12 @@ function subscribeToTheAddress(changed: () => void): () => void {
  * An unknown hash falls back rather than showing nothing, because the addresses in it are
  * typed by people and pasted into chat windows. A stale link to a screen that has been renamed
  * should land somewhere useful, and a blank page with a good URL is the worst of both.
+ *
+ * A section's own address still works, which is what keeps every link sent before the rail
+ * was grouped. Whether it answers anything is the screen's policy, not this.
  */
 function screenInTheAddress(): Screen {
   const named = window.location.hash.replace(/^#\/?/, '');
 
-  return SCREENS.some((one) => one.id === named) ? (named as Screen) : DEFAULT_SCREEN;
+  return LABELS.has(named) ? (named as Screen) : DEFAULT_SCREEN;
 }

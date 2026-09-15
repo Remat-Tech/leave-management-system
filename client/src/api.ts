@@ -1685,6 +1685,18 @@ export async function currentSession(): Promise<Me> {
   return request<Me>('GET', '/api/me');
 }
 
+/**
+ * Which HR sections this person may reach. The server decides; this page only draws.
+ *
+ * Deliberately not fields on `/me`: that would be roles by another name, and a screen
+ * holding roles starts deciding what may be done with them. Every section is refused by
+ * its own policy whether or not a card was drawn for it.
+ */
+export async function mySections(): Promise<string[]> {
+  const { sections } = await request<{ sections: string[] }>('GET', '/api/me/sections');
+  return sections;
+}
+
 export async function signIn(email: string, password: string): Promise<SignedIn | CodeSent> {
   return request<SignedIn | CodeSent>('POST', '/api/session', { email, password });
 }

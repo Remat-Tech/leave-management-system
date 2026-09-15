@@ -4,6 +4,10 @@ import { type Request, type Response, Router } from 'express';
 import { SignInRefused } from './sign-in.js';
 import type { SignInService } from './sign-in.service.js';
 import { actorOf, employeeOf } from '../../http/identify.js';
+import type { Actor } from '../../auth/actor.js';
+import type { Guard } from '../../auth/policy.js';
+import type { DesksStaffed } from '../leave-request/approver-queue.js';
+import { sectionsFor } from './sections.js';
 import { mintSession, SESSION_COOKIE, sessionCookieOptions } from './session-cookie.routes.js';
 
 export interface SessionRoutes {
@@ -58,8 +62,14 @@ export function publicSessionRoutes({ signIn, secret }: SessionRoutes): Router {
   return routes;
 }
 
-/** The two routes that need a session, mounted behind `identify`. */
-export function signedInSessionRoutes(): Router {
+export interface SignedInSessionRoutes {
+  guard: Guard;
+  /** The desks this person answers at, read the same way the queue screen reads them. */
+  desksFor: (actor: Actor) => Promise<DesksStaffed>;
+}
+
+/** The routes that need a session, mounted behind `identify`. */
+export function signedInSessionRoutes({ guard, desksFor }: SignedInSessionRoutes): Router {
   const routes = Router();
 
   /** Who this is. §10. */
@@ -72,6 +82,23 @@ export function signedInSessionRoutes(): Router {
       firstName: employee.firstName,
       lastName: employee.lastName,
     });
+  });
+
+  /**
+   * Which HR sections this person may reach, so the rail draws only those.
+   *
+   * Its own route rather than fields on `/me`, which carries no roles and keeps none:
+   * this answers what may be reached, and every screen is still refused by its own
+   * policy whether or not a card was drawn.
+   */
+  routes.get('/me/sections', (_request: Request, response: Response, next) => {
+    const actor = actorOf(response);
+
+    void desksFor(actor)
+      .then((staffed) => {
+        response.json({ sections: sectionsFor(actor, guard, staffed) });
+      })
+      .catch(next);
   });
 
   /** Signing out. */

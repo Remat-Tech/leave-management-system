@@ -358,6 +358,46 @@ describe('who the server thinks you are', () => {
 
     expect(Object.keys(body as object).sort()).toEqual(['employeeId', 'firstName', 'lastName']);
   });
+
+  /**
+   * What may be *reached*, which is not what somebody holds.
+   *
+   * The rail draws its "HR settings" tab from this rather than from roles it was handed, so
+   * the answer is section ids and no role code appears in it. Each id is that section's own
+   * policy answering, and the screen behind it refuses on its own account either way.
+   */
+  it('is told which sections it may reach, and not what makes that so', async () => {
+    const body = await (
+      await get('/api/me/sections', { cookie: mintSession(people.headOfHr, SECRET) })
+    ).json();
+
+    expect((body as { sections: string[] }).sections).toContain('leave-types');
+    expect(JSON.stringify(body)).not.toMatch(/EMPLOYEE|HR_OFFICER|HR_ADMIN|SYS_ADMIN/);
+  });
+
+  it('and offers an ordinary employee none of them', async () => {
+    const body = await (
+      await get('/api/me/sections', { cookie: mintSession(people.officer, SECRET) })
+    ).json();
+
+    // Adwoa manages nobody and holds no HR role, so the rail draws neither the hub nor a queue.
+    expect(body).toEqual({ sections: [] });
+  });
+
+  /**
+   * "Waiting on me" is a desk, and the desk is read rather than assumed. FR 40.
+   *
+   * Kofi holds no role beyond `EMPLOYEE`; what he has is people reporting to him, which is a
+   * fact about the reporting lines. A rail drawn from roles would miss him, which is the whole
+   * reason this is the server's answer.
+   */
+  it('offers the approver queue to somebody who staffs a desk', async () => {
+    const body = await (
+      await get('/api/me/sections', { cookie: mintSession(people.teamLead, SECRET) })
+    ).json();
+
+    expect((body as { sections: string[] }).sections).toEqual(['approvals']);
+  });
 });
 
 /* ---------------------------------------------------------------- the statement */
