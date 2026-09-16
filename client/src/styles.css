@@ -270,23 +270,11 @@ h1 {
   flex: none;
   width: 2rem;
   height: 2rem;
-  display: grid;
-  place-items: center;
-  border-radius: 0.55rem;
-  background: var(--brand-blue);
-  color: var(--brand-white);
-  font-weight: 700;
-  font-size: 1.125rem;
+  object-fit: contain;
 }
 
 .logo-word b {
   font-weight: 700;
-}
-
-.logo-word i {
-  font-style: normal;
-  font-weight: 600;
-  color: var(--brand-blue);
 }
 
 /* The company line, at the foot of the rail. `margin-top: auto` puts it there whatever the
