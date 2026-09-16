@@ -47,6 +47,8 @@ beforeAll(async () => {
     new RoleRepository(db),
     mailer,
     new Guard(),
+    // Given rather than read from the environment, which CI does not have.
+    { domains: ['rematholdings.com'] },
   );
 });
 

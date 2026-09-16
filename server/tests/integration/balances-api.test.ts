@@ -322,6 +322,7 @@ describe('who the server thinks you are', () => {
       employeeId: people.officer,
       firstName: 'Adwoa',
       lastName: 'Frimpong',
+      mustChangePassword: false,
     });
   });
 
