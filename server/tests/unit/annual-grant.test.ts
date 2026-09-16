@@ -11,10 +11,7 @@ import {
   summaryOf,
   wasGranted,
 } from '../../src/features/entitlement/annual-grant.js';
-import {
-  BY_COMPLETED_TWELFTHS,
-  type ProRataRule,
-} from '../../src/features/entitlement/pro-rata.js';
+import { BY_CALENDAR_DAYS, type ProRataRule } from '../../src/features/entitlement/pro-rata.js';
 
 /**
  * The annual grant of entitlement. FR 30. LMS 214.
@@ -63,11 +60,6 @@ function proRatedBy(one: GrantCandidate): ProRataRule | null | undefined {
   return wasGranted(decision) ? decision.proRatedBy : undefined;
 }
 
-/** The hundredth of a day the ledger's column holds, so a test can state the sum. */
-function round(days: number): number {
-  return Math.round(days * 100) / 100;
-}
-
 describe('what somebody is granted for a year', () => {
   /* The story's own criterion: the full year, at the start of the year. */
   it('is the whole figure the rule says the type is worth', () => {
@@ -80,18 +72,17 @@ describe('what somebody is granted for a year', () => {
   });
 
   /**
-   * And somebody who joined in July gets §8.6d's worked example. FR 29, LMS 215.
+   * And somebody who joined in July gets §8.6d's share, to the whole day. FR 29, LMS 013.
    *
-   * 20 × 184/365 = 10.08 days, which is the figure the Technical Design Document quotes
-   * and the reason this build's rule in force is the calendar day one. The entry says
-   * which rule produced it, which is what makes the figure correctable when LMS 013
-   * settles the formula.
+   * 20 × 184/365 = 10.08, granted as 10: a balance of 10.08 reads as a mistake to the person
+   * holding it. The entry says which rule produced it, which is what makes the figure
+   * correctable if the rule changes again.
    */
   it('and somebody who joined in July gets the proportion of it they worked', () => {
     const july = candidate({ employment: { startedOn: '2026-07-01', leftOn: null } });
 
-    expect(granted(july)).toBe(10.08);
-    expect(proRatedBy(july)?.name).toBe('calendar-days');
+    expect(granted(july)).toBe(10);
+    expect(proRatedBy(july)?.name).toBe('calendar-days-to-the-day');
   });
 
   /* FR 29a, the same call with the other end moved in. Nothing in the decision knows
@@ -99,13 +90,15 @@ describe('what somebody is granted for a year', () => {
   it('and somebody who left in March gets the proportion of it they worked', () => {
     const march = candidate({ employment: { startedOn: '2020-01-01', leftOn: '2026-03-31' } });
 
-    expect(granted(march)).toBe(round((20 * 90) / 365));
+    // 20 × 90/365 = 4.93.
+    expect(granted(march)).toBe(5);
   });
 
   it('and somebody who joined and left inside one year gets the part in between', () => {
     const both = candidate({ employment: { startedOn: '2026-04-01', leftOn: '2026-06-30' } });
 
-    expect(granted(both)).toBe(round((20 * 91) / 365));
+    // 20 × 91/365 = 4.99.
+    expect(granted(both)).toBe(5);
   });
 
   /**
@@ -155,30 +148,30 @@ describe('what somebody is granted for a year', () => {
     ).toBe('WORTH_NOTHING');
   });
 
-  /* And one that rounds to a hundredth of a day *is* granted, because that is what the
-     formula says they are owed. Rounding it away would be taking something; rounding it
-     up to a day would be giving. §8.6d quotes its own example to the hundredth. */
-  it('and a proportion of a hundredth of a day is still a grant', () => {
-    expect(
-      granted(
-        candidate({ employment: { startedOn: '2026-12-31', leftOn: null }, entitlementDays: 3 }),
-      ),
-    ).toBe(0.01);
+  /* Nearest rather than always up, so a share under half a day is nothing and one of half a
+     day or more is a whole one. The rounding is a wash across the company, not a small
+     standing gift. */
+  it('and a share under half a day rounds to nothing, and half a day or more to one', () => {
+    // 20 × 9/365 = 0.49.
+    expect(because({ employment: { startedOn: '2026-12-23', leftOn: null } })).toBe(
+      'WORTH_NOTHING',
+    );
+    // 20 × 10/365 = 0.55.
+    expect(granted(candidate({ employment: { startedOn: '2026-12-22', leftOn: null } }))).toBe(1);
   });
 
   /**
    * And the formula is swappable, which is the first acceptance criterion.
    *
-   * The same candidate under the candidate rule gives ten days rather than 10.08, and
-   * the decision says which one it used. When LMS 013 answers, that is the whole of the
-   * change.
+   * The same July joiner under §8.6d's rule as written gives the Technical Design Document's
+   * own worked example, 10.08 rather than 10, and the decision says which rule it used.
    */
   it('and the same July joiner under a different rule gets a different figure', () => {
     const july = candidate({ employment: { startedOn: '2026-07-01', leftOn: null } });
-    const decision = decideTheGrant(july, BY_COMPLETED_TWELFTHS);
+    const decision = decideTheGrant(july, BY_CALENDAR_DAYS);
 
-    expect(wasGranted(decision) && decision.days).toBe(10);
-    expect(wasGranted(decision) && decision.proRatedBy?.name).toBe('completed-twelfths');
+    expect(wasGranted(decision) && decision.days).toBe(10.08);
+    expect(wasGranted(decision) && decision.proRatedBy?.name).toBe('calendar-days');
   });
 
   /* FR 05, read off the type by the caller rather than decided here — this file has no
@@ -196,7 +189,7 @@ describe('what somebody is granted for a year', () => {
     const whole = decideTheGrant(FULL_YEAR);
 
     expect(wasGranted(july) && reasonFor('Annual Leave', '2026', july)).toBe(
-      'Annual Leave entitlement for 2026, pro rated for 2026-07-01 to 2026-12-31 by the calendar-days rule',
+      'Annual Leave entitlement for 2026, pro rated for 2026-07-01 to 2026-12-31 by the calendar-days-to-the-day rule',
     );
     expect(wasGranted(whole) && reasonFor('Annual Leave', '2026', whole)).toBe(
       'Annual Leave entitlement for 2026',

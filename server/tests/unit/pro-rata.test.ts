@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   BY_CALENDAR_DAYS,
+  BY_CALENDAR_DAYS_TO_THE_DAY,
   BY_COMPLETED_TWELFTHS,
+  THE_GRANT_RULE,
   coversTheWholeYear,
   employedPortionOf,
   PRO_RATA_RULES,
@@ -179,11 +181,33 @@ describe('the calendar day rule, which is the one in force', () => {
  */
 describe('swapping the rule', () => {
   it('is one line, and the rules are named', () => {
+    // A leaver is settled to the hundredth; a joiner is granted whole days. LMS 013.
     expect(THE_RULE_IN_FORCE).toBe(BY_CALENDAR_DAYS);
+    expect(THE_GRANT_RULE).toBe(BY_CALENDAR_DAYS_TO_THE_DAY);
     expect(PRO_RATA_RULES.map((rule) => rule.name)).toEqual([
       'calendar-days',
       'completed-twelfths',
+      'calendar-days-to-the-day',
     ]);
+  });
+
+  it('and the grant rule is the settlement rule rounded to the nearest whole day', () => {
+    const year = { startsOn: '2026-01-01', endsOn: '2026-12-31' };
+    const shares: [string, number][] = [
+      ['2026-01-05', 20],
+      ['2026-05-15', 13],
+      ['2026-07-01', 10],
+      ['2026-08-03', 8],
+      ['2026-08-13', 8],
+      ['2026-09-14', 6],
+    ];
+
+    for (const [from, whole] of shares) {
+      const input = { fullYearDays: 20, year, portion: { from, to: '2026-12-31' } };
+
+      expect(BY_CALENDAR_DAYS_TO_THE_DAY.daysOf(input)).toBe(whole);
+      expect(Math.round(BY_CALENDAR_DAYS.daysOf(input))).toBe(whole);
+    }
   });
 
   /* A name read back off a ledger entry granted months ago turns into the rule that

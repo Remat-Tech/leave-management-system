@@ -302,9 +302,9 @@ describe('somebody who was here for part of the year', () => {
   }
 
   /**
-   * A joiner on 1 July is granted §8.6d's own worked example.
+   * A joiner on 1 July is granted §8.6d's share, to the whole day. LMS 013.
    *
-   * 20 × 184/365 = 10.08 days, posted as a `GRANT` like any other. The story's "so
+   * 20 × 184/365 = 10.08, granted to the whole day as 10 and posted as a `GRANT` like any other. The story's "so
    * that" is exactly this: their balance is right from the first day rather than right
    * after somebody notices and corrects it.
    */
@@ -316,7 +316,7 @@ describe('somebody who was here for part of the year', () => {
     const run = await job.run(january, y2026Id);
 
     expect(await fullYear()).toBe(20);
-    expect(grantFor(run, people.officer)?.days).toBe(10.08);
+    expect(grantFor(run, people.officer)?.days).toBe(10);
   });
 
   /**
@@ -335,7 +335,7 @@ describe('somebody who was here for part of the year', () => {
     await job.run(january, y2026Id);
 
     expect(await reasonOn(people.officer)).toBe(
-      'Annual Leave entitlement for 2026, pro rated for 2026-07-01 to 2026-12-31 by the calendar-days rule',
+      'Annual Leave entitlement for 2026, pro rated for 2026-07-01 to 2026-12-31 by the calendar-days-to-the-day rule',
     );
   });
 
@@ -354,7 +354,8 @@ describe('somebody who was here for part of the year', () => {
 
     const run = await job.run(january, y2026Id);
 
-    expect(grantFor(run, people.officer)?.days).toBe(Math.round(((20 * 90) / 365) * 100) / 100);
+    // 20 × 90/365 = 4.93, granted to the whole day.
+    expect(grantFor(run, people.officer)?.days).toBe(5);
     expect(await reasonOn(people.officer)).toContain('pro rated for 2026-01-01 to 2026-03-31');
   });
 
@@ -441,7 +442,7 @@ describe('somebody who was here for part of the year', () => {
     const run = await job.run(january, y2026Id, { employeeId: people.officer });
 
     expect(run.granted.every((grant) => grant.employeeId === people.officer)).toBe(true);
-    expect(grantFor(run, people.officer)?.days).toBe(10.08);
+    expect(grantFor(run, people.officer)?.days).toBe(10);
 
     const { rows } = await admin.query('SELECT count(DISTINCT employee_id) FROM leave_balance');
     expect(Number(rows[0].count)).toBe(1);

@@ -8,7 +8,7 @@ import {
   type LeaveYearDates,
   proRataDaysFor,
   type ProRataRule,
-  THE_RULE_IN_FORCE,
+  THE_GRANT_RULE,
 } from './pro-rata.js';
 
 /** Why somebody was not granted, in the words a report uses. */
@@ -53,7 +53,7 @@ export function wasGranted(
 /** What this person is granted of this leave type for this year. FR 30, FR 29. */
 export function decideTheGrant(
   candidate: GrantCandidate,
-  rule: ProRataRule = THE_RULE_IN_FORCE,
+  rule: ProRataRule = THE_GRANT_RULE,
 ): GrantDecision {
   const portion = employedPortionOf(candidate.year, candidate.employment);
 
