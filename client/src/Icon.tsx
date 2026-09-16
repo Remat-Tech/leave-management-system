@@ -41,7 +41,10 @@ export type IconName =
   /* LMS 511. */
   | 'download'
   /* LMS 513. */
-  | 'history';
+  | 'history'
+  /* Showing and hiding a password as it is typed. */
+  | 'eye'
+  | 'eye-off';
 
 const PATHS: Record<IconName, string> = {
   /** What you have: a calendar with days counted on it. */
@@ -97,6 +100,11 @@ const PATHS: Record<IconName, string> = {
   download: 'M12 4v12m0 0-4-4m4 4 4-4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
   /** LMS 513. The audit log: a clock turning back. */
   history: 'M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 3.5V8H8M12 7.5V12l3 2',
+  /** The password is hidden; pressing shows it. */
+  eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  /** The password is showing; pressing hides it again. */
+  'eye-off':
+    'M3 3l18 18M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7a9.8 9.8 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2',
 };
 
 export function Icon({ name }: { name: IconName }) {

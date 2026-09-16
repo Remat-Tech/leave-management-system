@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
 import { type CodeSent, signIn, submitCode } from '../../api';
 import { Notice, type Problem, problemFrom } from '../../problem';
+import { PasswordInput } from '../../PasswordInput';
 import { ForgottenPassword } from './ForgottenPassword';
 
 /** Signing in. LMS 109, LMS 110. */
@@ -135,14 +136,10 @@ export function SignIn({
 
           <label>
             Password
-            <input
-              type="password"
+            <PasswordInput
               value={password}
-              onChange={(event) => {
-                setPassword(event.target.value);
-              }}
+              onChange={setPassword}
               autoComplete="current-password"
-              required
             />
           </label>
 

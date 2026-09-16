@@ -4032,3 +4032,48 @@ iframe.preview {
 button.linkish.file-name {
   text-align: left;
 }
+
+/* ----------------------------------------------------- a password you can look at
+   The toggle sits inside the box, at its right-hand edge, so the field is still one field. */
+
+.password-input {
+  position: relative;
+  display: flex;
+}
+
+.password-input input {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Room for the button, so a long password never runs underneath it. */
+  padding-right: 2.75rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.25rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+}
+
+.password-toggle:hover:not(:disabled),
+.password-toggle[aria-pressed='true'] {
+  color: var(--ink);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.password-toggle svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}

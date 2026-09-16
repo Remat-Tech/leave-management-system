@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { changeMyPassword, isNotSignedIn } from '../../api';
+import { PasswordInput } from '../../PasswordInput';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
@@ -58,41 +59,25 @@ export function ChangePassword({ onChanged }: { onChanged: () => void }) {
         >
           <label>
             Current password
-            <input
-              type="password"
-              autoComplete="current-password"
+            <PasswordInput
               value={currentPassword}
-              onChange={(event) => {
-                setCurrentPassword(event.target.value);
-              }}
-              required
+              onChange={setCurrentPassword}
+              autoComplete="current-password"
             />
           </label>
 
           <label>
             New password
-            <input
-              type="password"
-              autoComplete="new-password"
+            <PasswordInput
               value={newPassword}
-              onChange={(event) => {
-                setNewPassword(event.target.value);
-              }}
-              required
+              onChange={setNewPassword}
+              autoComplete="new-password"
             />
           </label>
 
           <label>
             New password again
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={again}
-              onChange={(event) => {
-                setAgain(event.target.value);
-              }}
-              required
-            />
+            <PasswordInput value={again} onChange={setAgain} autoComplete="new-password" />
           </label>
 
           {/* Said here rather than as a refusal from the server, which never sees the second box. */}

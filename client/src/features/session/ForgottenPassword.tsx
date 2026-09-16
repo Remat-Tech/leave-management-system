@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { forgotPassword, resetPasswordWithCode } from '../../api';
+import { PasswordInput } from '../../PasswordInput';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
@@ -119,14 +120,10 @@ export function ForgottenPassword({ onDone }: { onDone: () => void }) {
 
             <label>
               New password
-              <input
-                type="password"
-                autoComplete="new-password"
+              <PasswordInput
                 value={newPassword}
-                onChange={(event) => {
-                  setNewPassword(event.target.value);
-                }}
-                required
+                onChange={setNewPassword}
+                autoComplete="new-password"
               />
             </label>
 
