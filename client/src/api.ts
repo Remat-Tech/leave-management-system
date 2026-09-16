@@ -374,6 +374,15 @@ export interface QueueItem {
   refusingIs: OverridingAction | null;
 }
 
+/**
+ * Takes back your own request before its last desk has decided. FR 26, LMS 306.
+ *
+ * Refused once it is approved: the days are taken by then, and giving them back is HR's.
+ */
+export async function withdrawRequest(requestId: string): Promise<void> {
+  await request<unknown>('POST', `/api/requests/${encodeURIComponent(requestId)}/withdraw`);
+}
+
 /** Deciding the opposite way to the line manager. FR 44, LMS 318. */
 export type OverridingAction = 'OVERTURN_APPROVAL' | 'OVERTURN_REJECTION';
 

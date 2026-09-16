@@ -7,6 +7,7 @@ import {
   myRequestsExportPath,
   type RequestEntry,
   type TrailStep,
+  withdrawRequest,
   type Year,
 } from '../../api';
 import { ExportButtons } from '../../ExportButtons';
@@ -104,7 +105,12 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
       ) : (
         <ol className="requests">
           {history.entries.map((entry) => (
-            <RequestCard key={entry.requestId} entry={entry} onSignedOut={onSignedOut} />
+            <RequestCard
+              key={entry.requestId}
+              entry={entry}
+              onSignedOut={onSignedOut}
+              onWithdrawn={again}
+            />
           ))}
         </ol>
       )}
@@ -123,7 +129,15 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
  * the meaning: the same tag says the word, for the reason the stylesheet gives about one man
  * in twelve.
  */
-function RequestCard({ entry, onSignedOut }: { entry: RequestEntry; onSignedOut: () => void }) {
+function RequestCard({
+  entry,
+  onSignedOut,
+  onWithdrawn,
+}: {
+  entry: RequestEntry;
+  onSignedOut: () => void;
+  onWithdrawn: () => void;
+}) {
   return (
     <li className={`card request is-${entry.status.toLowerCase()}`}>
       {/* LMS 409. What was asked for on the left, how it got where it is on the right — so
@@ -179,6 +193,16 @@ function RequestCard({ entry, onSignedOut }: { entry: RequestEntry; onSignedOut:
               than a screen that quietly implies somebody signed who never did. */}
           {entry.agreed && entry.stagesMissing.length > 0 ? (
             <p className="muted">Agreed under an earlier approval policy.</p>
+          ) : null}
+
+          {/* FR 26, LMS 306. Only while the last desk has still to decide: a manager may already
+              have answered, but it is not settled until it leaves SUBMITTED. */}
+          {entry.status === 'SUBMITTED' ? (
+            <Withdraw
+              requestId={entry.requestId}
+              onSignedOut={onSignedOut}
+              onWithdrawn={onWithdrawn}
+            />
           ) : null}
         </div>
 
@@ -244,6 +268,86 @@ function deskLabel(desk: Desk): string {
     default:
       return 'Chief Executive';
   }
+}
+
+/**
+ * Taking a request back before it is settled. FR 26, LMS 306.
+ *
+ * Two presses, because it cannot be undone: the request ends and its days go back, and asking
+ * again is a new request that starts at the first desk. The server decides whether it is still
+ * withdrawable — if HR settled it while this page was open, its sentence says so.
+ */
+function Withdraw({
+  requestId,
+  onSignedOut,
+  onWithdrawn,
+}: {
+  requestId: string;
+  onSignedOut: () => void;
+  onWithdrawn: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
+
+  const withdraw = () => {
+    setBusy(true);
+    setProblem(undefined);
+
+    withdrawRequest(requestId)
+      .then(onWithdrawn)
+      .catch((error: unknown) => {
+        if (isNotSignedIn(error)) {
+          onSignedOut();
+          return;
+        }
+
+        setProblem(problemFrom(error));
+        setConfirming(false);
+      })
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+
+  return (
+    <div className="withdraw">
+      {problem === undefined ? null : <Notice problem={problem} />}
+
+      {confirming ? (
+        <>
+          <p className="muted">
+            Withdraw this request? The days go back to your balance, and it can’t be undone.
+          </p>
+          <div className="withdraw-buttons">
+            <button type="button" className="danger" disabled={busy} onClick={withdraw}>
+              {busy ? 'Withdrawing…' : 'Yes, withdraw it'}
+            </button>
+            <button
+              type="button"
+              className="linkish"
+              disabled={busy}
+              onClick={() => {
+                setConfirming(false);
+              }}
+            >
+              Keep it
+            </button>
+          </div>
+        </>
+      ) : (
+        <button
+          type="button"
+          className="danger"
+          onClick={() => {
+            setConfirming(true);
+          }}
+        >
+          Withdraw request
+        </button>
+      )}
+    </div>
+  );
 }
 
 /**

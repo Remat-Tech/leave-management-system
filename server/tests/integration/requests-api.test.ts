@@ -610,6 +610,64 @@ describe('deciding a request', () => {
   });
 
   /**
+   * Withdrawing a request before it is settled. FR 26, LMS 306.
+   *
+   * A desk may already have answered — the rule is that the last one has not. So a request is
+   * withdrawn by its owner straight after asking, after the manager approved, and after the
+   * manager refused and sent it on to HR, and refused once HR has settled it.
+   */
+  it('is withdrawn by its owner while it is still being decided', async () => {
+    const id = await aRequest();
+
+    const response = await post(`/api/requests/${id}/withdraw`, people.officer, {});
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ requestId: id, status: 'WITHDRAWN' });
+  });
+
+  it('and after the manager approved it, since HR has still to decide', async () => {
+    const id = await aRequest();
+    await post(`/api/requests/${id}/approve`, people.teamLead, {});
+
+    const response = await post(`/api/requests/${id}/withdraw`, people.officer, {});
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: 'WITHDRAWN' });
+  });
+
+  it('and after the manager refused it and sent it on to HR', async () => {
+    const id = await aRequest();
+    await post(`/api/requests/${id}/refuse`, people.teamLead, { comment: WHY_NOT });
+
+    const response = await post(`/api/requests/${id}/withdraw`, people.officer, {});
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: 'WITHDRAWN' });
+  });
+
+  it('and not once HR has settled it, because the days are taken by then', async () => {
+    const id = await aRequest();
+    await post(`/api/requests/${id}/approve`, people.teamLead, {});
+    await post(`/api/requests/${id}/approve`, people.hrOfficer, {});
+
+    const response = await post(`/api/requests/${id}/withdraw`, people.officer, {});
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    const history = await historyFor(people.officer);
+    expect(history.entries.find((entry) => entry.requestId === id)?.status).toBe('APPROVED');
+  });
+
+  it('and never by anybody else, whoever they are', async () => {
+    const id = await aRequest();
+
+    const response = await post(`/api/requests/${id}/withdraw`, people.teamLead, {});
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    const history = await historyFor(people.officer);
+    expect(history.entries.find((entry) => entry.requestId === id)?.status).toBe('SUBMITTED');
+  });
+
+  /**
    * And the other way round: the manager approved, and HR turns it down. FR 44, LMS 318.
    *
    * What was found in use. HR pressed Refuse on the queue, which sent a plain refusal, which is

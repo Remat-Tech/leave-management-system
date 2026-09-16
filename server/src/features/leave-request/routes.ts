@@ -278,6 +278,22 @@ export function requestRoutes({
   });
 
   /**
+   * Takes back a request nobody has finished deciding, and gives its days back. FR 26, LMS 306.
+   *
+   * A desk may already have spoken — a manager who approved it, or one who refused it and sent
+   * it on to HR — because the request stays `SUBMITTED` until the last desk decides. Once it is
+   * approved the days are taken, and taking them back is the ask below, which HR answers.
+   */
+  routes.post('/requests/:id/withdraw', (request: Request, response: Response, next) => {
+    void requests
+      .withdraw(actorOf(response), asString(request.params.id))
+      .then((released) => {
+        response.json({ requestId: released.request.id, status: released.request.status });
+      })
+      .catch(next);
+  });
+
+  /**
    * Asks for leave every desk has agreed to be taken off the books. FR 47. LMS 324.
    *
    * The person's own, and the reason is mandatory — it is what HR answers.
