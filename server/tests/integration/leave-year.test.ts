@@ -187,9 +187,10 @@ describe('2026 and 2027, which the story asks for', () => {
      what stops them quietly disagreeing later. */
   it('start on the day the statutory entitlement figures take effect', async () => {
     const { rows } = await admin.query<{ effective_from: string }>(
-      `SELECT DISTINCT effective_from FROM leave_entitlement_rule`,
+      `SELECT min(effective_from) AS effective_from FROM leave_entitlement_rule`,
     );
 
+    /* The earliest, since 2026-10-01 added annual leave's carryover expiry. */
     expect(rows).toEqual([{ effective_from: (await byLabel('2026')).startDate }]);
   });
 

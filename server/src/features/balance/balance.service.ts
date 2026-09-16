@@ -16,12 +16,14 @@ import {
   type BalanceKey,
   daysToCarry,
   daysToCommit,
+  daysToExpire,
   daysToGiveBackFromTaken,
   daysToGrant,
   daysToLapse,
   daysToRelease,
   daysToReserve,
   type LeaveBalance,
+  unusedCarriedOver,
 } from './balance.js';
 import type { Employee } from '../employee/employee.js';
 import { EmployeeNotFound } from '../employee/employee.js';
@@ -1388,6 +1390,25 @@ export class BalanceService {
   }
 
   /**
+   * Expires carried days nobody used by the deadline. FR 36a.
+   *
+   * The figure is re-read under the lock and never more than the caller's, so a request
+   * booked since the caller looked is not overdrawn.
+   */
+  async expireCarriedOver(actor: Actor, expiry: BalanceMovement): Promise<BalanceMoved> {
+    const owner = await this.ownerOf(expiry.employeeId);
+
+    this.guard.enforce(ledgerPolicy.expireCarriedOver(actor, owner));
+
+    return this.moving(actor, expiry, async (held) =>
+      Promise.resolve({
+        entryType: 'EXPIRY' as const,
+        days: -daysToExpire(Math.min(expiry.days, unusedCarriedOver(held))),
+      }),
+    );
+  }
+
+  /**
    * Turns held days into taken days, which is what approval does. FR 26.
    *
    * **This does not consume days a second time.** The reservation already did that;
@@ -1605,7 +1626,7 @@ export class BalanceService {
       held: LeaveBalance,
       repositories: Repositories,
     ) => Promise<{
-      entryType: 'GRANT' | 'CARRY_FORWARD' | 'DEDUCTION' | 'RELEASE';
+      entryType: 'GRANT' | 'CARRY_FORWARD' | 'EXPIRY' | 'DEDUCTION' | 'RELEASE';
       days: number;
     }>,
   ): Promise<BalanceMoved> {

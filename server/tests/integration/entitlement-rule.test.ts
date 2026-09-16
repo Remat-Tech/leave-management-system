@@ -144,11 +144,12 @@ describe('the figures of the FR 32 table', () => {
     const { rows } = await admin.query<{ code: string; days: number; from: string }>(
       `SELECT t.code, r.entitlement_days AS days, r.effective_from::text AS from
          FROM leave_entitlement_rule r JOIN leave_type t ON t.id = r.leave_type_id
-        ORDER BY t.display_order`,
+        ORDER BY t.display_order, r.effective_from`,
     );
 
     expect(rows).toEqual([
       { code: 'ANNUAL', days: 20, from: GO_LIVE },
+      { code: 'ANNUAL', days: 20, from: '2026-10-01' },
       { code: 'SICK', days: 3, from: GO_LIVE },
       { code: 'UNPAID', days: 10, from: GO_LIVE },
       { code: 'COMPASSIONATE', days: 5, from: GO_LIVE },
@@ -192,7 +193,7 @@ describe('the figures of the FR 32 table', () => {
 
   it('carry annual leave over and nothing else, which is what the rollover reads', async () => {
     const { rows } = await admin.query<{ code: string }>(
-      `SELECT t.code FROM leave_entitlement_rule r JOIN leave_type t ON t.id = r.leave_type_id
+      `SELECT DISTINCT t.code FROM leave_entitlement_rule r JOIN leave_type t ON t.id = r.leave_type_id
         WHERE r.carries_over ORDER BY t.code`,
     );
 
@@ -201,22 +202,23 @@ describe('the figures of the FR 32 table', () => {
 
   it('pro rate annual leave for a joiner and nothing else', async () => {
     const { rows } = await admin.query<{ code: string }>(
-      `SELECT t.code FROM leave_entitlement_rule r JOIN leave_type t ON t.id = r.leave_type_id
+      `SELECT DISTINCT t.code FROM leave_entitlement_rule r JOIN leave_type t ON t.id = r.leave_type_id
         WHERE r.prorate_on_join ORDER BY t.code`,
     );
 
     expect(rows.map((row) => row.code)).toEqual(['ANNUAL']);
   });
 
-  /* FR 36a: carry over is uncapped and does not expire. Both columns unset is how
-     that is said, and asserting it keeps it a decision rather than an oversight. */
-  it('cap nothing and expire nothing, because current policy does neither', async () => {
-    const { rows } = await admin.query<{ capped: number }>(
-      `SELECT count(*)::int AS capped FROM leave_entitlement_rule
-        WHERE carryover_max_days IS NOT NULL OR carryover_expiry_month IS NOT NULL`,
+  /* FR 36a: carry over is uncapped, and from 2026-10-01 carried annual leave expires at
+     the end of June. */
+  it('cap nothing, and expire carried annual leave at the end of June', async () => {
+    const { rows } = await admin.query<{ code: string; month: number; from: string }>(
+      `SELECT t.code, r.carryover_expiry_month AS month, r.effective_from::text AS from
+         FROM leave_entitlement_rule r JOIN leave_type t ON t.id = r.leave_type_id
+        WHERE r.carryover_max_days IS NOT NULL OR r.carryover_expiry_month IS NOT NULL`,
     );
 
-    expect(rows[0].capped).toBe(0);
+    expect(rows).toEqual([{ code: 'ANNUAL', month: 6, from: '2026-10-01' }]);
   });
 
   /* The trap this beat: a rule may name an employee, so the table has a foreign
@@ -350,7 +352,8 @@ describe('the resolution rule is implemented once', () => {
       departmentId: adwoa.departmentId,
     });
 
-    expect(candidates.map((rule) => rule.entitlementDays).sort()).toEqual([20, 99]);
+    /* Go live's twenty, 2026-10-01's twenty with the June expiry, and the draft. */
+    expect(candidates.map((rule) => rule.entitlementDays).sort()).toEqual([20, 20, 99]);
     expect(await daysFor('ANNUAL', adwoa)).toBe(20);
   });
 
@@ -815,9 +818,8 @@ describe('who may see and set a figure, LMS 112', () => {
       rules.list(
         signedInAs(people.hrOfficer, { roles: ['EMPLOYEE', 'HR_OFFICER'], isManager: false }),
       ),
-      /* One company-wide figure per leave type, which since LMS 401 is all seven of them
-         rather than the five LMS 203 shipped. */
-    ).resolves.toHaveLength(7);
+      /* One company-wide figure per leave type, plus annual leave's second from 2026-10-01. */
+    ).resolves.toHaveLength(8);
   });
 });
 

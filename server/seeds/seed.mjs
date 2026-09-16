@@ -131,6 +131,7 @@ export async function seed(db, { scenario = 'base' } = {}) {
 async function restoreReferenceData(db) {
   await db.query('SELECT ensure_statutory_entitlement_rules()');
   await db.query('SELECT ensure_unpaid_entitlement_rules()');
+  await db.query('SELECT ensure_carryover_expiry_rules()');
 }
 
 /**

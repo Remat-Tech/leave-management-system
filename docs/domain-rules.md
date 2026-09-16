@@ -675,8 +675,8 @@ fourteen of paternity — all effective from 1 January 2026, the leave year the
 system goes live in. Everything before that date resolves to no rule at all, which
 is the honest answer: this system holds no entitlement history from before it
 existed. Annual leave is the only one that is pro rated for a joiner and the only
-one that carries over, uncapped and without expiry, which is FR 36a said as two
-unset columns rather than as a policy nobody wrote down.
+one that carries over, uncapped. From 2026-10-01 a second annual rule sets carried days
+to expire at the end of June; see [Rolling a year over](#rolling-a-year-over).
 
 Two of the seven types have **no rule, which is not the same as a rule of zero**.
 Unpaid leave is agreed occasion by occasion rather than accrued, so a standing
@@ -1694,14 +1694,26 @@ figure. Event based types never reach the decision: the job filters on
 FR 32g means a maternity allowance arrives with the confinement and has no year end to
 survive.
 
-**Carry over is uncapped and does not expire, which is two unset columns rather than a
-rule in code.** `carryover_max_days` and `carryover_expiry_month` are null on every
-statutory figure — FR 36a said as data. The job honours a cap where HR sets one, and the
-entry says so in words (`capped at 5 of 20 days`), because a column the code ignores is a
-setting that lies to whoever fills it in. Expiring carried days is a *second* job on a
-second schedule and is not built: it would post `EXPIRY` entries in a named month, which
-is why `EXPIRY` moves the `carriedOver` bucket rather than `entitled`, and no figure in
-this system sets a month for it to run on.
+**Carry over is uncapped, and carried annual leave expires at the end of June.** Both are
+columns rather than code. `carryover_max_days` is null on every statutory figure; the job
+honours a cap where HR sets one, and the entry says so (`capped at 5 of 20 days`).
+`carryover_expiry_month` is 6 on the annual rule effective from 2026-10-01 (the go-live
+rule has applied and cannot be changed), so days carried out of 2026 expire after
+2027-06-30.
+
+`features/leave-year/carryover-expiry.job.ts` does the expiring, and is a separate job from
+the rollover:
+
+- The month comes from the rule in force on the **first day of the year the days were
+  carried into**. The deadline is the last day of that month.
+- From the day after the deadline it posts an `EXPIRY` for
+  `carriedOver − taken − pending`, never more than `available`. Carried days are spent
+  first: leave taken or asked for by the deadline uses them, whatever its dates.
+- It is not once per balance. Days a request gives back after the deadline expire on the
+  next run, and an unchanged balance has nothing left, so re-running is safe. One gap:
+  leave asked for *after* the deadline also counts as using carried days if an earlier
+  request is later given back.
+- Nothing schedules it yet, like the annual grant and the rollover.
 
 **The rule that decides is the one that covered the days.** `carries_over` is resolved as
 at the **last day of the year being closed**, not the first day of the new one, and FR 31

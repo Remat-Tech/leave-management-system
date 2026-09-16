@@ -991,6 +991,21 @@ describe('moving a balance, FR 26 and LMS 212', () => {
     expect(ledgerPolicy.carryForward(theSystem('the year rollover'), hers).allowed).toBe(true);
   });
 
+  /* FR 36a. The same desk as the carry it undoes. */
+  it('has carried days expired only by an HR Administrator', () => {
+    for (const [code, roles] of EACH_ROLE) {
+      expect(ledgerPolicy.expireCarriedOver(employee('adwoa', roles), hers).allowed).toBe(
+        SETS_UP_THE_ORGANISATION.includes(code),
+      );
+    }
+
+    expect(ledgerPolicy.expireCarriedOver(employee('ama'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.expireCarriedOver(manager('akosua'), hers).allowed).toBe(false);
+    expect(ledgerPolicy.expireCarriedOver(theSystem('the carryover expiry'), hers).allowed).toBe(
+      true,
+    );
+  });
+
   /**
    * Recording something that happened, and the entitlement it brings. FR 32g, LMS 218.
    *
@@ -1187,6 +1202,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       ledgerPolicy.release(adwoa, hers),
       ledgerPolicy.grant(adwoa, hers),
       ledgerPolicy.carryForward(adwoa, hers),
+      ledgerPolicy.expireCarriedOver(adwoa, hers),
       ledgerPolicy.grantForAnEvent(adwoa, hers),
       ledgerPolicy.lapse(adwoa, hers),
     ]) {

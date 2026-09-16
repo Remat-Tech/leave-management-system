@@ -469,17 +469,11 @@ describe('what carries and what does not, on a migrated database', () => {
     expect((await balanceOf(people.engineer, annualId, y2026.id)).carriedOver).toBe(20);
   });
 
-  /* And does not expire. FR 36a's other unset column: there is no EXPIRY entry anywhere
-     after a rollover, and no job in this build that would post one. */
-  it('and nothing expires, because no figure sets a month for it', async () => {
+  /* FR 36a. Expiry is a separate job at the deadline; the rollover posts none. */
+  it('and nothing expires at the rollover itself', async () => {
     await grant2025();
     await job.run(firstOfJanuary, y2025.id);
 
-    const { rows } = await admin.query(
-      'SELECT count(*)::int AS n FROM leave_entitlement_rule WHERE carryover_expiry_month IS NOT NULL',
-    );
-
-    expect(rows[0].n).toBe(0);
     expect(await entriesOfType('EXPIRY')).toHaveLength(0);
   });
 

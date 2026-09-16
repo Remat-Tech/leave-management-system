@@ -391,6 +391,8 @@ describe('the five columns, as the ledger names them', () => {
       'committed',
       'daysToCarry',
       'daysToCommit',
+      /** FR 36a. */
+      'daysToExpire',
       /** FR 47, LMS 324. */
       'daysToGiveBackFromTaken',
       'daysToGrant',
@@ -401,6 +403,8 @@ describe('the five columns, as the ledger names them', () => {
       'isTheSameBalance',
       'noMovementsYet',
       'owed',
+      /** FR 36a. Takes a balance, like everything else here. */
+      'unusedCarriedOver',
     ]);
   });
 });

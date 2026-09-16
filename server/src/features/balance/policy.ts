@@ -185,6 +185,20 @@ export const ledgerPolicy = {
         );
   },
 
+  /** Expiring carried days nobody used by the deadline. FR 36a. */
+  expireCarriedOver(actor: Actor, owner: BalanceOwner): Decision {
+    return holdsAny(actor, ...SETS_UP_THE_ORGANISATION)
+      ? about.allow(actor, 'expireCarriedOver', owner.employeeId)
+      : about.refuseOpenly(
+          actor,
+          'expireCarriedOver',
+          owner.employeeId,
+          'holds no role that expires carried days',
+          'Carried days expire because the entitlement rule names a month for it, and ' +
+            'applying that is the same desk that writes it, an HR Administrator’s. FR 36a.',
+        );
+  },
+
   /** Checking every balance in the company against the ledger. §7.4, LMS 213. */
   reconcile(actor: Actor): Decision {
     return holdsAny(actor, ...READS_EVERY_RECORD)

@@ -268,6 +268,36 @@ export function daysToCarry(days: number, carriesAlreadyPosted: number): number 
 }
 
 /**
+ * Carried days nothing has used. FR 36a.
+ *
+ * Leave taken or still held is spent from the carry first. Never more than `available`,
+ * so an expiry cannot overdraw leave already booked.
+ */
+export function unusedCarriedOver(balance: LeaveBalance): number {
+  return round(
+    Math.max(
+      0,
+      Math.min(balance.carriedOver - balance.taken - balance.pending, available(balance)),
+    ),
+  );
+}
+
+/**
+ * How many carried days an expiry takes away. FR 36a.
+ *
+ * No once-per-balance refusal: days freed after the deadline expire on the next run too.
+ */
+export function daysToExpire(days: number): number {
+  if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
+    throw new InvalidBalanceMovement(
+      `An expiry is a number of unused carried days, and ${String(days)} is not one.`,
+    );
+  }
+
+  return days;
+}
+
+/**
  * How many days an event grant lapses when its time is up. FR 32e, LMS 218.
  *
  * The third of the "days arriving and leaving by rule" rules, beside {@link daysToGrant}
