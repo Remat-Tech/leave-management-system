@@ -7,8 +7,11 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 /** The name on the cookie. */
 export const SESSION_COOKIE = 'lms_session';
 
-/** How long a signed-in browser stays signed in. */
-export const SESSION_HOURS = 8;
+/** How long a signed-in browser may go without a request before it is signed out. */
+export const SESSION_IDLE_MINUTES = 60;
+
+/** How often an active session's cookie is re-issued, so not every request sets one. */
+export const SESSION_REFRESH_MINUTES = 1;
 
 /** Why a presented session is not usable. */
 export type SessionRefusal = 'MALFORMED' | 'BAD_SIGNATURE' | 'EXPIRED';
@@ -36,7 +39,10 @@ export function sessionSecretFrom(env: NodeJS.ProcessEnv = process.env): string 
 }
 
 /**
- * Mints a cookie value for somebody who has just proved who they are.
+ * Mints a cookie value for somebody who has just proved who they are, or who is still active.
+ *
+ * The timestamp is when they were last seen, so re-minting on activity slides the idle
+ * expiry forward.
  *
  * `issuedAt` is a parameter rather than a clock read here, for the reason every date in
  * `/domain` is passed in: a function with a clock in it is one whose answer depends on
@@ -64,7 +70,7 @@ export function whoIsThis(
   value: string,
   secret: string,
   now: Date = new Date(),
-): { employeeId: string } | { refused: SessionRefusal } {
+): { employeeId: string; seenAt: Date } | { refused: SessionRefusal } {
   const parts = value.split('.');
 
   if (parts.length !== 3) {
@@ -83,11 +89,16 @@ export function whoIsThis(
     return { refused: 'BAD_SIGNATURE' };
   }
 
-  if (now.getTime() - Number(issuedAt) >= SESSION_HOURS * 60 * 60 * 1000) {
+  if (now.getTime() - Number(issuedAt) >= SESSION_IDLE_MINUTES * 60 * 1000) {
     return { refused: 'EXPIRED' };
   }
 
-  return { employeeId };
+  return { employeeId, seenAt: new Date(Number(issuedAt)) };
+}
+
+/** Whether an active session's cookie is old enough to re-issue. */
+export function isDueARefresh(seenAt: Date, now: Date = new Date()): boolean {
+  return now.getTime() - seenAt.getTime() >= SESSION_REFRESH_MINUTES * 60 * 1000;
 }
 
 /**
@@ -117,7 +128,7 @@ export function sessionCookieOptions(env: NodeJS.ProcessEnv = process.env): Sess
     sameSite: 'strict',
     secure: env.NODE_ENV === 'production',
     path: '/',
-    maxAge: SESSION_HOURS * 60 * 60 * 1000,
+    maxAge: SESSION_IDLE_MINUTES * 60 * 1000,
   };
 }
 

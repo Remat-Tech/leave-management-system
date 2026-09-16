@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   cookieFrom,
+  isDueARefresh,
   mintSession,
   SESSION_COOKIE,
-  SESSION_HOURS,
+  SESSION_IDLE_MINUTES,
+  SESSION_REFRESH_MINUTES,
   sessionCookieOptions,
   sessionSecretFrom,
   whoIsThis,
@@ -40,7 +42,7 @@ const SECRET = 'a-test-signing-secret-of-at-least-32-chars';
 
 describe('who a cookie says this is', () => {
   it('reads back the employee it was minted for', () => {
-    expect(whoIsThis(mintSession('7', SECRET), SECRET)).toEqual({ employeeId: '7' });
+    expect(whoIsThis(mintSession('7', SECRET), SECRET)).toMatchObject({ employeeId: '7' });
   });
 
   /* The point of the signature. Without it the cookie is a text field naming whose
@@ -82,23 +84,36 @@ describe('when a session runs out', () => {
   const issued = new Date('2026-09-02T08:00:00Z');
   const cookie = mintSession('7', SECRET, issued);
 
-  function at(hours: number): Date {
-    return new Date(issued.getTime() + hours * 60 * 60 * 1000);
+  function at(minutes: number): Date {
+    return new Date(issued.getTime() + minutes * 60 * 1000);
   }
 
-  it('is good up to the last minute of its life', () => {
-    expect(whoIsThis(cookie, SECRET, at(SESSION_HOURS - 0.01))).toEqual({ employeeId: '7' });
+  it('is good up to the last moment of an hour idle', () => {
+    expect(whoIsThis(cookie, SECRET, at(SESSION_IDLE_MINUTES - 0.01))).toEqual({
+      employeeId: '7',
+      seenAt: issued,
+    });
   });
 
-  /* Exactly eight hours is expired rather than valid — the comparison is `>=`, so the
-     boundary belongs to the refusal. A session that is good *at* its expiry is a session
-     whose expiry is off by one, and this is the assertion that pins which side it is. */
-  it('and is expired at exactly its expiry, not a moment after', () => {
-    expect(whoIsThis(cookie, SECRET, at(SESSION_HOURS))).toEqual({ refused: 'EXPIRED' });
+  /* Exactly an hour idle is expired: the comparison is `>=`. */
+  it('and is expired at exactly an hour idle, not a moment after', () => {
+    expect(whoIsThis(cookie, SECRET, at(SESSION_IDLE_MINUTES))).toEqual({ refused: 'EXPIRED' });
   });
 
   it('and stays expired afterwards', () => {
-    expect(whoIsThis(cookie, SECRET, at(SESSION_HOURS + 100))).toEqual({ refused: 'EXPIRED' });
+    expect(whoIsThis(cookie, SECRET, at(SESSION_IDLE_MINUTES + 600))).toEqual({
+      refused: 'EXPIRED',
+    });
+  });
+
+  /* Activity re-mints the cookie, so a session in use is always recently seen. */
+  it('and is re-issued once a minute or more has passed since it was last seen', () => {
+    expect(isDueARefresh(issued, at(0.5))).toBe(false);
+    expect(isDueARefresh(issued, at(SESSION_REFRESH_MINUTES))).toBe(true);
+    expect(whoIsThis(mintSession('7', SECRET, at(50)), SECRET, at(100))).toHaveProperty(
+      'employeeId',
+      '7',
+    );
   });
 
   /* Told apart from a bad signature in the return value and deliberately not to the
@@ -171,7 +186,7 @@ describe('the attributes a browser is given', () => {
   });
 
   it('and last as long as the session does', () => {
-    expect(sessionCookieOptions({}).maxAge).toBe(SESSION_HOURS * 60 * 60 * 1000);
+    expect(sessionCookieOptions({}).maxAge).toBe(SESSION_IDLE_MINUTES * 60 * 1000);
   });
 });
 

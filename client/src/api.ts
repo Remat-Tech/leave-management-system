@@ -1802,7 +1802,19 @@ export const UNREACHABLE = 0;
  * to show — the one failure here with no sentence behind it. It does not claim the request was
  * not received: a connection can drop after the server has read it.
  */
+/** The server signs a session out after this long without a request. */
+export const IDLE_MINUTES = 60;
+
+let lastRequestAt = Date.now();
+
+/** When this page last talked to the server, which is what keeps the session alive. */
+export function msSinceLastRequest(): number {
+  return Date.now() - lastRequestAt;
+}
+
 async function send(path: string, init: RequestInit): Promise<Response> {
+  lastRequestAt = Date.now();
+
   try {
     return await fetch(path, init);
   } catch {

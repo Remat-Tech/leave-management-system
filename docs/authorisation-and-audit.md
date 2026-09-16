@@ -338,10 +338,12 @@ never arrives over the wire.
 
 There is no session table, so there is nothing to revoke, and signing out clears
 the browser's copy rather than invalidating it. That is bounded two ways: the
-cookie lives eight hours, and every request re-reads the employee record and the
-login, so somebody terminated at nine o'clock is refused at one minute past. What
-survives is a stolen cookie for the rest of its life. The answer to that is a
-session table, and it is a story with a migration in it.
+cookie expires after an hour without a request (each request re-issues it, at most once a
+minute, so a session in use slides forward), and every request re-reads the employee
+record and the login, so somebody terminated at nine o'clock is refused at one minute
+past. There is no cap on a session that stays active, so a stolen cookie that keeps being
+used keeps working. The answer to that is a session table, and it is a story with a
+migration in it.
 
 **Roles are read fresh on every request, and are a snapshot only inside one.**
 This was the other way round until LMS 401, which said the price — "a round trip

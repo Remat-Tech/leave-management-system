@@ -11,7 +11,10 @@ import type { RoleRepository } from '../features/role/role.db.js';
 import type { SignInAccountRepository } from '../features/sign-in/sign-in-account.db.js';
 import {
   cookieFrom,
+  isDueARefresh,
+  mintSession,
   SESSION_COOKIE,
+  sessionCookieOptions,
   whoIsThis,
 } from '../features/sign-in/session-cookie.routes.js';
 
@@ -143,6 +146,16 @@ async function establish(
 
   response.locals.employee = employee;
   response.locals.mustChangePassword = account.mustChangePassword;
+
+  /* Activity slides the idle expiry forward. Once a minute at most, so not every request
+     sets a cookie. */
+  if (isDueARefresh(said.seenAt)) {
+    response.cookie(
+      SESSION_COOKIE,
+      mintSession(employee.id, identity.secret),
+      sessionCookieOptions(),
+    );
+  }
 
   return signedInAs(employee.id, {
     roles: roles as RoleCode[],

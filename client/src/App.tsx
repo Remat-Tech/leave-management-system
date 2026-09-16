@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { currentSession, type Me, mySections, signOut, type Year } from './api';
+import {
+  currentSession,
+  IDLE_MINUTES,
+  type Me,
+  msSinceLastRequest,
+  mySections,
+  signOut,
+  type Year,
+} from './api';
 import { AllLeavePage } from './features/all-leave/AllLeavePage';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { AuditLogPage } from './features/audit/AuditLogPage';
@@ -95,8 +103,11 @@ function isHrSection(screen: Screen): boolean {
  * typed survived; it did not.
  */
 const SESSION_ENDED =
-  'You were signed out because your session ran out. Sign in again to carry on. Anything ' +
+  'You were signed out after an hour without activity. Sign in again to carry on. Anything ' +
   'you had already submitted is safe, but a form you were part way through is not.';
+
+/** How often the page checks whether it has been idle for the hour. */
+const IDLE_CHECK_MS = 30 * 1000;
 
 export function App() {
   const [me, setMe] = useState<Me | undefined>(undefined);
@@ -158,6 +169,28 @@ export function App() {
     setSections([]);
     setEnded(SESSION_ENDED);
   }, []);
+
+  /* The server ends the session after an hour with no request; this takes the screen back to
+     sign in when that happens, rather than leaving it looking signed in until the next click. */
+  const signedIn = me !== undefined;
+
+  useEffect(() => {
+    if (!signedIn) {
+      return;
+    }
+
+    const checking = setInterval(() => {
+      if (msSinceLastRequest() >= IDLE_MINUTES * 60 * 1000) {
+        void signOut()
+          .catch(() => undefined)
+          .finally(ranOut);
+      }
+    }, IDLE_CHECK_MS);
+
+    return () => {
+      clearInterval(checking);
+    };
+  }, [signedIn, ranOut]);
 
   /**
    * Bring the tab you are on into view. LMS 408.
