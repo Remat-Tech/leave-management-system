@@ -277,6 +277,18 @@ export function requestRoutes({
       .catch(next);
   });
 
+  /** Every ask to cancel agreed leave that this person may answer. FR 47, LMS 324. */
+  routes.get('/me/withdrawals', (_request: Request, response: Response, next) => {
+    void requests
+      .withdrawalsToAnswer(actorOf(response))
+      .then((asks) => {
+        response.json({
+          items: asks.map((ask) => ({ ...ask, askedAt: ask.askedAt.toISOString() })),
+        });
+      })
+      .catch(next);
+  });
+
   /**
    * Takes back a request nobody has finished deciding, and gives its days back. FR 26, LMS 306.
    *
@@ -944,6 +956,8 @@ function entryAsJson(entry: RequestHistoryEntry): unknown {
     progressInWords: entry.progress.inWords,
 
     trail: entry.trail.map(stepAsJson),
+    /** FR 47, LMS 324. */
+    withdrawalAsked: entry.withdrawalAsked,
   };
 }
 

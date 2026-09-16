@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  askToCancel,
   type Desk,
   type History,
   isNotSignedIn,
@@ -204,6 +205,22 @@ function RequestCard({
               onWithdrawn={onWithdrawn}
             />
           ) : null}
+
+          {/* FR 47, LMS 324. Approved leave is not taken back but asked about: the days are spent,
+              so HR answers. One open ask at a time, which the server holds as well. */}
+          {entry.status === 'APPROVED' ? (
+            entry.withdrawalAsked ? (
+              <p className="notice plain">
+                You have asked HR to cancel this. They have not answered yet.
+              </p>
+            ) : (
+              <AskToCancel
+                requestId={entry.requestId}
+                onSignedOut={onSignedOut}
+                onAsked={onWithdrawn}
+              />
+            )
+          ) : null}
         </div>
 
         <Trail steps={entry.trail} />
@@ -346,6 +363,106 @@ function Withdraw({
           Withdraw request
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Asking HR to cancel leave that has already been approved. FR 47, LMS 324.
+ *
+ * A reason, because HR is answering somebody rather than pressing a button: the days are
+ * already spent, and putting them back is a correction HR has to be able to account for.
+ */
+function AskToCancel({
+  requestId,
+  onSignedOut,
+  onAsked,
+}: {
+  requestId: string;
+  onSignedOut: () => void;
+  onAsked: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
+
+  const ask = () => {
+    setBusy(true);
+    setProblem(undefined);
+
+    askToCancel(requestId, reason.trim())
+      .then(onAsked)
+      .catch((error: unknown) => {
+        if (isNotSignedIn(error)) {
+          onSignedOut();
+          return;
+        }
+
+        setProblem(problemFrom(error));
+      })
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+
+  if (!open) {
+    return (
+      <div className="withdraw">
+        <button
+          type="button"
+          className="danger"
+          onClick={() => {
+            setOpen(true);
+          }}
+        >
+          Ask to cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="withdraw">
+      {problem === undefined ? null : <Notice problem={problem} />}
+
+      <label className="withdraw-reason">
+        Why do you want to cancel this leave?
+        <textarea
+          rows={3}
+          value={reason}
+          disabled={busy}
+          onChange={(event) => {
+            setReason(event.target.value);
+          }}
+        />
+      </label>
+
+      <p className="muted">
+        HR will answer. If the leave has already started, only the days you have not used yet come
+        back.
+      </p>
+
+      <div className="withdraw-buttons">
+        <button
+          type="button"
+          className="danger"
+          disabled={busy || reason.trim() === ''}
+          onClick={ask}
+        >
+          {busy ? 'Sending…' : 'Send to HR'}
+        </button>
+        <button
+          type="button"
+          className="linkish"
+          disabled={busy}
+          onClick={() => {
+            setOpen(false);
+          }}
+        >
+          Keep it
+        </button>
+      </div>
     </div>
   );
 }

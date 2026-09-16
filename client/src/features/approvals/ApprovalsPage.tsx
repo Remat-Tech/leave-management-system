@@ -3,11 +3,15 @@ import {
   type ApproverQueue,
   decideMany,
   type Desk,
+  grantWithdrawal,
   isNotSignedIn,
   myApprovals,
   overrideDecision,
   type QueueItem,
+  refuseWithdrawal,
   type TeamContext,
+  type WithdrawalToAnswer,
+  withdrawalsToAnswer,
 } from '../../api';
 import { inDays, period } from '../../format';
 import { Icon } from '../../Icon';
@@ -143,6 +147,9 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
 
   return (
     <div className="page">
+      {/* FR 47, LMS 324. Above the queue, and shown only when there is something in it. */}
+      <AsksToCancel onSignedOut={onSignedOut} />
+
       <div className="pagehead">
         <p className="muted">
           {queue.items.length > 0 ? <span className="count">{queue.items.length}</span> : null}
@@ -494,6 +501,170 @@ function TeamLine({ team }: { team: TeamContext }) {
         </ul>
       )}
     </>
+  );
+}
+
+/**
+ * Asks to cancel leave that was already approved. FR 47, LMS 324.
+ *
+ * Its own load, so it shows for HR whether or not anything else is waiting, and says nothing
+ * at all for somebody with no asks to answer — the server returns an empty list rather than a
+ * refusal to anybody who answers none.
+ */
+function AsksToCancel({ onSignedOut }: { onSignedOut: () => void }) {
+  const [asks, setAsks] = useState<WithdrawalToAnswer[]>([]);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
+
+  const load = useCallback(() => {
+    withdrawalsToAnswer()
+      .then((next) => {
+        setAsks(next);
+        setProblem(undefined);
+      })
+      .catch((error: unknown) => {
+        if (isNotSignedIn(error)) {
+          onSignedOut();
+          return;
+        }
+
+        setProblem(problemFrom(error));
+      });
+  }, [onSignedOut]);
+
+  useEffect(load, [load]);
+
+  if (asks.length === 0 && problem === undefined) {
+    return null;
+  }
+
+  return (
+    <section className="cancel-asks">
+      <div className="pagehead">
+        <p className="muted">
+          <span className="count">{asks.length}</span>
+          {asks.length === 1 ? 'ask to cancel approved leave' : 'asks to cancel approved leave'}
+        </p>
+      </div>
+
+      {problem === undefined ? null : <Notice problem={problem} onRetry={load} />}
+
+      <ol className="requests">
+        {asks.map((ask) => (
+          <AskToCancelCard
+            key={ask.requestId}
+            ask={ask}
+            onSignedOut={onSignedOut}
+            onAnswered={load}
+          />
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** One ask, answered here. FR 47. */
+function AskToCancelCard({
+  ask,
+  onSignedOut,
+  onAnswered,
+}: {
+  ask: WithdrawalToAnswer;
+  onSignedOut: () => void;
+  onAnswered: () => void;
+}) {
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
+
+  const said = comment.trim() !== '';
+
+  const answer = (how: typeof grantWithdrawal) => {
+    setBusy(true);
+    setProblem(undefined);
+
+    how(ask.requestId, comment.trim())
+      .then(onAnswered)
+      .catch((error: unknown) => {
+        if (isNotSignedIn(error)) {
+          onSignedOut();
+          return;
+        }
+
+        setProblem(problemFrom(error));
+      })
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+
+  return (
+    <li className="card request queued">
+      <div className="card-head">
+        <h3>{ask.employeeName}</h3>
+        <div className="tags">
+          <span className="tag flag">Asked to cancel</span>
+        </div>
+      </div>
+
+      <p className="request-what">
+        <strong>{ask.typeName}</strong>
+        {' · '}
+        {period(ask.from, ask.to)}
+        {' · '}
+        {inDays(ask.days)}
+      </p>
+
+      {ask.reason === null ? null : <blockquote className="said">{ask.reason}</blockquote>}
+
+      {problem === undefined ? null : <Notice problem={problem} />}
+
+      <section className="decide">
+        <div className="decide-buttons">
+          <button
+            type="button"
+            className="primary"
+            disabled={busy || (ask.grantNeedsAReason && !said)}
+            onClick={() => {
+              answer(grantWithdrawal);
+            }}
+          >
+            <Icon name="tick" />
+            Cancel the leave
+          </button>
+
+          <button
+            type="button"
+            className="danger"
+            disabled={busy || !said}
+            onClick={() => {
+              answer(refuseWithdrawal);
+            }}
+          >
+            <Icon name="cross" />
+            Keep the leave
+          </button>
+        </div>
+
+        <label className="comment">
+          <span className="visually-hidden">Reason for this answer</span>
+          <input
+            value={comment}
+            placeholder="Add a reason…"
+            disabled={busy}
+            onChange={(event) => {
+              setComment(event.target.value);
+            }}
+          />
+          <Icon name="send" />
+        </label>
+
+        <p className="muted">
+          {ask.grantNeedsAReason
+            ? 'This leave has started, so cancelling returns only the unused days, and either answer needs a reason.'
+            : 'Cancelling returns all the days. Keeping the leave needs a reason.'}
+        </p>
+      </section>
+    </li>
   );
 }
 

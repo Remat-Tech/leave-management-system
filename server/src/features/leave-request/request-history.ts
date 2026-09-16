@@ -24,7 +24,7 @@ import {
   type LeaveType,
 } from '../leave-type/leave-type.js';
 import type { SkippedStage } from './routing.js';
-import { type Withdrawal, wasWithdrawn, withdrawalInWords } from './withdrawal.js';
+import { theOpenAsk, type Withdrawal, wasWithdrawn, withdrawalInWords } from './withdrawal.js';
 import type { RecordedSkip } from './routing.db.js';
 import { byStartDate, type LeaveYear } from '../leave-year/leave-year.js';
 import type { CalendarDate } from '../../shared/time.js';
@@ -95,6 +95,8 @@ export interface RequestHistoryEntry {
   progress: ApprovalProgress;
   /** The story's second criterion. */
   trail: TrailStep[];
+  /** FR 47. An ask to cancel this is with HR and unanswered, so a second is not offered. */
+  withdrawalAsked: boolean;
 }
 
 /** One person's requests, and the years they may narrow them to. */
@@ -354,6 +356,7 @@ export function entryFor(input: {
     submittedAt: request.submittedAt,
     progress,
     trail: trailFor(request, progress, decisions, deciders, input.withdrawals ?? []),
+    withdrawalAsked: theOpenAsk(input.withdrawals ?? []) !== undefined,
   };
 }
 

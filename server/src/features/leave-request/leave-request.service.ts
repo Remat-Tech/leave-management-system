@@ -164,6 +164,21 @@ export interface LeftUndecided {
   because: unknown;
 }
 
+/** An ask to cancel agreed leave, as HR answers it. FR 47, LMS 324. */
+export interface WithdrawalToAnswer {
+  requestId: string;
+  employeeName: string;
+  typeName: string;
+  from: CalendarDate;
+  to: CalendarDate;
+  days: number;
+  /** Why they asked, in their words. */
+  reason: string | null;
+  askedAt: Date;
+  /** Whether granting it has to say why: once the leave has begun. */
+  grantNeedsAReason: boolean;
+}
+
 /** What one press did. FR 51, LMS 328. */
 export interface BulkDecided {
   action: BulkAction;
@@ -1069,6 +1084,55 @@ export class LeaveRequestService {
    * Standing before state, the disclosure rule the settlement path keeps. {@link NothingToAnswer}
    * is asked here for the sentence and again inside the lock, where it binds.
    */
+  /**
+   * Every open ask to cancel agreed leave that this person may answer. FR 47, LMS 324.
+   *
+   * No list rule of its own: each ask is kept only where the two checks that guard answering it
+   * — {@link aWithdrawalToAnswer}'s — would let this person through. So HR sees them, nobody
+   * else does, and nobody sees their own. An empty list rather than a refusal, because a
+   * screen asking "is anything waiting" is owed "no" from somebody with nothing to answer.
+   */
+  async withdrawalsToAnswer(actor: Actor): Promise<WithdrawalToAnswer[]> {
+    const today = this.today();
+    const answerable: WithdrawalToAnswer[] = [];
+
+    for (const ask of await this.withdrawals.openAsks()) {
+      const request = await this.requests.findById(ask.leaveRequestId);
+
+      if (request === undefined) {
+        continue;
+      }
+
+      const employee = await this.employeeFor(request.employeeId);
+      const owner = ownerOf(employee);
+
+      if (
+        !this.guard.permits(leaveRequestPolicy.notTheirOwn(actor, owner, 'WITHDRAW_APPROVED')) ||
+        !this.guard.permits(leaveRequestPolicy.answerAWithdrawal(actor, 'WITHDRAW_APPROVED', owner))
+      ) {
+        continue;
+      }
+
+      const type = await this.typeFor(request.leaveTypeId);
+
+      answerable.push({
+        requestId: request.id,
+        employeeName: `${employee.firstName} ${employee.lastName}`,
+        typeName: type.name,
+        from: request.from,
+        to: request.to,
+        days: request.days,
+        reason: ask.reason,
+        askedAt: ask.recordedAt,
+        /* The calendar's answer, as granting reads it: once the leave has begun only what is
+           left comes back, and that has to say why. */
+        grantNeedsAReason: saysWhy(grantingAction(request, today)),
+      });
+    }
+
+    return answerable;
+  }
+
   private async aWithdrawalToAnswer(
     actor: Actor,
     id: string,

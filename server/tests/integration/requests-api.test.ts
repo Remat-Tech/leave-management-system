@@ -396,6 +396,8 @@ describe('every request I have made', () => {
       'to',
       'trail',
       'typeName',
+      /* FR 47, LMS 324. Whether an ask to cancel is with HR, so the screen offers no second. */
+      'withdrawalAsked',
     ]);
   });
 });
@@ -665,6 +667,103 @@ describe('deciding a request', () => {
     expect(response.status).toBeGreaterThanOrEqual(400);
     const history = await historyFor(people.officer);
     expect(history.entries.find((entry) => entry.requestId === id)?.status).toBe('SUBMITTED');
+  });
+
+  /**
+   * Cancelling leave that was already approved: asked by its owner, answered by HR. FR 47, LMS 324.
+   *
+   * A week still ahead, so granting gives all of it back and needs no reason. The round trip the
+   * screens make: ask, see it on HR's list and nobody else's, answer it, and see it gone.
+   */
+  describe('asking to cancel approved leave', () => {
+    const AHEAD = { from: '2026-11-02', to: '2026-11-06' };
+
+    async function anApproved(): Promise<string> {
+      const id = await aRequest(AHEAD);
+      await post(`/api/requests/${id}/approve`, people.teamLead, {});
+      await post(`/api/requests/${id}/approve`, people.hrOfficer, {});
+      return id;
+    }
+
+    async function asksFor(employeeId: string): Promise<{ requestId: string }[]> {
+      const response = await get('/api/me/withdrawals', {
+        cookie: mintSession(employeeId, SECRET),
+      });
+      expect(response.status).toBe(200);
+      return ((await response.json()) as { items: { requestId: string }[] }).items;
+    }
+
+    it('reaches HR, and nobody else, and says on the request that it is asked', async () => {
+      const id = await anApproved();
+
+      const asked = await post(`/api/requests/${id}/withdrawal`, people.officer, {
+        reason: 'The wedding is off',
+      });
+      expect(asked.status).toBe(201);
+
+      expect((await asksFor(people.hrOfficer)).map((ask) => ask.requestId)).toContain(id);
+      expect(await asksFor(people.teamLead)).toEqual([]);
+      expect(await asksFor(people.officer)).toEqual([]);
+
+      const history = await historyFor(people.officer);
+      expect(history.entries.find((entry) => entry.requestId === id)).toMatchObject({
+        status: 'APPROVED',
+        withdrawalAsked: true,
+      });
+    });
+
+    it('and HR cancelling it takes it off the books and off the list', async () => {
+      const id = await anApproved();
+      await post(`/api/requests/${id}/withdrawal`, people.officer, {
+        reason: 'The wedding is off',
+      });
+
+      const granted = await post(`/api/requests/${id}/withdrawal/grant`, people.hrOfficer, {});
+      expect(granted.status).toBe(200);
+
+      expect(await asksFor(people.hrOfficer)).toEqual([]);
+      const history = await historyFor(people.officer);
+      expect(history.entries.find((entry) => entry.requestId === id)).toMatchObject({
+        status: 'WITHDRAWN',
+        withdrawalAsked: false,
+      });
+    });
+
+    it('and HR keeping it leaves the leave standing, and the ask answered', async () => {
+      const id = await anApproved();
+      await post(`/api/requests/${id}/withdrawal`, people.officer, {
+        reason: 'The wedding is off',
+      });
+
+      const refused = await post(`/api/requests/${id}/withdrawal/refuse`, people.hrOfficer, {
+        reason: 'Cover is already arranged',
+      });
+      expect(refused.status).toBe(200);
+
+      expect(await asksFor(people.hrOfficer)).toEqual([]);
+      const history = await historyFor(people.officer);
+      expect(history.entries.find((entry) => entry.requestId === id)).toMatchObject({
+        status: 'APPROVED',
+        withdrawalAsked: false,
+      });
+    });
+
+    it('and says whether granting has to give a reason, which it does once the leave has begun', async () => {
+      // The fixture week in March is behind today, so only what is left would come back.
+      const id = await aRequest();
+      await post(`/api/requests/${id}/approve`, people.teamLead, {});
+      await post(`/api/requests/${id}/approve`, people.hrOfficer, {});
+      await post(`/api/requests/${id}/withdrawal`, people.officer, { reason: 'Came back early' });
+
+      const response = await get('/api/me/withdrawals', {
+        cookie: mintSession(people.hrOfficer, SECRET),
+      });
+      const { items } = (await response.json()) as {
+        items: { requestId: string; grantNeedsAReason: boolean }[];
+      };
+
+      expect(items.find((item) => item.requestId === id)?.grantNeedsAReason).toBe(true);
+    });
   });
 
   /**

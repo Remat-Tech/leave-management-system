@@ -127,6 +127,8 @@ export interface RequestEntry {
 
   /** The story's second criterion. */
   trail: TrailStep[];
+  /** FR 47. An ask to cancel this is with HR and unanswered. */
+  withdrawalAsked: boolean;
 }
 
 export interface History {
@@ -372,6 +374,51 @@ export interface QueueItem {
    */
   approvingIs: OverridingAction | null;
   refusingIs: OverridingAction | null;
+}
+
+/** An ask to cancel agreed leave, as HR answers it. FR 47, LMS 324. */
+export interface WithdrawalToAnswer {
+  requestId: string;
+  employeeName: string;
+  typeName: string;
+  from: string;
+  to: string;
+  days: number;
+  reason: string | null;
+  askedAt: string;
+  /** Once the leave has begun, granting only returns what is left and has to say why. */
+  grantNeedsAReason: boolean;
+}
+
+/** Every open ask this person may answer. Empty for anybody who answers none. FR 47. */
+export async function withdrawalsToAnswer(): Promise<WithdrawalToAnswer[]> {
+  const { items } = await request<{ items: WithdrawalToAnswer[] }>('GET', '/api/me/withdrawals');
+  return items;
+}
+
+/** Asking HR to cancel your own approved leave, and saying why. FR 47, LMS 324. */
+export async function askToCancel(requestId: string, reason: string): Promise<void> {
+  await request<unknown>('POST', `/api/requests/${encodeURIComponent(requestId)}/withdrawal`, {
+    reason,
+  });
+}
+
+/** HR agreeing. How much comes back is the calendar's answer, not the caller's. FR 47. */
+export async function grantWithdrawal(requestId: string, reason: string): Promise<void> {
+  await request<unknown>(
+    'POST',
+    `/api/requests/${encodeURIComponent(requestId)}/withdrawal/grant`,
+    reason === '' ? {} : { reason },
+  );
+}
+
+/** HR declining, with the reason. The leave stands. FR 47, FR 39. */
+export async function refuseWithdrawal(requestId: string, reason: string): Promise<void> {
+  await request<unknown>(
+    'POST',
+    `/api/requests/${encodeURIComponent(requestId)}/withdrawal/refuse`,
+    { reason },
+  );
 }
 
 /**

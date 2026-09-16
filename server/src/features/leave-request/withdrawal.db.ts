@@ -43,6 +43,27 @@ export class WithdrawalRepository {
     });
   }
 
+  /** Every ask nobody has answered yet, oldest first. FR 47. */
+  async openAsks(): Promise<Withdrawal[]> {
+    const rows = await this.db
+      .selectFrom('leave_request_withdrawal as ask')
+      .selectAll('ask')
+      .where('ask.action', '=', 'ASK_TO_WITHDRAW')
+      .where(({ not, exists, selectFrom }) =>
+        not(
+          exists(
+            selectFrom('leave_request_withdrawal as answer')
+              .select('answer.id')
+              .whereRef('answer.answers_id', '=', 'ask.id'),
+          ),
+        ),
+      )
+      .orderBy('ask.id')
+      .execute();
+
+    return rows.map(toWithdrawal);
+  }
+
   /** Everything one request has collected, oldest first. */
   async forRequest(leaveRequestId: string): Promise<Withdrawal[]> {
     const rows = await this.db
