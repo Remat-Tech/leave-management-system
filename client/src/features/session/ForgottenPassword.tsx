@@ -11,15 +11,22 @@ import { Notice, type Problem, problemFrom } from '../../problem';
  * with is the same whether or not that address has a login — a screen that only moved on for
  * real addresses would say what the sentence is careful not to.
  *
- * It does not sign anybody in. They go back to the sign in box and use the password they have
- * just chosen, which is one more proof that they know it.
+ * Setting it signs them in. The code proved the mailbox and the password is the one they just
+ * chose, which is everything a sign in asks for — sending them back to type it again would be
+ * asking twice.
  */
-export function ForgottenPassword({ onDone }: { onDone: () => void }) {
+export function ForgottenPassword({
+  onSignedIn,
+  onDone,
+}: {
+  onSignedIn: () => void;
+  /** Back to the sign in box, without having set anything. */
+  onDone: () => void;
+}) {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [asked, setAsked] = useState<string | undefined>(undefined);
-  const [changed, setChanged] = useState(false);
   const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
@@ -49,25 +56,7 @@ export function ForgottenPassword({ onDone }: { onDone: () => void }) {
   function setTheNewOne(event: FormEvent): void {
     event.preventDefault();
 
-    attempt(resetPasswordWithCode(email, code, newPassword), () => {
-      setChanged(true);
-    });
-  }
-
-  if (changed) {
-    return (
-      <main className="centred">
-        <div className="panel">
-          <h1>That is your new password</h1>
-
-          <p className="muted">Sign in with it now.</p>
-
-          <button type="button" className="primary" onClick={onDone}>
-            Back to sign in
-          </button>
-        </div>
-      </main>
-    );
+    attempt(resetPasswordWithCode(email, code, newPassword), onSignedIn);
   }
 
   return (

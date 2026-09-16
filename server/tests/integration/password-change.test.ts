@@ -200,6 +200,31 @@ describe('forgetting it', () => {
     expect((await logins.signIn(ADWOA, THEIRS)).status).toBe('SIGNED_IN');
   });
 
+  /* The code proved the mailbox and the password is the one they chose, which is the whole of
+     a sign in — so it is one, recorded as one, rather than a trip back to the sign in box. */
+  it('signs them in as it sets it, and says so on the account', async () => {
+    await logins.forgotPassword(ADWOA);
+
+    const outcome = await logins.resetPasswordWithCode(ADWOA, codeThatWasSent(), THEIRS);
+
+    expect(outcome.employee.id).toBe(anEmployee());
+    expect(outcome.actor.employeeId).toBe(anEmployee());
+
+    const account = await accounts.findByEmployeeId(anEmployee());
+    expect(account?.lastLoginAt).not.toBeNull();
+  });
+
+  it('refuses somebody whose account was closed after the code went out, and keeps their password', async () => {
+    await logins.forgotPassword(ADWOA);
+    await admin.query('UPDATE app_user SET is_active = false WHERE company_email = $1', [ADWOA]);
+
+    await expect(logins.resetPasswordWithCode(ADWOA, codeThatWasSent(), THEIRS)).rejects.toThrow();
+
+    // Refused before the password moved, so the one HR set is still the one on the account.
+    await admin.query('UPDATE app_user SET is_active = true WHERE company_email = $1', [ADWOA]);
+    expect((await logins.signIn(ADWOA, FIRST)).status).toBe('SIGNED_IN');
+  });
+
   it('is theirs rather than HR’s, so nothing is left to change afterwards', async () => {
     await logins.forgotPassword(ADWOA);
     await logins.resetPasswordWithCode(ADWOA, codeThatWasSent(), THEIRS);

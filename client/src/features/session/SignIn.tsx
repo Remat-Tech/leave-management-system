@@ -24,6 +24,7 @@ export function SignIn({
   if (forgotten) {
     return (
       <ForgottenPassword
+        onSignedIn={onSignedIn}
         onDone={() => {
           setForgotten(false);
         }}

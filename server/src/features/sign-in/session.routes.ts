@@ -85,10 +85,15 @@ export function publicSessionRoutes({ signIn, secret }: SessionRoutes): Router {
 
     void signIn
       .resetPasswordWithCode(email, code, stringIn(request.body, 'newPassword'))
-      .then(() => {
-        response.status(204).end();
+      .then((outcome) => {
+        /* Signed in, as the code step signs somebody in: the mailbox is proved and the
+           password is theirs. */
+        setSession(response, outcome.employee.id, secret);
+        response.status(200).json(signedIn(outcome.employee));
       })
-      .catch(next);
+      .catch((error: unknown) => {
+        refusalOr(error, response, next);
+      });
   });
 
   return routes;

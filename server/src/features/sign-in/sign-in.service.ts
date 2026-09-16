@@ -326,7 +326,7 @@ export class SignInService {
     code: string,
     newPassword: string,
     now: Date = new Date(),
-  ): Promise<void> {
+  ): Promise<SignedIn> {
     const found = await this.accounts.credentialsByEmail(email.trim().toLowerCase());
 
     if (found === undefined) {
@@ -351,10 +351,21 @@ export class SignInService {
        the code they were sent. */
     const hashed = await hashPassword(assertUsablePassword(newPassword));
 
+    /* The account could have been closed, or the person have left, in the ten minutes since the
+       code went out. Refused before the password changes, not after. */
+    const employee = await this.employees.findById(found.account.employeeId);
+    assertCanSignIn(found.account, employee);
+
     const owner = signedInAs(found.account.employeeId, { roles: [], isManager: false });
 
-    await this.accounts.setPassword(owner, found.account.id, hashed, false);
+    const updated = await this.accounts.setPassword(owner, found.account.id, hashed, false);
     await this.accounts.clearReset(found.account.id);
+
+    /* A whole sign in, not half of one. The code proved the mailbox, which is exactly what the
+       sign in code proves, and they have just chosen the password — so both of the things a
+       sign in asks for are already in hand, and sending them back to type it again would be
+       asking twice. */
+    return this.open(updated ?? found.account, employee!, hashed, undefined);
   }
 
   /**

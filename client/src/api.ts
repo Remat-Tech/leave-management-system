@@ -1722,13 +1722,13 @@ export async function forgotPassword(email: string): Promise<{ message: string }
   return request<{ message: string }>('POST', '/api/session/forgot', { email });
 }
 
-/** The new password, with the code from that email. It does not sign anybody in. */
+/** The new password, with the code from that email. Signs them in, as the code step does. */
 export async function resetPasswordWithCode(
   email: string,
   code: string,
   newPassword: string,
-): Promise<void> {
-  await request<void>('POST', '/api/session/reset', { email, code, newPassword });
+): Promise<SignedIn> {
+  return request<SignedIn>('POST', '/api/session/reset', { email, code, newPassword });
 }
 
 export async function signIn(email: string, password: string): Promise<SignedIn | CodeSent> {
