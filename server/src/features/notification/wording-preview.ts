@@ -35,6 +35,7 @@ const TO_SOMEBODY_ELSE: readonly EmailName[] = [
   'UNROUTABLE_FOR_HR',
   'REASSIGNED',
   'WITHDRAWAL_ASKED',
+  'DECISION_REVERSED',
 ];
 
 /** The wording, filled in the way it would be sent. */

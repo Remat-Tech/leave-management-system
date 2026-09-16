@@ -249,6 +249,8 @@ function stepLabel(step: TrailStep): string {
       return 'Submitted';
     case 'WITHDRAWAL':
       return 'Withdrawal';
+    case 'REVERSED':
+      return 'Chief Executive';
     case 'ENDED':
       return 'Closed';
     default:
@@ -478,7 +480,7 @@ function AskToCancel({
  * module note — and it is the only kind rendered without a time, because inventing one is the
  * whole thing `server/src/domain/request-history.ts` refuses to do for a withdrawal.
  */
-function Trail({ steps }: { steps: TrailStep[] }) {
+export function Trail({ steps }: { steps: TrailStep[] }) {
   return (
     <ol className="trail">
       {steps.map((step, index) => (

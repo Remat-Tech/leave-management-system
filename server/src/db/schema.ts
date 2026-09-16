@@ -437,6 +437,18 @@ export interface LeaveRequestWithdrawalTable {
   recorded_at: Timestamp;
 }
 
+/** The Chief Executive reversing a settled request. Once per request. */
+export interface LeaveRequestReversalTable {
+  id: Generated<string>;
+  leave_request_id: ColumnType<string, string, never>;
+  /** `REVERSE_APPROVAL` or `REVERSE_REFUSAL`. */
+  action: ColumnType<string, string, never>;
+  reason: ColumnType<string, string, never>;
+  recorded_by: ColumnType<string, never, never>;
+  recorded_by_employee_id: ColumnType<string | null, never, never>;
+  recorded_at: Timestamp;
+}
+
 /** Days of approved leave that became sick leave. FR 32c, §8.6c, LMS 507. */
 export interface LeaveRequestReclassificationTable {
   id: Generated<string>;
@@ -601,6 +613,7 @@ export interface Database {
   leave_request_reclassification: LeaveRequestReclassificationTable;
   leave_request_routing: LeaveRequestRoutingTable;
   leave_request_withdrawal: LeaveRequestWithdrawalTable;
+  leave_request_reversal: LeaveRequestReversalTable;
   leave_type: LeaveTypeTable;
   leave_type_approval_step: LeaveTypeApprovalStepTable;
   leave_year: LeaveYearTable;

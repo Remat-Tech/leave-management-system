@@ -44,6 +44,8 @@ export const SEARCHES_THE_AUDIT_LOG: readonly RoleCode[] = ['HR_ADMIN', 'SYS_ADM
 export interface Authority {
   roles: RoleCode[];
   isManager: boolean;
+  /** FR 48c. The employee the organisation names as Chief Executive; a setting, not a role. */
+  isChiefExecutive?: boolean;
 }
 
 /** A role code that is not one of the four. */

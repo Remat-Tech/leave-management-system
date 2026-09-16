@@ -262,6 +262,13 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   /** FR 44. There is nothing on this request to reverse. LMS 318. */
   NothingToOverturn: 409,
 
+  /** The Chief Executive's reversal of a settled request. */
+  NothingToReverse: 409,
+  AlreadyReversed: 409,
+  TooLateToReverse: 409,
+  AnAskIsOpen: 409,
+  ReversalNeedsAReason: 400,
+
   /**
    * NFR DAT 02, §8.1. Two approvers deciding at once, and this is the loser. LMS 326.
    *

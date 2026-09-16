@@ -31,6 +31,7 @@ export const EMAILS = [
   'STILL_WAITING',
   'LEAVE_RECLASSIFIED',
   'LEAVE_RECALCULATED',
+  'DECISION_REVERSED',
 ] as const satisfies readonly (NoticeEvent | 'UNROUTABLE_FOR_HR')[];
 
 export type EmailName = (typeof EMAILS)[number];
@@ -60,6 +61,10 @@ export const ABOUT_EACH_EMAIL: Record<EmailName, { label: string; readBy: string
   STILL_WAITING: { label: 'Daily reminder to decide', readBy: 'the approver' },
   LEAVE_RECLASSIFIED: { label: 'Holiday days now sick leave', readBy: 'the person asking' },
   LEAVE_RECALCULATED: { label: 'A day credited back for a holiday', readBy: 'the person asking' },
+  DECISION_REVERSED: {
+    label: 'The Chief Executive reversed a decision',
+    readBy: 'the person asking, their manager and HR',
+  },
 };
 
 /** Every placeholder there is, and what it fills in. */
@@ -298,6 +303,17 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
       'The country was not working that day, so you are not charged leave for it — even though the leave was already approved when the day was gazetted.',
       `The {{daysBack}} {{isOrAre}} back in your balance. ${TO_BOOK}`,
       'Your leave itself has not changed. The dates you booked are the dates you have, and nothing has been added to the end of it.',
+    ),
+  },
+
+  DECISION_REVERSED: {
+    subject:
+      'The Chief Executive reversed the decision on {{employeeNamePossessive}} {{typeName}} for {{period}}',
+    body: body(
+      'The Chief Executive has reversed the decision on {{employeeNamePossessive}} request for {{cost}}. The leave is now {{finalDecision}}.',
+      '{{comment}}',
+      'If it is now approved, the {{days}} have come off the balance. If it is now turned down, they are back in it.',
+      'This decision is final and cannot be reversed again.',
     ),
   },
 };

@@ -388,6 +388,8 @@ describe('every request I have made', () => {
       'progressInWords',
       'reason',
       'requestId',
+      /* Whether the Chief Executive has reversed it. */
+      'reversed',
       'stagesMissing',
       'status',
       'statusInWords',
@@ -796,6 +798,35 @@ describe('deciding a request', () => {
       comment: BECAUSE_POLICY,
     });
     expect(decided.decision.overridesDecisionId).not.toBeNull();
+  });
+
+  /* The Chief Executive, recognised from the organisation setting at sign in, reverses it. */
+  it('and the Chief Executive can see it and reverse the final refusal', async () => {
+    const id = await aRequest();
+
+    await post(`/api/requests/${id}/refuse`, people.teamLead, { comment: WHY_NOT });
+    await post(`/api/requests/${id}/refuse`, people.hrOfficer, { comment: WHY_NOT });
+
+    const listed = await get('/api/requests', { cookie: mintSession(people.ceo, SECRET) });
+    const { entries } = (await listed.json()) as { entries: { requestId: string }[] };
+
+    expect(listed.status).toBe(200);
+    expect(entries.map((entry) => entry.requestId)).toContain(id);
+
+    expect(
+      (await get('/api/requests', { cookie: mintSession(people.hrOfficer, SECRET) })).status,
+    ).toBe(403);
+    expect(
+      (await post(`/api/requests/${id}/reversal`, people.hrOfficer, { reason: BECAUSE_POLICY }))
+        .status,
+    ).toBe(403);
+
+    const reversed = await post(`/api/requests/${id}/reversal`, people.ceo, {
+      reason: BECAUSE_POLICY,
+    });
+
+    expect(reversed.status).toBe(200);
+    expect(await reversed.json()).toMatchObject({ status: 'APPROVED', action: 'REVERSE_REFUSAL' });
   });
 
   /* And the queue says so before the button, so the screen can ask for the reason first. */
@@ -1211,7 +1242,7 @@ async function yearIdOf(label: string): Promise<string> {
 function emptyTheLeaveTables(): Promise<unknown> {
   return admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'attachment_access, attachment_download_link, leave_request_recalculation, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request, leave_balance',
+      'attachment_access, attachment_download_link, leave_request_recalculation, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request_reversal, leave_request, leave_balance',
   );
 }
 

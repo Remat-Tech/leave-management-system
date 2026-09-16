@@ -187,7 +187,7 @@ describe('reading the wording', () => {
 
     const submitted = page.emails.find((one) => one.name === 'SUBMITTED');
 
-    expect(page.emails.length).toBe(18);
+    expect(page.emails.length).toBe(19);
     expect(submitted?.isReworded).toBe(false);
     expect(submitted?.subject).toBe('Your {{typeName}} for {{period}} has been submitted');
     expect(submitted?.placeholders.map((one) => one.name)).toContain('nowWith');

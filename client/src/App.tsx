@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { currentSession, type Me, mySections, signOut, type Year } from './api';
+import { AllLeavePage } from './features/all-leave/AllLeavePage';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { AuditLogPage } from './features/audit/AuditLogPage';
 import { BalancesPage } from './features/balances/BalancesPage';
@@ -47,6 +48,8 @@ const MAIN_SCREENS = [
   /** FR 55, FR 56, FR 57, LMS 406, LMS 409. Everybody's, scoped to a department. */
   { id: 'calendar', label: 'Who is away', icon: 'calendar' },
   { id: 'approvals', label: 'Waiting on me', icon: 'approvals' },
+  /** Everybody's leave, for the Chief Executive. */
+  { id: 'all-leave', label: 'All leave', icon: 'people' },
 ] as const;
 
 /**
@@ -65,7 +68,7 @@ type Screen = MainScreen | typeof HR_HUB.id | HrSectionId;
 const HR_SECTIONS = HR_GROUPS.flatMap((group) => group.sections);
 
 /** Rail tabs that are drawn only where the server named them. */
-const CONDITIONAL = new Set<string>(['approvals']);
+const CONDITIONAL = new Set<string>(['approvals', 'all-leave']);
 
 /** Every address there is, and what the heading says on it. */
 const LABELS = new Map<string, string>([
@@ -293,6 +296,7 @@ export function App() {
           <CalendarPage onSignedOut={ranOut} yearId={yearId} onYears={yearsKnown} />
         ) : null}
         {screen === 'approvals' ? <ApprovalsPage onSignedOut={ranOut} /> : null}
+        {screen === 'all-leave' ? <AllLeavePage onSignedOut={ranOut} /> : null}
         {screen === 'hr' ? <HrSettingsPage sections={sections} /> : null}
         {screen === 'leave-types' ? <LeaveTypesPage onSignedOut={ranOut} /> : null}
         {screen === 'entitlements' ? <EntitlementRulesPage onSignedOut={ranOut} /> : null}

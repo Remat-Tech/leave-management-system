@@ -176,7 +176,7 @@ beforeEach(async () => {
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
       'attachment_access, attachment_download_link, leave_request_recalculation, leave_request_reclassification, leave_request_attachment, ' +
       'leave_request_decision, leave_request_reassignment, leave_request_routing, ' +
-      'leave_request_withdrawal, leave_request, leave_balance',
+      'leave_request_withdrawal, leave_request_reversal, leave_request, leave_balance',
   );
 
   /* Every test that adds a type adds it under its own code, so the seven shipped rows are

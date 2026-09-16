@@ -25,6 +25,7 @@ import {
 } from '../leave-type/leave-type.js';
 import type { SkippedStage } from './routing.js';
 import { theOpenAsk, type Withdrawal, wasWithdrawn, withdrawalInWords } from './withdrawal.js';
+import { type Reversal, reversalInWords } from './reversal.js';
 import type { RecordedSkip } from './routing.db.js';
 import { byStartDate, type LeaveYear } from '../leave-year/leave-year.js';
 import type { CalendarDate } from '../../shared/time.js';
@@ -38,6 +39,8 @@ export const TRAIL_STEPS = [
   'ENDED',
   /** An ask for agreed leave to come off the books, or HR's answer. FR 47, LMS 324. */
   'WITHDRAWAL',
+  /** The Chief Executive reversed the settled outcome. */
+  'REVERSED',
   'STILL_TO_ASK',
 ] as const;
 
@@ -97,6 +100,8 @@ export interface RequestHistoryEntry {
   trail: TrailStep[];
   /** FR 47. An ask to cancel this is with HR and unanswered, so a second is not offered. */
   withdrawalAsked: boolean;
+  /** The Chief Executive has reversed it, which happens once. */
+  reversed: boolean;
 }
 
 /** One person's requests, and the years they may narrow them to. */
@@ -129,6 +134,7 @@ export interface RequestHistoryFacts {
   skipped?: readonly RecordedSkip[];
   /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
   withdrawals?: readonly Withdrawal[];
+  reversals?: readonly Reversal[];
 }
 
 /** Who decided a request, by employee id. */
@@ -206,6 +212,7 @@ export function trailFor(
   deciders: Deciders,
   /** FR 47, LMS 324. */
   withdrawals: readonly Withdrawal[] = [],
+  reversal: Reversal | null = null,
 ): TrailStep[] {
   const steps: TrailStep[] = [
     {
@@ -244,6 +251,18 @@ export function trailFor(
       by: whoWroteIt(withdrawal, deciders),
       at: withdrawal.recordedAt,
       inWords: withdrawalInWords(withdrawal),
+    });
+  }
+
+  if (reversal !== null) {
+    steps.push({
+      kind: 'REVERSED',
+      desk: null,
+      agreed: reversal.action === 'REVERSE_REFUSAL',
+      comment: reversal.reason,
+      by: deciders.get(reversal.recordedByEmployeeId ?? '') ?? reversal.recordedBy,
+      at: reversal.recordedAt,
+      inWords: reversalInWords(reversal),
     });
   }
 
@@ -324,6 +343,7 @@ export function entryFor(input: {
   skipped?: readonly SkippedStage[];
   /** FR 47, LMS 324. */
   withdrawals?: readonly Withdrawal[];
+  reversal?: Reversal | null;
 }): RequestHistoryEntry {
   const { request, type, decisions, deciders } = input;
 
@@ -355,8 +375,16 @@ export function entryFor(input: {
     statusInWords: statusInWords(request.status),
     submittedAt: request.submittedAt,
     progress,
-    trail: trailFor(request, progress, decisions, deciders, input.withdrawals ?? []),
+    trail: trailFor(
+      request,
+      progress,
+      decisions,
+      deciders,
+      input.withdrawals ?? [],
+      input.reversal ?? null,
+    ),
     withdrawalAsked: theOpenAsk(input.withdrawals ?? []) !== undefined,
+    reversed: (input.reversal ?? null) !== null,
   };
 }
 
@@ -387,6 +415,7 @@ export function historyFor(facts: RequestHistoryFacts): RequestHistory {
   const skipsByRequest = byRequest(facts.skipped ?? []);
   /** FR 47, LMS 324. */
   const withdrawalsByRequest = byRequest(facts.withdrawals ?? []);
+  const reversalsByRequest = byRequest(facts.reversals ?? []);
 
   return {
     employeeId: facts.employeeId,
@@ -400,6 +429,7 @@ export function historyFor(facts: RequestHistoryFacts): RequestHistory {
         deciders,
         skipped: skipsByRequest.get(request.id) ?? [],
         withdrawals: withdrawalsByRequest.get(request.id) ?? [],
+        reversal: reversalsByRequest.get(request.id)?.[0] ?? null,
       }),
     ),
   };

@@ -13,6 +13,7 @@ import { type DecidingAction, isADecision, type OverridingAction } from './leave
 import { type RequestAction, type Standing, standingsFor } from './leave-request.js';
 import { type DeskDecision, decidedBy } from './routing.js';
 import { isAnAnswer, type WithdrawalAnswer } from './withdrawal.js';
+import { isAReversal, type ReversalAction } from './reversal.js';
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import type { BalanceOwner } from '../balance/policy.js';
 import { type Decision, policyFor } from '../../auth/policy.js';
@@ -60,7 +61,14 @@ function hasStanding(actor: Actor, subject: StandingFacts, standing: Standing): 
     case 'THE_DESK_IT_IS_WITH':
       /** The requester's exclusion used to be the other half of this line. LMS 319. */
       return isAt(actor, subject);
+    case 'THE_CHIEF_EXECUTIVE':
+      return isTheChiefExecutive(actor);
   }
+}
+
+/** FR 48c. Set on the actor from the organisation setting when they signed in. */
+function isTheChiefExecutive(actor: Actor): boolean {
+  return actor.employeeId !== null && actor.isChiefExecutive === true;
 }
 
 /**
@@ -289,7 +297,7 @@ function mayMove(
   const said = action.toLowerCase();
 
   /** FR 48, §8.6a, FR 47. And an answer to a withdrawal is a decision too, since LMS 324. */
-  if (isADecision(action) || isAnAnswer(action)) {
+  if (isADecision(action) || isAnAnswer(action) || isAReversal(action)) {
     const theirs = notTheirOwn(actor, subject, action);
 
     if (!theirs.allowed) {
@@ -384,7 +392,8 @@ export const leaveRequestPolicy = {
     if (
       isSelf(actor, owner.employeeId) ||
       isSelf(actor, owner.managerId) ||
-      holdsAny(actor, ...READS_EVERY_RECORD)
+      holdsAny(actor, ...READS_EVERY_RECORD) ||
+      isTheChiefExecutive(actor)
     ) {
       return about.allow(actor, 'read', owner.employeeId);
     }
@@ -454,6 +463,27 @@ export const leaveRequestPolicy = {
         'and this request is not waiting on you. It is the same standing as approving or ' +
         'refusing it. An override is an ordinary decision that happens to disagree with ' +
         'an earlier stage. FR 44.',
+    });
+  },
+
+  /** Everybody's leave on one page. The Chief Executive's. */
+  listEveryone(actor: Actor): Decision {
+    return isTheChiefExecutive(actor)
+      ? about.allow(actor, 'listEveryone', null)
+      : about.refuseOpenly(
+          actor,
+          'listEveryone',
+          null,
+          'is not the Chief Executive',
+          'Everybody’s leave on one page is the Chief Executive’s. Your own is on My requests.',
+        );
+  },
+
+  /** Reversing a settled request, never one's own. */
+  reverse(actor: Actor, action: ReversalAction, owner: BalanceOwner): Decision {
+    return mayMove(actor, owner, action, {
+      because: 'is not the Chief Executive',
+      told: 'Only the Chief Executive reverses a decision once every desk has made it.',
     });
   },
 

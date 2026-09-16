@@ -8,8 +8,16 @@ import type { BalanceOwner } from '../balance/policy.js';
 import type { Guard } from '../../auth/policy.js';
 import { type Employee, EmployeeNotFound } from '../employee/employee.js';
 import type { LeaveDecision } from './leave-decision.js';
-import { type LeaveYear, LeaveYearNotFound } from '../leave-year/leave-year.js';
-import { historyFor, type RequestHistory, yearsWithRequests } from './request-history.js';
+import { byStartDate, type LeaveYear, LeaveYearNotFound } from '../leave-year/leave-year.js';
+import {
+  historyFor,
+  type RequestHistory,
+  type RequestHistoryEntry,
+  yearsWithRequests,
+} from './request-history.js';
+import type { RequestStatus } from './leave-request.js';
+import type { Reversal } from './reversal.js';
+import type { ReversalRepository } from './reversal.db.js';
 import type { EmployeeRepository } from '../employee/employee.db.js';
 import type { LeaveDecisionRepository } from './leave-decision.db.js';
 import type { LeaveRequestRepository } from './leave-request.db.js';
@@ -22,6 +30,26 @@ import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
 export interface HistoryOptions {
   /** The year to narrow to, or nothing for every request there is. */
   leaveYearId?: string;
+}
+
+/** Which slice of everybody's leave to show. */
+export interface EveryoneOptions extends HistoryOptions {
+  status?: RequestStatus;
+  employeeId?: string;
+}
+
+/** One request on the everybody page: its entry, and whose it is. */
+export interface EveryonesEntry extends RequestHistoryEntry {
+  employeeId: string;
+  employeeName: string;
+}
+
+export interface EveryonesLeave {
+  year: LeaveYear | null;
+  years: LeaveYear[];
+  /** Everybody with a request in the list, by name, for the filter. */
+  people: { id: string; name: string }[];
+  entries: EveryonesEntry[];
 }
 
 export class RequestHistoryService {
@@ -43,7 +71,67 @@ export class RequestHistoryService {
     private readonly routing: LeaveRoutingRepository,
     /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
     private readonly withdrawals: WithdrawalRepository,
+    /** The Chief Executive's reversals. Optional, so a history without them shows none. */
+    private readonly reversals: ReversalRepository | null = null,
   ) {}
+
+  /**
+   * Everybody's requests, newest first, each with who it belongs to. The Chief Executive's.
+   *
+   * Narrowed to one year and, optionally, one status or one person.
+   */
+  async forEveryone(actor: Actor, options: EveryoneOptions = {}): Promise<EveryonesLeave> {
+    this.guard.enforce(leaveRequestPolicy.listEveryone(actor));
+
+    const year = await this.yearToShow(options.leaveYearId);
+
+    const asked = await this.requests.listEveryone({
+      leaveYearId: year?.id,
+      status: options.status,
+      employeeId: options.employeeId,
+    });
+
+    const ids = asked.map((request) => request.id);
+    const decisions = await this.decisions.forRequests(ids);
+    const reversals = (await this.reversals?.forRequests(ids)) ?? [];
+    const people = await this.employees.findAllById([
+      ...new Set(asked.map((request) => request.employeeId)),
+    ]);
+
+    const history = historyFor({
+      employeeId: '',
+      year,
+      years: [...(await this.years.list())].sort(byStartDate),
+      requests: asked,
+      types: await this.types.list(),
+      decisions,
+      deciders: await this.employees.findAllById([
+        ...whoDecidedThem(decisions),
+        ...whoReversedThem(reversals),
+      ]),
+      skipped: await this.routing.forRequests(ids),
+      withdrawals: await this.withdrawals.forRequests(ids),
+      reversals,
+    });
+
+    const byId = new Map(asked.map((request) => [request.id, request.employeeId] as const));
+    const names = new Map(
+      people.map((person) => [person.id, `${person.firstName} ${person.lastName}`] as const),
+    );
+
+    return {
+      year,
+      years: history.years,
+      people: people
+        .map((person) => ({ id: person.id, name: `${person.firstName} ${person.lastName}` }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+      entries: history.entries.map((entry) => {
+        const employeeId = byId.get(entry.requestId) ?? '';
+
+        return { ...entry, employeeId, employeeName: names.get(employeeId) ?? 'Somebody' };
+      }),
+    };
+  }
 
   /** One person's requests, newest first, each with the account of how it was decided. LMS 402. */
   async forEmployee(
@@ -65,6 +153,7 @@ export class RequestHistoryService {
       year === null ? asked : asked.filter((request) => request.leaveYearId === year.id);
 
     const decisions = await this.decisions.forRequests(shown.map((request) => request.id));
+    const reversals = (await this.reversals?.forRequests(shown.map((request) => request.id))) ?? [];
 
     return historyFor({
       employeeId: employee.id,
@@ -73,11 +162,15 @@ export class RequestHistoryService {
       requests: shown,
       types: await this.types.list(),
       decisions,
-      deciders: await this.employees.findAllById(whoDecidedThem(decisions)),
+      deciders: await this.employees.findAllById([
+        ...whoDecidedThem(decisions),
+        ...whoReversedThem(reversals),
+      ]),
       /** FR 48b. A skipped stage is not still owed an answer. LMS 320. */
       skipped: await this.routing.forRequests(shown.map((request) => request.id)),
       /** FR 47, LMS 324. */
       withdrawals: await this.withdrawals.forRequests(shown.map((request) => request.id)),
+      reversals,
     });
   }
 
@@ -111,6 +204,13 @@ export class RequestHistoryService {
 /** Whose requests these are, and who their manager is. */
 function ownerOf(employee: Employee): BalanceOwner {
   return { employeeId: employee.id, managerId: employee.managerId };
+}
+
+/** Who reversed them, so a trail can name them too. */
+function whoReversedThem(reversals: readonly Reversal[]): string[] {
+  return reversals
+    .map((reversal) => reversal.recordedByEmployeeId)
+    .filter((id): id is string => id !== null);
 }
 
 /** The people to look up so a trail can name them. FR 52. */

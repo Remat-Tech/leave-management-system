@@ -370,6 +370,9 @@ export const REQUEST_ACTIONS = [
    * between what the leave cost and what it costs now.
    */
   'RECALCULATE',
+  /** The Chief Executive turning a settled request the other way. See ./reversal.ts. */
+  'REVERSE_APPROVAL',
+  'REVERSE_REFUSAL',
 ] as const;
 
 export type RequestAction = (typeof REQUEST_ACTIONS)[number];
@@ -399,6 +402,10 @@ export function actionInWords(action: RequestAction): string {
     /** FR 25, LMS 508. */
     case 'RECALCULATE':
       return 'credit back a public holiday inside it';
+    case 'REVERSE_APPROVAL':
+      return 'reverse the approval';
+    case 'REVERSE_REFUSAL':
+      return 'reverse the refusal';
     default:
       return action.toLowerCase();
   }
@@ -458,6 +465,8 @@ export const STANDINGS = [
   'THEIR_LINE_MANAGER',
   'LEAVE_ADMINISTRATION',
   'THE_DESK_IT_IS_WITH',
+  /** The one employee the organisation names as Chief Executive. FR 48c. */
+  'THE_CHIEF_EXECUTIVE',
 ] as const;
 
 export type Standing = (typeof STANDINGS)[number];
@@ -646,6 +655,11 @@ export const TRANSITIONS: readonly Transition[] = [
      days that were never spent have nothing to credit. `to` is `APPROVED` for the reason
      `RECLASSIFY`'s is — the leave happened, and only what it cost has changed. */
   { from: 'APPROVED', action: 'RECALCULATE', to: 'APPROVED', by: ['LEAVE_ADMINISTRATION'] },
+
+  /* The Chief Executive reversing a settled outcome, once, with a reason. The only rows out of
+     `REFUSED`. */
+  { from: 'APPROVED', action: 'REVERSE_APPROVAL', to: 'REFUSED', by: ['THE_CHIEF_EXECUTIVE'] },
+  { from: 'REFUSED', action: 'REVERSE_REFUSAL', to: 'APPROVED', by: ['THE_CHIEF_EXECUTIVE'] },
 ];
 
 /**

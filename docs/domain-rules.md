@@ -4346,6 +4346,31 @@ Wednesday. What moves is the stage nobody has answered yet.
 
 ---
 
+### The Chief Executive reverses a final decision
+
+Once every desk has decided, the Chief Executive (the employee `organisation_setting` names)
+may turn the outcome the other way. Nobody else may, and never on their own leave.
+
+| | Approved → refused | Refused → approved |
+|---|---|---|
+| when | before the leave starts | any time |
+| the ledger | a `RECALCULATION` of what the request still has taken | a second `RESERVATION` and a `DEDUCTION` |
+| refused where | the leave has started, or the person has an open ask to cancel it | the balance cannot afford it (unless the type may exceed its allowance) |
+
+- **A reason is required, and it happens once.** `leave_request_reversal` holds it, append
+  only, one row per request; the trail shows it as a `REVERSED` step.
+- **The database insists.** `leave_request_reversed_by_the_chief_executive` refuses
+  `APPROVED → REFUSED` or `REFUSED → APPROVED` without a matching reversal recorded by the
+  Chief Executive. `REFUSED → APPROVED` is the only move out of an ending.
+- **A request holds its days once at a time, not once ever.** `leave_request_reserves_once`
+  is now a trigger allowing one more `RESERVATION` than there are `RELEASE`s, so a reversed
+  refusal can hold again.
+- **Who is told:** the person, their manager and HR (`DECISION_REVERSED`), with the reason.
+- **Seeing everybody's leave:** the actor carries `isChiefExecutive`, set at sign in. It widens
+  `leaveRequestPolicy.read` and opens `GET /api/requests` and the "All leave" tab.
+
+---
+
 ### Two approvers deciding at once
 
 **Two people at one desk pressing the button on one request decide it once, and the second is

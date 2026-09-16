@@ -71,6 +71,8 @@ export type TrailStepKind =
   | 'ENDED'
   /** An ask for agreed leave to come off the books, or HR's answer. FR 47, LMS 324. */
   | 'WITHDRAWAL'
+  /** The Chief Executive reversed the settled outcome. */
+  | 'REVERSED'
   | 'STILL_TO_ASK';
 
 /** One thing that happened to a request, or one thing that has not happened yet. */
@@ -129,6 +131,47 @@ export interface RequestEntry {
   trail: TrailStep[];
   /** FR 47. An ask to cancel this is with HR and unanswered. */
   withdrawalAsked: boolean;
+  /** The Chief Executive has reversed it. A reversal happens once. */
+  reversed: boolean;
+}
+
+/** One request on the Chief Executive's page, and whose it is. */
+export interface EveryonesEntry extends RequestEntry {
+  employeeId: string;
+  employeeName: string;
+}
+
+export interface EveryonesLeave {
+  year: Year | null;
+  years: Year[];
+  people: { id: string; name: string }[];
+  entries: EveryonesEntry[];
+}
+
+/** Everybody's leave, narrowed. The Chief Executive's. */
+export async function everyonesLeave(filter: {
+  leaveYearId?: string;
+  status?: RequestStatus;
+  employeeId?: string;
+}): Promise<EveryonesLeave> {
+  const query = new URLSearchParams();
+
+  for (const [name, value] of Object.entries(filter)) {
+    if (value !== undefined && value !== '') {
+      query.set(name, value);
+    }
+  }
+
+  const said = query.toString();
+
+  return request<EveryonesLeave>('GET', `/api/requests${said === '' ? '' : `?${said}`}`);
+}
+
+/** The Chief Executive reversing a request every desk has decided. */
+export async function reverseDecision(requestId: string, reason: string): Promise<void> {
+  await request<unknown>('POST', `/api/requests/${encodeURIComponent(requestId)}/reversal`, {
+    reason,
+  });
 }
 
 export interface History {

@@ -17,6 +17,7 @@ import { LeaveTypeRepository } from '../features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from '../features/leave-year/leave-year.db.js';
 import { LedgerRepository } from '../features/balance/ledger.db.js';
 import { WithdrawalRepository } from '../features/leave-request/withdrawal.db.js';
+import { ReversalRepository } from '../features/leave-request/reversal.db.js';
 import { WorkPatternRepository } from '../features/work-pattern/work-pattern.db.js';
 
 /** The repositories a service is handed, all of them on the same connection. */
@@ -40,6 +41,8 @@ export interface Repositories {
   reassignments: LeaveReassignmentRepository;
   /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
   withdrawals: WithdrawalRepository;
+  /** The Chief Executive's reversals of settled requests. */
+  reversals: ReversalRepository;
   /** FR 32c. The days of agreed leave that became sick leave. LMS 507. */
   reclassifications: ReclassificationRepository;
   /** FR 25. The holidays credited back into agreed leave. LMS 508. */
@@ -68,6 +71,7 @@ export class Transactions {
         routing: new LeaveRoutingRepository(trx),
         reassignments: new LeaveReassignmentRepository(trx),
         withdrawals: new WithdrawalRepository(trx),
+        reversals: new ReversalRepository(trx),
         reclassifications: new ReclassificationRepository(trx),
         recalculations: new HolidayRecalculationRepository(trx),
         attachments: new AttachmentRepository(trx),

@@ -72,6 +72,14 @@ import {
   type Withdrawal,
   type WithdrawalAnswer,
 } from '../leave-request/withdrawal.js';
+import {
+  AlreadyReversed,
+  AnAskIsOpen,
+  type Reversal,
+  type ReversalAction,
+  reversalOf,
+  validateReversal,
+} from '../leave-request/reversal.js';
 import { type LeaveType, LeaveTypeNotFound } from '../leave-type/leave-type.js';
 import type { LeavePeriod } from '../leave-calculator/leave-calculator.js';
 import { LeaveYearNotFound } from '../leave-year/leave-year.js';
@@ -273,6 +281,23 @@ export interface LeaveRecalculated {
   recalculation: Recalculation;
   /** The `RECALCULATION` itself. */
   credited: LedgerEntry;
+  balance: BalanceWithAvailable;
+}
+
+/** What `LeaveRequestService` supplies for the Chief Executive to reverse one. */
+export interface RequestToReverse {
+  request: LeaveRequest;
+  reason: string;
+  /** The day "has it started" is judged against. */
+  today: CalendarDate;
+  /** FR 27. The sentence on the ledger entries. */
+  reasonForMoving: (action: ReversalAction) => string;
+}
+
+/** The reversal, the request as it now stands, and its balance. */
+export interface LeaveReversed {
+  request: LeaveRequest;
+  reversal: Reversal;
   balance: BalanceWithAvailable;
 }
 
@@ -983,6 +1008,110 @@ export class BalanceService {
                 leaveRequestId: current.id,
               }),
             ),
+        balance: withAvailable(await repositories.balances.forOne(key)),
+      };
+    });
+  }
+
+  /**
+   * The Chief Executive reversing a settled request.
+   *
+   * Approved → refused gives back what the request still has taken, as a `RECALCULATION`.
+   * Refused → approved holds the days again and takes them, as a `RESERVATION` and a
+   * `DEDUCTION`, refused where the balance cannot afford it.
+   */
+  async reverseForRequest(actor: Actor, reverse: RequestToReverse): Promise<LeaveReversed> {
+    const { request, reason, today, reasonForMoving } = reverse;
+    const owner = await this.ownerOf(request.employeeId);
+
+    const key = keyOf(request);
+
+    return this.transactions.allOrNothing(async (repositories) => {
+      const held = await repositories.balances.holdStill(key);
+      const current = await repositories.requests.holdStill(request.id);
+
+      if (current === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      const { action, to } = reversalOf(current, today);
+
+      this.guard.enforce(leaveRequestPolicy.reverse(actor, action, owner));
+
+      if ((await repositories.reversals.forRequest(current.id)) !== undefined) {
+        throw new AlreadyReversed(current.id);
+      }
+
+      if (theOpenAsk(await repositories.withdrawals.forRequest(current.id)) !== undefined) {
+        throw new AnAskIsOpen(current.id);
+      }
+
+      const reversal = await repositories.reversals.record(
+        actor,
+        validateReversal({ leaveRequestId: current.id, action, reason }),
+      );
+
+      const written = await repositories.requests.moveTo(
+        actor,
+        current.id,
+        to,
+        null,
+        current.decidedBySingleApprover,
+      );
+
+      if (written === undefined) {
+        throw new LeaveRequestNotFound(request.id);
+      }
+
+      const said = reasonForMoving(action);
+
+      if (action === 'REVERSE_APPROVAL') {
+        /* FR 25. A holiday credited back already gave some of it. */
+        const given = (
+          await repositories.entries.entriesFor({ ...key, entryTypes: ['RECALCULATION'] })
+        ).filter((entry) => entry.leaveRequestId === current.id);
+        const left = current.days - given.reduce((sum, entry) => sum + entry.days, 0);
+
+        if (left > 0) {
+          await repositories.entries.post(
+            actor,
+            validateNewLedgerEntry({
+              ...key,
+              entryType: 'RECALCULATION',
+              days: daysToGiveBackFromTaken(held, left),
+              certifiedDays: certifiedDaysGivenBack(current.certifiedDays, left),
+              reason: said,
+              leaveRequestId: current.id,
+            }),
+          );
+        }
+      } else {
+        const type = await repositories.types.findById(current.leaveTypeId);
+
+        if (type === undefined) {
+          throw new LeaveTypeNotFound(current.leaveTypeId);
+        }
+
+        const days = daysToReserve(held, current.days, type.exceedableWithDocument);
+
+        for (const entryType of ['RESERVATION', 'DEDUCTION'] as const) {
+          await repositories.entries.post(
+            actor,
+            validateNewLedgerEntry({
+              ...key,
+              entryType,
+              days: -days,
+              certifiedDays: current.certifiedDays,
+              reason: said,
+              leaveRequestId: current.id,
+            }),
+          );
+        }
+      }
+
+      return {
+        request: written,
+        reversal,
         balance: withAvailable(await repositories.balances.forOne(key)),
       };
     });

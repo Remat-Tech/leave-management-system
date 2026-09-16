@@ -17,6 +17,8 @@ import { OVERRIDING_ACTIONS, type OverridingAction } from './leave-decision.js';
 import {
   InvalidLeaveRequest,
   type LeaveRequestQuote,
+  REQUEST_STATUSES,
+  type RequestStatus,
   type RequestWarning,
   versionOf,
 } from './leave-request.js';
@@ -272,6 +274,52 @@ export function requestRoutes({
           /** FR 38a. The desk it can now be asked at. */
           awaitingApprovalFrom: rerouted.request.awaitingApprovalFrom,
           balance: rerouted.balance,
+        });
+      })
+      .catch(next);
+  });
+
+  /** Everybody's leave, for the Chief Executive. `leaveYearId`, `status` and `employeeId` narrow it. */
+  routes.get('/requests', (request: Request, response: Response, next) => {
+    const status = request.query.status;
+
+    void history
+      .forEveryone(actorOf(response), {
+        leaveYearId: oneYearIn(request),
+        status:
+          typeof status === 'string' && (REQUEST_STATUSES as readonly string[]).includes(status)
+            ? (status as RequestStatus)
+            : undefined,
+        employeeId:
+          typeof request.query.employeeId === 'string' && request.query.employeeId !== ''
+            ? request.query.employeeId
+            : undefined,
+      })
+      .then((found) => {
+        response.json({
+          year: found.year === null ? null : yearAsJson(found.year),
+          years: found.years.map(yearAsJson),
+          people: found.people,
+          entries: found.entries.map((entry) => ({
+            ...(entryAsJson(entry) as Record<string, unknown>),
+            employeeId: entry.employeeId,
+            employeeName: entry.employeeName,
+          })),
+        });
+      })
+      .catch(next);
+  });
+
+  /** The Chief Executive reverses a settled request, with a reason. */
+  routes.post('/requests/:id/reversal', (request: Request, response: Response, next) => {
+    void requests
+      .reverse(actorOf(response), asString(request.params.id), asString(bodyOf(request).reason))
+      .then((reversed) => {
+        response.json({
+          requestId: reversed.request.id,
+          status: reversed.request.status,
+          action: reversed.reversal.action,
+          available: reversed.balance.available,
         });
       })
       .catch(next);
@@ -958,6 +1006,7 @@ function entryAsJson(entry: RequestHistoryEntry): unknown {
     trail: entry.trail.map(stepAsJson),
     /** FR 47, LMS 324. */
     withdrawalAsked: entry.withdrawalAsked,
+    reversed: entry.reversed,
   };
 }
 

@@ -1725,6 +1725,8 @@ describe('where this story stops', () => {
       'RECLASSIFY',
       /** FR 25, §8.8, LMS 508. A public holiday declared inside it, credited back. */
       'RECALCULATE',
+      /** Or the Chief Executive reversing the approval before it starts. */
+      'REVERSE_APPROVAL',
     ]);
 
     for (const verb of ['WITHDRAW', 'CANCEL', 'REFUSE', 'APPROVE', 'ROUTE'] as const) {

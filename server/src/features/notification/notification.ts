@@ -61,6 +61,8 @@ export const NOTICE_EVENTS = [
    * and nobody agreed to anything. A day the country was not working stopped being charged.
    */
   'LEAVE_RECALCULATED',
+  /** The Chief Executive reversed a settled request. To the person, their manager and HR. */
+  'DECISION_REVERSED',
 ] as const;
 
 export type NoticeEvent = (typeof NOTICE_EVENTS)[number];

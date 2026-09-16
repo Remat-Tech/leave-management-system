@@ -184,9 +184,12 @@ describe('the transitions a request may make', () => {
    * separate rule saying so — and it is why `settlementTo` can answer "already settled"
    * for every miss rather than guessing.
    */
-  it('and nothing moves out of a state that has ended', () => {
+  /* Except the Chief Executive reversing a refusal, which is the one row out of an ending. */
+  it('and nothing moves out of a state that has ended but a reversed refusal', () => {
     for (const status of REQUEST_STATUSES.filter(isSettled)) {
-      expect(transitionsFrom(status)).toEqual([]);
+      expect(transitionsFrom(status).map((transition) => transition.action)).toEqual(
+        status === 'REFUSED' ? ['REVERSE_REFUSAL'] : [],
+      );
     }
   });
 
@@ -228,7 +231,14 @@ describe('the transitions a request may make', () => {
       /* FR 32c, LMS 507. `RECLASSIFY` is the fifth: days are moved to sick leave out of
          leave that was agreed and taken, and a request still being decided has taken none.
          FR 25, LMS 508. `RECALCULATE` is the sixth, for the same reason. */
-      if (isAboutAWithdrawal(action) || action === 'RECLASSIFY' || action === 'RECALCULATE') {
+      /* And the two reversals, which are about a request every desk has finished. */
+      if (
+        isAboutAWithdrawal(action) ||
+        action === 'RECLASSIFY' ||
+        action === 'RECALCULATE' ||
+        action === 'REVERSE_APPROVAL' ||
+        action === 'REVERSE_REFUSAL'
+      ) {
         expect(transitionFor('SUBMITTED', action)).toBeUndefined();
         continue;
       }
@@ -357,6 +367,8 @@ describe('the transitions a request may make', () => {
       'RECLASSIFY',
       /** FR 25, LMS 508. It moves one, and leaves the request exactly as it was. */
       'RECALCULATE',
+      /** The Chief Executive turning a refusal into an approval. */
+      'REVERSE_REFUSAL',
     ]);
     expect([...new Set(live.map((transition) => transition.to))]).toEqual([
       'APPROVED',
@@ -1029,13 +1041,27 @@ describe('the table, written out', () => {
         to: 'APPROVED',
         by: ['LEAVE_ADMINISTRATION'],
       },
+
+      /* The Chief Executive reversing a settled outcome, once. */
+      {
+        from: 'APPROVED',
+        action: 'REVERSE_APPROVAL',
+        to: 'REFUSED',
+        by: ['THE_CHIEF_EXECUTIVE'],
+      },
+      {
+        from: 'REFUSED',
+        action: 'REVERSE_REFUSAL',
+        to: 'APPROVED',
+        by: ['THE_CHIEF_EXECUTIVE'],
+      },
     ]);
   });
 
   /* And the vocabulary it is keyed by, for the same reason. A standing added here
      without a branch in `hasStanding` does not compile; one added and left out of every
      row is a concept nothing uses. */
-  it('and is keyed by the thirteen actions and the four standings there are', () => {
+  it('and is keyed by the fifteen actions and the five standings there are', () => {
     expect([...REQUEST_ACTIONS]).toEqual([
       'WITHDRAW',
       'REFUSE',
@@ -1054,12 +1080,15 @@ describe('the table, written out', () => {
       'RECLASSIFY',
       /** FR 25, LMS 508. */
       'RECALCULATE',
+      'REVERSE_APPROVAL',
+      'REVERSE_REFUSAL',
     ]);
     expect([...STANDINGS]).toEqual([
       'THE_REQUESTER',
       'THEIR_LINE_MANAGER',
       'LEAVE_ADMINISTRATION',
       'THE_DESK_IT_IS_WITH',
+      'THE_CHIEF_EXECUTIVE',
     ]);
   });
 

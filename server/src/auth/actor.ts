@@ -16,6 +16,7 @@ export function signedInAs(employeeId: string, authority: Authority): Actor {
     employeeId,
     roles: [...authority.roles],
     isManager: authority.isManager,
+    ...(authority.isChiefExecutive === true ? { isChiefExecutive: true } : {}),
     description: `employee ${employeeId}`,
   };
 }

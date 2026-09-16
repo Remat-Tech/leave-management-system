@@ -58,12 +58,17 @@ export const HR_SECTIONS: Section[] = [
  */
 const APPROVALS = 'approvals';
 
+/** Everybody's leave, the Chief Executive's page. */
+const ALL_LEAVE = 'all-leave';
+
 /** In the order here, so the page never decides what comes first either. */
 export function sectionsFor(actor: Actor, guard: Guard, staffed: DesksStaffed): string[] {
   const queue = guard.permits(leaveRequestPolicy.queue(actor, staffed)) ? [APPROVALS] : [];
+  const everyone = guard.permits(leaveRequestPolicy.listEveryone(actor)) ? [ALL_LEAVE] : [];
 
   return [
     ...queue,
+    ...everyone,
     ...HR_SECTIONS.filter((section) => guard.permits(section.may(actor))).map(
       (section) => section.id,
     ),

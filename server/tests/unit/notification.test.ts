@@ -85,7 +85,7 @@ function happened(overrides: Partial<WhatHappened> = {}): WhatHappened {
 describe('the events somebody is told about', () => {
   /* FR 59's list, and LMS 318 brought the two the notification migration said were coming.
      See the CHECK in that migration, which says the same thing. */
-  it('are the seventeen FR 59 names that this system can actually produce', () => {
+  it('are the eighteen FR 59 names that this system can actually produce', () => {
     expect(NOTICE_EVENTS).toEqual([
       'SUBMITTED',
       'STAGE_APPROVED',
@@ -110,6 +110,8 @@ describe('the events somebody is told about', () => {
       'LEAVE_RECLASSIFIED',
       /** FR 25, §8.8, LMS 508. A public holiday declared inside agreed leave. */
       'LEAVE_RECALCULATED',
+      /** The Chief Executive reversed a settled request. */
+      'DECISION_REVERSED',
     ]);
   });
 

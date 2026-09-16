@@ -159,7 +159,7 @@ async function clear(): Promise<void> {
   await admin.query('TRUNCATE leave_balance');
   await admin.query(
     'TRUNCATE notification, leave_entitlement_event, leave_ledger_entry, ' +
-      'attachment_access, attachment_download_link, leave_request_recalculation, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request',
+      'attachment_access, attachment_download_link, leave_request_recalculation, leave_request_reclassification, leave_request_attachment, leave_request_decision, leave_request_reassignment, leave_request_routing, leave_request_withdrawal, leave_request_reversal, leave_request',
   );
 }
 
@@ -609,9 +609,19 @@ describe('HR turning the ask down', () => {
 /* ------------------------------------------------------ what the schema will not allow */
 
 describe('the rules the database keeps, whatever wrote', () => {
-  /* FR 47. `APPROVED` may reach `WITHDRAWN` and nothing else — not CANCELLED, which is HR's
-     adjustment, and not REFUSED, which happens before a request reaches here. */
-  it.each(['CANCELLED', 'REFUSED', 'SUBMITTED', 'UNROUTABLE'])(
+  /* FR 47. `APPROVED` may reach `WITHDRAWN`, and `REFUSED` only by the Chief Executive's
+     reversal — ../integration/reversal.test.ts has that. Nothing else. */
+  it('refuses an approved request becoming REFUSED with no reversal behind it', async () => {
+    const id = await anApprovedRequest(...nextFortnight());
+
+    await expect(
+      admin.query('UPDATE leave_request SET status = $1 WHERE id = $2', ['REFUSED', id]),
+    ).rejects.toThrow();
+
+    expect(await statusOf(id)).toBe('APPROVED');
+  });
+
+  it.each(['CANCELLED', 'SUBMITTED', 'UNROUTABLE'])(
     'refuses an approved request becoming %s',
     async (status) => {
       const id = await anApprovedRequest(...nextFortnight());

@@ -112,6 +112,7 @@ import {
   reasonForReclassification,
 } from './reclassification.js';
 import type { ReclassificationRepository } from './reclassification.db.js';
+import { reasonForReversal, ReversalNeedsAReason, reversalOf } from './reversal.js';
 import { decisionNews, endingNews } from '../notification/notification.js';
 import {
   assertEligible,
@@ -138,6 +139,7 @@ import type {
   LeaveReleased,
   LeaveRequested,
   LeaveRerouted,
+  LeaveReversed,
   RequestToSubmit,
   WithdrawalAnswered,
   WithdrawalAsked,
@@ -1190,6 +1192,74 @@ export class LeaveRequestService {
     }
 
     return count.days;
+  }
+
+  /**
+   * The Chief Executive reverses a request every desk has finished deciding.
+   *
+   * Asked for standing before anything about the request is said, then for the reason, then
+   * whether it can be reversed today; all three are asked again inside the lock. The person,
+   * their manager and HR are told, never the Chief Executive themselves.
+   */
+  async reverse(actor: Actor, id: string, reason: string): Promise<LeaveReversed> {
+    const request = await this.requests.findById(id);
+
+    if (request === undefined) {
+      throw new LeaveRequestNotFound(id);
+    }
+
+    const employee = await this.employeeFor(request.employeeId);
+
+    /* Both reversals need the same standing, so either verb asks it. */
+    this.guard.enforce(leaveRequestPolicy.reverse(actor, 'REVERSE_APPROVAL', ownerOf(employee)));
+
+    const said = readReason(reason);
+
+    if (said === null) {
+      throw new ReversalNeedsAReason();
+    }
+
+    const today = this.today();
+
+    reversalOf(request, today);
+
+    const type = await this.typeFor(request.leaveTypeId);
+
+    const reversed = await this.balances.reverseForRequest(actor, {
+      request,
+      reason: said,
+      today,
+      reasonForMoving: (action) => reasonForReversal(type.name, request, action),
+    });
+
+    const told = new Set<string>([...(await this.employeesInHr())]);
+
+    if (employee.managerId !== null) {
+      told.add(employee.managerId);
+    }
+
+    told.delete(employee.id);
+
+    if (actor.employeeId !== null) {
+      told.delete(actor.employeeId);
+    }
+
+    const recipients = [employee, ...(await this.employees.findAllById([...told]))];
+
+    for (const recipient of recipients) {
+      await this.notifications.tell({
+        event: 'DECISION_REVERSED',
+        employee,
+        recipient,
+        request: reversed.request,
+        typeName: type.name,
+        decidedBy: null,
+        comment: said,
+        availableAfter: reversed.balance.available,
+      });
+    }
+
+    return reversed;
   }
 
   /**

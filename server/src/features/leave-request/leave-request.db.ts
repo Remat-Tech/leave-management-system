@@ -160,6 +160,25 @@ export class LeaveRequestRepository {
     return (await query.orderBy('start_date').orderBy('id').execute()).map(toRequest);
   }
 
+  /** Everybody's requests, optionally narrowed. For the Chief Executive's page. */
+  async listEveryone(
+    options: { leaveYearId?: string; status?: RequestStatus; employeeId?: string } = {},
+  ): Promise<LeaveRequest[]> {
+    let query = this.db.selectFrom('leave_request').selectAll();
+
+    if (options.leaveYearId !== undefined) {
+      query = query.where('leave_year_id', '=', options.leaveYearId);
+    }
+    if (options.status !== undefined) {
+      query = query.where('status', '=', options.status);
+    }
+    if (options.employeeId !== undefined) {
+      query = query.where('employee_id', '=', options.employeeId);
+    }
+
+    return (await query.orderBy('start_date', 'desc').orderBy('id').execute()).map(toRequest);
+  }
+
   /**
    * Every request sitting at a desk, anywhere in the company, longest waiting first. FR 50, FR 60, LMS 330.
    *

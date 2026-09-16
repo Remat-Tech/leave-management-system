@@ -19,6 +19,7 @@ import { LeaveRequestDraftRepository } from './features/leave-request/draft.db.j
 import { LeaveRoutingRepository } from './features/leave-request/routing.db.js';
 import { ReclassificationRepository } from './features/leave-request/reclassification.db.js';
 import { WithdrawalRepository } from './features/leave-request/withdrawal.db.js';
+import { ReversalRepository } from './features/leave-request/reversal.db.js';
 import { LeaveRequestRepository } from './features/leave-request/leave-request.db.js';
 import { LeaveTypeRepository } from './features/leave-type/leave-type.db.js';
 import { LeaveYearRepository } from './features/leave-year/leave-year.db.js';
@@ -79,6 +80,7 @@ const decisions = new LeaveDecisionRepository(db);
 const routing = new LeaveRoutingRepository(db);
 /** FR 47, LMS 324. */
 const withdrawals = new WithdrawalRepository(db);
+const reversals = new ReversalRepository(db);
 /** FR 32c, LMS 507. */
 const reclassifications = new ReclassificationRepository(db);
 /** FR 25, LMS 508. The holidays declared late and credited back. */
@@ -192,6 +194,7 @@ const app = buildApp({
   decisions,
   routing,
   withdrawals,
+  reversals,
   drafts,
   attachments,
   attachmentLinks,

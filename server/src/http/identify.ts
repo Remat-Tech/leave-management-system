@@ -6,6 +6,7 @@ import { PasswordMustChange, whyNotSignIn } from '../features/sign-in/sign-in.js
 import type { RoleCode } from '../features/role/roles.js';
 import type { Employee } from '../features/employee/employee.js';
 import type { EmployeeRepository } from '../features/employee/employee.db.js';
+import type { OrganisationRepository } from '../features/organisation/organisation.db.js';
 import type { RoleRepository } from '../features/role/role.db.js';
 import type { SignInAccountRepository } from '../features/sign-in/sign-in-account.db.js';
 import {
@@ -19,6 +20,8 @@ export interface Identity {
   employees: EmployeeRepository;
   accounts: SignInAccountRepository;
   roles: RoleRepository;
+  /** FR 48c. Who the Chief Executive is; nobody is, where this is absent. */
+  organisation?: OrganisationRepository;
   /** From `SESSION_SECRET`, resolved once at start-up by ./app.ts. */
   secret: string;
 }
@@ -132,13 +135,18 @@ async function establish(
     return undefined;
   }
 
-  const [roles, reports] = await Promise.all([
+  const [roles, reports, chiefExecutiveId] = await Promise.all([
     identity.roles.codesFor(account.id),
     identity.employees.countReports(employee.id),
+    identity.organisation?.chiefExecutiveId() ?? null,
   ]);
 
   response.locals.employee = employee;
   response.locals.mustChangePassword = account.mustChangePassword;
 
-  return signedInAs(employee.id, { roles: roles as RoleCode[], isManager: reports > 0 });
+  return signedInAs(employee.id, {
+    roles: roles as RoleCode[],
+    isManager: reports > 0,
+    isChiefExecutive: chiefExecutiveId === employee.id,
+  });
 }
