@@ -44,7 +44,9 @@ export type IconName =
   | 'history'
   /* Showing and hiding a password as it is typed. */
   | 'eye'
-  | 'eye-off';
+  | 'eye-off'
+  /* Back to where a screen was opened from. */
+  | 'back';
 
 const PATHS: Record<IconName, string> = {
   /** What you have: a calendar with days counted on it. */
@@ -93,6 +95,8 @@ const PATHS: Record<IconName, string> = {
   pencil: 'M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16zM14 6l4 4',
   /** LMS 503. A step moving up or down an approval chain. */
   up: 'M6 15l6-6 6 6',
+  /** Back: `up` turned to face left. */
+  back: 'M15 18l-6-6 6-6',
   down: 'M6 9l6 6 6-6',
   /** LMS 510. HR's reports: a bar chart. */
   report: 'M4 20h16M7 16v-5M12 16V6M17 16v-8',

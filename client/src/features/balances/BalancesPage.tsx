@@ -104,7 +104,7 @@ export function BalancesPage({
         />
       )}
 
-      <ul className="cards">
+      <ul className="cards balance-cards">
         {statement.lines.map((line) => (
           <BalanceCard key={line.leaveTypeId} line={line} />
         ))}
@@ -228,7 +228,7 @@ function Meter({ line }: { line: BalanceLine }) {
 function Skeletons() {
   return (
     <>
-      <ul className="cards">
+      <ul className="cards balance-cards">
         {[0, 1, 2, 3, 4, 5].map((one) => (
           <li key={one} className="skeleton" />
         ))}

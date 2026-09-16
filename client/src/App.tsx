@@ -232,14 +232,15 @@ export function App() {
           <div className="topbar-inner">
             {/* The screen you are on, as the page's heading. The rail says which tab is lit;
                 this is the one `h1`, and it is what a screen reader lands on. */}
-            <h1>{LABELS.get(screen) ?? LABELS.get(DEFAULT_SCREEN)}</h1>
-
-            {/* Back to the cards, from a section that no longer has a tab of its own. */}
+            {/* Back to the cards, from a section that no longer has a tab of its own. Before
+                the heading, where a way back is looked for. */}
             {isHrSection(screen) ? (
-              <a className="linkish back" href={`#/${HR_HUB.id}`}>
-                {HR_HUB.label}
+              <a className="back" href={`#/${HR_HUB.id}`} aria-label={`Back to ${HR_HUB.label}`}>
+                <Icon name="back" />
               </a>
             ) : null}
+
+            <h1>{LABELS.get(screen) ?? LABELS.get(DEFAULT_SCREEN)}</h1>
 
             {/* LMS 409. Only on the screens it means something on: a picker over "Ask for
                 leave" would be a control that changes nothing. */}
