@@ -196,7 +196,7 @@ export function App() {
       {/* LMS 409. The company rail: the wordmark, the screens, and the company line. */}
       <header className="sidebar">
         <a className="logo" href={`#/${DEFAULT_SCREEN}`}>
-          <img className="logo-mark" src="/interlude-logo.svg" alt="" aria-hidden="true" />
+          <img className="logo-mark" src="/interlude-logo.png" alt="" aria-hidden="true" />
           <span className="logo-word">
             <b>Interlude</b>
           </span>
