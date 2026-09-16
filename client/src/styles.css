@@ -4111,21 +4111,39 @@ button.linkish.file-name {
   min-height: 13rem;
 }
 
+/* The mark on the left, and beside it the name with its pills underneath. On one line the pills
+   took the width they needed and the name got what was left, which on a narrow card was a few
+   letters a line. Stacked, the name has the whole column however many pills there are. */
 .balance-cards .card-head {
-  /* The chip's height, so a card whose name fits and one whose name wraps start their figure
-     at the same line. */
-  min-height: 2.25rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.65rem;
+  row-gap: 0.25rem;
+  /* Two lines' worth, so a card with pills and one without start their figure level. */
+  min-height: 3rem;
+}
+
+.balance-cards .card-head .chip {
+  grid-row: 1 / span 2;
 }
 
 .balance-cards .card-head h3 {
-  /* Gives way to the pills rather than pushing them off the card, and breaks between words. */
-  flex: 1 1 0;
-  min-width: 0;
+  grid-column: 2;
   line-height: 1.25;
+  /* Between words only. A name split inside a word is the thing being fixed. */
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .balance-cards .card-head .tags {
-  flex: none;
+  grid-column: 2;
+  justify-content: flex-start;
+  margin-left: 0;
+}
+
+.balance-cards .card-head .tags:empty {
+  display: none;
 }
 
 /* ------------------------------------------------------------ withdrawing a request
