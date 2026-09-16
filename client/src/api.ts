@@ -364,6 +364,39 @@ export interface QueueItem {
   /** FR 48, §8.6a. False for my own request, whatever desk it is sitting at. */
   actionable: boolean;
   notActionableBecause: string | null;
+  /** FR 44. What the line manager said, where they have said anything. LMS 318. */
+  managersDecision: ManagersDecision | null;
+  /**
+   * FR 44. Whether each button would overrule the manager, and so has to go as an override
+   * with a reason. The server decides this; the page only asks for the reason first.
+   */
+  approvingIs: OverridingAction | null;
+  refusingIs: OverridingAction | null;
+}
+
+/** Deciding the opposite way to the line manager. FR 44, LMS 318. */
+export type OverridingAction = 'OVERTURN_APPROVAL' | 'OVERTURN_REJECTION';
+
+/** What the line manager decided, as HR weighs it. FR 44. */
+export interface ManagersDecision {
+  said: string;
+  comment: string | null;
+  by: string;
+  at: string;
+  inWords: string;
+}
+
+/**
+ * Deciding one request the opposite way to its line manager. FR 44, LMS 318.
+ *
+ * One request at a time, never a batch: the reason is the account of this decision, and one
+ * reason spread across a selection is the account of none of them.
+ */
+export async function overrideDecision(
+  requestId: string,
+  input: { action: OverridingAction; justification: string; version: string },
+): Promise<unknown> {
+  return request<unknown>('POST', `/api/requests/${encodeURIComponent(requestId)}/override`, input);
 }
 
 export interface ApproverQueue {

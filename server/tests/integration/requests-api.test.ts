@@ -609,6 +609,50 @@ describe('deciding a request', () => {
     expect(((await response.json()) as { message: string }).message).toContain('in writing');
   });
 
+  /**
+   * And the other way round: the manager approved, and HR turns it down. FR 44, LMS 318.
+   *
+   * What was found in use. HR pressed Refuse on the queue, which sent a plain refusal, which is
+   * refused here because it contradicts the manager — so nothing changed and no email went. The
+   * queue now reads `refusingIs` and sends this instead. Proved over the wire, both halves: the
+   * plain verb bounces, and the override refuses the leave.
+   */
+  it('and HR turning down what the manager approved goes as an override, and refuses it', async () => {
+    const id = await aRequest();
+
+    await post(`/api/requests/${id}/approve`, people.teamLead, {});
+
+    const plain = await post(`/api/requests/${id}/refuse`, people.hrOfficer, { comment: WHY_NOT });
+    expect(plain.status).toBe(400);
+
+    const response = await post(`/api/requests/${id}/override`, people.hrOfficer, {
+      action: 'OVERTURN_APPROVAL',
+      justification: BECAUSE_POLICY,
+    });
+    const decided = (await response.json()) as JsonDecided;
+
+    expect(response.status).toBe(200);
+    expect(decided.status).toBe('REFUSED');
+    expect(decided.decision).toMatchObject({
+      action: 'OVERTURN_APPROVAL',
+      onBehalfOf: 'HR',
+      comment: BECAUSE_POLICY,
+    });
+    expect(decided.decision.overridesDecisionId).not.toBeNull();
+  });
+
+  /* And the queue says so before the button, so the screen can ask for the reason first. */
+  it('and the queue tells HR which button would overrule the manager', async () => {
+    const id = await aRequest();
+
+    await post(`/api/requests/${id}/approve`, people.teamLead, {});
+
+    const queue = await queueFor(people.hrOfficer);
+    const row = queue.items.find((item) => item.requestId === id) as unknown;
+
+    expect(row).toMatchObject({ approvingIs: null, refusingIs: 'OVERTURN_APPROVAL' });
+  });
+
   /* And the plain button cannot be used to do the same thing quietly. */
   it('and approving what the manager turned down is refused, and names the override', async () => {
     const id = await aRequest();

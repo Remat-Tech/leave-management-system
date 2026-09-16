@@ -5,6 +5,7 @@ import {
   type Desk,
   isNotSignedIn,
   myApprovals,
+  overrideDecision,
   type QueueItem,
   type TeamContext,
 } from '../../api';
@@ -90,6 +91,36 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
     [queue, load, onSignedOut],
   );
 
+  /**
+   * One request, decided the opposite way to its line manager. FR 44, LMS 318.
+   *
+   * A plain verb here is refused by the server — overruling a manager is recorded as exactly
+   * that, with the reason — so the card sends the override the server said the button is.
+   */
+  const override = useCallback(
+    (item: QueueItem, action: NonNullable<QueueItem['refusingIs']>, justification: string) => {
+      setDeciding(true);
+      setRefused(new Map());
+
+      overrideDecision(item.requestId, { action, justification, version: item.version })
+        .then(() => {
+          load();
+        })
+        .catch((error: unknown) => {
+          if (isNotSignedIn(error)) {
+            onSignedOut();
+            return;
+          }
+
+          setProblem(problemFrom(error));
+        })
+        .finally(() => {
+          setDeciding(false);
+        });
+    },
+    [load, onSignedOut],
+  );
+
   /* The failure here is usually a refusal rather than a fault: this tab is offered to
      everybody, so somebody who staffs no desk lands on the server's own sentence saying what
      an approver is. */
@@ -105,8 +136,9 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
     );
   }
 
-  /** FR 48. Only a row this approver may actually decide can be picked. */
-  const pickable = queue.items.filter((item) => item.actionable);
+  /* FR 48, FR 44, FR 51. Only what a batch can approve: a row this approver may decide, and not
+     one the manager turned down, which is approved as an override with a reason of its own. */
+  const pickable = queue.items.filter(canBeBatched);
   const picked = pickable.filter((item) => chosen.has(item.requestId));
 
   return (
@@ -191,7 +223,13 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
                   });
                 }}
                 onDecide={(action, comment) => {
-                  decide(action, [item.requestId], comment);
+                  const overruling = action === 'APPROVE' ? item.approvingIs : item.refusingIs;
+
+                  if (overruling === null) {
+                    decide(action, [item.requestId], comment);
+                  } else {
+                    override(item, overruling, comment);
+                  }
                 }}
                 onSignedOut={onSignedOut}
               />
@@ -233,15 +271,23 @@ function QueueCard({
 }) {
   const [comment, setComment] = useState('');
 
+  const said = comment.trim() !== '';
+
   /** FR 39. A refusal has to say why; an approval need not. */
-  const canRefuse = comment.trim() !== '';
+  const canRefuse = said;
+
+  /* FR 44. Approving what the manager turned down overrules them, and that says why too. */
+  const canApprove = item.approvingIs === null || said;
+
+  /** Whether either button here would overrule the line manager. */
+  const overrules = item.approvingIs !== null || item.refusingIs !== null;
 
   return (
     <li className={`card request queued${item.actionable ? '' : ' is-held'}`}>
       {/* Who is asking on the left, what they are asking for on the right. */}
       <div className="asking-head">
         <div className="asking-who">
-          {item.actionable ? (
+          {canBeBatched(item) ? (
             <input
               type="checkbox"
               className="pickbox"
@@ -348,7 +394,8 @@ function QueueCard({
               <button
                 type="button"
                 className="primary"
-                disabled={busy}
+                disabled={busy || !canApprove}
+                title={canApprove ? undefined : 'Overruling the manager has to say why. FR 44.'}
                 onClick={() => {
                   onDecide('APPROVE', comment.trim());
                 }}
@@ -386,7 +433,13 @@ function QueueCard({
               <Icon name="send" />
             </label>
 
-            <p className="muted">A refusal has to say why. FR 39.</p>
+            {/* FR 44. Said before the button rather than after a refusal from the server: what
+                the manager decided, and that going the other way needs a reason. */}
+            {overrules && item.managersDecision !== null ? (
+              <p className="muted">{item.managersDecision.inWords}</p>
+            ) : (
+              <p className="muted">A refusal has to say why.</p>
+            )}
           </section>
         ) : null}
       </div>
@@ -442,6 +495,16 @@ function TeamLine({ team }: { team: TeamContext }) {
       )}
     </>
   );
+}
+
+/**
+ * Whether a row can be ticked and approved with others. FR 48, FR 44, FR 51.
+ *
+ * Not one approving would overrule the manager on: that goes as an override with its own
+ * reason, which a batch cannot give it, so it is decided on its card.
+ */
+function canBeBatched(item: QueueItem): boolean {
+  return item.actionable && item.approvingIs === null;
 }
 
 /** A desk, as a tag rather than as prose. The server's sentences name it in words. */
