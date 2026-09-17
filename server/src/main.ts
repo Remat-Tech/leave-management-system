@@ -44,9 +44,30 @@ import { LeaveRequestService } from './features/leave-request/leave-request.serv
 import { NotificationService } from './features/notification/notification.service.js';
 import { SignInService } from './features/sign-in/sign-in.service.js';
 import { LeaveEventRepository } from './features/leave-event/leave-event.db.js';
-import { EntitlementExpiry, summaryOf } from './features/entitlement/entitlement-expiry.job.js';
+import {
+  EntitlementExpiry,
+  summaryOf as summaryOfEntitlementExpiry,
+} from './features/entitlement/entitlement-expiry.job.js';
 import { theSystem } from './auth/actor.js';
 import { EntitlementRuleService } from './features/entitlement/entitlement-rule.service.js';
+import { calendarDateIn } from './shared/time.js';
+import { LeaveYearService } from './features/leave-year/leave-year.service.js';
+import { AnnualGrant } from './features/entitlement/annual-grant.job.js';
+import { summaryOf as summaryOfGrant } from './features/entitlement/annual-grant.js';
+import { YearRollover } from './features/leave-year/year-rollover.job.js';
+import { summaryOf as summaryOfRollover } from './features/leave-year/year-rollover.js';
+import { CarryoverExpiry } from './features/leave-year/carryover-expiry.job.js';
+import { summaryOf as summaryOfCarryoverExpiry } from './features/leave-year/carryover-expiry.js';
+import { AttachmentPurge } from './features/leave-request/attachment-purge.job.js';
+import { BalanceReconciliation } from './features/balance/balance-reconciliation.job.js';
+import { ReconciliationRepository } from './features/balance/reconciliation.db.js';
+import { reportOf } from './features/balance/reconciliation.js';
+import {
+  DailyApproverReminders,
+  summaryOf as summaryOfReminders,
+} from './features/notification/reminder.job.js';
+import { UndeliveredNotices } from './features/notification/delivery.job.js';
+import { summaryOf as summaryOfDelivery } from './features/notification/delivery.js';
 
 loadEnv();
 
@@ -199,6 +220,9 @@ const holidayRecalculations = new HolidayRecalculationService(
 /** FR 32g, FR 32e, LMS 218. Births, bereavements and the like, and the grants they caused. */
 const events = new LeaveEventRepository(db);
 
+/** NFR SEC 04. Shared by the attachment routes and the certificate purge. */
+const storage = createStorage();
+
 const app = buildApp({
   guard,
   signIn: new SignInService(accounts, employees, roles, mailer, guard),
@@ -227,7 +251,7 @@ const app = buildApp({
   attachmentLinks,
   /* Both built once here, as the mailer is: the driver each resolves to is a deployment's
      decision, and nothing above them may know which one it got. NFR SEC 04, NFR SEC 07. */
-  storage: createStorage(),
+  storage,
   scanner: createScanner(),
   accounts,
   roles,
@@ -255,38 +279,156 @@ const server = app.listen(port, () => {
   );
 });
 
-/**
- * FR 32e. Lapses unused event grants past their deadline, at start and then daily.
- *
- * In process rather than a cron: the job is safe to rerun, so a restart or a sleeping
- * instance only means it runs again when the process wakes.
+/*
+ * The scheduled jobs. In process rather than a cron: every job is safe to rerun, so a restart
+ * or a sleeping instance only means it runs again when the process wakes.
  */
-const expiry = new EntitlementExpiry(movements, events, types, years);
-const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+/** FR 50. Not before the working day starts. */
+const REMIND_FROM_HOUR_UTC = 8;
 
-function lapseExpiredGrants(): void {
-  void expiry
-    .run(theSystem('the entitlement expiry'))
-    .then((run) => {
-      console.log(
-        JSON.stringify({ event: 'job.entitlement-expiry', at: new Date().toISOString() }),
-      );
-      console.log(summaryOf(run));
-    })
-    .catch((error: unknown) => {
-      console.error(
-        JSON.stringify({
-          event: 'job.entitlement-expiry.failed',
-          at: new Date().toISOString(),
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
-    });
+const yearService = new LeaveYearService(years, guard);
+const annualGrant = new AnnualGrant(movements, yearService, entitlementLookup, employees, types);
+const rollover = new YearRollover(
+  movements,
+  yearService,
+  entitlementLookup,
+  annualGrant,
+  employees,
+  types,
+);
+const carryoverExpiry = new CarryoverExpiry(
+  movements,
+  balances,
+  entitlementLookup,
+  years,
+  employees,
+  types,
+);
+const entitlementExpiry = new EntitlementExpiry(movements, events, types, years);
+const attachmentPurge = new AttachmentPurge(attachments, organisation, storage);
+const reconciliation = new BalanceReconciliation(
+  new ReconciliationRepository(db),
+  guard,
+  roles,
+  employees,
+  mailer,
+);
+const reminders = new DailyApproverReminders(leaveRequests, notifications);
+const undelivered = new UndeliveredNotices(notifications);
+
+/** Runs one job and logs its summary, or its failure. Undefined means nothing worth logging. */
+async function runJob(job: string, work: () => Promise<string | undefined>): Promise<void> {
+  try {
+    const summary = await work();
+
+    if (summary !== undefined) {
+      console.log(JSON.stringify({ event: `job.${job}`, at: new Date().toISOString() }));
+      console.log(summary);
+    }
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: `job.${job}.failed`,
+        at: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
 }
 
-lapseExpiredGrants();
-const expiryTimer = setInterval(lapseExpiredGrants, DAY_MS);
-expiryTimer.unref();
+/** Runs now and then every interval, skipping a tick while the last one is still going. */
+function every(intervalMs: number, work: () => Promise<void>): NodeJS.Timeout {
+  let running = false;
+
+  const tick = (): void => {
+    if (running) {
+      return;
+    }
+    running = true;
+    void work().finally(() => {
+      running = false;
+    });
+  };
+
+  tick();
+  const timer = setInterval(tick, intervalMs);
+  timer.unref();
+
+  return timer;
+}
+
+/** FR 36, §11. Every open year that has ended, oldest first, closed from the day after. */
+async function rollOverFinishedYears(): Promise<string | undefined> {
+  const actor = theSystem('the year rollover');
+  const today = calendarDateIn(new Date(), 'UTC');
+  const finished = (await years.list({ openOnly: true })).filter((year) => year.endDate < today);
+  const summaries: string[] = [];
+
+  for (const year of finished) {
+    summaries.push(summaryOfRollover(await rollover.run(actor, year.id)));
+  }
+
+  return summaries.length === 0 ? undefined : summaries.join('\n\n');
+}
+
+/** FR 30. The current year, which also reaches anyone who joined since the last run. */
+async function grantTheCurrentYear(): Promise<string | undefined> {
+  const actor = theSystem('the annual grant');
+  const year = await yearService.current(actor);
+
+  if (year === undefined) {
+    return undefined;
+  }
+
+  const run = await annualGrant.run(actor, year.id);
+
+  return run.granted.length === 0 ? undefined : summaryOfGrant(run);
+}
+
+/* Daily, in sequence: the balance moves first, and the reconciliation checks what they left. */
+const dailyTimer = every(DAY_MS, async () => {
+  await runJob('year-rollover', rollOverFinishedYears);
+  await runJob('annual-grant', grantTheCurrentYear);
+  await runJob('carryover-expiry', async () =>
+    summaryOfCarryoverExpiry(await carryoverExpiry.run(theSystem('the carryover expiry'))),
+  );
+  await runJob('entitlement-expiry', async () =>
+    summaryOfEntitlementExpiry(await entitlementExpiry.run(theSystem('the entitlement expiry'))),
+  );
+  await runJob('attachment-purge', async () => {
+    const run = await attachmentPurge.run();
+
+    return `Certificate purge as at ${run.asAt}: ${String(run.deleted.length)} stored files deleted.`;
+  });
+  await runJob('balance-reconciliation', async () =>
+    reportOf(await reconciliation.run(theSystem('the balance reconciliation'))),
+  );
+});
+
+/* FR 50, FR 60. Hourly so a restart cannot skip a day; the job reminds nobody twice in one. */
+const reminderTimer = every(HOUR_MS, () =>
+  runJob('approver-reminders', async () => {
+    if (new Date().getUTCHours() < REMIND_FROM_HOUR_UTC) {
+      return undefined;
+    }
+
+    const run = await reminders.run(theSystem('the daily approver reminders'));
+
+    return run.reminded.length === 0 ? undefined : summaryOfReminders(run);
+  }),
+);
+
+/* FR 59, LMS 331. Every minute, the shortest backoff. */
+const deliveryTimer = every(MINUTE_MS, () =>
+  runJob('notification-retry', async () => {
+    const run = await undelivered.run(theSystem('the notification retry'));
+
+    return run.due === 0 ? undefined : summaryOfDelivery(run);
+  }),
+);
 
 /**
  * Stop taking new connections, finish the ones in flight, then close the pool.
@@ -300,7 +442,9 @@ expiryTimer.unref();
 function shutDown(signal: string): void {
   console.log(JSON.stringify({ event: 'http.closing', at: new Date().toISOString(), signal }));
 
-  clearInterval(expiryTimer);
+  clearInterval(dailyTimer);
+  clearInterval(reminderTimer);
+  clearInterval(deliveryTimer);
 
   server.close(() => {
     void db.destroy().then(() => {

@@ -2,9 +2,8 @@
  * Grants a leave year's entitlements to everybody owed them. FR 31, LMS 214.
  *
  * The grant is what turns an entitlement figure into a balance: the figures are rules, and a
- * balance is the sum of the ledger entries posted against them. Nothing schedules this yet,
- * and the staff importer does not run it, so a database loaded mid-year has the rules and
- * everybody at nought.
+ * balance is the sum of the ledger entries posted against them. The server grants the current
+ * year daily; this is for granting a year by hand, without waiting for the server.
  *
  *   npx tsx scripts/grant-leave-year.ts 2026
  *

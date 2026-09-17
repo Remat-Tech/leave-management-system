@@ -1446,14 +1446,10 @@ like it. The subject carries the count, because "one balance is out by half a da
 is deliberately not told — a wrong balance is somebody's leave, and a system that mails
 it to administrators as a matter of routine has stopped treating it as such.
 
-**Nightly is a cron line, and there is still nowhere to put one.** LMS 401 brought a
-server entry point and a route layer; it deliberately did not bring a scheduler, because
-hanging the nightly jobs off a web process is the arrangement where they stop running
-the day somebody starts a second one. So `BalanceReconciliation.run()` is still written
-to be called by the first thing that runs on a timer and is still not itself
-scheduled. When there is a process, the line is one call a night, out of hours, as
-`theSystem('the nightly balance reconciliation')` — and an HR Officer may run the same
-check this afternoon, which is why the policy allows a person as well as the job.
+**Scheduled in `main.ts`.** It runs daily, after the jobs that move balances, as
+`theSystem('the balance reconciliation')`. The timers live in the web process, so a second
+instance would run every job twice and mail HR twice. An HR Officer may run the same check by
+hand, which is why the policy allows a person as well as the job.
 
 **What is not here.** A record of the runs. "Checked at 02:00, found nothing" is the
 difference between no news and "the job has not run since Tuesday", and it is a table
@@ -1713,7 +1709,7 @@ the rollover:
   next run, and an unchanged balance has nothing left, so re-running is safe. One gap:
   leave asked for *after* the deadline also counts as using carried days if an earlier
   request is later given back.
-- Nothing schedules it yet, like the annual grant and the rollover.
+- `main.ts` runs it daily, after the rollover and the annual grant.
 
 **The rule that decides is the one that covered the days.** `carries_over` is resolved as
 at the **last day of the year being closed**, not the first day of the new one, and FR 31
@@ -4627,9 +4623,8 @@ once, so it is the roles that already read every record, and `theSystem` holds t
 approver's own waiting work is `queue` and is unchanged. HR can run it by hand, which is what
 somebody saying "nobody has answered me" actually asks for.
 
-**What is deliberately not here.** There is no schedule: this repository has four other `*.job.ts`
-classes and none of them is wired to a timer in `main.ts` either — when the deployment gains a
-scheduler, it gains all five at once. Nothing escalates: a request waiting a fortnight sends the
+**What is deliberately not here.** `main.ts` checks hourly and sends from 08:00 UTC, once a day
+per approver per request. Nothing escalates: a request waiting a fortnight sends the
 same message on the fourteenth morning as on the first, said in the same words with a bigger
 number in it. And there is no way to turn one off, per person or per request, because the only
 thing that stops a reminder is deciding the request, which is the entire point.
@@ -4710,9 +4705,7 @@ source-reading test in `notification.test.ts`, which now names `delivery.job.ts`
 allowed to send at all, and it is the same seam LMS 329 put there: the send is *after* the
 commit, so there is no transaction left for it to fail.
 
-**What is deliberately not here.** There is no schedule, for the reason
-[LMS 330](#reminding-an-approver-every-day) gives — nothing in this repository is wired to a
-timer, and when the deployment gains a scheduler it gains every job at once. Nothing is retried
+**What is deliberately not here.** `main.ts` drains what is due every minute. Nothing is retried
 that was never written: a notice the database refused has no row to try again from, and that
 remains the one failure the backoff cannot reach. And a person cannot ask for their own notice to
 be sent again, because the message is already in their bell — the email is the copy, and the
