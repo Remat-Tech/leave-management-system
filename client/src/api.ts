@@ -1451,6 +1451,72 @@ export async function adjustBalance(fields: AdjustmentFields): Promise<Adjusted>
   return request<Adjusted>('POST', '/api/balance-adjustments', fields);
 }
 
+/** ------------------------------------------- events that grant leave. FR 32g, LMS 218 */
+
+export interface EventPerson {
+  id: string;
+  name: string;
+  employeeNumber: string;
+  hasLeft: boolean;
+}
+
+/** A kind of leave that is granted per occurrence. */
+export interface EventLeaveType {
+  id: string;
+  name: string;
+  genderRestriction: GenderRestriction;
+  entitlementExpiryMonths: number | null;
+}
+
+export interface RecordedEvent {
+  id: string;
+  employeeId: string;
+  leaveTypeId: string;
+  leaveYearId: string;
+  occurredOn: string;
+  expiresOn: string | null;
+  note: string | null;
+  hasLapsed: boolean;
+  createdAt: string;
+}
+
+export interface EventGranted {
+  event: RecordedEvent;
+  days: number;
+  available: number;
+}
+
+/** Everybody, and the kinds of leave an event can grant. */
+export async function eventChoices(): Promise<EventChoices> {
+  return request<EventChoices>('GET', '/api/leave-events');
+}
+
+export interface EventChoices {
+  employees: EventPerson[];
+  types: EventLeaveType[];
+}
+
+export async function eventsFor(employeeId: string): Promise<{ events: EventOnRecord[] }> {
+  return request<{ events: EventOnRecord[] }>(
+    'GET',
+    `/api/leave-events/${encodeURIComponent(employeeId)}`,
+  );
+}
+
+export interface EventOnRecord extends RecordedEvent {
+  typeName: string;
+}
+
+/** Records one; the days come from the entitlement rule on that date. */
+export async function recordEvent(fields: {
+  employeeId: string;
+  leaveTypeId: string;
+  occurredOn: string;
+  note: string | null;
+}): Promise<EventGranted> {
+  return request<EventGranted>('POST', '/api/leave-events', fields);
+}
+
 /** ------------------------------------------- the leaver figure. FR 37a, §8.7, LMS 509 */
 
 /** Somebody who has left. FR 06. */

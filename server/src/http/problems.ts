@@ -328,6 +328,12 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   /** §8.9. */
   LeaveYearIsClosed: 409,
 
+  /** FR 32g, LMS 218. Recording an event. */
+  NotAnEventBasedType: 409,
+  NotEligibleForTheType: 409,
+  NoEntitlementForTheEvent: 409,
+  EventAlreadyRecorded: 409,
+
   /**
    * FR 31, LMS 501. A code or a name already on another type.
    *

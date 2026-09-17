@@ -18,6 +18,7 @@ export type HrSectionId =
   | 'approval-chains'
   | 'holidays'
   | 'adjustments'
+  | 'leave-events'
   | 'leavers'
   | 'policy'
   | 'email-wording'
@@ -69,6 +70,12 @@ export const HR_GROUPS: { title: string; sections: HrSection[] }[] = [
         label: 'Adjustments',
         icon: 'pencil',
         description: 'Putting one balance right, with the reason kept beside it.',
+      },
+      {
+        id: 'leave-events',
+        label: 'Life events',
+        icon: 'plus',
+        description: 'A birth, a bereavement and the like, which grants that leave.',
       },
       {
         id: 'leavers',

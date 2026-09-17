@@ -24,6 +24,7 @@ import {
   HrSettingsPage,
   type HrSectionId,
 } from './features/config/HrSettingsPage';
+import { LeaveEventsPage } from './features/config/LeaveEventsPage';
 import { LeaversPage } from './features/config/LeaversPage';
 import { LeaveTypesPage } from './features/config/LeaveTypesPage';
 import { PolicySettingsPage } from './features/config/PolicySettingsPage';
@@ -337,6 +338,7 @@ export function App() {
         {screen === 'holidays' ? <HolidaysPage onSignedOut={ranOut} /> : null}
         {screen === 'policy' ? <PolicySettingsPage onSignedOut={ranOut} /> : null}
         {screen === 'adjustments' ? <BalanceAdjustmentsPage onSignedOut={ranOut} /> : null}
+        {screen === 'leave-events' ? <LeaveEventsPage onSignedOut={ranOut} /> : null}
         {screen === 'leavers' ? <LeaversPage onSignedOut={ranOut} /> : null}
         {screen === 'reports' ? <ReportsPage onSignedOut={ranOut} /> : null}
         {screen === 'email-wording' ? <EmailWordingPage onSignedOut={ranOut} /> : null}

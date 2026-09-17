@@ -122,6 +122,15 @@ export class LeaveEventService {
     assertHasHappened(occurredOn, this.today());
 
     const employee = await this.employeeFor(input.employeeId);
+
+    /* Checked again inside the grant; asked first so a refusal says nothing about the rules. */
+    this.guard.enforce(
+      ledgerPolicy.grantForAnEvent(actor, {
+        employeeId: employee.id,
+        managerId: employee.managerId,
+      }),
+    );
+
     const type = await this.typeFor(input.leaveTypeId);
 
     /* FR 32g. The same column the annual grant and the rollover read to skip these

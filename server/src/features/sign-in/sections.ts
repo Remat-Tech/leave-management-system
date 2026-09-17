@@ -41,6 +41,11 @@ export const HR_SECTIONS: Section[] = [
     may: (actor) =>
       ledgerPolicy.adjust(actor, { employeeId: actor.employeeId ?? ANY, managerId: null }),
   },
+  {
+    id: 'leave-events',
+    may: (actor) =>
+      ledgerPolicy.grantForAnEvent(actor, { employeeId: actor.employeeId ?? ANY, managerId: null }),
+  },
   { id: 'leavers', may: (actor) => employeePolicy.list(actor) },
   { id: 'policy', may: (actor) => organisationPolicy.changePolicy(actor) },
   { id: 'email-wording', may: (actor) => notificationPolicy.readWording(actor) },

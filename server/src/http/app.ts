@@ -41,6 +41,10 @@ import { earliestOpenDayFrom } from '../features/leave-year/leave-year.service.j
 import { balanceRoutes } from '../features/balance/routes.js';
 import { BalanceAdjustmentService } from '../features/balance/adjustment.service.js';
 import { balanceAdjustmentRoutes } from '../features/balance/adjustment.routes.js';
+import type { LeaveEventRepository } from '../features/leave-event/leave-event.db.js';
+import { LeaveEventService } from '../features/leave-event/leave-event.service.js';
+import { leaveEventRoutes } from '../features/leave-event/leave-event.routes.js';
+import { theSystem } from '../auth/actor.js';
 import { LeaverStatementService } from '../features/balance/leaver-statement.service.js';
 import { leaverRoutes } from '../features/balance/leaver-statement.routes.js';
 import type { AuditRepository } from '../features/audit/audit.db.js';
@@ -83,6 +87,8 @@ export interface Application {
    * cannot disagree about what a movement does to a cached figure.
    */
   adjustments: BalanceService;
+  /** FR 32g, LMS 218. Optional, so a test app without them has no event routes. */
+  events?: LeaveEventRepository;
   employees: EmployeeRepository;
   /** FR 57, LMS 409. What the away calendar is scoped to, and what HR filters it by. */
   departments: DepartmentRepository;
@@ -231,6 +237,36 @@ export function buildApp(parts: Application): Express {
       balances: parts.adjustments,
     }),
   );
+
+  /* FR 32g, LMS 218. Recording a birth, a bereavement and the like grants that type's days.
+     Posting is either HR desk's; `ledgerPolicy.grantForAnEvent` decides. */
+  if (parts.events !== undefined) {
+    const rules = new EntitlementRuleService(
+      parts.entitlementRules,
+      parts.guard,
+      earliestOpenDayFrom(parts.years),
+    );
+    const lookup = theSystem('the figure an event grants');
+
+    app.use(
+      '/api',
+      leaveEventRoutes({
+        events: new LeaveEventService(
+          parts.adjustments,
+          parts.guard,
+          parts.employees,
+          parts.types,
+          parts.years,
+          parts.events,
+          async (employee, leaveTypeId, on) =>
+            (await rules.entitlementOn(lookup, employee, leaveTypeId, on))?.entitlementDays,
+        ),
+        guard: parts.guard,
+        employees: parts.employees,
+        types: parts.types,
+      }),
+    );
+  }
 
   /* FR 37a, §8.6d, §8.7, LMS 509. What a leaver is owed on their last day, with its working.
      A read service built from repositories: the figure writes nothing, so it needs no

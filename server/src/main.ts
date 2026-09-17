@@ -43,6 +43,9 @@ import { ApprovalDelegationService } from './features/leave-request/delegation.s
 import { LeaveRequestService } from './features/leave-request/leave-request.service.js';
 import { NotificationService } from './features/notification/notification.service.js';
 import { SignInService } from './features/sign-in/sign-in.service.js';
+import { LeaveEventRepository } from './features/leave-event/leave-event.db.js';
+import { EntitlementExpiry, summaryOf } from './features/entitlement/entitlement-expiry.job.js';
+import { theSystem } from './auth/actor.js';
 
 loadEnv();
 
@@ -174,6 +177,9 @@ const holidayRecalculations = new HolidayRecalculationService(
   earliestOpenDayFrom(years),
 );
 
+/** FR 32g, FR 32e, LMS 218. Births, bereavements and the like, and the grants they caused. */
+const events = new LeaveEventRepository(db);
+
 const app = buildApp({
   guard,
   signIn: new SignInService(accounts, employees, roles, mailer, guard),
@@ -181,6 +187,8 @@ const app = buildApp({
   /** FR 27, FR 37, LMS 506. */
   ledger,
   adjustments: movements,
+  /** FR 32g, LMS 218. */
+  events,
   employees,
   departments,
   types,
@@ -229,6 +237,39 @@ const server = app.listen(port, () => {
 });
 
 /**
+ * FR 32e. Lapses unused event grants past their deadline, at start and then daily.
+ *
+ * In process rather than a cron: the job is safe to rerun, so a restart or a sleeping
+ * instance only means it runs again when the process wakes.
+ */
+const expiry = new EntitlementExpiry(movements, events, types, years);
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function lapseExpiredGrants(): void {
+  void expiry
+    .run(theSystem('the entitlement expiry'))
+    .then((run) => {
+      console.log(
+        JSON.stringify({ event: 'job.entitlement-expiry', at: new Date().toISOString() }),
+      );
+      console.log(summaryOf(run));
+    })
+    .catch((error: unknown) => {
+      console.error(
+        JSON.stringify({
+          event: 'job.entitlement-expiry.failed',
+          at: new Date().toISOString(),
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+}
+
+lapseExpiredGrants();
+const expiryTimer = setInterval(lapseExpiredGrants, DAY_MS);
+expiryTimer.unref();
+
+/**
  * Stop taking new connections, finish the ones in flight, then close the pool.
  *
  * In that order, and the order is the point: closing the pool first would fail every
@@ -239,6 +280,8 @@ const server = app.listen(port, () => {
  */
 function shutDown(signal: string): void {
   console.log(JSON.stringify({ event: 'http.closing', at: new Date().toISOString(), signal }));
+
+  clearInterval(expiryTimer);
 
   server.close(() => {
     void db.destroy().then(() => {
