@@ -129,6 +129,20 @@ export interface EventGrant extends BalanceMovement {
   note?: string | null;
 }
 
+/**
+ * A per-occasion grant posted as a request for that leave is finally approved. FR 32g.
+ *
+ * Only posted where the balance cannot cover the request, so a second request drawing on
+ * an earlier grant (paternity in two halves) grants nothing.
+ */
+export interface GrantOnApproval {
+  days: number;
+  reason: string;
+  /** The first day of the leave; the grant's leave year and expiry run from it. */
+  occurredOn: CalendarDate;
+  expiresOn: CalendarDate | null;
+}
+
 /** What HR or the nightly run supplies to lapse one. FR 32e. */
 export interface EventLapse extends BalanceMovement {
   /** The event whose grant has run out of time, and which this closes off. */
@@ -194,6 +208,8 @@ export interface RequestToDecide {
    * Null where the caller named none: it is what a screen offers, not what the row demands.
    */
   versionSeen: string | null;
+  /** FR 32g. For a per-occasion type; posted on a final yes where the balance is short. */
+  grantIfShort?: GrantOnApproval | null;
 }
 
 /** What `LeaveRequestService` supplies to send a request back into its chain. FR 48b, LMS 320. */
@@ -292,6 +308,8 @@ export interface RequestToReverse {
   today: CalendarDate;
   /** FR 27. The sentence on the ledger entries. */
   reasonForMoving: (action: ReversalAction) => string;
+  /** FR 32g. As on a decision, for a refusal reversed into an approval. */
+  grantIfShort?: GrantOnApproval | null;
 }
 
 /** The reversal, the request as it now stands, and its balance. */
@@ -401,7 +419,13 @@ export class BalanceService {
         throw new LeaveTypeNotFound(request.leaveTypeId);
       }
 
-      const days = daysToReserve(held, request.days, type.exceedableWithDocument);
+      /* FR 32g. A per-occasion type is granted on approval, so its request is held against
+         nothing yet; `LeaveRequestService` has already capped it at what one occasion grants. */
+      const days = daysToReserve(
+        held,
+        request.days,
+        type.exceedableWithDocument || type.entitlementBasis === 'EVENT',
+      );
 
       const written = await repositories.requests.submit(actor, request);
 
@@ -712,6 +736,17 @@ export class BalanceService {
       /* FR 48b. The stages this move had to skip, written before the status is judged at
          COMMIT — `leave_request_is_approved_by_every_stage` reads them. LMS 320. */
       await repositories.routing.record(actor, current.id, outcome.skips);
+
+      /* FR 32g. The final yes on per-occasion leave the balance cannot cover grants the
+         occasion first, in this transaction, so a refusal or a rollback grants nothing. */
+      if (
+        isTheLastWord(outcome) &&
+        saysYes(action) &&
+        decision.grantIfShort != null &&
+        withAvailable(held).available < 0
+      ) {
+        await this.postGrantOnApproval(repositories, actor, key, decision.grantIfShort);
+      }
 
       return {
         request: written,
@@ -1092,7 +1127,19 @@ export class BalanceService {
           throw new LeaveTypeNotFound(current.leaveTypeId);
         }
 
-        const days = daysToReserve(held, current.days, type.exceedableWithDocument);
+        /* FR 32g. As on a final approval: grant the occasion where the balance is short. */
+        let granted = 0;
+
+        if (reverse.grantIfShort != null && available(held) < current.days) {
+          await this.postGrantOnApproval(repositories, actor, key, reverse.grantIfShort);
+          granted = reverse.grantIfShort.days;
+        }
+
+        const days = daysToReserve(
+          { ...held, entitled: held.entitled + granted },
+          current.days,
+          type.exceedableWithDocument,
+        );
 
         for (const entryType of ['RESERVATION', 'DEDUCTION'] as const) {
           await repositories.entries.post(
@@ -1413,6 +1460,35 @@ export class BalanceService {
 
       return { entry, event, balance: withAvailable(await repositories.balances.forOne(key)) };
     });
+  }
+
+  /** A `GRANT` and the event naming it, inside the caller's transaction. FR 32g. */
+  private async postGrantOnApproval(
+    repositories: Repositories,
+    actor: Actor,
+    key: BalanceKey,
+    grant: GrantOnApproval,
+  ): Promise<void> {
+    const entry = await repositories.entries.post(
+      actor,
+      validateNewLedgerEntry({
+        ...key,
+        entryType: 'GRANT',
+        days: daysToGrant(grant.days, 0),
+        reason: grant.reason,
+      }),
+    );
+
+    await repositories.events.record(
+      actor,
+      validateNewLeaveEvent({
+        ...key,
+        occurredOn: grant.occurredOn,
+        expiresOn: grant.expiresOn,
+        note: null,
+        grantedEntryId: entry.id,
+      }),
+    );
   }
 
   /**

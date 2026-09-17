@@ -1081,6 +1081,8 @@ function quoteAsJson(quote: LeaveRequestQuote): unknown {
     availableNow: quote.availableNow,
     /** May be negative, legitimately. §8.6b. */
     availableAfter: quote.availableAfter,
+    /** FR 32g. What one occasion grants, for per-occasion leave. */
+    perOccasion: quote.perOccasion,
     /** FR 38a. */
     approvedBy: quote.approvedBy,
     /** FR 13, FR 17, FR 14. Not refusals — the request may still go ahead. */

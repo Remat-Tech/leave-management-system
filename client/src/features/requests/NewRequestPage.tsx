@@ -227,7 +227,12 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
   if (submitted !== undefined) {
     return (
       <div className="page">
-        <Asked submitted={submitted} type={chosen} onStartAgain={startAgain} />
+        <Asked
+          submitted={submitted}
+          type={chosen}
+          perOccasion={quote?.perOccasion ?? null}
+          onStartAgain={startAgain}
+        />
       </div>
     );
   }
@@ -585,13 +590,20 @@ function Cost({
             What it leaves you
           </h3>
           <dl className="standing">
-            <dt>You have</dt>
+            <dt>{quote.perOccasion === null ? 'You have' : 'You can take'}</dt>
             <dd>{inDays(quote.availableNow)}</dd>
             <dt>After this</dt>
             <dd className={quote.availableAfter < 0 ? 'overdrawn' : undefined}>
               {inDays(quote.availableAfter)}
             </dd>
           </dl>
+          {/* FR 32g. Said, because a balance of nought otherwise reads as nothing to take. */}
+          {quote.perOccasion === null ? null : (
+            <p className="muted">
+              {quote.leaveTypeName} is {inDays(quote.perOccasion)} for each occasion. The days are
+              added when your request is approved.
+            </p>
+          )}
         </section>
 
         {/* FR 38a. Said here as well as in the rules, because by now it is about this
@@ -644,10 +656,13 @@ function Warning({ warning }: { warning: QuoteWarning }) {
 function Asked({
   submitted,
   type,
+  perOccasion,
   onStartAgain,
 }: {
   submitted: Submitted;
   type: RequestableLeaveType | undefined;
+  /** FR 32g. Set for per-occasion leave, whose days arrive on approval. */
+  perOccasion: number | null;
   onStartAgain: () => void;
 }) {
   return (
@@ -665,10 +680,16 @@ function Asked({
         been decided.
       </p>
 
-      <p className="muted">
-        {inDays(submitted.availableAfter)} left of this kind of leave, with these days held against
-        it while it is being decided.
-      </p>
+      {perOccasion === null ? (
+        <p className="muted">
+          {inDays(submitted.availableAfter)} left of this kind of leave, with these days held
+          against it while it is being decided.
+        </p>
+      ) : (
+        <p className="muted">
+          The days for this occasion are added to your balance when it is approved.
+        </p>
+      )}
 
       <div className="dates">
         <button type="button" className="primary" onClick={onStartAgain}>

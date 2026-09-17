@@ -267,6 +267,17 @@ export function reasonForGrant(
   return expiresOn === null ? granted : `${granted}, usable up to ${expiresOn}`;
 }
 
+/** What the grant posted on approving per-occasion leave says. FR 27, FR 32g. */
+export function reasonForGrantOnApproval(
+  leaveTypeName: string,
+  from: CalendarDate,
+  expiresOn: CalendarDate | null,
+): string {
+  const granted = `${leaveTypeName} granted on approving leave from ${from}`;
+
+  return expiresOn === null ? granted : `${granted}, usable up to ${expiresOn}`;
+}
+
 /**
  * What the lapsing entry says. FR 27, and the sentence somebody disputes.
  *

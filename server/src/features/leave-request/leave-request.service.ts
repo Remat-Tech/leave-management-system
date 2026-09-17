@@ -118,6 +118,7 @@ import {
   assertEligible,
   assertSomebodyApprovesIt,
   assertStillOffered,
+  hasRunningBalance,
   type LeaveType,
   LeaveTypeNotFound,
 } from '../leave-type/leave-type.js';
@@ -132,8 +133,10 @@ import type { OrganisationRepository } from '../organisation/organisation.db.js'
 /** FR 44, LMS 505. */
 import { OverridesAreSwitchedOff } from '../organisation/organisation.js';
 import { BalanceOverdrawn } from '../balance/balance.js';
+import { expiryFor, reasonForGrantOnApproval } from '../leave-event/leave-event.js';
 import type {
   BalanceService,
+  GrantOnApproval,
   LeaveApproved,
   LeaveReclassified,
   LeaveReleased,
@@ -307,6 +310,17 @@ export class LeaveRequestService {
      * somebody to say their leave is agreed. Here there is no transaction to be inside.
      */
     private readonly notifications: NotificationService,
+    /**
+     * FR 32g. What a per-occasion type is worth to this person on a day.
+     *
+     * Optional so a service built without it keeps per-occasion types to what the balance
+     * holds, as before; with it, their days are granted when a request is finally approved.
+     */
+    private readonly entitlementOn?: (
+      employee: Employee,
+      leaveTypeId: string,
+      on: CalendarDate,
+    ) => Promise<number | undefined>,
   ) {}
 
   /**
@@ -349,6 +363,7 @@ export class LeaveRequestService {
       count,
       availableNow: await this.availableFor(actor, employee, type, year),
       daysOfNotice: noticeGiven(this.today(), period.from),
+      perOccasion: await this.perOccasionFor(employee, type, period.from),
     });
   }
 
@@ -424,7 +439,13 @@ export class LeaveRequestService {
        same figure the quote showed. `daysToReserve` checks it again inside the lock and
        that is the answer that binds; this is the one that can name the leave type, the
        figure and what to ask for instead. */
-    assertTheDaysAreThere(type, period, count, availableNow);
+    assertTheDaysAreThere(
+      type,
+      period,
+      count,
+      availableNow,
+      await this.perOccasionFor(employee, type, period.from),
+    );
 
     /* FR 13, FR 32a, LMS 311. The two documentation thresholds, and the evidence that has
        been waiting under this person's name to answer them. Asked here — while the form is
@@ -916,6 +937,8 @@ export class LeaveRequestService {
       versionSeen,
       reasonForTaking: reasonForApproval(type.name, request, request.days, outcome.by),
       reasonForGivingBack: reasonForRelease(type.name, request, request.days, 'REFUSED'),
+      /* FR 32g. Only posted on the final yes, and only where the balance is short. */
+      grantIfShort: await this.grantOnApproval(employee, type, request),
     });
 
     await this.tellThemAbout(decided, employee, type.name);
@@ -1230,6 +1253,7 @@ export class LeaveRequestService {
       reason: said,
       today,
       reasonForMoving: (action) => reasonForReversal(type.name, request, action),
+      grantIfShort: await this.grantOnApproval(employee, type, request),
     });
 
     const told = new Set<string>([...(await this.employeesInHr())]);
@@ -2195,6 +2219,45 @@ export class LeaveRequestService {
    * another connection; `daysToReserve` inside `BalanceService.reserveForRequest` is the
    * check that cannot be beaten. See {@link NotEnoughDays}.
    */
+  /**
+   * FR 32g. What one occasion of a per-occasion type grants, as at the first day of leave.
+   *
+   * Null for a yearly type or where no lookup was given; nought where no rule reaches them.
+   */
+  private async perOccasionFor(
+    employee: Employee,
+    type: LeaveType,
+    on: CalendarDate,
+  ): Promise<number | null> {
+    if (hasRunningBalance(type) || this.entitlementOn === undefined) {
+      return null;
+    }
+
+    return (await this.entitlementOn(employee, type.id, on)) ?? 0;
+  }
+
+  /** FR 32g, FR 32e. The grant a final approval posts if the balance cannot cover it. */
+  private async grantOnApproval(
+    employee: Employee,
+    type: LeaveType,
+    request: LeaveRequest,
+  ): Promise<GrantOnApproval | null> {
+    const days = await this.perOccasionFor(employee, type, request.from);
+
+    if (days === null || days <= 0) {
+      return null;
+    }
+
+    const expiresOn = expiryFor(request.from, type.entitlementExpiryMonths);
+
+    return {
+      days,
+      occurredOn: request.from,
+      expiresOn,
+      reason: reasonForGrantOnApproval(type.name, request.from, expiresOn),
+    };
+  }
+
   private async availableFor(
     actor: Actor,
     employee: Employee,

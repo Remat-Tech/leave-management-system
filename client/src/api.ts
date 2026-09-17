@@ -280,6 +280,11 @@ export interface Quote {
   availableNow: number;
   /** May be negative, legitimately. §8.6b. */
   availableAfter: number;
+  /**
+   * FR 32g. For per-occasion leave, what one occasion grants; null otherwise. Where set,
+   * `availableNow` is what may be asked for, granted when the request is approved.
+   */
+  perOccasion: number | null;
   /** FR 38a. */
   approvedBy: string;
   warnings: QuoteWarning[];

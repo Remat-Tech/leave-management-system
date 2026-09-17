@@ -30,6 +30,7 @@ import {
   LeaveCrossesAYearEnd,
   LeaveOverlapsAnother,
   LIVE_STATUSES,
+  MoreThanAnOccasionGrants,
   NotEnoughDays,
   noticeGiven,
   periodsOverlap,
@@ -1505,6 +1506,48 @@ describe('the refusal, which names the leave already in the way', () => {
     expect(refusal.conflict).toBeUndefined();
     expect(refusal.message).toContain('at the same moment');
     expect(refusal.message).toContain('reload');
+  });
+});
+
+/* ------------------------------------------------ leave granted per occasion, FR 32g */
+
+describe('per-occasion leave, asked for before its days are granted', () => {
+  const COMPASSIONATE = leaveType({
+    code: 'COMPASSIONATE_TEST',
+    name: 'Compassionate Leave',
+    entitlementBasis: 'EVENT',
+  });
+
+  it('is capped at what one occasion grants, not at an empty balance', () => {
+    expect(() =>
+      assertTheDaysAreThere(COMPASSIONATE, PERIOD, { ...SEVEN_OF_NINE, days: 5 }, 0, 5),
+    ).not.toThrow();
+    expect(() => assertTheDaysAreThere(COMPASSIONATE, PERIOD, SEVEN_OF_NINE, 0, 5)).toThrow(
+      MoreThanAnOccasionGrants,
+    );
+  });
+
+  it('may use more than that where an earlier grant left more', () => {
+    expect(() => assertTheDaysAreThere(COMPASSIONATE, PERIOD, SEVEN_OF_NINE, 7, 5)).not.toThrow();
+  });
+
+  it('is refused with the figure and what to ask for instead', () => {
+    expect(() => assertTheDaysAreThere(COMPASSIONATE, PERIOD, SEVEN_OF_NINE, 0, 5)).toThrow(
+      'This asks for 7 days of Compassionate Leave, and you can take up to 5 days for one ' +
+        'occasion. Choose dates that come to 5 days or fewer.',
+    );
+  });
+
+  it('is quoted against the occasion, and says so', () => {
+    const quote = aQuote({ type: COMPASSIONATE, availableNow: 0, perOccasion: 5 });
+
+    expect(quote).toMatchObject({ perOccasion: 5, availableNow: 5, availableAfter: -2 });
+    expect(quote.warnings.map((one) => one.code)).toContain('NOT_ENOUGH_DAYS');
+    expect(aQuote({ type: COMPASSIONATE, availableNow: 0, perOccasion: 7 }).warnings).toEqual([]);
+  });
+
+  it('leaves a yearly type quoted against its balance', () => {
+    expect(aQuote()).toMatchObject({ perOccasion: null, availableNow: 20 });
   });
 });
 

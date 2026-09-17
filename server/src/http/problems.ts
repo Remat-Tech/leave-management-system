@@ -333,6 +333,8 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   NotEligibleForTheType: 409,
   NoEntitlementForTheEvent: 409,
   EventAlreadyRecorded: 409,
+  /** FR 32g. Fewer days is the fix. */
+  MoreThanAnOccasionGrants: 409,
 
   /**
    * FR 31, LMS 501. A code or a name already on another type.

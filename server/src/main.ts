@@ -46,6 +46,7 @@ import { SignInService } from './features/sign-in/sign-in.service.js';
 import { LeaveEventRepository } from './features/leave-event/leave-event.db.js';
 import { EntitlementExpiry, summaryOf } from './features/entitlement/entitlement-expiry.job.js';
 import { theSystem } from './auth/actor.js';
+import { EntitlementRuleService } from './features/entitlement/entitlement-rule.service.js';
 
 loadEnv();
 
@@ -129,6 +130,13 @@ const ledger = new LedgerRepository(db);
  */
 const notifications = new NotificationService(new NotificationRepository(db), mailer, guard);
 
+/** FR 31. The entitlement rules, asked what per-occasion leave is worth. */
+const entitlementLookup = new EntitlementRuleService(
+  entitlementRules,
+  guard,
+  earliestOpenDayFrom(years),
+);
+
 /**
  * The write door, built once here. LMS 301, LMS 403.
  *
@@ -155,6 +163,17 @@ const leaveRequests = new LeaveRequestService(
   organisation,
   new LeaveCalculatorService(patterns, holidays, guard),
   notifications,
+  /* FR 32g. What per-occasion leave is worth, so it is capped when asked for and granted
+     when approved. */
+  async (employee, leaveTypeId, on) =>
+    (
+      await entitlementLookup.entitlementOn(
+        theSystem('the figure an occasion grants'),
+        employee,
+        leaveTypeId,
+        on,
+      )
+    )?.entitlementDays,
 );
 
 /**

@@ -1739,6 +1739,46 @@ export class NotEnoughDays extends Error {
 }
 
 /**
+ * Per-occasion leave asked for beyond what one occasion grants. FR 32g.
+ *
+ * The same `NOT_ENOUGH_DAYS` code as {@link NotEnoughDays}, so a form treats both alike.
+ */
+export class MoreThanAnOccasionGrants extends Error {
+  readonly code = 'NOT_ENOUGH_DAYS';
+  readonly leaveTypeId: string;
+  readonly period: LeavePeriod;
+  readonly requested: number;
+  /** The most one request may ask for. */
+  readonly couldAskFor: number;
+
+  constructor(type: LeaveType, period: LeavePeriod, requested: number, limit: number) {
+    super(occasionInWords(type, requested, limit));
+    this.name = 'MoreThanAnOccasionGrants';
+    this.leaveTypeId = type.id;
+    this.period = period;
+    this.requested = requested;
+    this.couldAskFor = Math.max(0, Math.floor(limit));
+  }
+}
+
+/**
+ * The most one request for per-occasion leave may ask for. FR 32g.
+ *
+ * What one occasion grants, or what is still left of an earlier grant if that is more.
+ */
+export function occasionLimit(perOccasion: number, availableNow: number): number {
+  return Math.max(perOccasion, availableNow);
+}
+
+function occasionInWords(type: LeaveType, requested: number, limit: number): string {
+  return (
+    `This asks for ${inDays(requested)} of ${type.name}, and you can take up to ` +
+    `${inDays(Math.floor(limit))} for one occasion. Choose dates that come to ` +
+    `${inDays(Math.floor(limit))} or fewer.`
+  );
+}
+
+/**
  * Short notice submitted without the acknowledgement. FR 17, LMS 307.
  *
  * Not about the leave: the same request goes through once it is acknowledged.
@@ -2058,8 +2098,20 @@ export function assertTheDaysAreThere(
   period: LeavePeriod,
   count: DayCount,
   availableNow: number,
+  /** FR 32g. What one occasion grants, for a per-occasion type; null otherwise. */
+  perOccasion: number | null = null,
 ): void {
   if (balanceMayBeExceededWithDocument(type)) {
+    return;
+  }
+
+  if (perOccasion !== null) {
+    const limit = occasionLimit(perOccasion, availableNow);
+
+    if (count.days > limit) {
+      throw new MoreThanAnOccasionGrants(type, period, count.days, limit);
+    }
+
     return;
   }
 
@@ -2281,6 +2333,13 @@ export interface LeaveRequestQuote {
   /** What the balance holds now, and what it would hold if this were submitted. */
   availableNow: number;
   availableAfter: number;
+  /**
+   * FR 32g. For per-occasion leave, the days one occasion grants, and null otherwise.
+   *
+   * Where set, `availableNow` is what may be asked for — this, or what is left of an
+   * earlier grant if that is more — since the days are granted when the request is approved.
+   */
+  perOccasion: number | null;
   /** Who would decide it, in words. FR 38a. */
   approvedBy: string;
   warnings: RequestWarning[];
@@ -2304,8 +2363,14 @@ export function quoteFor(input: {
   count: DayCount;
   availableNow: number;
   daysOfNotice: number;
+  /** FR 32g. What one occasion grants, for a per-occasion type. */
+  perOccasion?: number | null;
 }): LeaveRequestQuote {
-  const { type, period, count, availableNow, daysOfNotice } = input;
+  const { type, period, count, daysOfNotice } = input;
+  const perOccasion = input.perOccasion ?? null;
+  /* FR 32g. Per-occasion days arrive on approval, so what may be asked for is the figure. */
+  const availableNow =
+    perOccasion === null ? input.availableNow : occasionLimit(perOccasion, input.availableNow);
   const warnings: RequestWarning[] = [];
 
   const shortfall = noticeShortfall(type, daysOfNotice);
@@ -2334,12 +2399,15 @@ export function quoteFor(input: {
   if (count.days > availableNow) {
     warnings.push({
       code: 'NOT_ENOUGH_DAYS',
-      message: balanceMayBeExceededWithDocument(type)
-        ? `${daysAgainstTheBalance(type, count.days, availableNow)}. ${type.name} may go ` +
-          `past its allowance with documentation, so this can still be submitted with a ` +
-          `certificate on it.`
-        : `${daysAgainstTheBalance(type, count.days, availableNow)}, so it cannot be ` +
-          `submitted as it stands.`,
+      message:
+        perOccasion !== null
+          ? occasionInWords(type, count.days, availableNow)
+          : balanceMayBeExceededWithDocument(type)
+            ? `${daysAgainstTheBalance(type, count.days, availableNow)}. ${type.name} may go ` +
+              `past its allowance with documentation, so this can still be submitted with a ` +
+              `certificate on it.`
+            : `${daysAgainstTheBalance(type, count.days, availableNow)}, so it cannot be ` +
+              `submitted as it stands.`,
     });
   }
 
@@ -2355,6 +2423,7 @@ export function quoteFor(input: {
     free: count.free,
     availableNow,
     availableAfter: availableNow - count.days,
+    perOccasion,
     approvedBy: approvalChainInWords(type),
     warnings,
   };
