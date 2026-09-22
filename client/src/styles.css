@@ -2409,9 +2409,13 @@ select[aria-invalid='true'] {
   height: 2.75rem;
 }
 
+/* The text face, at the size and weight a card title has: this sits above a row of them and
+   is read as the same kind of thing, not as a page heading. */
 .today-said h3 {
   margin: 0;
+  font-family: var(--face-text);
   font-size: 1.0625rem;
+  font-weight: 600;
 }
 
 .today-said p {
