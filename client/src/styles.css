@@ -628,15 +628,14 @@ button:hover:not(:disabled) {
   gap: 0.65rem;
 }
 
-/* The mono face rather than the display one: a card title is a label on a row of cards —
-   a leave type, a set of dates, a colleague, a settings section — and the even width is
-   what makes a column of them scan. 600 because the face stops there. */
+/* The display face, inherited from `h3`. Deliberately not the mono one: a card title is
+   mostly words — a leave type, a colleague, a settings section — and a monospaced face pads
+   every narrow letter out to the width of an `m`, which reads as gappy. The dates below are
+   the exception, because there the even width is the point. */
 .card-head h3 {
   flex: 1 1 auto;
   min-width: 0;
-  font-family: var(--face-figure);
   font-size: 1.0625rem;
-  font-weight: 600;
   /* `break-word`, not `anywhere`: "Compassionate" wrapping mid-word is worse than two lines. */
   overflow-wrap: break-word;
 }
@@ -992,10 +991,13 @@ button:hover:not(:disabled) {
   gap: 0.75rem;
 }
 
-/* The dates are the heading, because they are what somebody is looking for. They line up
-   down the column because the face is monospaced, so there is no `tabular-nums` here. */
+/* The dates are the heading, because they are what somebody is looking for, and they are the
+   one card title set in the mono face: digits are all one width in it, so a column of dates
+   lines up on the figure. 600 because the face stops there. */
 .card.request .card-head h3 {
+  font-family: var(--face-figure);
   font-size: 0.9375rem;
+  font-weight: 600;
 }
 
 /* Leave that came back. Quieter rather than hidden, exactly as a dormant balance card is:
@@ -1694,10 +1696,12 @@ select[aria-invalid='true'] {
 
 /* ------------------------------------------------------ the approver queue */
 
-/* The person is the heading here rather than the dates, so it is given the size a name wants
-   rather than the smaller one a set of dates does. */
+/* The person is the heading here rather than the dates, so it goes back to the face and the
+   size a name wants — the reverse of `.card.request .card-head h3`, which this overrides. */
 .card.request.queued .card-head h3 {
+  font-family: var(--face-display);
   font-size: 1rem;
+  font-weight: 700;
 }
 
 /* FR 48, §8.6a. A request this approver may not decide. Quieter rather than hidden — it is
