@@ -628,10 +628,15 @@ button:hover:not(:disabled) {
   gap: 0.65rem;
 }
 
+/* The mono face rather than the display one: a card title is a label on a row of cards —
+   a leave type, a set of dates, a colleague, a settings section — and the even width is
+   what makes a column of them scan. 600 because the face stops there. */
 .card-head h3 {
   flex: 1 1 auto;
   min-width: 0;
+  font-family: var(--face-figure);
   font-size: 1.0625rem;
+  font-weight: 600;
   /* `break-word`, not `anywhere`: "Compassionate" wrapping mid-word is worse than two lines. */
   overflow-wrap: break-word;
 }
@@ -702,7 +707,6 @@ button:hover:not(:disabled) {
   font-weight: 600;
   letter-spacing: -0.04em;
   line-height: 1;
-  font-variant-numeric: tabular-nums;
 }
 
 .headline .of {
@@ -988,10 +992,9 @@ button:hover:not(:disabled) {
   gap: 0.75rem;
 }
 
-/* The dates are the heading, because they are what somebody is looking for. Tabular figures
-   so that a column of them lines up. */
+/* The dates are the heading, because they are what somebody is looking for. They line up
+   down the column because the face is monospaced, so there is no `tabular-nums` here. */
 .card.request .card-head h3 {
-  font-variant-numeric: tabular-nums;
   font-size: 0.9375rem;
 }
 
@@ -1691,10 +1694,9 @@ select[aria-invalid='true'] {
 
 /* ------------------------------------------------------ the approver queue */
 
-/* The person is the heading here rather than the dates, so it is set as a name and not as a
-   figure — the reverse of `.card.request .card-head h3`, which this overrides. */
+/* The person is the heading here rather than the dates, so it is given the size a name wants
+   rather than the smaller one a set of dates does. */
 .card.request.queued .card-head h3 {
-  font-variant-numeric: normal;
   font-size: 1rem;
 }
 
@@ -2281,7 +2283,6 @@ select[aria-invalid='true'] {
   font-family: var(--face-figure);
   font-size: 0.75rem;
   font-weight: 500;
-  font-variant-numeric: tabular-nums;
   color: var(--ink-faint);
 }
 
@@ -2521,7 +2522,6 @@ select[aria-invalid='true'] {
 .figures .figure {
   font-family: var(--face-figure);
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
 /* §8.6b. Legitimately below nought on a type FR 32a lets go past its allowance. */
@@ -3745,7 +3745,6 @@ select[aria-invalid='true'] {
   font-family: var(--face-figure);
   font-size: 2.25rem;
   line-height: 1;
-  font-variant-numeric: tabular-nums;
 }
 
 .leaver-figure b.overdrawn {
