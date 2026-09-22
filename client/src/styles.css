@@ -265,11 +265,14 @@ h1 {
   letter-spacing: 0.01em;
 }
 
+/* Sized by height, with the width left to follow. The file is 264x213 rather than square, so
+   a square box fitted it to the width and letterboxed the rest — which is why it looked both
+   small and slightly adrift beside the wordmark. Nothing here crops or stretches it: the one
+   figure is the height, and the intrinsic ratio decides the rest. */
 .logo-mark {
   flex: none;
-  width: 2rem;
-  height: 2rem;
-  object-fit: contain;
+  width: auto;
+  height: 2.25rem;
 }
 
 .logo-word b {
