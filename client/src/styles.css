@@ -4,73 +4,66 @@
  * The brand guidelines' five colours are `--brand-*` and appear nowhere else — every rule
  * reaches for a semantic token instead, so a repaint is an edit to the top of this file.
  * Primary #020202 and #006AFE; secondary #A0A0A0, #FFFFFF and #1FC0FF, used sparingly.
- * Sora for headings and figures, Montserrat for running text.
+ * Inter for text, Big Shoulders Display for headings, IBM Plex Mono for figures.
  *
  * Colour never carries meaning alone: every one of them has a word beside it. NFR USA 03.
  * One layout told how to bend rather than a phone stylesheet. NFR USA 01.
  */
 
 /**
- * Sora, the company's primary typeface.
+ * The three faces, served from `client/public/fonts` rather than fetched from Google.
  *
- * Served from `client/public/fonts` rather than fetched from Google: this is an internal
- * system behind a login, and a font request told Google the IP of everybody signing in to it.
- * Four weights, latin only, about 96 KB in all.
+ * That is deliberate and is the one thing not to change when the faces do: this is an
+ * internal system behind a login, and a font request would tell Google the IP of everybody
+ * signing in to it. Latin only, about 98 KB in all.
  *
- * `swap` so a slow font never leaves the page blank, and the stack behind it is the reader's
- * own system font — which is what they see if the files fail to load at all.
+ * `swap` so a slow font never leaves the page blank, and the stack behind each is the
+ * reader's own system font — which is what they see if the files fail to load at all.
+ *
+ * Two of the three are variable fonts, so one file and one rule covers a weight range: a
+ * `font-weight` span on the descriptor is what lets every weight come off a single download.
  */
+
+/** Inter, the text face: body, labels, buttons, and every piece of ordinary UI. */
 @font-face {
-  font-family: 'Sora';
+  font-family: 'Inter';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 400 600;
   font-display: swap;
-  src: url('/fonts/sora-400.woff2') format('woff2');
+  src: url('/fonts/inter.woff2') format('woff2');
 }
 
+/** Big Shoulders Display, the display face: page titles and card headings. */
 @font-face {
-  font-family: 'Sora';
+  font-family: 'Big Shoulders Display';
   font-style: normal;
-  font-weight: 500;
+  font-weight: 600 800;
   font-display: swap;
-  src: url('/fonts/sora-500.woff2') format('woff2');
-}
-
-@font-face {
-  font-family: 'Sora';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/sora-600.woff2') format('woff2');
-}
-
-@font-face {
-  font-family: 'Sora';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/sora-700.woff2') format('woff2');
+  src: url('/fonts/big-shoulders-display.woff2') format('woff2');
 }
 
 /**
- * Montserrat, the company's secondary typeface. Guidelines p6.
+ * IBM Plex Mono, the figure face: day counts, balances and the calendar grid.
  *
- * The guidelines name Area Normal and Founders Grotesk, and both are licensed faces this
- * project has no licence for — so the sentence that matters is the one they end on: *when
- * Founders Grotesk is not available, it is acceptable to use Montserrat*. This is that.
- *
- * It sets running text, never a headline: "we never use the secondary for our main messages".
- * Sora keeps the page titles, the card headings and every figure.
- *
- * One file and one rule rather than four, because this is the variable font — a weight range
- * on the descriptor is what lets 400 through 700 come off a single 37 KB download.
+ * Static rather than variable, so the two weights are two files. Both are here because a
+ * weight this face does not have is one the browser smears on for itself, and synthetic bold
+ * on a monospace figure is exactly where it looks worst — the stems thicken and the digits
+ * stop being the width the face was chosen for.
  */
 @font-face {
-  font-family: 'Montserrat';
+  font-family: 'IBM Plex Mono';
   font-style: normal;
-  font-weight: 400 700;
+  font-weight: 500;
   font-display: swap;
-  src: url('/fonts/montserrat.woff2') format('woff2');
+  src: url('/fonts/ibm-plex-mono-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-600.woff2') format('woff2');
 }
 
 :root {
@@ -133,18 +126,21 @@
   --who-9: #6d7580;
 
   /**
-   * The two faces, as the guidelines divide them. Pages 4 and 6.
+   * The three faces, each with one job, so a repaint is an edit to these three lines.
    *
-   * **Sora is the primary and takes the main messages** — page titles, card headings, and every
-   * figure on a balance or a decision.
+   * **Inter is the text face and the default** — body, labels, buttons, and everything that
+   * is neither a heading nor a number. `body` sets it once and the rest of the file inherits.
    *
-   * **Montserrat is the secondary and takes the running text**, which is what the guidelines
-   * ask a secondary face for: "large amounts of text, detailed information, and where space is
-   * limited". It is the stand-in page 6 names for Founders Grotesk, which is licensed and not
-   * in this repository. It never sets a headline, which is the one thing that page forbids.
+   * **Big Shoulders Display takes the headings**, which is the whole of what it is for: it is
+   * condensed, so it reads as a title at a glance and badly as a paragraph. Never running text.
+   *
+   * **IBM Plex Mono takes the figures** — a balance, a day count, a day of the month. A
+   * monospace face is what makes a column of them line up on the digit rather than the glyph,
+   * which is the one thing a person scanning their leave is actually doing.
    */
-  --face-heading: 'Sora', system-ui, sans-serif;
-  --face-text: 'Montserrat', system-ui, sans-serif;
+  --face-display: 'Big Shoulders Display', system-ui, sans-serif;
+  --face-text: 'Inter', system-ui, sans-serif;
+  --face-figure: 'IBM Plex Mono', ui-monospace, monospace;
 
   --radius: 14px;
   --radius-small: 8px;
@@ -205,13 +201,13 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-/* The primary face carries every heading and, below, every figure. */
+/* The display face carries every heading. Figures take the mono face, further down. */
 h1,
 h2,
 h3,
 h4 {
   margin: 0;
-  font-family: var(--face-heading);
+  font-family: var(--face-display);
   line-height: 1.25;
 }
 
@@ -254,14 +250,14 @@ h1 {
   border-right: 1px solid color-mix(in srgb, var(--brand-white) 8%, transparent);
 }
 
-/* The wordmark: the name in the primary face, and the half of it that is blue. */
+/* The wordmark: the name in the display face, and the half of it that is blue. */
 .logo {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   text-decoration: none;
   color: inherit;
-  font-family: var(--face-heading);
+  font-family: var(--face-display);
   font-size: 1.0625rem;
   letter-spacing: -0.02em;
 }
@@ -281,9 +277,11 @@ h1 {
    number of tabs above it. */
 .motto {
   margin: auto 0 0;
-  font-family: var(--face-heading);
+  font-family: var(--face-display);
   font-size: 0.8125rem;
-  font-weight: 500;
+  /* 600 rather than 500: the display face starts at 600, and a lighter figure here would
+     only be the browser rounding up to it silently. */
+  font-weight: 600;
   line-height: 1.35;
   color: var(--rail-ink-soft);
 }
@@ -357,7 +355,7 @@ h1 {
   border-radius: 999px;
   background: var(--accent);
   color: var(--accent-ink);
-  font-family: var(--face-heading);
+  font-family: var(--face-text);
   font-weight: 600;
   font-size: 0.8125rem;
   letter-spacing: 0.02em;
@@ -419,7 +417,7 @@ h1 {
   border-radius: 999px;
   background: var(--accent);
   color: var(--accent-ink);
-  font-family: var(--face-heading);
+  font-family: var(--face-figure);
   font-size: 0.8125rem;
   font-weight: 600;
   vertical-align: middle;
@@ -699,9 +697,9 @@ button:hover:not(:disabled) {
 }
 
 .headline .figure {
-  font-family: var(--face-heading);
+  font-family: var(--face-figure);
   font-size: 2.75rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.04em;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -1071,14 +1069,14 @@ button:hover:not(:disabled) {
   overflow-wrap: anywhere;
 }
 
-/* FR 38a. Where it went first. */
-.wentto {
+/* FR 38a. The desk it is with now. */
+.nowwith {
   margin: 0;
   font-size: 0.875rem;
   color: var(--ink-faint);
 }
 
-.wentto strong {
+.nowwith strong {
   color: var(--accent);
   font-weight: 600;
 }
@@ -1974,9 +1972,9 @@ select[aria-invalid='true'] {
   display: flex;
   align-items: baseline;
   gap: 0.35rem;
-  font-family: var(--face-heading);
+  font-family: var(--face-figure);
   font-size: 1.5rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--ink);
 }
@@ -2212,7 +2210,7 @@ select[aria-invalid='true'] {
 
 /* The month being shown, as a heading rather than as a label on the buttons. */
 .month-name {
-  font-family: var(--face-heading);
+  font-family: var(--face-display);
   font-size: 1rem;
   font-weight: 600;
   min-width: 8.5rem;
@@ -2233,7 +2231,7 @@ select[aria-invalid='true'] {
   padding: 0.5rem 0.4rem;
   background: color-mix(in srgb, var(--ink) 3%, var(--card));
   border-bottom: 1px solid var(--line);
-  font-family: var(--face-heading);
+  font-family: var(--face-figure);
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -2280,7 +2278,7 @@ select[aria-invalid='true'] {
 .day-number {
   /* Column flex would otherwise stretch the today pill to the width of the cell. */
   align-self: flex-start;
-  font-family: var(--face-heading);
+  font-family: var(--face-figure);
   font-size: 0.75rem;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -2445,7 +2443,7 @@ select[aria-invalid='true'] {
   border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-family: var(--face-heading);
+  font-family: var(--face-text);
   font-size: 0.625rem;
   font-weight: 600;
   font-style: normal;
@@ -2521,7 +2519,7 @@ select[aria-invalid='true'] {
 }
 
 .figures .figure {
-  font-family: var(--face-heading);
+  font-family: var(--face-figure);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -2893,7 +2891,7 @@ select[aria-invalid='true'] {
 
 .fields legend {
   padding: 0 0.5rem 0 0;
-  font-family: var(--face-heading);
+  font-family: var(--face-display);
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--ink);
@@ -3007,7 +3005,7 @@ select[aria-invalid='true'] {
   align-items: center;
   gap: 0.6rem;
   margin: 0 0 0.75rem;
-  font-family: var(--face-heading);
+  font-family: var(--face-display);
   font-size: 1.0625rem;
   font-weight: 600;
   color: var(--ink);
@@ -3195,7 +3193,7 @@ select[aria-invalid='true'] {
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  font-family: var(--face-heading);
+  font-family: var(--face-display);
   font-size: 1.125rem;
   font-weight: 600;
   overflow-wrap: break-word;
@@ -3272,7 +3270,7 @@ select[aria-invalid='true'] {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  font-family: var(--face-heading);
+  font-family: var(--face-display);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -3643,7 +3641,7 @@ select[aria-invalid='true'] {
 }
 
 .movement-days b {
-  font-family: var(--face-heading);
+  font-family: var(--face-figure);
   font-size: 1.125rem;
 }
 
@@ -3744,7 +3742,7 @@ select[aria-invalid='true'] {
 }
 
 .leaver-figure b {
-  font-family: var(--face-heading);
+  font-family: var(--face-figure);
   font-size: 2.25rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -3807,7 +3805,7 @@ select[aria-invalid='true'] {
 }
 
 .working-days b {
-  font-family: var(--face-heading);
+  font-family: var(--face-figure);
   font-size: 1.125rem;
 }
 

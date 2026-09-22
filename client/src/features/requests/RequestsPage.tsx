@@ -178,10 +178,12 @@ function RequestCard({
               all where the type asked for none. FR 10. */}
           {entry.reason === null ? null : <blockquote className="said">{entry.reason}</blockquote>}
 
-          {/* FR 38a. Which desk it went to first, which is what somebody chasing it needs. */}
-          {entry.chain.length === 0 ? null : (
-            <p className="wentto">
-              Went to: <strong>{deskLabel(entry.chain[0])}</strong>
+          {/* FR 38a. The desk it is with now, which is what somebody chasing it needs. Said
+              only while it is still with somebody: once it is settled `awaiting` is null, and
+              the status tag and the trail are what say where it ended. */}
+          {entry.awaiting === null ? null : (
+            <p className="nowwith">
+              Now with: <strong>{deskLabel(entry.awaiting)}</strong>
             </p>
           )}
 

@@ -3541,8 +3541,12 @@ last day of the year becomes the second to last for anybody west of Greenwich.
 **The client wears the company's colours.** The five in the brand guidelines are
 `--brand-*` in `styles.css` and appear nowhere else in it: every rule reaches for a semantic
 token — `--accent`, `--ink`, `--line` — that the brand block assigns, so a repaint is an edit to
-the top of one file. Sora carries headings and figures and Montserrat the running text, which is
-the division the guidelines draw. The dark theme redefines the neutral end only: both brand
+the top of one file. Three faces divide the work the same way: Big Shoulders Display carries the
+headings, Inter the running text and every ordinary label, and IBM Plex Mono the figures — a
+balance, a day count, a day of the month — so that a column of numbers lines up on the digit.
+All three are served from `client/public/fonts` rather than fetched from Google, because a font
+request would tell Google the IP of everybody signing in to an internal system. The dark theme
+redefines the neutral end only: both brand
 blues are legible on either ground, which is the point of picking them from a palette rather
 than inventing them.
 
