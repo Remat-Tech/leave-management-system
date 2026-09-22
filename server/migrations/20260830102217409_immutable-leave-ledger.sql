@@ -1,6 +1,6 @@
 -- Up Migration
 
--- The balance ledger. FR 27, §5.7, and design principle 1. LMS 210.
+-- The balance ledger. FR 27, §5.7, and design principle 1.
 --
 -- Four migrations have named this table before it existed. The
 -- entitlement-rule-effective-dates one put it plainest: "A resolved figure becomes
@@ -41,7 +41,7 @@
 -- the row already carries — a second copy of an account whose entire value is that
 -- there is one — and the copy could disagree with the original.
 --
--- It is **not the balance**. `leave_balance` is LMS 214: a cached running total,
+-- It is **not the balance**. `leave_balance` is a cached running total,
 -- rebuildable from these rows, and the reconciliation job that proves the two agree
 -- is §7.4. Nothing here computes a total, because a total computed in two places is
 -- the drift the cache exists to be checked against.
@@ -51,7 +51,7 @@
 /* `refuse_update()` takes the hint from its caller and `refuse_delete()` does not,
    which was right when the only table that refused a delete was `employee`. It is
    not right now, and it has already gone slightly wrong once: `audit_log` attached
-   to `refuse_delete()` in LMS 113 and has been telling anybody who tries to remove
+   to `refuse_delete()` and has been telling anybody who tries to remove
    an audit entry to "deactivate the record instead. An employee who has left is
    employment_status = 'TERMINATED'". Harmless, and exactly the sort of thing that
    stops being harmless when a third table copies it.
@@ -145,7 +145,7 @@ CREATE TABLE leave_ledger_entry (
        of −5 that follows it on approval are not ten days: the second finalises what
        the first held. Available is `entitled + carried + adjustment − taken −
        pending`, five buckets, and which bucket an entry moves follows from its
-       type. That projection is LMS 214's and is deliberately not written here,
+       type. That projection belongs to the cached balance and is deliberately not written here,
        because a total computed in two places is the drift the cached balance exists
        to be checked against.
 
@@ -153,7 +153,7 @@ CREATE TABLE leave_ledger_entry (
        and it is the one place a fraction is permitted. §8.6d: entitlement is pro
        rated by calendar days, so a joiner on 1 July is owed 20 × 184/365 = 10.08
        days, and "FR 24 governs how leave is requested, not how entitlement is
-       held". LMS 209 wrote the rule that made this the exception it now is, and
+       held". The whole-days rule made this the exception it now is, and
        named the condition: every column that is not an accrued figure stays whole,
        so that the day somebody makes a request's day count fractional it still
        fails. The four request-shaped entry types are held to whole days below, by
@@ -244,13 +244,13 @@ CREATE TABLE leave_ledger_entry (
 
     /* FR 24, on the four types that mirror a leave request.
 
-       A request is whole days — LMS 209 put that beyond argument everywhere a day
+       A request is whole days — that is beyond argument everywhere a day
        count is entered — so a RESERVATION of half a day is not a policy this system
        has, it is a caller that has miscounted. The entitlement four are exempt
        because §8.6d says they are: what somebody has accrued is divisible even
        though what they may ask for is not.
 
-       This is the condition LMS 210 was told to meet in exchange for the column
+       This is the condition the ledger was told to meet in exchange for the column
        being NUMERIC at all. Without it "the ledger holds fractions" would spread to
        mean "leave can be half a day", one query at a time. */
     CONSTRAINT leave_ledger_entry_requests_move_whole_days CHECK (
@@ -393,7 +393,7 @@ CREATE TRIGGER leave_ledger_entry_corrects_the_same_balance
 
 -- ------------------------------------------ a settled year takes no new figures
 
-/* The rule LMS 205 set and every table since has had to answer, and this is the
+/* The rule the leave year set and every table since has had to answer, and this is the
    first one that answers it with an exception.
 
    A closed leave year is final: "closed leave years are never recomputed". So a
@@ -503,7 +503,7 @@ GRANT SELECT, INSERT ON leave_ledger_entry TO lms_app;
 
 -- ------------------------------------------------------ what is not here yet
 
-/* **The balance.** `leave_balance`, LMS 214: the cached running total of §5.7, the
+/* **The balance.** `leave_balance`: the cached running total of §5.7, the
    five buckets available is computed from, and the reconciliation job of §7.4 that
    recomputes every one of them from these rows and reports any drift. It is not
    here because the cache is only meaningful once there is something to check it
@@ -515,8 +515,8 @@ GRANT SELECT, INSERT ON leave_ledger_entry TO lms_app;
    **The source request.** §5.7 has `leave_request_id` on this table and it is
    deliberately absent, because `leave_request` is §8 and does not exist. A nullable
    id with no foreign key behind it would be a column nothing could populate and
-   nothing could check — the switch with nothing behind it that LMS 209 argued
-   against. It arrives with the request table, as a column, a foreign key, and the
+   nothing could check — the switch with nothing behind it argued
+   against earlier. It arrives with the request table, as a column, a foreign key, and the
    rule that the four request-shaped entry types must carry one.
 
    **The writers.** Every entry type here has a story that writes it and none of

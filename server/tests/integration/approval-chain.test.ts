@@ -29,7 +29,6 @@ import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 
 /**
  * Who approves each kind of leave, against a real database. FR 38a, §5.5.
- * LMS 204.
  *
  * The unit suite covers what a chain is and how the walk runs;
  * ../unit/approval-chain.test.ts is where that is proved without a database.
@@ -673,7 +672,7 @@ describe('putting the chains back, and refusing to rewrite them', () => {
   });
 });
 
-describe('who may say who approves a type, LMS 112', () => {
+describe('who may say who approves a type', () => {
   /* The matrix belongs to ../unit/policy.test.ts; what is asserted here is that
      the service asks before it writes. */
   it('is refused to an ordinary employee', async () => {

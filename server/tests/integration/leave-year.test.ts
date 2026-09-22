@@ -23,7 +23,7 @@ import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 
 /**
- * Leave years against a real database. §5.4. LMS 205.
+ * Leave years against a real database. §5.4.
  *
  * The unit suite covers what a year is and which day falls in which one;
  * ../unit/leave-year.test.ts is where the story is proved. What needs a database
@@ -42,8 +42,8 @@ import { Guard, NotAuthorised } from '../../src/auth/policy.js';
  *   is the whole of what "locked" means and it is the assertion this file exists
  *   for.
  *
- *   Closing one moves the boundary the entitlement rules of LMS 203 are judged
- *   against, which is the seam that story left and the thing this one had to
+ *   Closing one moves the boundary the entitlement rules are judged
+ *   against, which is the seam they left and the thing this had to
  *   join. ../integration/entitlement-rule.test.ts asks it from the other side.
  */
 
@@ -108,7 +108,7 @@ afterAll(async () => {
  * The ids come back with the rows because the audit log files its entries under
  * them.
  *
- * CASCADE since LMS 210. A leave year is now the heading a run of ledger entries is
+ * CASCADE. A leave year is now the heading a run of ledger entries is
  * filed under, and Postgres will not truncate a table something references without
  * being told what to do about the referencing rows. Emptying those alongside is
  * right rather than merely permitted: a ledger entry filed under a year that has
@@ -183,7 +183,7 @@ describe('2026 and 2027, which the story asks for', () => {
 
   /* 2026 is the year the statutory entitlement figures take effect from — the
      entitlement-rule migration dated them to the first of January 2026 and called
-     it "the first of the two LMS 205 seeds". The two files agree, and this is
+     it "the first of the two seeded leave years". The two files agree, and this is
      what stops them quietly disagreeing later. */
   it('start on the day the statutory entitlement figures take effect', async () => {
     const { rows } = await admin.query<{ effective_from: string }>(
@@ -553,13 +553,13 @@ describe('the rules are held by the database as well as by the domain', () => {
   });
 });
 
-describe('the boundary a closed year sets, LMS 203', () => {
+describe('the boundary a closed year sets', () => {
   /**
-   * The seam LMS 203 left, joined.
+   * The seam the entitlement rules left, joined.
    *
-   * That story wrote `EarliestOpenDay` as a function taking no arguments and
-   * passed it `NOTHING_IS_CLOSED_YET`, saying: "LMS 205 brings `leave_year` and
-   * with it the real implementation — the day after the last closed year ends."
+   * `EarliestOpenDay` was written as a function taking no arguments and
+   * passed `NOTHING_IS_CLOSED_YET`, saying that the leave year would bring
+   * the real implementation — the day after the last closed year ends.
    * This is that implementation, reading the rows.
    */
   const boundary = () => earliestOpenDayFrom(repository)();
@@ -576,7 +576,7 @@ describe('the boundary a closed year sets, LMS 203', () => {
   });
 
   /* Read fresh every time, which is the reason the type is a function rather
-     than a date: the rollover of LMS 217 closes a year while the process is
+     than a date: the rollover closes a year while the process is
      running, and a service holding a boundary read at start up would go on
      accepting figures into a year that had since been settled. */
   it('moves the moment a year is closed, without anything being rebuilt', async () => {
@@ -590,7 +590,7 @@ describe('the boundary a closed year sets, LMS 203', () => {
   });
 });
 
-describe('who may close a year, LMS 112', () => {
+describe('who may close a year', () => {
   /* The matrix belongs to ../unit/policy.test.ts; what is asserted here is that
      the service asks before it reads or writes anything. */
   it('is refused to an ordinary employee', async () => {

@@ -1,4 +1,4 @@
-/** Who may look at a team. FR 55, FR 56, FR 57, NFR SEC 02, §10., LMS 405, LMS 406, LMS 409. */
+/** Who may look at a team. FR 55, FR 56, FR 57, NFR SEC 02, §10.. */
 
 import { type Actor, holdsAny } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';
@@ -10,7 +10,7 @@ export const teamPolicy = {
   resource: about.resource,
 
   /**
-   * Looking at your own direct reports. FR 55, FR 56, LMS 405.
+   * Looking at your own direct reports. FR 55, FR 56.
    *
    * Names no subject, as `leaveRequestPolicy.queue` names none: the rows are whoever reports
    * to the reader, so this decides only whether there is a team at all. Each row is still
@@ -32,7 +32,7 @@ export const teamPolicy = {
   },
 
   /**
-   * Looking at the calendar of the department you are in. FR 57, LMS 406, LMS 409.
+   * Looking at the calendar of the department you are in. FR 57.
    *
    * Names no subject: what may be seen of a colleague is decided by the projection, which
    * carries dates and names and can assemble nothing else. `department_id` is NOT NULL, so
@@ -52,7 +52,7 @@ export const teamPolicy = {
   },
 
   /**
-   * Looking past your own department. FR 57, LMS 409.
+   * Looking past your own department. FR 57.
    *
    * HR reads every record, so HR reads every department. Refused openly rather than as a 404:
    * which departments exist is no secret, and who is away inside one is.

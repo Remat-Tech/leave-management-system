@@ -17,7 +17,7 @@ import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
 
 /**
- * The day calculator against a real database. FR 21, FR 22, §7.3. LMS 207.
+ * The day calculator against a real database. FR 21, FR 22, §7.3.
  *
  * The rules are pure functions and ../unit/leave-calculator.test.ts is where the
  * story is proved. What this suite adds is narrower and is the half a unit test
@@ -36,7 +36,7 @@ import { Guard } from '../../src/auth/policy.js';
  *   **The first of January 2027 costs a day, and it should.** Only 2026's gazette
  *   is seeded — see ../../src/features/holiday/holiday.ts for why a plausible 2027 would be
  *   worse than an empty one — so until HR transcribes it, New Year's Day is an
- *   ordinary Friday. That is the hazard LMS 206 left visible on purpose, and this
+ *   ordinary Friday. That is the hazard the calendar leaves visible on purpose, and this
  *   is what it looks like from the other end. Entering the day fixes it, with no
  *   release.
  *
@@ -121,7 +121,7 @@ async function restore(table: string, rows: Record<string, unknown>[]): Promise<
   const columns = Object.keys(rows[0]).filter((column) => column !== 'updated_at');
   const placeholders = columns.map((_column, index) => `$${index + 1}`).join(', ');
 
-  /* CASCADE since LMS 210, for the reason ./holiday.test.ts gives: a leave year is
+  /* CASCADE, for the reason ./holiday.test.ts gives: a leave year is
      the heading a run of ledger entries is filed under, and a referenced table
      cannot be truncated without saying what happens to the rows pointing at it. */
   await admin.query(`TRUNCATE ${table} CASCADE`);
@@ -184,7 +184,7 @@ describe('a fortnight over the real Christmas', () => {
    * gazette yet.
    *
    * This is not a defect and it is not a surprise — it is the shape of the
-   * decision LMS 206 made deliberately, seen from the counting end. Two of Ghana's
+   * decision the calendar made deliberately, seen from the counting end. Two of Ghana's
    * fourteen holidays are fixed by the Minister after the moon is sighted, so a
    * seeded 2027 would be a calendar that is nearly right; an empty one is a screen
    * with nothing on it, and `yearsAwaitingACalendar()` is what says so before
@@ -423,7 +423,7 @@ describe('it reads a working pattern and a calendar, and nothing else', () => {
 describe('what it refuses', () => {
   /**
    * A weekend of annual leave costs nothing, and this service says so rather than
-   * refusing it. LMS 303.
+   * refusing it.
    *
    * The refusal moved to the submission validator, where it is about a *request*:
    * ../integration/leave-request.test.ts is where a person meets it. What this asserts
@@ -478,7 +478,7 @@ describe('what it refuses', () => {
   });
 });
 
-describe('who may ask what a period would cost, LMS 112', () => {
+describe('who may ask what a period would cost', () => {
   /**
    * Anybody signed in, and that follows from the two tables it reads rather than
    * from a decision made here: a working pattern and the gazetted holidays are

@@ -1,6 +1,6 @@
 -- Up Migration
 
--- Nobody decides their own request. FR 48, §8.6a, §10. LMS 319.
+-- Nobody decides their own request. FR 48, §8.6a, §10.
 --
 -- The story is one sentence and it is about what an approval is worth: leave that was agreed
 -- by the person taking it was not agreed by anybody, and an approval anybody can give
@@ -10,7 +10,7 @@
 --
 -- ## What was already true, and the half that was not
 --
--- LMS 314 built the routing and excluded the requester from `THE_DESK_IT_IS_WITH`, so nobody
+-- The routing excluded the requester from `THE_DESK_IT_IS_WITH`, so nobody
 -- has been able to *approve* their own leave since. That was written for an ordinary case
 -- rather than an adversarial one: unpaid leave routes to the HR desk first — §4.3.1 — and an
 -- HR Officer asking for unpaid leave holds a code that staffs the desk their own request

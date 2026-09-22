@@ -1,5 +1,5 @@
 /**
- * Asking for approved leave to be taken off the books, and what HR answered. FR 47, §6., LMS 324, NFR USA 03.
+ * Asking for approved leave to be taken off the books, and what HR answered. FR 47, §6., NFR USA 03.
  */
 
 import { InvalidLeaveRequest, type RequestAction } from './leave-request.js';

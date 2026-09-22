@@ -1,5 +1,5 @@
 /**
- * The short-lived link a certificate is fetched through, and the record of every fetch. NFR SEC 04, NFR SEC 06. LMS 407.
+ * The short-lived link a certificate is fetched through, and the record of every fetch. NFR SEC 04, NFR SEC 06.
  */
 
 import { createHash, randomBytes } from 'node:crypto';

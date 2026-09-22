@@ -49,7 +49,7 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * The balance screen over HTTP. FR 53. LMS 401.
+ * The balance screen over HTTP. FR 53.
  *
  * The first test of a route layer in this repository, and it drives the real application
  * over a real socket rather than calling handlers with a fabricated request. That is
@@ -123,7 +123,7 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: cached,
-    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    /** FR 27, FR 37. The ledger the adjustment screen reads, and the door it writes through. */
     ledger: new LedgerRepository(db),
     adjustments: balances,
     employees,
@@ -134,8 +134,7 @@ beforeAll(async () => {
     requests,
     /* Nothing in this suite asks for leave, and the write door is built anyway, because
        `buildApp` is the whole application and a suite that assembled a smaller one would
-       stop proving that the balance routes are reachable in the application that ships.
-       LMS 403. */
+       stop proving that the balance routes are reachable in the application that ships. */
     leaveRequests: new LeaveRequestService(
       balances,
       guard,
@@ -144,32 +143,32 @@ beforeAll(async () => {
       years,
       requests,
       decisions,
-      /** FR 48b, LMS 320. */
+      /** FR 48b. */
       new LeaveRoutingRepository(db),
-      /** FR 47, LMS 324. */
+      /** FR 47. */
       new WithdrawalRepository(db),
-      /** FR 32c, LMS 507. */
+      /** FR 32c. */
       new ReclassificationRepository(db),
-      /** FR 13, LMS 311. */
+      /** FR 13. */
       new AttachmentRepository(db),
       new RoleRepository(db),
-      /** FR 49, LMS 327. */
+      /** FR 49. */
       delegationService(db, guard),
       new OrganisationRepository(db),
       new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
       new NotificationService(new NotificationRepository(db), recordingMailer(), guard),
     ),
     decisions,
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     routing: new LeaveRoutingRepository(db),
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     withdrawals: new WithdrawalRepository(db),
-    /** FR 19, LMS 302. */
+    /** FR 19. */
     drafts: new LeaveRequestDraftRepository(db),
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
-    /** FR 25, §8.8, LMS 508. */
+    /** FR 25, §8.8. */
     holidayRecalculations: holidayRecalculationService(db, guard, balances),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),

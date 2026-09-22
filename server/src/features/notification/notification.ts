@@ -1,5 +1,5 @@
 /**
- * What somebody is told when something happens to their leave, and in what words. FR 59, §7.1., LMS 329, LMS 306, LMS 315, LMS 316, LMS 323, FR 60, LMS 209.
+ * What somebody is told when something happens to their leave, and in what words. FR 59, §7.1., FR 60.
  */
 
 import { type ApproverRole, deskInWords, possessively } from '../leave-type/approval-chain.js';
@@ -20,20 +20,20 @@ export { SIGN_OFF } from './wording.js';
 export const NOTICE_EVENTS = [
   'SUBMITTED',
   'STAGE_APPROVED',
-  /** A stage said no and the request went on to the next desk. FR 44, LMS 318. */
+  /** A stage said no and the request went on to the next desk. FR 44. */
   'STAGE_REFUSED',
   'APPROVED',
   'REFUSED',
   'WITHDRAWN',
   'CANCELLED',
-  /** The manager, told their decision was overturned. FR 44, §7.2, LMS 318. */
+  /** The manager, told their decision was overturned. FR 44, §7.2. */
   'DECISION_OVERTURNED',
-  /** Nobody can decide it, told to the requester and to whoever can fix that. FR 48b, LMS 320. */
+  /** Nobody can decide it, told to the requester and to whoever can fix that. FR 48b. */
   'UNROUTABLE',
-  /** The manager who has just inherited a pending request. FR 07, §8.4, LMS 325. */
+  /** The manager who has just inherited a pending request. FR 07, §8.4. */
   'REASSIGNED',
   /**
-   * The four turns of FR 47's conversation about agreed leave. LMS 324.
+   * The four turns of FR 47's conversation about agreed leave.
    *
    * `WITHDRAWAL_ASKED` goes to HR, who has to answer it — the second event written to
    * somebody other than the person taking the leave. The other three go back to them, and
@@ -45,17 +45,17 @@ export const NOTICE_EVENTS = [
   'WITHDRAWAL_GRANTED',
   'LEAVE_AMENDED',
   'WITHDRAWAL_REFUSED',
-  /** The approver a request is still sitting on, chased daily. FR 50, FR 60, LMS 330. */
+  /** The approver a request is still sitting on, chased daily. FR 50, FR 60. */
   'STILL_WAITING',
   /**
-   * Days of agreed leave that became sick leave. FR 32c, §8.6c, LMS 507.
+   * Days of agreed leave that became sick leave. FR 32c, §8.6c.
    *
    * Not `LEAVE_AMENDED`: nothing came off the books and the leave still happened. What the
    * person needs told is that a holiday they spent unwell is back in their annual balance.
    */
   'LEAVE_RECLASSIFIED',
   /**
-   * A public holiday declared inside leave they already had. FR 25, §8.8, LMS 508.
+   * A public holiday declared inside leave they already had. FR 25, §8.8.
    *
    * The story's fourth criterion. Not `LEAVE_AMENDED` either: nothing came off the books
    * and nobody agreed to anything. A day the country was not working stopped being charged.
@@ -68,7 +68,7 @@ export const NOTICE_EVENTS = [
 export type NoticeEvent = (typeof NOTICE_EVENTS)[number];
 
 /**
- * Whether this is the daily reminder rather than news of something that happened. FR 50, LMS 330.
+ * Whether this is the daily reminder rather than news of something that happened. FR 50.
  *
  * The one event ./reminder.ts composes: nothing has happened to the request, which is the
  * whole of what it is about, so {@link noticeOf} has no branch for it.
@@ -78,7 +78,7 @@ export function isAReminder(event: NoticeEvent): boolean {
 }
 
 /**
- * The events after which a balance has days it did not have before. FR 47, LMS 324.
+ * The events after which a balance has days it did not have before. FR 47.
  *
  * Three of them end the leave. `LEAVE_AMENDED` does not and is on the list anyway, which is
  * the reason it is named for what the balance did rather than for what the request did: the
@@ -91,9 +91,9 @@ const GAVE_THE_DAYS_BACK: readonly NoticeEvent[] = [
   'CANCELLED',
   'WITHDRAWAL_GRANTED',
   'LEAVE_AMENDED',
-  /** FR 32c. Into one balance, and out of another. LMS 507. */
+  /** FR 32c. Into one balance, and out of another. */
   'LEAVE_RECLASSIFIED',
-  /** FR 25. Into the balance the day was charged to, out of nothing. LMS 508. */
+  /** FR 25. Into the balance the day was charged to, out of nothing. */
   'LEAVE_RECALCULATED',
 ];
 
@@ -121,11 +121,11 @@ export interface Notice extends NewNotice {
   emailedAt: Date | null;
   /** Why the last attempt did not, in the transport's own words. */
   emailFailure: string | null;
-  /** Sends made, delivered or not. LMS 331. */
+  /** Sends made, delivered or not. */
   emailAttempts: number;
-  /** When the next send is due, null where none is. LMS 331. */
+  /** When the next send is due, null where none is. */
   emailNextAttemptAt: Date | null;
-  /** When the last permitted attempt failed. LMS 331. */
+  /** When the last permitted attempt failed. */
   emailGaveUpAt: Date | null;
   createdAt: Date;
 }
@@ -196,10 +196,10 @@ export interface WhatHappened {
    * came back.
    */
   availableAfter: number;
-  /** FR 44. Which decision was overturned, on the one event that is about that. LMS 318. */
+  /** FR 44. Which decision was overturned, on the one event that is about that. */
   overturned?: { desk: ApproverRole; said: 'APPROVE' | 'REFUSE' } | null;
   /**
-   * FR 47. How many days actually came back, on the events where that is not all of them. LMS 324.
+   * FR 47. How many days actually came back, on the events where that is not all of them.
    *
    * Every other message says `request.days`, because every other movement in a request's
    * life is the whole of what it was priced at. An amendment is the first that is not:
@@ -211,14 +211,14 @@ export interface WhatHappened {
    * field on this interface is: it describes what committed.
    */
   daysBack?: number | null;
-  /** FR 32c. What the days became, and what that balance holds now. LMS 507. */
+  /** FR 32c. What the days became, and what that balance holds now. */
   movedInto?: { typeName: string; availableAfter: number } | null;
-  /** FR 25. The day the gazette declared late, on the one event that is about that. LMS 508. */
+  /** FR 25. The day the gazette declared late, on the one event that is about that. */
   declared?: { name: string; date: CalendarDate } | null;
 }
 
 /**
- * The message, for both channels, in HR's wording where there is some. FR 59, FR 61, LMS 512.
+ * The message, for both channels, in HR's wording where there is some. FR 59, FR 61.
  *
  * Pure. The words live in ./wording.ts; this works out what fills them in.
  */
@@ -229,7 +229,7 @@ export function noticeOf(happened: WhatHappened, wording?: Wording): NewNotice {
     throw notAnEvent(event);
   }
 
-  /* FR 50, LMS 330. A reminder says nothing happened, so ./reminder.ts composes it. */
+  /* FR 50. A reminder says nothing happened, so ./reminder.ts composes it. */
   if (isAReminder(event)) {
     throw new InvalidNotice(
       'event',
@@ -251,7 +251,7 @@ export function noticeOf(happened: WhatHappened, wording?: Wording): NewNotice {
   });
 }
 
-/** The placeholders every email about one request can use. FR 61, LMS 512. */
+/** The placeholders every email about one request can use. FR 61. */
 export function leaveInWords(leave: {
   firstName: string;
   employeeName: string;
@@ -366,7 +366,7 @@ function notAnEvent(event: string): InvalidNotice {
 }
 
 /**
- * Which piece of news an approval was. FR 38a, FR 41. LMS 314, LMS 316, LMS 329.
+ * Which piece of news an approval was. FR 38a, FR 41.
  *
  * Read off the request **as it stands after the approval**, which is what makes it the
  * answer rather than a guess: `awaiting_approval_from` is null exactly when there is nobody
@@ -383,7 +383,7 @@ export function approvalNews(request: LeaveRequest): NoticeEvent {
 }
 
 /**
- * Which piece of news one desk's decision was. FR 44, LMS 318.
+ * Which piece of news one desk's decision was. FR 44.
  *
  * Four answers from two facts: which way the desk went, and whether the request has
  * anywhere left to go. Read off the committed row, so a stage that turned leave down

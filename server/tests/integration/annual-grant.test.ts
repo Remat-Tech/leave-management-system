@@ -25,7 +25,7 @@ import { LeaveYearService } from '../../src/features/leave-year/leave-year.servi
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * The annual grant of entitlement, against a real database. FR 30. LMS 214.
+ * The annual grant of entitlement, against a real database. FR 30.
  *
  * The unit suite proves the decision — who is granted what, and why anybody is passed
  * over. What needs a server is the half a pure function cannot have, and for this story
@@ -33,7 +33,7 @@ import { seed } from '../../seeds/seed.mjs';
  *
  *   **A grant is a ledger entry, and the balance follows it.** The story's second
  *   criterion. Not a figure written into `leave_balance`, which nothing above the
- *   database may do at all since LMS 211, but a `GRANT` row with a reason and a name
+ *   database may do at all, but a `GRANT` row with a reason and a name
  *   against it — and a cache that arrives at the same number by itself, in the same
  *   transaction.
  *
@@ -237,7 +237,7 @@ describe('granting a leave year', () => {
    * a leave type in front of.
    *
    * The existing figures are deliberately not touched instead: a rule that has already
-   * applied cannot be deleted by anybody, which is LMS 203's doing and is the right
+   * applied cannot be deleted by anybody, which is the entitlement rules' doing and is the right
    * answer to "make this case by removing history".
    */
   it('and passes over a type nobody has said the worth of', async () => {
@@ -277,7 +277,7 @@ describe('granting a leave year', () => {
 
 /* ------------------------------------------------------------- running it twice */
 
-/* ------------------------------------------- the joiner and the leaver. FR 29, LMS 215 */
+/* ------------------------------------------- the joiner and the leaver. FR 29 */
 
 describe('somebody who was here for part of the year', () => {
   /** What the annual leave rule is worth for a whole year on a migrated database. */
@@ -302,7 +302,7 @@ describe('somebody who was here for part of the year', () => {
   }
 
   /**
-   * A joiner on 1 July is granted §8.6d's share, to the whole day. LMS 013.
+   * A joiner on 1 July is granted §8.6d's share, to the whole day.
    *
    * 20 × 184/365 = 10.08, granted to the whole day as 10 and posted as a `GRANT` like any other. The story's "so
    * that" is exactly this: their balance is right from the first day rather than right
@@ -322,8 +322,7 @@ describe('somebody who was here for part of the year', () => {
   /**
    * And the entry carries the name of the rule that produced the figure.
    *
-   * The story's third criterion, and its answer to the fourth: LMS 013 has not settled
-   * the formula, so a grant made under today's says which one it was made under. When
+   * The third criterion, and the answer to the fourth: the formula is not settled, so a grant made under today's says which one it was made under. When
    * the answer lands, the figures to put right are a query rather than an
    * investigation.
    */

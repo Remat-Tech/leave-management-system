@@ -1,4 +1,4 @@
-/** Database access for holidays credited back into agreed leave. FR 25, LMS 508. */
+/** Database access for holidays credited back into agreed leave. FR 25. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';

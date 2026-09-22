@@ -16,7 +16,7 @@ import {
 } from '../../src/features/notification/wording.js';
 import { previewOf } from '../../src/features/notification/wording-preview.js';
 
-/** HR's wording of the emails. FR 61, LMS 512. The original wording is pinned by ./notification.test.ts. */
+/** HR's wording of the emails. FR 61. The original wording is pinned by ./notification.test.ts. */
 
 function aRequest(): LeaveRequest {
   return {

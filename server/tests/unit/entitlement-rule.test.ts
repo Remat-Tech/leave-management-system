@@ -21,7 +21,7 @@ import {
 } from '../../src/features/entitlement/entitlement-rule.js';
 
 /**
- * What a leave type is worth, and from when. FR 31, §5.5. LMS 203.
+ * What a leave type is worth, and from when. FR 31, §5.5.
  *
  * The story's fourth criterion is "resolution logic implemented once and unit
  * tested hard", and this file is the second half of that. The first half is that

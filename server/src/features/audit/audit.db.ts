@@ -1,4 +1,4 @@
-/** Reading the audit log. NFR AUD 01, LMS 113. */
+/** Reading the audit log. NFR AUD 01. */
 
 import { type Kysely, type Selectable, sql } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -91,7 +91,7 @@ export class AuditRepository {
     return rows.map(toEntry);
   }
 
-  /** Entries matching a search, newest first, with the day boundaries in `zone`. LMS 513. */
+  /** Entries matching a search, newest first, with the day boundaries in `zone`. */
   async search(search: AuditSearch, zone: string, limit: number): Promise<NamedAuditEntry[]> {
     let query = this.db
       .selectFrom('audit_log')

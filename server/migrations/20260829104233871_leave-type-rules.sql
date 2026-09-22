@@ -1,7 +1,6 @@
 -- Up Migration
 
 -- Leave types, and the rules each one carries. FR 21, FR 31, FR 32, §5.5.
--- LMS 201.
 --
 -- The story is an HR Administrator adding or changing a leave type without
 -- waiting on a developer, and FR 31 says it in the strongest terms the SRS

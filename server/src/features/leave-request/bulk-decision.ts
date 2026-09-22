@@ -1,4 +1,4 @@
-/** Several requests answered at one press. FR 51, FR 39, FR 48, §8.6a, LMS 328. */
+/** Several requests answered at one press. FR 51, FR 39, FR 48, §8.6a. */
 
 import { type DecidingAction, readComment, requireAComment } from './leave-decision.js';
 
@@ -10,7 +10,7 @@ export type BulkAction = 'APPROVE' | 'REFUSE';
 /** The most one press may decide. FR 51. */
 export const MOST_AT_ONCE = 50;
 
-/** One row a batch names, with the version its queue handed out. NFR DAT 02, LMS 326. */
+/** One row a batch names, with the version its queue handed out. NFR DAT 02. */
 export interface RequestToDecide {
   requestId: string;
   /** Null where the caller had no screen behind it. */
@@ -121,7 +121,7 @@ function readBulkAction(value: unknown): BulkAction {
 /**
  * The rows a batch named, in the order it named them. FR 51, NFR DAT 02.
  *
- * A bare id is a caller with no screen behind it; a queue row carries LMS 326's version. An
+ * A bare id is a caller with no screen behind it; a queue row carries its version. An
  * entry naming nothing is dropped rather than refused, as `asIds` drops one at the door — what
  * FR 51 refuses on is whether anything was selected. The same request twice is one decision.
  */

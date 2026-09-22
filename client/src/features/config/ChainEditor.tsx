@@ -1,4 +1,4 @@
-/** The ordered approver roles of one leave type. FR 38a, LMS 503. */
+/** The ordered approver roles of one leave type. FR 38a. */
 
 import type { Choice, Desk } from '../../api';
 import { Icon } from '../../Icon';

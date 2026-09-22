@@ -46,7 +46,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Fetching a certificate through a link that expires. NFR SEC 04, NFR SEC 06. LMS 407.
+ * Fetching a certificate through a link that expires. NFR SEC 04, NFR SEC 06.
  *
  * ../unit/attachment-link.test.ts proves what is pure: what a token is, what is kept of it,
  * and the four reasons a link opens nothing. What needs a database and a store —
@@ -110,7 +110,7 @@ beforeAll(async () => {
     new LeaveDecisionRepository(db),
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     attachmentRepository,
     new RoleRepository(db),
@@ -359,7 +359,7 @@ describe('following a link', () => {
   });
 
   /**
-   * The standing is asked again at the fetch. NFR SEC 04, LMS 407.
+   * The standing is asked again at the fetch. NFR SEC 04.
    *
    * The half a signed URL on its own cannot do: the manager was at the desk when the link
    * was minted and is not when it is presented, so it opens nothing — and the refusal is on
@@ -447,7 +447,7 @@ describe('every access is written down', () => {
   });
 
   /**
-   * The account outlives the file. NFR SEC 04, LMS 407.
+   * The account outlives the file. NFR SEC 04.
    *
    * FR 12 lets the uploader take a file back off while it is being decided, and the links
    * for it go in the same statement — an unspent address for bytes nobody may reach is not

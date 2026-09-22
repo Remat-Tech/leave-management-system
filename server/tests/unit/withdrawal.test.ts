@@ -29,7 +29,7 @@ import {
 } from '../../src/features/leave-request/withdrawal.js';
 
 /**
- * Taking agreed leave off the books. FR 47. LMS 324.
+ * Taking agreed leave off the books. FR 47.
  *
  * Three criteria and three shapes: the ask is the employee's, HR's answer restores the days
  * while the leave has not started, and once it has, HR amends with a reason. Everything here
@@ -45,7 +45,7 @@ function aRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     from: '2026-03-02',
     to: '2026-03-10',
     reason: 'My sister is getting married',
-    /** FR 18, LMS 308. */
+    /** FR 18. */
     lateEntryReason: null,
     evidenceRequired: false,
     certifiedDays: 0,
@@ -363,8 +363,8 @@ describe('the account a person reads on their own history', () => {
   /**
    * Four acts, four sentences, and none of them is "taken back before it was decided".
    *
-   * That is what `trailFor` said of every `WITHDRAWN` request until this story, and it is
-   * false of exactly the ones LMS 324 makes.
+   * That is what `trailFor` used to say of every `WITHDRAWN` request, and it is
+   * false of exactly the ones a withdrawal from approved makes.
    */
   it('has one sentence per act and none of them claims nobody had decided', () => {
     const said = WITHDRAWAL_ACTIONS.map((action: WithdrawalAction) =>

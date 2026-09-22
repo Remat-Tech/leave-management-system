@@ -1,5 +1,5 @@
 /**
- * Grants a leave year's entitlements to everybody owed them. FR 31, LMS 214.
+ * Grants a leave year's entitlements to everybody owed them. FR 31.
  *
  * The grant is what turns an entitlement figure into a balance: the figures are rules, and a
  * balance is the sum of the ledger entries posted against them. The server grants the current

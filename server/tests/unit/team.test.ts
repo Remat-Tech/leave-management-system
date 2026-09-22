@@ -12,7 +12,7 @@ import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
 import { teamPolicy } from '../../src/features/team/policy.js';
 import { type TeamFacts, type TeamView, teamViewFor } from '../../src/features/team/team.js';
 
-/** A manager's view of their direct reports, as rules. FR 55, FR 56, LMS 405. */
+/** A manager's view of their direct reports, as rules. FR 55, FR 56. */
 
 const YEAR_2026 = year('2026', '2026-01-01', '2026-12-31');
 

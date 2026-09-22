@@ -1,4 +1,4 @@
-/** Creating, editing and choosing working patterns. FR 23, LMS 106, LMS 112. */
+/** Creating, editing and choosing working patterns. FR 23. */
 
 import type { Actor } from '../../auth/actor.js';
 import type { Guard } from '../../auth/policy.js';

@@ -26,7 +26,7 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [loading, setLoading] = useState(true);
   const [deciding, setDeciding] = useState(false);
 
-  /** FR 51. What a batch could not answer, kept beside the row it belongs to. LMS 328. */
+  /** FR 51. What a batch could not answer, kept beside the row it belongs to. */
   const [refused, setRefused] = useState<ReadonlyMap<string, string>>(new Map());
 
   const load = useCallback(() => {
@@ -44,7 +44,7 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
           return;
         }
 
-        /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
+        /** The server's own sentence, verbatim. NFR USA 03. */
         setProblem(problemFrom(error));
       })
       .finally(() => {
@@ -55,7 +55,7 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
   useEffect(load, [load]);
 
   /**
-   * Answers some requests. FR 39, FR 51, LMS 326, LMS 328.
+   * Answers some requests. FR 39, FR 51.
    *
    * One press and a whole selection go through the same door, because the server decides each
    * row at its own desk either way — a batch is not a second rule, it is one call. The versions
@@ -96,7 +96,7 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
   );
 
   /**
-   * One request, decided the opposite way to its line manager. FR 44, LMS 318.
+   * One request, decided the opposite way to its line manager. FR 44.
    *
    * A plain verb here is refused by the server — overruling a manager is recorded as exactly
    * that, with the reason — so the card sends the override the server said the button is.
@@ -147,7 +147,7 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
 
   return (
     <div className="page">
-      {/* FR 47, LMS 324. Above the queue, and shown only when there is something in it. */}
+      {/* FR 47. Above the queue, and shown only when there is something in it. */}
       <AsksToCancel onSignedOut={onSignedOut} />
 
       <div className="pagehead">
@@ -170,7 +170,7 @@ export function ApprovalsPage({ onSignedOut }: { onSignedOut: () => void }) {
         </p>
       ) : (
         <>
-          {/* FR 51, LMS 328. Clearing the queue in one press, each row decided as if it had
+          {/* FR 51. Clearing the queue in one press, each row decided as if it had
               been clicked on its own. Refusing is not offered here: FR 39 wants a reason, and
               one reason spread across a selection is not the account of any of them. */}
           {pickable.length === 0 ? null : (
@@ -270,7 +270,7 @@ function QueueCard({
   item: QueueItem;
   chosen: boolean;
   busy: boolean;
-  /** FR 51. Why a batch could not answer this one. LMS 328. */
+  /** FR 51. Why a batch could not answer this one. */
   refused: string | undefined;
   onChoose: (wanted: boolean) => void;
   onDecide: (action: 'APPROVE' | 'REFUSE', comment: string) => void;
@@ -319,7 +319,7 @@ function QueueCard({
                 <span key={warning.code} className={`tag flag is-${warning.code.toLowerCase()}`}>
                   {warning.code !== 'BACKDATED'
                     ? 'Short notice'
-                    : /* FR 18, LMS 308. Two different pieces of news under one flag: recorded
+                    : /* FR 18. Two different pieces of news under one flag: recorded
                          on the way back in, or entered past the window as HR's exception. */
                       item.lateEntryReason === null
                       ? 'Back dated'
@@ -371,7 +371,7 @@ function QueueCard({
         </p>
       ))}
 
-      {/* LMS 409. The three things the decision turns on, side by side rather than stacked,
+      {/* The three things the decision turns on, side by side rather than stacked,
           and the fourth column is the decision itself. */}
       <div className="deciding">
         <section className="fact">
@@ -451,10 +451,10 @@ function QueueCard({
         ) : null}
       </div>
 
-      {/* FR 51. What a batch could not answer here, in the server's own sentence. LMS 328. */}
+      {/* FR 51. What a batch could not answer here, in the server's own sentence. */}
       {refused === undefined ? null : <p className="notice">{refused}</p>}
 
-      {/* FR 12, NFR SEC 04, LMS 407. The desk this is sitting on may open the certificate —
+      {/* FR 12, NFR SEC 04. The desk this is sitting on may open the certificate —
           `readAttachment` is `read` widened by exactly that — and every open is recorded
           against the approver's name. Shut until somebody decides to look. */}
       <AttachedFiles requestId={item.requestId} onSignedOut={onSignedOut} />
@@ -471,7 +471,7 @@ function QueueCard({
  * anonymous rows would be furniture where the count has already said everything true.
  */
 /**
- * How many others are away over these dates. LMS 409.
+ * How many others are away over these dates.
  *
  * The server's sentence named them and their dates, both of which are in the list directly
  * under this line. What an approver reads first is the count.
@@ -505,7 +505,7 @@ function TeamLine({ team }: { team: TeamContext }) {
 }
 
 /**
- * Asks to cancel leave that was already approved. FR 47, LMS 324.
+ * Asks to cancel leave that was already approved. FR 47.
  *
  * Its own load, so it shows for HR whether or not anything else is waiting, and says nothing
  * at all for somebody with no asks to answer — the server returns an empty list rather than a

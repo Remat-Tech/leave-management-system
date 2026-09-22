@@ -43,7 +43,7 @@ type EmployeeRow = Selectable<EmployeeTable>;
 export class EmployeeRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  /** Writes a record. LMS 106. */
+  /** Writes a record. */
   async create(by: Attribution, record: StorableEmployee): Promise<Employee> {
     const row = await this.catchRefusals(record, () =>
       recording(this.db, by, (on) =>
@@ -168,7 +168,7 @@ export class EmployeeRepository {
     return rows.map(toEmployee);
   }
 
-  /** Everybody in a department, leavers included, in employee number order. FR 57, LMS 409. */
+  /** Everybody in a department, leavers included, in employee number order. FR 57. */
   async findInDepartment(departmentId: string): Promise<Employee[]> {
     const rows = await this.db
       .selectFrom('employee')
@@ -181,7 +181,7 @@ export class EmployeeRepository {
   }
 
   /**
-   * Everybody reporting to any of these managers, in employee number order. FR 02, LMS 404.
+   * Everybody reporting to any of these managers, in employee number order. FR 02.
    *
    * {@link EmployeeRepository.countReports} answered for one manager and answered a number; the
    * approver queue needs the records, and needs them for several teams at once so a screenful
@@ -202,7 +202,7 @@ export class EmployeeRepository {
     return rows.map(toEmployee);
   }
 
-  /** How many employees report to somebody. FR 02, LMS 111. */
+  /** How many employees report to somebody. FR 02. */
   async countReports(managerId: string): Promise<number> {
     const row = await this.db
       .selectFrom('employee')

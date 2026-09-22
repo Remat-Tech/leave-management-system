@@ -47,7 +47,7 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * The approver queue over HTTP. FR 20, FR 40, FR 48, LMS 404.
+ * The approver queue over HTTP. FR 20, FR 40, FR 48.
  *
  * ../unit/approver-queue.test.ts proves the arrangement without a database. This suite is for
  * the four claims it cannot make: that the rows are the ones the desk column actually holds,
@@ -103,16 +103,16 @@ beforeAll(async () => {
     years,
     requestRepository,
     decisions,
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     new LeaveRoutingRepository(db),
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -125,7 +125,7 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: new BalanceRepository(db),
-    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    /** FR 27, FR 37. The ledger the adjustment screen reads, and the door it writes through. */
     ledger: new LedgerRepository(db),
     adjustments: balances,
     employees,
@@ -136,16 +136,16 @@ beforeAll(async () => {
     requests: requestRepository,
     leaveRequests: requests,
     decisions,
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     routing: new LeaveRoutingRepository(db),
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     withdrawals: new WithdrawalRepository(db),
-    /** FR 19, LMS 302. */
+    /** FR 19. */
     drafts: new LeaveRequestDraftRepository(db),
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
-    /** FR 25, §8.8, LMS 508. */
+    /** FR 25, §8.8. */
     holidayRecalculations: holidayRecalculationService(db, guard, balances),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
@@ -170,7 +170,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. The fixture days are months behind today, so annual leave's seven day
+  /* FR 18. The fixture days are months behind today, so annual leave's seven day
      backdating window would refuse almost every request in this file. Widened rather than
      dated forward: the window is a column HR sets, and the rule it states is
      ./leave-request.test.ts's to prove. */
@@ -283,7 +283,7 @@ describe('what a manager sees', () => {
   });
 
   /**
-   * And it turns up in the HR queue when the manager turns it down, too. FR 44, §7.2. LMS 318.
+   * And it turns up in the HR queue when the manager turns it down, too. FR 44, §7.2.
    *
    * The story's first criterion, and the reason it needs no query of its own: a rejection is
    * a decision at a stage rather than an ending, so a manager-rejected request arrives at
@@ -439,7 +439,7 @@ describe('what is flagged', () => {
   });
 
   /**
-   * FR 18, LMS 308. The story's second criterion, on the one HR had to enter.
+   * FR 18. The story's second criterion, on the one HR had to enter.
    *
    * Two requests carry the same `BACKDATED` flag and they are not the same news: one was
    * recorded on the way back in, and one is past the window and rests on somebody's written
@@ -532,10 +532,10 @@ describe('the wire', () => {
 
     expect(Object.keys(itemOf(await queueFor(people.teamLead), id)).sort()).toEqual([
       'actionable',
-      /** FR 49, LMS 327. Whose approvals this row is answered under. */
+      /** FR 49. Whose approvals this row is answered under. */
       'answeringFor',
       'approvedBy',
-      /* FR 44, LMS 318. Which of the two buttons would be overruling the manager, so a
+      /* FR 44. Which of the two buttons would be overruling the manager, so a
          screen asks for the justification before the press rather than after the refusal. */
       'approvingIs',
       'asker',
@@ -548,7 +548,7 @@ describe('the wire', () => {
       'days',
       'desk',
       'from',
-      /** FR 18, LMS 308. HR's account of the lateness, beside the `BACKDATED` flag. */
+      /** FR 18. HR's account of the lateness, beside the `BACKDATED` flag. */
       'lateEntryReason',
       'leaveTypeId',
       'leaveYearId',
@@ -567,7 +567,7 @@ describe('the wire', () => {
       'team',
       'to',
       'typeName',
-      /** NFR DAT 02, §8.1. What a decision off this row hands back. LMS 326. */
+      /** NFR DAT 02, §8.1. What a decision off this row hands back. */
       'version',
       'warnings',
     ]);
@@ -607,7 +607,7 @@ interface JsonItem {
   typeName: string;
   from: string;
   to: string;
-  /** FR 18, LMS 308. */
+  /** FR 18. */
   lateEntryReason: string | null;
   days: number;
   calendarDays: number;
@@ -625,7 +625,7 @@ interface JsonItem {
   team: { size: number; away: JsonAway[]; inWords: string };
   actionable: boolean;
   notActionableBecause: string | null;
-  /** FR 44, §7.2. LMS 318. */
+  /** FR 44, §7.2. */
   managersDecision: { said: string; comment: string | null; by: string; inWords: string } | null;
   approvingIs: string | null;
   refusingIs: string | null;
@@ -652,7 +652,7 @@ async function queueFor(employeeId: string): Promise<JsonQueue> {
   return (await response.json()) as JsonQueue;
 }
 
-/** The same queue, narrowed to what a manager turned down. FR 44, §7.2. LMS 318. */
+/** The same queue, narrowed to what a manager turned down. FR 44, §7.2. */
 async function rejectionsFor(employeeId: string): Promise<JsonQueue> {
   const response = await get('/api/me/approvals/rejections', employeeId);
 
@@ -674,7 +674,7 @@ async function aRequest(input: {
     from: input.from ?? '2026-03-02',
     to: input.to ?? '2026-03-06',
     reason: 'My sister is getting married',
-    /* FR 17, LMS 307. The fixture days are behind today, so every annual leave request here
+    /* FR 17. The fixture days are behind today, so every annual leave request here
        is short of notice — which is the point of the flag tests below, and has to be got past
        for all the others. */
     acknowledgesShortNotice: true,
@@ -697,11 +697,11 @@ function aBackdatedRequest(): Promise<string> {
   });
 }
 
-/** FR 18. What HR writes when they put an absence on the record weeks late. LMS 308. */
+/** FR 18. What HR writes when they put an absence on the record weeks late. */
 const WHY_SO_LATE = 'She was in hospital the whole of that week and is only back today';
 
 /**
- * FR 18. The same leave, entered past the window by HR. LMS 308.
+ * FR 18. The same leave, entered past the window by HR.
  *
  * The window is put back to the seven days the migration ships, because this file's own
  * `beforeEach` widens it so that the fixture week can be asked for at all — and a request

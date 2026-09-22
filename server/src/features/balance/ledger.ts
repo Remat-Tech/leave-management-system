@@ -1,5 +1,5 @@
 /**
- * The balance ledger. FR 27, §5.7, LMS 210, LMS 211, §8.6, FR 24, FR 36a, FR 32e, LMS 218, LMS 209, §8..
+ * The balance ledger. FR 27, §5.7, §8.6, FR 24, FR 36a, FR 32e, §8..
  */
 
 import type { BalanceBucket } from './balance.js';
@@ -16,7 +16,7 @@ export const LEDGER_ENTRY_TYPES = [
   'DEDUCTION',
   'RELEASE',
   'RECALCULATION',
-  /** Days moving from one leave type to another. FR 32c, §8.6c, LMS 507. */
+  /** Days moving from one leave type to another. FR 32c, §8.6c. */
   'RECLASSIFICATION',
 ] as const;
 
@@ -44,11 +44,11 @@ export const ENTRY_SIGNS: Readonly<Record<LedgerEntryType, 'ADDS' | 'CONSUMES' |
   DEDUCTION: 'CONSUMES',
   RELEASE: 'ADDS',
   RECALCULATION: 'ADDS',
-  /** Either way: one side of the move credits a balance and the other charges one. LMS 507. */
+  /** Either way: one side of the move credits a balance and the other charges one. */
   RECLASSIFICATION: 'EITHER',
 };
 
-/** Which of the cached balance's columns each type moves. §5.7, LMS 211, LMS 218, LMS 210, LMS 213. */
+/** Which of the cached balance's columns each type moves. §5.7. */
 export const BUCKETS: Readonly<Record<LedgerEntryType, readonly BalanceBucket[]>> = {
   GRANT: ['entitled'],
   CARRY_FORWARD: ['carriedOver'],
@@ -59,7 +59,7 @@ export const BUCKETS: Readonly<Record<LedgerEntryType, readonly BalanceBucket[]>
   DEDUCTION: ['pending', 'taken'],
   RELEASE: ['pending'],
   RECALCULATION: ['taken'],
-  /** `taken` alone: a deduction would draw down a hold nothing reserved. LMS 507. */
+  /** `taken` alone: a deduction would draw down a hold nothing reserved. */
   RECLASSIFICATION: ['taken'],
 };
 
@@ -74,15 +74,15 @@ export interface NewLedgerEntry {
   entryType: LedgerEntryType;
   /** Signed. */
   days: number;
-  /** FR 32a. How many of them are past the allowance. Defaults to none. LMS 312. */
+  /** FR 32a. How many of them are past the allowance. Defaults to none. */
   certifiedDays?: number;
   /** FR 27. */
   reason: string;
   /** The entry this one puts right. */
   correctsId?: string | null;
-  /** The request that caused this movement. LMS 301. */
+  /** The request that caused this movement. */
   leaveRequestId?: string | null;
-  /** FR 32c, §8.6c. What the other side of a move between two leave types is found by. LMS 507. */
+  /** FR 32c, §8.6c. What the other side of a move between two leave types is found by. */
   correlationId?: string | null;
 }
 
@@ -109,7 +109,7 @@ export interface LedgerEntry {
   entryType: LedgerEntryType;
   days: number;
   /**
-   * FR 32a, §8.6b. How many of this movement's days went past the allowance. LMS 312.
+   * FR 32a, §8.6b. How many of this movement's days went past the allowance.
    *
    * Nought on everything but the four movements a request causes, and on most of those.
    */
@@ -117,10 +117,10 @@ export interface LedgerEntry {
   reason: string;
   correctsId: string | null;
   /**
-   * The request that caused this, for the five in REQUEST_MOVEMENTS, and null for every other kind. LMS 301.
+   * The request that caused this, for the five in REQUEST_MOVEMENTS, and null for every other kind.
    */
   leaveRequestId: string | null;
-  /** FR 32c. The other side of the move, on a `RECLASSIFICATION` and nothing else. LMS 507. */
+  /** FR 32c. The other side of the move, on a `RECLASSIFICATION` and nothing else. */
   correlationId: string | null;
   /** Who, as the writer named themselves. */
   createdBy: string;
@@ -200,7 +200,7 @@ export function validateNewLedgerEntry(input: NewLedgerEntry): ValidatedLedgerEn
     );
   }
 
-  /* LMS 301, and an equivalence rather than a requirement. Both halves are refused
+  /* An equivalence rather than a requirement. Both halves are refused
      here so that the message names the field, and both are held again by
      `leave_ledger_entry_request_movements_name_a_request` for every other writer. */
   const movesForARequest = REQUEST_MOVEMENTS.includes(entryType);
@@ -223,7 +223,7 @@ export function validateNewLedgerEntry(input: NewLedgerEntry): ValidatedLedgerEn
     );
   }
 
-  /* FR 32c, LMS 507. An equivalence, as the request id is, and held again by
+  /* FR 32c. An equivalence, as the request id is, and held again by
      `leave_ledger_entry_only_a_reclassification_correlates`. */
   const moves = entryType === 'RECLASSIFICATION';
 
@@ -283,7 +283,7 @@ export function inOrderWritten(entries: readonly LedgerEntry[]): LedgerEntry[] {
   );
 }
 
-/** Each entry with the figure it left behind it. LMS 211. */
+/** Each entry with the figure it left behind it. */
 export function runningTotal(entries: readonly LedgerEntry[]): (LedgerEntry & { after: number })[] {
   let total = 0;
 
@@ -298,7 +298,7 @@ export function isARequestMovement(entryType: LedgerEntryType): boolean {
   return REQUEST_MOVEMENTS.includes(entryType);
 }
 
-/** Each kind of movement in words, written to sit mid-line. §5.7, LMS 506. */
+/** Each kind of movement in words, written to sit mid-line. §5.7. */
 const MOVEMENTS_IN_WORDS: Readonly<Record<LedgerEntryType, string>> = {
   GRANT: 'granted for the year',
   CARRY_FORWARD: 'carried over from last year',
@@ -313,7 +313,7 @@ const MOVEMENTS_IN_WORDS: Readonly<Record<LedgerEntryType, string>> = {
 };
 
 /**
- * What a movement was, for a reader rather than a branch. LMS 506.
+ * What a movement was, for a reader rather than a branch.
  *
  * Here rather than on a screen so that nine enum values have one wording, and so that a
  * ledger row is readable wherever it is sent.
@@ -327,7 +327,7 @@ export function isACorrection(entry: LedgerEntry): boolean {
   return entry.correctsId !== null;
 }
 
-/** How many days, and which way. FR 24, LMS 209, §8.6. */
+/** How many days, and which way. FR 24, §8.6. */
 function requireDays(entryType: LedgerEntryType, value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new InvalidLedgerEntry(
@@ -391,7 +391,7 @@ function requireDays(entryType: LedgerEntryType, value: unknown): number {
 }
 
 /**
- * How many of them went past the allowance on a certificate. FR 32a, §8.6b, LMS 312.
+ * How many of them went past the allowance on a certificate. FR 32a, §8.6b.
  *
  * A part of the movement rather than a movement of its own, so it is bounded by it and only
  * the four a request causes may carry one. `leave_ledger_entry_only_a_request_certifies` and
@@ -512,7 +512,7 @@ function labelFor(field: string): string {
  * figure they can add up themselves. Rounding to the column's own precision after
  * each step is the smallest thing that makes that true.
  *
- * It is not a rounding of *days*, which LMS 209 refuses: no movement changes size
+ * It is not a rounding of *days*, which the whole-days rule refuses: no movement changes size
  * here, and a figure that needed rounding to be valid was refused by
  * {@link requireDays} before it was ever written.
  */

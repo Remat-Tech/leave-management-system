@@ -1,5 +1,5 @@
 /**
- * Recording something that happened, and granting what it brings. FR 32g, FR 32e, §8.6, LMS 218, FR 05, FR 31, FR 29, FR 27.
+ * Recording something that happened, and granting what it brings. FR 32g, FR 32e, §8.6, FR 05, FR 31, FR 29, FR 27.
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -72,7 +72,7 @@ export class NoEntitlementForTheEvent extends Error {
 export class LeaveEventService {
   constructor(
     /**
-     * The one door that writes a movement. LMS 212.
+     * The one door that writes a movement.
      *
      * A service rather than a repository, and the reason is sharper here than it is for
      * the two jobs that say the same thing: the grant and the event row are written in

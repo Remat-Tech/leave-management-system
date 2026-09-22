@@ -10,7 +10,7 @@ import {
 } from '../../src/features/employee/org-chart.js';
 
 /**
- * The reporting structure, as a chart. FR 09. LMS 107.
+ * The reporting structure, as a chart. FR 09.
  *
  * The whole of the shaping is a pure function, so this is where the story is
  * actually proved. ../integration/employee.test.ts shows that the service asks

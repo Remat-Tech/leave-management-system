@@ -14,7 +14,7 @@ import {
 } from '../../src/features/leave-request/draft.js';
 
 /**
- * Saving a request and finishing it later. FR 19. LMS 302.
+ * Saving a request and finishing it later. FR 19.
  *
  * Everything pure: what a draft may hold, what it is still missing, and what turns one into
  * the four fields a submission takes. That a draft holds no days, blocks no calendar and is
@@ -131,7 +131,7 @@ describe('what is still to fill in', () => {
     expect(progress.inWords).toContain('Nothing is held');
   });
 
-  /* FR 10, LMS 302. The reason is not among them since it became the leave type's rule:
+  /* FR 10. The reason is not among them since it became the leave type's rule:
      a draft is checked for its fields, and whether one is needed is asked at submission. */
   it('and a missing reason is not something a draft is unfinished for', () => {
     const progress = progressOfDraft(aDraft({ reason: null }));

@@ -4,13 +4,13 @@ import { Notice, type Problem, problemFrom } from '../../problem';
 import { PasswordInput } from '../../PasswordInput';
 import { ForgottenPassword } from './ForgottenPassword';
 
-/** Signing in. LMS 109, LMS 110. */
+/** Signing in. */
 export function SignIn({
   onSignedIn,
   ended,
 }: {
   onSignedIn: () => void;
-  /** LMS 410. Why this screen is showing, where nobody asked for it. Undefined on a sign out. */
+  /** Why this screen is showing, where nobody asked for it. Undefined on a sign out. */
   ended?: string;
 }) {
   const [email, setEmail] = useState('');
@@ -38,7 +38,7 @@ export function SignIn({
 
     what
       .then(onDone)
-      /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
+      /** The server's own sentence, verbatim. NFR USA 03. */
       .catch((error: unknown) => {
         setProblem(problemFrom(error));
       })
@@ -114,7 +114,7 @@ export function SignIn({
         <h1>Sign in</h1>
         <p className="muted">Use your work email address.</p>
 
-        {/* LMS 410. Above the refusal rather than instead of it — a session that ended and a
+        {/* Above the refusal rather than instead of it — a session that ended and a
             password that was wrong are two pieces of news and can both be true. */}
         {ended === undefined ? null : <p className="notice plain">{ended}</p>}
 

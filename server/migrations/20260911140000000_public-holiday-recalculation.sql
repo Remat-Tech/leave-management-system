@@ -1,6 +1,6 @@
 -- Up Migration
 
--- A public holiday declared inside leave somebody already had agreed. FR 25, §8.8. LMS 508.
+-- A public holiday declared inside leave somebody already had agreed. FR 25, §8.8.
 --
 -- The entry type has been in the ledger since immutable-leave-ledger and had one writer,
 -- FR 47's withdrawal. This is the second and the one it was named for: a `RECALCULATION`

@@ -1,6 +1,6 @@
 -- Up Migration
 
--- HR's wording for the emails the system sends. FR 61, LMS 512.
+-- HR's wording for the emails the system sends. FR 61.
 -- One row per email HR has reworded. No row is the original wording, which lives in code.
 
 CREATE TABLE notification_template (

@@ -1,5 +1,5 @@
 /**
- * Reading the balance ledger. FR 27, §5.7., LMS 210, LMS 212, FR 37, FR 55, §5.7, §7.4, LMS 211, FR 25.
+ * Reading the balance ledger. FR 27, §5.7., FR 37, FR 55, §5.7, §7.4, FR 25.
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -36,7 +36,7 @@ export class LedgerService {
   ) {}
 
   /**
-   * Every movement in one balance, oldest first, with the figure each left behind. FR 53, FR 55, FR 56, LMS 211.
+   * Every movement in one balance, oldest first, with the figure each left behind. FR 53, FR 55, FR 56.
    */
   async history(
     actor: Actor,

@@ -34,7 +34,7 @@ import { LeaveYearService } from '../../src/features/leave-year/leave-year.servi
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * The cached balance against a real database. §5.7, design principle 1. LMS 211.
+ * The cached balance against a real database. §5.7, design principle 1.
  *
  * Nearly the whole story is here rather than in ../unit/balance.test.ts, and that is
  * the design rather than a shortfall in the unit suite. The arithmetic this story is
@@ -111,11 +111,11 @@ beforeEach(async () => {
   );
   await restoreYears();
 
-  /* LMS 301: the requests went with the entries, so the next test builds its own. */
+  /* The requests went with the entries, so the next test builds its own. */
   currentRequest = undefined;
 
   /* And with them the days they claimed, so the next test starts at the year's first
-     again. LMS 304. */
+     again. */
   nextRequestDay = 0;
 
   people = (await seed(admin)) as Record<string, string>;
@@ -159,7 +159,7 @@ async function restoreYears(): Promise<void> {
 }
 
 /**
- * The request the request-shaped entries of this test are filed under. LMS 301.
+ * The request the request-shaped entries of this test are filed under.
  *
  * Since the create-and-submit-a-leave-request migration a RESERVATION, DEDUCTION,
  * RELEASE or RECALCULATION has to name a request —
@@ -181,7 +181,7 @@ function movesForARequest(entryType: LedgerEntryType): boolean {
  * Where the next fixture request starts, counted in days from its leave year's first.
  *
  * Every request in this file used to begin on the first of January, which was fine until
- * `leave_request_never_overlaps` arrived with LMS 304: one person may not hold the same
+ * `leave_request_never_overlaps` arrived: one person may not hold the same
  * day twice. Advancing the start day gives each fixture a period of its own — which is
  * what these rows were always meant to represent, since what this file is about is the
  * balance rather than the calendar.
@@ -241,7 +241,7 @@ async function insertEntry(row: Record<string, unknown>): Promise<Record<string,
  * because six of the nine kinds have no service writer and because what is being proved
  * is that the balance follows a *ledger entry* rather than a service call.
  *
- * Since LMS 301 the four request-shaped kinds cannot be written alone — see
+ * The four request-shaped kinds cannot be written alone — see
  * {@link currentRequest} — so this builds the request they name.
  */
 async function post(
@@ -289,7 +289,7 @@ async function post(
     await post('RESERVATION', -Math.abs(days), overrides);
   }
 
-  /* FR 32c, LMS 507. A reclassification is two entries under one correlation, judged at
+  /* FR 32c. A reclassification is two entries under one correlation, judged at
      COMMIT, so the other side goes in beside it — in the leave type this balance is not,
      which is why it changes nothing measured here. */
   if (entryType === 'RECLASSIFICATION' && row.correlation_id === undefined) {
@@ -352,7 +352,7 @@ function asThemselves() {
 
 /** Somebody with no standing at all towards the officer's balance. */
 /**
- * Somebody asking for days, through the door LMS 301 put in front of them.
+ * Somebody asking for days, through the door submission puts in front of them.
  *
  * `reserve` was replaced by `reserveForRequest` because a RESERVATION now has to name a
  * request and a request has to hold days — so there is no way to write one without the
@@ -363,7 +363,7 @@ function asThemselves() {
  * is the balance rather than the counting; ./leave-request.test.ts is where the counting
  * is proved.
  *
- * **Each one starts where the last left off**, which since LMS 304 is what makes two of
+ * **Each one starts where the last left off**, which is what makes two of
  * them possible at all: `leave_request_never_overlaps` refuses one person two requests
  * over the same day, and these all used to begin on the first of January. The days are
  * claimed synchronously, before the first `await`, so that the two callers of the
@@ -394,7 +394,7 @@ async function askFor(
       from: rows[0].start_date,
       to: rows[0].end_date,
       reason: 'Five days in December',
-      /** FR 18, LMS 308. */
+      /** FR 18. */
       lateEntryReason: null,
       evidenceRequired: false,
       certifiedDays: 0,
@@ -403,9 +403,9 @@ async function askFor(
       calendarDays: span,
       status: 'SUBMITTED' as const,
       /* FR 38a. Where a request starts, which `LeaveRequestService` reads off the leave
-         type's chain. These fixtures go straight to the door, so they say it. LMS 314. */
+         type's chain. These fixtures go straight to the door, so they say it. */
       awaitingApprovalFrom: 'MANAGER' as const,
-      /** FR 48b. Nothing to skip: every desk can be asked. LMS 320. */
+      /** FR 48b. Nothing to skip: every desk can be asked. */
       skips: [],
     },
     reason: 'Five days in December',
@@ -413,7 +413,7 @@ async function askFor(
 }
 
 /**
- * A movement drawing down a hold, which since LMS 301 has to name the request the days
+ * A movement drawing down a hold, which has to name the request the days
  * are held for.
  *
  * `leave_ledger_entry_request_movements_name_a_request` refuses a DEDUCTION or a RELEASE
@@ -507,24 +507,24 @@ describe('a balance is opened by the first movement in it', () => {
 /**
  * `BUCKETS` in features/balance/ledger.ts against the trigger that performs it.
  *
- * This is the test the whole story turns on. LMS 210 wrote down which of the five
+ * This is the test the whole thing turns on. The ledger wrote down which of the five
  * columns each kind of movement moves, in the file that knows what an entry means,
  * and declined to implement it — "a total computed in two places is the drift the
- * cached balance exists to be checked against". LMS 211 implemented it once, in SQL.
+ * cached balance exists to be checked against". It is implemented once, in SQL.
  * What keeps the statement and the implementation in step is this: one entry of each
  * of the eight kinds, and the columns that actually moved compared with the columns
  * the domain says should have.
  */
 describe('every kind of movement lands where the domain says it does', () => {
   it.each(LEDGER_ENTRY_TYPES)('%s moves exactly the columns BUCKETS names', async (entryType) => {
-    /* Since LMS 301 a DEDUCTION, RELEASE or RECALCULATION has to name a request that
+    /* A DEDUCTION, RELEASE or RECALCULATION has to name a request that
        is already holding days, so the hold is set up before the reading is taken —
        what is being measured is what *this* entry moved. A RESERVATION brings its own
        request, which is why it is not in this list: it is the hold. */
     if (movesForARequest(entryType) && entryType !== 'RESERVATION') {
       await post('RESERVATION', -5);
 
-      /* FR 47, LMS 324. A RECALCULATION gives back days that were taken, and
+      /* FR 47. A RECALCULATION gives back days that were taken, and
          `leave_request_gives_back_no_more_than_it_took` refuses one against a request that
          never spent any — so the hold is drawn down before the reading is taken. */
       if (entryType === 'RECALCULATION') {
@@ -661,7 +661,7 @@ describe('what somebody is owed may carry a fraction; what they have taken may n
   });
 
   /* And the two columns that count days out of a request are whole numbers in the
-     schema, not merely whole by habit. FR 24, LMS 209. */
+     schema, not merely whole by habit. FR 24. */
   it('and the columns counting taken and pending days are integers', async () => {
     await post('RESERVATION', -5);
 
@@ -949,7 +949,7 @@ describe('every figure can be thrown away and comes back the same', () => {
     await post('ADJUSTMENT', 2);
     await post('RESERVATION', -4);
     await post('DEDUCTION', -4);
-    /* FR 47, LMS 324. Against the request that spent the days, which is this one. */
+    /* FR 47. Against the request that spent the days, which is this one. */
     await post('RECALCULATION', 1);
     await post('RESERVATION', -3);
     await post('RELEASE', 1);
@@ -1095,7 +1095,7 @@ describe('the read a balance screen does', () => {
   });
 });
 
-/* --------------------------------------------- reserve, commit and release. LMS 212 */
+/* --------------------------------------------- reserve, commit and release */
 
 /**
  * The three operations a leave request moves a balance through. FR 26, §8.2.
@@ -1235,7 +1235,7 @@ describe('holding days, spending them, and giving them back', () => {
     );
   });
 
-  /* FR 24 and LMS 209, refused before the column ever sees it so the message names the
+  /* FR 24, refused before the column ever sees it so the message names the
      field. Which way the balance moves is the method that was called, never the sign. */
   it('and refuses half a day, and a figure with a sign on it', async () => {
     await twelveDays();

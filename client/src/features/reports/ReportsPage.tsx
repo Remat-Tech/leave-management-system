@@ -24,7 +24,7 @@ import { day, days, period } from '../../format';
 import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
-/** HR's reports on leave across the company. FR 63, LMS 510, FR 58, FR 64, LMS 511. */
+/** HR's reports on leave across the company. FR 63, FR 58, FR 64. */
 
 const REPORTS = [
   { id: 'liability', path: 'liability', label: 'Leave liability by department' },

@@ -24,7 +24,7 @@ import {
 } from '../../src/features/leave-type/leave-type.js';
 
 /**
- * A leave type and the rules it carries. FR 21, FR 31, FR 32, §5.5. LMS 201.
+ * A leave type and the rules it carries. FR 21, FR 31, FR 32, §5.5.
  *
  * The whole of the shaping is pure functions, so this is where the story is
  * proved. ../integration/leave-type.test.ts shows that the service asks the
@@ -81,7 +81,7 @@ function refusedField(build: () => unknown): string {
   throw new Error('That was accepted, and should not have been.');
 }
 
-/** Whether an assert refused, for the pairs where a predicate says the same thing. LMS 308. */
+/** Whether an assert refused, for the pairs where a predicate says the same thing. */
 function threw(assert: () => void): boolean {
   try {
     assert();
@@ -115,7 +115,7 @@ describe('a new type', () => {
          stopped asking is an approver deciding blind. */
       reasonRequired: true,
       displayOrder: 0,
-      /* FR 38a and LMS 204's second criterion. Manager then HR, applied here
+      /* FR 38a. Manager then HR, applied here
          rather than left to the writer, so that a type created through a form
          that said nothing about approvals reads as the type it is straight away.
          What a chain is and what makes one nonsense is ./approval-chain.test.ts. */
@@ -350,7 +350,7 @@ describe('the two windows', () => {
     expect(() => assertWithinBackdatingWindow(stored(), 0)).not.toThrow();
   });
 
-  /* LMS 308. The plain question the request path asks, because past the window the answer is
+  /* The plain question the request path asks, because past the window the answer is
      not no but *not by this person*. One rule, two shapes, so they are walked together. */
   it('answer the same question plainly, for the path that decides who may', () => {
     for (const notice of [30, 0, -1, -7, -8, -30]) {

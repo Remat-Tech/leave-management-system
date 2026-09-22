@@ -13,7 +13,7 @@ import { Icon, iconForLeaveType } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
- * Recording a birth, a bereavement and the like, which grants that leave. FR 32g, LMS 218.
+ * Recording a birth, a bereavement and the like, which grants that leave. FR 32g.
  *
  * The days come from the entitlement rule in force on the date it happened, and land in that
  * date's leave year. The server decides all of it; this page only sends the facts.

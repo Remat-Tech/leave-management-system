@@ -1,7 +1,7 @@
 -- Up Migration
 
 -- The two org-wide policy settings the screen needs beside the Chief Executive.
--- FR 44, FR 48c, NFR SEC 06. LMS 505.
+-- FR 44, FR 48c, NFR SEC 06.
 --
 -- Columns rather than key/value, as identify-the-ceo-by-configuration argued: "the next
 -- setting is a column and a migration".

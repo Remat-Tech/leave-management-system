@@ -32,7 +32,7 @@ import { recordingDenials } from '../support/recording-denials.js';
 import type { Employee } from '../../src/features/employee/employee.js';
 
 /**
- * Authorisation, with no database. NFR SEC 02 and NFR SEC 03. §10. LMS 112.
+ * Authorisation, with no database. NFR SEC 02 and NFR SEC 03. §10.
  *
  * This is where the real coverage of the story lives, and that is the dividend
  * of policies being pure functions: the whole matrix of who may do what is
@@ -310,7 +310,7 @@ describe('searching for people', () => {
     expect(employeePolicy.search(manager('akosua')).allowed).toBe(false);
   });
 
-  /* FR 09 and LMS 107. The chart names everybody, their job title and who they
+  /* FR 09. The chart names everybody, their job title and who they
      answer to, so it is the staff list with the lines drawn in and goes to the
      same people. Opening it to a manager for their own branch would be the skip
      level read employee-policy.ts declines, arriving through a different door. */
@@ -380,7 +380,7 @@ describe('departments and working patterns', () => {
   });
 });
 
-describe('leave types, FR 21 and LMS 201', () => {
+describe('leave types, FR 21', () => {
   /* The third resource that is about the shape of the organisation rather than
      about a person, and it runs like the other two. What is worth asserting
      separately is the read, because the temptation with this one was to make the
@@ -432,7 +432,7 @@ describe('leave types, FR 21 and LMS 201', () => {
     expect(leaveTypePolicy.retire(adwoa, 'annual').resource).toBe('leave type');
   });
 
-  /* And so does saying who approves a type, FR 38a and LMS 204. It is the change
+  /* And so does saying who approves a type, FR 38a. It is the change
      whose effect nobody sees directly — a request sent to the wrong desk does not
      fail, it waits — so "changed who approves maternity leave" has to be findable
      as its own sentence rather than as another "changed the maternity type". */
@@ -451,7 +451,7 @@ describe('leave types, FR 21 and LMS 201', () => {
   });
 });
 
-describe('leave years, §5.4 and LMS 205', () => {
+describe('leave years, §5.4', () => {
   /* Open to read, and it has to be. When the leave year ends is the single most
      planned-around date in the system — it is when unused annual leave carries
      over or is lost, FR 36 — and an employee who cannot find out when their year
@@ -502,7 +502,7 @@ describe('leave years, §5.4 and LMS 205', () => {
   });
 });
 
-describe('the public holiday calendar, FR 22 and LMS 206', () => {
+describe('the public holiday calendar, FR 22', () => {
   /* Open to read, and this one barely needs arguing: a public holiday is in the
      national gazette and on the front page of every newspaper in Accra. There is
      nothing to protect and a fortnight in December to plan around. */
@@ -571,7 +571,7 @@ describe('the public holiday calendar, FR 22 and LMS 206', () => {
   });
 });
 
-describe('entitlement figures, FR 31 and LMS 203', () => {
+describe('entitlement figures, FR 31', () => {
   /* The first configuration table with a person-shaped field on it, so it is the
      first one where "readable by anybody signed in" is not the whole answer. The
      policy reads the row rather than the table. */
@@ -664,7 +664,7 @@ describe('assigning roles', () => {
   const hrAdmin = employee('ama', ['EMPLOYEE', 'HR_ADMIN']);
   const sysAdmin = employee('kofi', ['EMPLOYEE', 'SYS_ADMIN']);
 
-  it('is administrators, and enforces the sentence LMS 111 left unenforced', () => {
+  it('is administrators, and enforces the sentence the role rules left unenforced', () => {
     for (const [code, roles] of EACH_ROLE) {
       const them = employee('adwoa', roles);
 
@@ -869,7 +869,7 @@ describe('the audit log', () => {
     }
   });
 
-  it('keeps the audit log screen to HR Administrators and System Administrators. LMS 513', () => {
+  it('keeps the audit log screen to HR Administrators and System Administrators', () => {
     for (const [code, roles] of EACH_ROLE) {
       expect(auditPolicy.search(employee('adwoa', roles)).allowed).toBe(
         SEARCHES_THE_AUDIT_LOG.includes(code),
@@ -877,13 +877,14 @@ describe('the audit log', () => {
     }
 
     expect(SEARCHES_THE_AUDIT_LOG).toEqual(['HR_ADMIN', 'SYS_ADMIN']);
-    expect(auditPolicy.search(manager('kofi')).told).toContain('LMS 513');
+    expect(auditPolicy.search(manager('kofi')).told).toContain(
+      'searched by an HR Administrator or a System Administrator',
+    );
   });
 });
 
 /**
- * Moving a balance. FR 26, FR 37, §10. LMS 210, and the three that arrived with
- * LMS 212.
+ * Moving a balance. FR 26, FR 37, §10.
  *
  * Five decisions about one table, and they are five rather than one because they are
  * five different acts by different people. Reading your leave, moving it by fiat,
@@ -894,15 +895,15 @@ describe('the audit log', () => {
  * system aimed at somebody's own record on purpose, and `reserve`, which is the only
  * place a manager's standing over a report does *not* carry.
  */
-describe('moving a balance, FR 26 and LMS 212', () => {
+describe('moving a balance, FR 26', () => {
   /** Ama's balance. Akosua is her manager. */
-  /** FR 49, LMS 327. Nobody is covering for anybody unless a case says so. */
+  /** FR 49. Nobody is covering for anybody unless a case says so. */
   const hers = { employeeId: 'ama', managerId: 'akosua', standingIn: [] };
 
   /**
-   * Her request, sitting at a desk. FR 38a, FR 44. LMS 318.
+   * Her request, sitting at a desk. FR 38a, FR 44.
    *
-   * Refusing takes one of these since LMS 318, as approving has since LMS 314: a rejection
+   * Refusing takes one of these, as approving has: a rejection
    * advances the chain, so it belongs to the desk the request is on rather than to a role.
    */
   const atDesk = (awaiting: 'MANAGER' | 'HR' | 'CEO') => ({
@@ -939,7 +940,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
   });
 
   /**
-   * Granting a year of entitlement. FR 30, LMS 214.
+   * Granting a year of entitlement. FR 30.
    *
    * The same rule as `adjust`, and not a copy of it by accident: a grant and an
    * adjustment are the same act from the balance's point of view — days arriving with
@@ -972,7 +973,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
   });
 
   /**
-   * Carrying last year's unused days into the new one. FR 36, LMS 217.
+   * Carrying last year's unused days into the new one. FR 36.
    *
    * The same desk as a grant, for the reason the policy gives: whether a type carries
    * at all is `leave_entitlement_rule.carries_over`, and writing that rule is an HR
@@ -1007,7 +1008,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
   });
 
   /**
-   * Recording something that happened, and the entitlement it brings. FR 32g, LMS 218.
+   * Recording something that happened, and the entitlement it brings. FR 32g.
    *
    * The one grant in this file that is **not** an Administrator's alone, so it is the
    * one worth enumerating rather than sampling. The argument is that this desk is not
@@ -1031,7 +1032,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
   });
 
   /**
-   * Lapsing an event grant that was not used in time. FR 32e, LMS 218.
+   * Lapsing an event grant that was not used in time. FR 32e.
    *
    * Back to an Administrator's, and the line between this and the recording above is
    * the line the policy keeps everywhere: recording that something happened to one
@@ -1147,7 +1148,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
   });
 
   /**
-   * Checking every balance against the ledger. §7.4, LMS 213.
+   * Checking every balance against the ledger. §7.4.
    *
    * The only decision in this file that names no record, because the reconciliation
    * names none: it reads every balance there is, which is every employee's leave in one
@@ -1213,7 +1214,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
   });
 
   /**
-   * Asking for leave, and seeing what somebody asked for. FR 10, LMS 301.
+   * Asking for leave, and seeing what somebody asked for. FR 10.
    *
    * Three decisions with three different widths, and the widths are the story: reading
    * is the balance's three standings, asking is narrower than reading, and rewording is
@@ -1276,7 +1277,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       expect(leaveRequestPolicy.submit(manager('akosua'), hers).told).toMatch(/FR 18/);
     });
 
-    /* FR 12, LMS 310. The standings `submit` carries, and the manager is not among them:
+    /* FR 12. The standings `submit` carries, and the manager is not among them:
        an approver who wants a certificate asks the person for it. */
     it('is evidenced by the person whose leave it is, and by HR on their behalf', () => {
       expect(leaveRequestPolicy.attach(employee('ama'), hers).allowed).toBe(true);
@@ -1301,7 +1302,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       }
     });
 
-    /* FR 12, LMS 310. Reading a certificate is reading the request, widened by the desk —
+    /* FR 12. Reading a certificate is reading the request, widened by the desk —
        FR 32h sends unpaid leave to a Chief Executive who is nobody's manager and holds no
        role, and an approver who cannot open the evidence cannot decide on it. */
     it('and what is attached is read by whoever may read the request', () => {
@@ -1338,7 +1339,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
 
     /**
      * And a draft is narrower still: the person planning it, and nobody at all besides.
-     * FR 19, LMS 302.
+     * FR 19.
      *
      * The one rule here that does not widen outwards from the person. `read` above admits
      * the manager and every role that reads every record, because a request is a thing
@@ -1359,7 +1360,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
     });
 
     /**
-     * FR 18, LMS 308. And entering leave past its backdating window is HR's alone.
+     * FR 18. And entering leave past its backdating window is HR's alone.
      *
      * Their own included, which is the reading FR 18 supports: what is reserved to HR is
      * *entering the record*, and the leave still goes to somebody else's desk to be decided.
@@ -1417,32 +1418,32 @@ describe('moving a balance, FR 26 and LMS 212', () => {
       }
     });
 
-    /* And the decisions there are. `approve` arrived with LMS 314 and is the one whose
+    /* And the decisions there are. `approve` arrived with the routing and is the one whose
        subject is not a `BalanceOwner`: it takes the desk the request is sitting on as well,
        which is what stops it being "a way to reach the transition without passing the check
        that knows which desk FR 38a's chain has the request sitting on" — the sentence this
        file refused it with for two stories. */
     it('and the decisions it holds are these twenty three', () => {
       expect(Object.keys(leaveRequestPolicy).sort()).toEqual([
-        /** FR 47, LMS 324. HR's three answers, decided by one rule. */
+        /** FR 47. HR's three answers, decided by one rule. */
         'answerAWithdrawal',
         'approve',
-        /** FR 47, LMS 324. Asking for agreed leave to be taken off the books. */
+        /** FR 47. Asking for agreed leave to be taken off the books. */
         'askToWithdraw',
-        /* FR 12, LMS 310. Evidence goes on by the person whose leave it is, or by HR. An
+        /* FR 12. Evidence goes on by the person whose leave it is, or by HR. An
            approver who wants a certificate asks for one rather than supplying it. */
         'attach',
         'cancel',
-        /* FR 50, LMS 330. Every team's pending leave at once, which is the daily reminder's
+        /* FR 50. Every team's pending leave at once, which is the daily reminder's
            read and nobody's own queue. */
         'chaseTheCompany',
-        /* FR 44, LMS 318. `decide` dispatches on the verb, and `override` is the two verbs
+        /* FR 44. `decide` dispatches on the verb, and `override` is the two verbs
            that disagree with a manager. */
         'decide',
-        /* FR 19, LMS 302. The narrowest rule here: the person planning the leave and nobody
+        /* FR 19. The narrowest rule here: the person planning the leave and nobody
            else, where every other read widens outwards to the manager and to HR. */
         'draft',
-        /** FR 48d, LMS 322. Nobody answers two stages of one request. */
+        /** FR 48d. Nobody answers two stages of one request. */
         'eachStageADifferentPerson',
         /** The Chief Executive's page of everybody's leave. */
         'listEveryone',
@@ -1450,12 +1451,12 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         'override',
         'queue',
         'read',
-        /* FR 12, LMS 310. `read` widened by the desk, so FR 04's seat can open the
+        /* FR 12. `read` widened by the desk, so FR 04's seat can open the
            certificate on the leave only it decides. */
         'readAttachment',
-        /* FR 18, LMS 308. The one decision here that is asked rather than enforced: what it
+        /* FR 18. The one decision here that is asked rather than enforced: what it
            refuses is answered by `TooLateToRecord`, which names HR. */
-        /** FR 32c, LMS 507. Moving days of agreed leave to sick leave. */
+        /** FR 32c. Moving days of agreed leave to sick leave. */
         'reclassify',
         'recordLate',
         'refuse',
@@ -1463,7 +1464,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         /** The Chief Executive reversing a settled request. */
         'reverse',
         'reword',
-        /** FR 48b, LMS 320. Putting a request nobody could decide back into its chain. */
+        /** FR 48b. Putting a request nobody could decide back into its chain. */
         'route',
         'submit',
         'withdraw',
@@ -1513,7 +1514,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
         expect(leaveRequestPolicy.withdraw(holder, hers).allowed).toBe(carries);
         expect(leaveRequestPolicy.cancel(holder, hers).allowed).toBe(carries);
 
-        /* FR 44, LMS 318. Refusing left that pair, and is now the desk's rather than a
+        /* FR 44. Refusing left that pair, and is now the desk's rather than a
            role's: holding HR_OFFICER is standing at the HR desk and at no other. */
         expect(leaveRequestPolicy.refuse(holder, atManager).allowed).toBe(false);
         expect(leaveRequestPolicy.refuse(holder, atHrDesk).allowed).toBe(
@@ -1523,7 +1524,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
     });
 
     /**
-     * And approving one is decided by the chain, not by rank. FR 38, FR 38a, FR 40. LMS 314.
+     * And approving one is decided by the chain, not by rank. FR 38, FR 38a, FR 40.
      *
      * The three desks resolve to a person three different ways — a reporting line, a pair of
      * granted roles, and the one employee FR 04 leaves without a manager — and this is where
@@ -1644,7 +1645,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
     });
 
     /**
-     * And nobody decides their own request, whatever they hold. FR 48, §8.6a. LMS 319.
+     * And nobody decides their own request, whatever they hold. FR 48, §8.6a.
      *
      * The rule with no answer that admits anybody, and this is where that claim is pinned
      * exhaustively rather than sampled — which is exactly what a pure policy is for. Ama asks
@@ -1654,7 +1655,7 @@ describe('moving a balance, FR 26 and LMS 212', () => {
      * The cases that make it necessary are ordinary rather than adversarial, and both are
      * about HR asking for their own leave: the desk unpaid leave starts at is staffed by a
      * code an HR Officer holds, and `LEAVE_ADMINISTRATION` is on the `REFUSE` row whichever
-     * desk the request is sitting at. Before LMS 319 the first was closed and the second was
+     * desk the request is sitting at. The first used to be closed and the second was
      * not.
      */
     describe('and deciding one', () => {
@@ -1837,7 +1838,7 @@ describe('the guard', () => {
 
   it('lets an allowed decision through without writing anything down', () => {
     /* Only refusals are logged. "Who read whose record" is a much larger
-       question, it belongs in the audit log of LMS 113, and answering half of it
+       question, it belongs in the audit log, and answering half of it
        here would produce a file that looks like an access log and is not one. */
     const denials = recordingDenials();
 

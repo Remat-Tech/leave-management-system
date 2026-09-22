@@ -45,7 +45,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { holidayRecalculationService } from '../support/holiday-recalculations.js';
 import { delegationService } from '../support/delegations.js';
 
-/** The email wording screen, over HTTP. FR 61, LMS 512. What an email says is ../unit/wording.test.ts. */
+/** The email wording screen, over HTTP. FR 61. What an email says is ../unit/wording.test.ts. */
 
 const testDatabaseUrl = await databaseForThisFile();
 

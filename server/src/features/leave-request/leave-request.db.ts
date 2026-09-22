@@ -1,5 +1,5 @@
 /**
- * Database access for a leave request. FR 10, FR 11, FR 15, FR 26, §8., LMS 301, LMS 304, LMS 306, LMS 314, §6.
+ * Database access for a leave request. FR 10, FR 11, FR 15, FR 26, §8., §6.
  */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
@@ -30,17 +30,17 @@ const OUTSIDE_ITS_YEAR = 'leave_request_falls_in_its_leave_year';
 const HOLDS_NO_DAYS = 'leave_request_holds_its_days';
 const ALREADY_PRICED = 'leave_request_says_what_it_said';
 
-/** The trigger from the release-days-when-a-request-ends migration. LMS 306. */
+/** The trigger from the release-days-when-a-request-ends migration. */
 const KEPT_ITS_DAYS = 'leave_request_gives_its_days_back';
 
-/** The two from route-a-request-through-its-chain. LMS 314. */
+/** The two from route-a-request-through-its-chain. */
 const MOVED_WRONGLY = 'leave_request_moves_as_the_table_says';
 const KEPT_ITS_DAYS_ON_APPROVAL = 'leave_request_takes_its_days';
 
 /** The exclusion constraint from the prevent-overlapping-requests migration. */
 const OVERLAPS_ANOTHER = 'leave_request_never_overlaps';
 
-/** The trigger from the sick-leave-beyond-the-allowance migration. FR 32a, LMS 312. */
+/** The trigger from the sick-leave-beyond-the-allowance migration. FR 32a. */
 const NOT_EXCEEDABLE = 'leave_request_certified_days_need_an_exceedable_allowance';
 
 /** Which field a refused row is reported against. */
@@ -55,7 +55,7 @@ const CHECKED_FIELDS: Record<string, string> = {
   leave_request_spans_its_own_dates: 'calendarDays',
   leave_request_awaiting_role_known: 'awaitingApprovalFrom',
   leave_request_waits_at_a_desk: 'awaitingApprovalFrom',
-  /** FR 32a, LMS 312. */
+  /** FR 32a. */
   leave_request_certified_days_are_part_of_it: 'certifiedDays',
   leave_request_certified_days_stand_on_evidence: 'certifiedDays',
 };
@@ -75,7 +75,7 @@ export interface LeaveRequestListOptions {
   leaveTypeId?: string;
   leaveYearId?: string;
   status?: RequestStatus;
-  /** Any of several, where one status is not the question. LMS 509. */
+  /** Any of several, where one status is not the question. */
   statuses?: readonly RequestStatus[];
   /** Requests overlapping this period. */
   from?: string;
@@ -114,7 +114,7 @@ export class LeaveRequestRepository {
   }
 
   /**
-   * The same row, held still until this transaction ends. NFR DAT 02, §8.1, LMS 326.
+   * The same row, held still until this transaction ends. NFR DAT 02, §8.1.
    *
    * `BalanceRepository.holdStill` for the request itself, and every door that moves one takes
    * it — after the balance lock and never before, because two orders is a deadlock.
@@ -180,7 +180,7 @@ export class LeaveRequestRepository {
   }
 
   /**
-   * Every request sitting at a desk, anywhere in the company, longest waiting first. FR 50, FR 60, LMS 330.
+   * Every request sitting at a desk, anywhere in the company, longest waiting first. FR 50, FR 60.
    *
    * Filtered on the desk rather than on the status, as {@link awaiting} is and for the same
    * reason: `leave_request_waits_at_a_desk` makes the two an equivalence. A request nobody
@@ -199,14 +199,14 @@ export class LeaveRequestRepository {
   }
 
   /**
-   * Every request sitting at one of these desks. FR 20, FR 40, FR 38a, LMS 404.
+   * Every request sitting at one of these desks. FR 20, FR 40, FR 38a.
    *
    * Filtered on the desk and not on the status: `leave_request_waits_at_a_desk` makes the two
    * an equivalence, so a row at a desk is a row still being decided.
    *
    * `HR` and `CEO` are staffed for the whole company and are a plain `IN`. `MANAGER` resolves
    * through a reporting line, so it is narrowed to the reports of every manager whose desk
-   * this person answers — their own, and since LMS 327 anybody covering for them. FR 49.
+   * this person answers — their own, and anybody covering for them. FR 49.
    */
   async awaiting(staffed: DesksStaffed): Promise<LeaveRequest[]> {
     const companyWide = companyWideDesks(staffed);
@@ -247,7 +247,7 @@ export class LeaveRequestRepository {
   }
 
   /**
-   * The live leave these people have over this span. FR 20, LMS 404.
+   * The live leave these people have over this span. FR 20.
    *
    * {@link LeaveRequestRepository.findOverlapping} asked about a group, for the team context an
    * approver decides on. A span rather than a period, so one statement answers a whole
@@ -279,7 +279,7 @@ export class LeaveRequestRepository {
   }
 
   /**
-   * Every piece of agreed leave in the company that covers this day. FR 25, LMS 508.
+   * Every piece of agreed leave in the company that covers this day. FR 25.
    *
    * `APPROVED` alone, and the whole company: what a late holiday affects is leave whose
    * days have been spent, wherever it is. A request still being decided is holding its days
@@ -302,7 +302,7 @@ export class LeaveRequestRepository {
     return rows.map(toRequest);
   }
 
-  /** Every request nobody has decided, anywhere in the company, oldest first. FR 63, LMS 510. */
+  /** Every request nobody has decided, anywhere in the company, oldest first. FR 63. */
   async undecided(): Promise<LeaveRequest[]> {
     const rows = await this.db
       .selectFrom('leave_request')
@@ -315,7 +315,7 @@ export class LeaveRequestRepository {
     return rows.map(toRequest);
   }
 
-  /** Every approved request starting in this span, company wide. FR 63, LMS 510. */
+  /** Every approved request starting in this span, company wide. FR 63. */
   async approvedStartingBetween(span: LeavePeriod): Promise<LeaveRequest[]> {
     const rows = await this.db
       .selectFrom('leave_request')
@@ -374,14 +374,14 @@ export class LeaveRequestRepository {
   }
 
   /**
-   * Moves a request, which is the only thing that touches `status` or the desk it is waiting at. FR 26, FR 38a, §6., LMS 306, LMS 314.
+   * Moves a request, which is the only thing that touches `status` or the desk it is waiting at. FR 26, FR 38a, §6..
    */
   async moveTo(
     by: Attribution,
     id: string,
     to: RequestStatus,
     awaiting: ApproverRole | null,
-    /** FR 48d. Stamped by the move that settles it, and false on every other. LMS 322. */
+    /** FR 48d. Stamped by the move that settles it, and false on every other. */
     decidedBySingleApprover = false,
   ): Promise<LeaveRequest | undefined> {
     return this.catchRefusals(async () => {
@@ -533,11 +533,11 @@ function rowFor(request: ValidatedLeaveRequest): Insertable<LeaveRequestTable> {
     start_date: request.from,
     end_date: request.to,
     reason: request.reason,
-    /** FR 18. Null on everything inside the window. LMS 308. */
+    /** FR 18. Null on everything inside the window. */
     late_entry_reason: request.lateEntryReason,
-    /** FR 13, FR 32a. What the evidence rule said when the days were held. LMS 311. */
+    /** FR 13, FR 32a. What the evidence rule said when the days were held. */
     evidence_required: request.evidenceRequired,
-    /** FR 32a, §8.6b. How many of them the certificate carried. LMS 312. */
+    /** FR 32a, §8.6b. How many of them the certificate carried. */
     certified_days: request.certifiedDays,
     counting_basis: request.countingBasis,
     days: request.days,
@@ -567,7 +567,7 @@ function toRequest(row: LeaveRequestRow): LeaveRequest {
     calendarDays: row.calendar_days,
     status: row.status as RequestStatus,
     awaitingApprovalFrom: row.awaiting_approval_from as ApproverRole | null,
-    /** FR 48d, LMS 322. */
+    /** FR 48d. */
     decidedBySingleApprover: row.decided_by_a_single_approver,
     submittedAt: row.submitted_at,
     createdAt: row.created_at,

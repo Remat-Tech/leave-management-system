@@ -1,4 +1,4 @@
-/** Database access for the organisation's own settings. FR 44, FR 48c, NFR SEC 06, §4.3.1, LMS 321, LMS 505. */
+/** Database access for the organisation's own settings. FR 44, FR 48c, NFR SEC 06, §4.3.1. */
 
 import type { Kysely, Selectable, Updateable } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -33,8 +33,8 @@ export class OrganisationRepository {
    * Who the `CEO` desk resolves to, or null. FR 48c, FR 38a.
    *
    * The one read both `LeaveRequestService` and `ApproverQueueService` go through, so the
-   * queue and the approve door cannot disagree. It was `EmployeeRepository.findRoot` until
-   * LMS 321. Null covers both nobody named and no row at all.
+   * queue and the approve door cannot disagree. It used to be `EmployeeRepository.findRoot`.
+   * Null covers both nobody named and no row at all.
    */
   async chiefExecutiveId(): Promise<string | null> {
     const row = await this.db
@@ -53,7 +53,7 @@ export class OrganisationRepository {
   }
 
   /**
-   * Whether HR may overturn a line manager. FR 44, LMS 505.
+   * Whether HR may overturn a line manager. FR 44.
    *
    * The one read `LeaveRequestService` goes through, beside `chiefExecutiveId`. A row-less
    * database answers what the column defaults to.
@@ -68,7 +68,7 @@ export class OrganisationRepository {
   }
 
   /**
-   * Changes the settings that are not the Chief Executive. FR 44, NFR SEC 06. LMS 505.
+   * Changes the settings that are not the Chief Executive. FR 44, NFR SEC 06.
    *
    * The insert is the same unreachable case {@link OrganisationRepository.nameTheChiefExecutive}
    * answers, and for the same reason.

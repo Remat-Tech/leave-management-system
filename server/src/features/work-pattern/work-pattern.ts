@@ -1,4 +1,4 @@
-/** The working pattern. FR 23, LMS 106. */
+/** The working pattern. FR 23. */
 
 /** ISO day numbering: 1 is Monday, 7 is Sunday. */
 export const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;

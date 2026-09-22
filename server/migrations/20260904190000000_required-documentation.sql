@@ -1,8 +1,8 @@
 -- Up Migration
 
--- Documentation that has to arrive with the request. FR 13, FR 32a, §8.6b. LMS 311.
+-- Documentation that has to arrive with the request. FR 13, FR 32a, §8.6b.
 --
--- LMS 310 gave a request somewhere to hang a certificate and nothing that insisted on one.
+-- Attachments gave a request somewhere to hang a certificate and nothing that insisted on one.
 -- Two rules insist, and they are different thresholds: `documentation`/`documentation_after_days`
 -- asks on the length of *this request*, and `exceedable_with_document` asks when it would take
 -- the *yearly balance* past its allowance — sick leave's three days.

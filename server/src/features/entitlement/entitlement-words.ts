@@ -1,4 +1,4 @@
-/** What an entitlement rule says, in words. FR 31, LMS 502. */
+/** What an entitlement rule says, in words. FR 31. */
 
 import { type CalendarDate, formatDay } from '../../shared/time.js';
 import {

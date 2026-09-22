@@ -42,7 +42,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * A public holiday declared inside leave people already had. FR 25, §8.8. LMS 508.
+ * A public holiday declared inside leave people already had. FR 25, §8.8.
  *
  * ../unit/recalculation.test.ts proves what is pure: how much a late-declared day is worth
  * to one piece of agreed leave, and the sentences that go with it. What needs a server:
@@ -125,7 +125,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. Every fixture here is leave that has already been taken, which is
+  /* FR 18. Every fixture here is leave that has already been taken, which is
      further back than annual leave's seven day window. Widened rather than dated forward,
      as ./withdrawal.test.ts and ./sickness-reclassification.test.ts widen it. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
@@ -325,7 +325,7 @@ describe('a holiday gazetted after the leave was approved', () => {
     expect(await availableIn(annualBalance())).toBe(20 - cost + 1);
   });
 
-  /* FR 25's third criterion, and the entry type LMS 314 said this story would collect on.
+  /* FR 25's third criterion, and the entry type the routing said would be collected on.
      The reason names the gazetted day, because that is the question asked of this line. */
   it('and the credit is a RECALCULATION naming the day', async () => {
     const id = await anApprovedRequest(...theFortnightTaken());

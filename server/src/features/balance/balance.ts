@@ -1,4 +1,4 @@
-/** The cached balance. §5.7, LMS 211, FR 37, FR 36a, §8.6, FR 26, LMS 212, FR 32a, §8.2. */
+/** The cached balance. §5.7, FR 37, FR 36a, §8.6, FR 26, FR 32a, §8.2. */
 
 import { isWholeDays, WHOLE_DAYS_ONLY } from '../../shared/whole-days.js';
 
@@ -124,7 +124,7 @@ export class NotEnoughHeld extends Error {
 }
 
 /**
- * Days asked back out of days that were never spent. FR 47, LMS 324.
+ * Days asked back out of days that were never spent. FR 47.
  *
  * The sibling of {@link NotEnoughHeld} for the other bucket, and its own class because that
  * one's message says the days "are being held", which is the fact that is false here.
@@ -175,7 +175,7 @@ export function daysToReserve(balance: LeaveBalance, days: number, mayExceed: bo
 }
 
 /**
- * A year's entitlement granted a second time. FR 30, LMS 214.
+ * A year's entitlement granted a second time. FR 30.
  *
  * The one refusal in this file that is not about arithmetic. Nothing about the figure
  * is wrong: the days are right, the sign is right, and posting it would put a perfectly
@@ -202,7 +202,7 @@ export class AlreadyGranted extends Error {
   }
 }
 
-/** How many days a year's entitlement grants. FR 30, LMS 214, §8.6. */
+/** How many days a year's entitlement grants. FR 30, §8.6. */
 export function daysToGrant(days: number, grantsAlreadyPosted: number): number {
   if (grantsAlreadyPosted > 0) {
     throw new AlreadyGranted(grantsAlreadyPosted);
@@ -220,7 +220,7 @@ export function daysToGrant(days: number, grantsAlreadyPosted: number): number {
 }
 
 /**
- * A year's unused days carried across the boundary a second time. FR 36, LMS 217.
+ * A year's unused days carried across the boundary a second time. FR 36.
  *
  * The sibling of {@link AlreadyGranted} and refused for the same reason: nothing about
  * the figure is wrong, and posting it would put a perfectly valid `CARRY_FORWARD` in the
@@ -249,7 +249,7 @@ export class AlreadyCarried extends Error {
   }
 }
 
-/** How many days a carry forward brings into the new year. FR 36, LMS 217, §8.6. */
+/** How many days a carry forward brings into the new year. FR 36, §8.6. */
 export function daysToCarry(days: number, carriesAlreadyPosted: number): number {
   if (carriesAlreadyPosted > 0) {
     throw new AlreadyCarried(carriesAlreadyPosted);
@@ -298,7 +298,7 @@ export function daysToExpire(days: number): number {
 }
 
 /**
- * How many days an event grant lapses when its time is up. FR 32e, LMS 218.
+ * How many days an event grant lapses when its time is up. FR 32e.
  *
  * The third of the "days arriving and leaving by rule" rules, beside {@link daysToGrant}
  * and {@link daysToCarry}, and the only one of the three that takes days *away*. It is
@@ -351,7 +351,7 @@ export function daysToRelease(balance: LeaveBalance, days: number): number {
 }
 
 /**
- * How many days a withdrawal of *agreed* leave may put back. FR 47, LMS 324.
+ * How many days a withdrawal of *agreed* leave may put back. FR 47.
  *
  * The third of the family, drawing on `taken` rather than `pending` — approval spent the
  * hold, so {@link daysToRelease} would find nothing. A rule about the balance;
@@ -387,7 +387,7 @@ function daysAlreadyHeld(what: string, balance: LeaveBalance, days: number): num
  * that has to remember that a reserve is −5 and a release is +5 is a caller that will
  * eventually get one of them backwards, and the entry would still be valid.
  *
- * **Whole**, because FR 24, and because these are the four entry types LMS 209 held
+ * **Whole**, because FR 24, and because these are the four entry types held
  * to it. Refused here as well as by the column so that the message names the field
  * while somebody still has the form open. Nought is refused for the reason a ledger
  * entry of nought days is: a movement of no days is not a movement.

@@ -15,7 +15,7 @@ import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import type { RoleCode } from '../../src/features/role/roles.js';
 
 /**
- * When a failed send is tried again. FR 59, §7.1. LMS 331.
+ * When a failed send is tried again. FR 59, §7.1.
  *
  * The arithmetic of the story's first criterion, which is a pure function and belongs here.
  * ../integration/delivery.test.ts is where the claim, the record and the second criterion —

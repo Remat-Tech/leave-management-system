@@ -1,4 +1,4 @@
-/** The balance screen, assembled. FR 53, §7.4., LMS 401, LMS 211, §8.2, FR 55, FR 56. */
+/** The balance screen, assembled. FR 53, §7.4., §8.2, FR 55, FR 56. */
 
 import type { Actor } from '../../auth/actor.js';
 import { type BalanceOwner, ledgerPolicy } from './policy.js';
@@ -42,7 +42,7 @@ export class BalanceStatementService {
   ) {}
 
   /**
-   * One person's balances for one leave year, with the years they may switch to. LMS 401, NFR DAT 03.
+   * One person's balances for one leave year, with the years they may switch to. NFR DAT 03.
    */
   async forEmployee(
     actor: Actor,

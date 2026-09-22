@@ -1,7 +1,7 @@
 -- Up Migration
 
 -- The seven leave types of FR 32, and a guarantee rather than a moment.
--- LMS 202. §5.5 seed data.
+-- §5.5 seed data.
 --
 -- The rows already exist. The leave-type-rules migration created the table and
 -- filled it in the same file, which was the right thing to do there — a leave
@@ -24,7 +24,7 @@
 -- ## What it does not do
 --
 -- It inserts what is missing and it changes nothing that is there. Editing a
--- type is the whole of LMS 201 — FR 31, "no leave rule shall require a code
+-- type is the whole of the leave type rules — FR 31, "no leave rule shall require a code
 -- change or a deployment" — so a function that reconciled the rows back to these
 -- values would take away the thing the previous story exists to give. HR's
 -- notice window, HR's wording, HR's retired type: all of them survive this
@@ -37,7 +37,7 @@
 -- further month unpaid after maternity, and nothing fixed at all for unpaid
 -- leave. Every one of those is a figure with an effective date on it — FR 31
 -- again, which forbids a change "retroactively altering closed leave years" —
--- and they arrive as `leave_entitlement_rule` with LMS 203. What this table
+-- and they arrive as `leave_entitlement_rule`. What this table
 -- holds is the arithmetic each type is subject to; the numbers that go into it
 -- are dated, and a column has no date on it.
 
@@ -120,7 +120,7 @@ BEGIN
 
         /* FR 32h. No figure at all — it is agreed rather than accrued — and
            approved by HR and the Chief Executive, which is FR 38a's chain and
-           LMS 204 rather than anything in this table. */
+           the approval chain rather than anything in this table. */
         ('UNPAID', 'Unpaid Leave',
          'Agreed rather than accrued, and unpaid. Decided by HR and the Chief Executive.',
          'WORKING_DAYS', 'EVENT', FALSE, 'WEEKS',

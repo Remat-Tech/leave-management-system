@@ -1,4 +1,4 @@
-/** The audit log, searched over HTTP. Read only. NFR AUD 01, NFR AUD 02, LMS 513. */
+/** The audit log, searched over HTTP. Read only. NFR AUD 01, NFR AUD 02. */
 
 import { type Request, type Response, Router } from 'express';
 import { actorOf } from '../../http/identify.js';

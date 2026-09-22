@@ -1,12 +1,12 @@
 /**
- * What an approver said, and who said it. FR 39, FR 52, §6., LMS 315, LMS 314, LMS 301, NFR AUD 02, FR 45, FR 41, FR 44, §7.2, LMS 318.
+ * What an approver said, and who said it. FR 39, FR 52, §6., NFR AUD 02, FR 45, FR 41, FR 44, §7.2.
  */
 
 import type { ApproverRole } from '../leave-type/approval-chain.js';
 import type { RequestAction } from './leave-request.js';
 import type { DeskDecision } from './routing.js';
 
-/** The verbs that are a decision at a desk. FR 39, FR 44, LMS 315, LMS 318. */
+/** The verbs that are a decision at a desk. FR 39, FR 44. */
 export const DECIDING_ACTIONS = [
   'APPROVE',
   'REFUSE',
@@ -16,12 +16,12 @@ export const DECIDING_ACTIONS = [
 
 export type DecidingAction = (typeof DECIDING_ACTIONS)[number];
 
-/** The two that reverse a decision somebody else made. FR 44, §7.2, LMS 318. */
+/** The two that reverse a decision somebody else made. FR 44, §7.2. */
 export const OVERRIDING_ACTIONS = ['OVERTURN_REJECTION', 'OVERTURN_APPROVAL'] as const;
 
 export type OverridingAction = (typeof OVERRIDING_ACTIONS)[number];
 
-/** The two that answer a stage of the chain. FR 41, FR 44, LMS 318. */
+/** The two that answer a stage of the chain. FR 41, FR 44. */
 export const ANSWERING_ACTIONS: readonly DecidingAction[] = ['APPROVE', 'OVERTURN_REJECTION'];
 
 /** The three that are owed a reason in writing. FR 39, FR 44. */
@@ -51,7 +51,7 @@ export function reverses(action: OverridingAction): DecidingAction {
   return action === 'OVERTURN_REJECTION' ? 'REFUSE' : 'APPROVE';
 }
 
-/** A refusal with nothing said about it. FR 39, NFR USA 03, LMS 315. */
+/** A refusal with nothing said about it. FR 39, NFR USA 03. */
 export class RefusalNeedsAComment extends Error {
   /** FR 39. */
   readonly code = 'REFUSAL_NEEDS_A_COMMENT';
@@ -79,7 +79,7 @@ export class InvalidDecision extends Error {
   }
 }
 
-/** An override with nothing said about it. FR 44, §7.2, LMS 318. */
+/** An override with nothing said about it. FR 44, §7.2. */
 export class OverrideNeedsAJustification extends Error {
   /** FR 44. */
   readonly code = 'OVERRIDE_NEEDS_A_JUSTIFICATION';
@@ -98,7 +98,7 @@ export class OverrideNeedsAJustification extends Error {
 }
 
 /**
- * A desk answered by somebody else while this approver was deciding. NFR DAT 02, §8.1, LMS 326.
+ * A desk answered by somebody else while this approver was deciding. NFR DAT 02, §8.1.
  *
  * Its own refusal, because the alternative is the desk policy telling the loser they are not
  * the desk — about their standing rather than about the leave.
@@ -155,9 +155,9 @@ export interface ValidatedDecision {
   onBehalfOf: ApproverRole;
   /** Required of a refusal and of an override, null on an approval that said nothing. */
   comment: string | null;
-  /** The refusal this overturns; set exactly on an override. FR 44, LMS 318. */
+  /** The refusal this overturns; set exactly on an override. FR 44. */
   overridesDecisionId: string | null;
-  /** FR 49, FR 52. The approver whose absence this covered, null where it covered none. LMS 327. */
+  /** FR 49, FR 52. The approver whose absence this covered, null where it covered none. */
   delegatedFor: string | null;
 }
 
@@ -169,9 +169,9 @@ export interface LeaveDecision {
   /** FR 52. */
   onBehalfOf: ApproverRole;
   comment: string | null;
-  /** FR 44, LMS 318. */
+  /** FR 44. */
   overridesDecisionId: string | null;
-  /** FR 49, FR 52, LMS 327. */
+  /** FR 49, FR 52. */
   delegatedFor: string | null;
   /** Who, in words. */
   decidedBy: string;
@@ -245,7 +245,7 @@ export function validateDecision(input: {
     onBehalfOf: input.onBehalfOf,
     comment: commentFor(input.action, input.comment),
     overridesDecisionId: overturns,
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegatedFor: input.delegatedFor ?? null,
   };
 }
@@ -259,23 +259,23 @@ function commentFor(action: DecidingAction, value: unknown): string | null {
   return action === 'REFUSE' ? requireAComment(value) : requireAJustification(value);
 }
 
-/** The refusal among a request's decisions, where there is one. LMS 201, LMS 301, FR 45. */
+/** The refusal among a request's decisions, where there is one. FR 45. */
 export function theRefusal(decisions: readonly LeaveDecision[]): LeaveDecision | undefined {
   return decisions.find((decision) => decision.action === 'REFUSE');
 }
 
-/** The desks that have said yes to this request. FR 41, FR 44, LMS 316, LMS 318, FR 31. */
+/** The desks that have said yes to this request. FR 41, FR 44, FR 31. */
 export function desksThatApproved(decisions: readonly LeaveDecision[]): ApproverRole[] {
   return decisions.filter((decision) => saysYes(decision.action)).map((one) => one.onBehalfOf);
 }
 
-/** The desks that have said no to this request. FR 44, LMS 318. */
+/** The desks that have said no to this request. FR 44. */
 export function desksThatRefused(decisions: readonly LeaveDecision[]): ApproverRole[] {
   return decisions.filter((decision) => !saysYes(decision.action)).map((one) => one.onBehalfOf);
 }
 
 /**
- * The decision this desk has already made, where it has made one. NFR DAT 02, §8.1, LMS 326.
+ * The decision this desk has already made, where it has made one. NFR DAT 02, §8.1.
  *
  * One per desk, which `leave_request_decision_once_per_desk` holds on every connection — so
  * a decision arriving at a desk this answers for is one that lost a race to it.
@@ -287,17 +287,17 @@ export function theDecisionAt(
   return decisions.find((decision) => decision.onBehalfOf === desk);
 }
 
-/** The most recent decision on the record, where anybody has decided. NFR DAT 02, LMS 326. */
+/** The most recent decision on the record, where anybody has decided. NFR DAT 02. */
 export function theLastDecision(decisions: readonly LeaveDecision[]): LeaveDecision | undefined {
   return decisions[decisions.length - 1];
 }
 
-/** The desks that have had their say, whichever way they went. FR 44, LMS 318. */
+/** The desks that have had their say, whichever way they went. FR 44. */
 export function desksThatDecided(decisions: readonly LeaveDecision[]): ApproverRole[] {
   return decisions.map((decision) => decision.onBehalfOf);
 }
 
-/** The same, with the hand behind each one. FR 48d, LMS 322. */
+/** The same, with the hand behind each one. FR 48d. */
 export function whoDecidedWhere(decisions: readonly LeaveDecision[]): DeskDecision[] {
   return decisions.map((decision) => ({
     desk: decision.onBehalfOf,
@@ -305,7 +305,7 @@ export function whoDecidedWhere(decisions: readonly LeaveDecision[]): DeskDecisi
   }));
 }
 
-/** Whether an override has already reversed this decision. FR 44, LMS 318. */
+/** Whether an override has already reversed this decision. FR 44. */
 export function wasOverturned(
   decision: LeaveDecision,
   decisions: readonly LeaveDecision[],
@@ -314,7 +314,7 @@ export function wasOverturned(
 }
 
 /**
- * The manager's decision this kind of override reverses, where one still stands. FR 44, §7.2. LMS 318.
+ * The manager's decision this kind of override reverses, where one still stands. FR 44, §7.2.
  *
  * The `MANAGER` desk and no other: FR 44 is HR overruling a local decision, and a
  * judgement made at HR's own stage or the Chief Executive's is not one HR overrules.
@@ -341,7 +341,7 @@ export function theManagersDecision(
 }
 
 /**
- * The override this plain verb would have to be, or null where it contradicts nobody. FR 44, §7.2. LMS 318.
+ * The override this plain verb would have to be, or null where it contradicts nobody. FR 44, §7.2.
  *
  * What makes the justification mandatory rather than offered: a desk about to decide the
  * opposite way to the manager is overruling them whether it calls itself that or not.

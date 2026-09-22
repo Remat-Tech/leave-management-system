@@ -19,7 +19,7 @@ import {
 } from '../../src/features/leave-year/year-rollover.js';
 
 /**
- * The year rollover. FR 36, FR 36a, §11. LMS 217.
+ * The year rollover. FR 36, FR 36a, §11.
  *
  * What carries and what does not is a pure function, so this is where three of the
  * story's five criteria are proved: carry over is uncapped, sick leave does not carry,

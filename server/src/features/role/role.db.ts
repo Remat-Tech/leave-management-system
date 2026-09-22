@@ -1,4 +1,4 @@
-/** Database access for roles. §5.3., LMS 112, LMS 110, LMS 111. */
+/** Database access for roles. §5.3.. */
 
 import type { Kysely } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -12,7 +12,7 @@ export interface Role {
   name: string;
 }
 
-/** A grant, as it is recorded. LMS 111. */
+/** A grant, as it is recorded. */
 export interface RoleGrant {
   code: RoleCode;
   grantedAt: Date;
@@ -55,7 +55,7 @@ export class RoleRepository {
     return orderRoles(rows.map((row) => row.code));
   }
 
-  /** The same, with the date each was granted. LMS 111. */
+  /** The same, with the date each was granted. */
   async grantsFor(accountId: string): Promise<RoleGrant[]> {
     const rows = await this.db
       .selectFrom('user_role')
@@ -121,7 +121,7 @@ export class RoleRepository {
     return rows.map((row) => row.employee_id);
   }
 
-  /** The role codes several employees hold, keyed by employee. FR 49, LMS 327. */
+  /** The role codes several employees hold, keyed by employee. FR 49. */
   async codesForEmployees(employeeIds: readonly string[]): Promise<Map<string, RoleCode[]>> {
     if (employeeIds.length === 0) {
       return new Map();

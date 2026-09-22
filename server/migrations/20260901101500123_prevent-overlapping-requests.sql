@@ -1,6 +1,6 @@
 -- Up Migration
 
--- One person is in one place on one day. FR 15, §5.6. LMS 304.
+-- One person is in one place on one day. FR 15, §5.6.
 --
 -- The constraint the baseline enabled an extension for and named two migrations
 -- before it existed. The baseline: "btree_gist lets a GiST exclusion constraint mix

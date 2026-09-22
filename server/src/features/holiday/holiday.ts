@@ -1,4 +1,4 @@
-/** The gazetted public holiday calendar. FR 22, §5.4., LMS 206, §7.3. */
+/** The gazetted public holiday calendar. FR 22, §5.4., §7.3. */
 
 import { type CalendarDate, formatDay, isCalendarDate } from '../../shared/time.js';
 import { coversDay, type LeaveYear } from '../leave-year/leave-year.js';
@@ -73,7 +73,7 @@ export class DuplicateHoliday extends Error {
 }
 
 /**
- * A day being taken off the calendar after it has been credited back to somebody. FR 25, LMS 508.
+ * A day being taken off the calendar after it has been credited back to somebody. FR 25.
  *
  * The one refusal the recalculation story adds to the calendar itself. Clearing the row
  * would leave `RECALCULATION` entries in the ledger explaining themselves by a holiday that
@@ -252,7 +252,7 @@ export function byDate(left: Holiday, right: Holiday): number {
 
 /* ----------------------------------------------------------------- the words */
 
-/** The boundary a closed year sets, said where a day is about to be typed. FR 22, LMS 504. */
+/** The boundary a closed year sets, said where a day is about to be typed. FR 22. */
 export function closedYearsInWords(earliestOpenDay: CalendarDate | null): string {
   return earliestOpenDay === null
     ? 'No leave year has been closed, so any day on the calendar can still be changed.'
@@ -262,7 +262,7 @@ export function closedYearsInWords(earliestOpenDay: CalendarDate | null): string
 }
 
 /**
- * What fixes a day, or null while it can still be changed. FR 22, LMS 504.
+ * What fixes a day, or null while it can still be changed. FR 22.
  *
  * The rule {@link assertNotInASettledYear} throws, asked of a day rather than of an act, so
  * a screen greys its buttons on the server's answer rather than on its own.

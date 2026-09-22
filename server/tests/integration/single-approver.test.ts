@@ -34,7 +34,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * A request decided by one person says so. FR 48d, §8.6a. LMS 322.
+ * A request decided by one person says so. FR 48d, §8.6a.
  *
  * ../unit/routing.test.ts proves the walk. What needs a server is who the desks resolve to:
  * the head of HR is a manager *and* an HR officer, so two stages of one chain come back
@@ -93,11 +93,11 @@ beforeAll(async () => {
     decisions,
     routing,
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -106,7 +106,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /** FR 18, LMS 308. The fixture days are months behind today. */
+  /** FR 18. The fixture days are months behind today. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
 
   await clear();
@@ -157,7 +157,7 @@ function aRequest(employeeId: string): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. */
+    /** FR 17. */
     acknowledgesShortNotice: true,
   };
 }

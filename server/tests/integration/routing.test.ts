@@ -38,13 +38,13 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * A request goes to somebody who can actually decide it. FR 48b, §8.6a. LMS 320.
+ * A request goes to somebody who can actually decide it. FR 48b, §8.6a.
  *
  * ../unit/routing.test.ts proves the walk, which is pure. What needs a server is everything
  * the walk cannot claim on its own:
  *
  *   **Who each desk resolves to comes off real rows.** The manager is a reporting line,
- *   HR is two granted roles, and the Chief Executive is a setting — FR 48c, LMS 321 — so the
+ *   HR is two granted roles, and the Chief Executive is a setting — FR 48c — so the
  *   whole point of the story is which *people* those three are today, and that is a database
  *   question.
  *
@@ -103,14 +103,14 @@ beforeAll(async () => {
     new LeaveRequestRepository(db),
     decisions,
     routing,
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -119,7 +119,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. The fixture days are months behind today, so annual leave's seven day
+  /* FR 18. The fixture days are months behind today, so annual leave's seven day
      backdating window would refuse almost every request in this file. Widened rather than
      dated forward: the window is a column HR sets, and the rule it states is
      ./leave-request.test.ts's to prove. */
@@ -198,7 +198,7 @@ function aRequest(employeeId: string): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. The fixture week is behind today, so annual leave is short of notice. */
+    /** FR 17. The fixture week is behind today, so annual leave is short of notice. */
     acknowledgesShortNotice: true,
   };
 }
@@ -325,10 +325,10 @@ describe('a request whose HR stage only the requester staffs', () => {
   });
 
   /**
-   * And where both stages come back to one person, they are asked once. FR 48d, LMS 322.
+   * And where both stages come back to one person, they are asked once. FR 48d.
    *
    * Ama reports to the Chief Executive, so the manager desk and the HR desk's stand-in are
-   * the same human. LMS 320 deduplicated by desk and asked him twice; FR 48d does not, so
+   * the same human. Deduplicating by desk asked him twice; FR 48d does not, so
    * the HR stage is answered by the desk he signed at and the request says on its face that
    * one approver decided it. ./single-approver.test.ts is the whole of that story.
    */
@@ -425,10 +425,10 @@ describe('a request whose CEO stage the requester holds', () => {
   });
 });
 
-/* ------------------------------------------- whose seat it is. FR 48c, LMS 321 */
+/* ------------------------------------------- whose seat it is. FR 48c */
 
 /**
- * The `CEO` desk resolves to the setting, not to FR 04's root. FR 48c, LMS 321.
+ * The `CEO` desk resolves to the setting, not to FR 04's root. FR 48c.
  *
  * ./organisation.test.ts proves the setting holds and is refused what it should be. This is
  * the half that matters: the desk moves when somebody names a different person, and it does
@@ -575,7 +575,7 @@ describe('a request neither desk can answer', () => {
   });
 });
 
-/* ---------------------------------------- putting a stuck request back. FR 48b, LMS 320 */
+/* ---------------------------------------- putting a stuck request back. FR 48b */
 
 describe('sending a stuck request back into its chain', () => {
   let stuck: string;

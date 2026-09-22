@@ -13,7 +13,7 @@ import { Modal } from '../../Modal';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
- * Who approves each kind of leave, and in what order. FR 38a, LMS 503.
+ * Who approves each kind of leave, and in what order. FR 38a.
  *
  * Its own screen rather than a fieldset on the leave type form: a chain is read across types,
  * and that question was answerable only by opening each form in turn.
@@ -80,7 +80,7 @@ export function ApprovalChainsPage({ onSignedOut }: { onSignedOut: () => void })
         </p>
       </div>
 
-      {/* What a change does to the requests already in the queues. LMS 316. */}
+      {/* What a change does to the requests already in the queues. */}
       <p className="rules">
         <Icon name="info" />A change takes effect at once, on requests already waiting as well as on
         new ones: each one travels the chain as it stands now and collects every signature in it. A

@@ -1,8 +1,8 @@
 -- Up Migration
 
--- A request one person decided says so. FR 48d, FR 44, FR 48, §8.6a. LMS 322.
+-- A request one person decided says so. FR 48d, FR 44, FR 48, §8.6a.
 --
--- LMS 320 deduplicated by desk. Two desks can resolve to one person, and asking them twice
+-- Routing deduplicates by desk. Two desks can resolve to one person, and asking them twice
 -- writes two approvals where there was one. Two stages get two people; where the company has
 -- nobody else, the request goes through stamped rather than signed twice.
 

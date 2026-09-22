@@ -1,12 +1,12 @@
 -- Up Migration
 
--- The leave year, and what closing one means. §5.4. LMS 205.
+-- The leave year, and what closing one means. §5.4.
 --
 -- Every balance in this system is per person, per leave type, per leave year.
--- The first two have had tables since LMS 201; this is the third, and until now
+-- The first two have had tables; this is the third, and until now
 -- "the leave year" has been an idea that several files referred to and nothing
 -- held. The entitlement-rule migration said so in as many words: "The closed
--- leave year is LMS 205. `leave_year` and its closed flag do not exist yet."
+-- leave year comes later. `leave_year` and its closed flag do not exist yet."
 --
 -- The story is closing one. An HR Administrator settles 2026 — every request
 -- decided, every leaver's final figure paid out, every late entry made — and then
@@ -40,13 +40,13 @@
 -- any connection. And it moves the boundary `EarliestOpenDay` reads in
 -- ../src/domain/entitlement-rule.ts, so that no entitlement figure can be dated
 -- back into a year that has been settled. That second one is the whole of what
--- LMS 203 left for this story, and it said so: "the caller brings
+-- the entitlement rules left for this migration, and they said so: "the caller brings
 -- NOTHING_IS_CLOSED_YET, which is a truthful statement rather than a stub".
 -- It is no longer the truthful statement, so it is no longer what the caller
 -- brings.
 --
 -- What it will do is refuse a ledger entry and a balance write against a closed
--- year, and that is LMS 210 and LMS 214 rather than anything here: the tables do
+-- year, and that is the ledger and the balance rather than anything here: the tables do
 -- not exist, and a flag that guards nothing is a flag nobody trusts. What this
 -- file gives those stories is a row to point a foreign key at and a boolean to
 -- read — see the note at the foot.
@@ -87,7 +87,7 @@ CREATE TABLE leave_year (
        remembered.
 
        Who closed it is not a column. That is the audit log, by the argument
-       LMS 111 made when it left user_role.granted_by out: "the place for who did
+       made when user_role.granted_by was left out: "the place for who did
        what is the audit log rather than a column beside every row". */
     closed_at  TIMESTAMPTZ,
 
@@ -410,11 +410,11 @@ GRANT UPDATE ON leave_year TO lms_app;
    Monday to Friday week: a production database is migrated and never seeded, and
    a leave system with no leave year is one where no balance can be opened at all.
    The entitlement-rule migration already dated the statutory figures from the
-   first of January 2026 and called it "the first of the two LMS 205 seeds", so
+   first of January 2026 and called it "the first of the two seeded leave years", so
    these two dates are not a new decision — they are the one already made, written
    down where it belongs.
 
-   Owned by a function for the reason LMS 202 gave, and it earns it here for a
+   Owned by a function for the reason the statutory set gave, and it earns it here for a
    reason of its own: 2026 will be closed one day, and a database restored from a
    backup taken before that is a database where the *year* is missing rather than
    merely its flag. Putting it back is a call.
@@ -484,7 +484,7 @@ $$;
 -- ------------------------------------------------------ what is not here yet
 
 /* **The balances the flag protects.** `leave_balance` and `leave_ledger_entry`
-   arrive with LMS 210 and LMS 214, each carrying a `leave_year_id` and each
+   arrive with the ledger and the cached balance, each carrying a `leave_year_id` and each
    refusing a write against a year this table says is closed. That is where "its
    balances cannot drift" stops being a sentence about one row and becomes a rule
    about a year of them. It is not stubbed here, because a foreign key to a table
@@ -493,7 +493,7 @@ $$;
    boolean to read, and both are here.
 
    **The rollover.** Carrying unused annual leave from one year into the next is
-   FR 36 and LMS 217. It reads `carries_over` on the entitlement rule and the two
+   FR 36. It reads `carries_over` on the entitlement rule and the two
    years either side of the boundary, and it is the job that will most want the
    gap rule above — a rollover with nowhere to carry into is a silent loss of
    everybody's days.

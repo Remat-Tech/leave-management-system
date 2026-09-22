@@ -13,13 +13,13 @@ import {
 } from '../../src/features/entitlement/pro-rata.js';
 
 /**
- * Pro rating an entitlement for part of a year. FR 29, FR 29a, §8.6d. LMS 215.
+ * Pro rating an entitlement for part of a year. FR 29, FR 29a, §8.6d.
  *
  * The formula is arithmetic on two dates, so this is the whole of the story bar the
  * posting. ../integration/annual-grant.test.ts is where the figure becomes a `GRANT`
  * carrying the rule's name.
  *
- * **This story is blocked on LMS 013**, and every test below is written knowing it.
+ * **The formula is not settled**, and every test below is written knowing it.
  * The rule in force is §8.6d's, which is the only formula this build has been given in
  * writing and the only one with a worked example against it — and it is a default
  * rather than a decision. So the suite proves two different things and keeps them
@@ -174,14 +174,14 @@ describe('the calendar day rule, which is the one in force', () => {
 /**
  * The seam, which is the first acceptance criterion and the answer to the fourth.
  *
- * LMS 013 has not delivered the formula. What this story ships instead is a formula
+ * The formula has not been delivered. What ships instead is one
  * that can be replaced in one line, with every figure already granted carrying the name
  * of the rule that made it — so the day the answer arrives, what has to be put right is
  * a query rather than an investigation.
  */
 describe('swapping the rule', () => {
   it('is one line, and the rules are named', () => {
-    // A leaver is settled to the hundredth; a joiner is granted whole days. LMS 013.
+    // A leaver is settled to the hundredth; a joiner is granted whole days.
     expect(THE_RULE_IN_FORCE).toBe(BY_CALENDAR_DAYS);
     expect(THE_GRANT_RULE).toBe(BY_CALENDAR_DAYS_TO_THE_DAY);
     expect(PRO_RATA_RULES.map((rule) => rule.name)).toEqual([

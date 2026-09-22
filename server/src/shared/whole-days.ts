@@ -1,4 +1,4 @@
-/** A count of days is a whole number. FR 24, §7.3., LMS 209, §8.6. */
+/** A count of days is a whole number. FR 24, §7.3., §8.6. */
 
 /** Whether this is a number of days this system can record. FR 24. */
 export function isWholeDays(value: unknown): value is number {

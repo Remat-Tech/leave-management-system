@@ -1,11 +1,10 @@
 -- Up Migration
 
--- The cached balance. §5.7, design principle 1. LMS 211.
+-- The cached balance. §5.7, design principle 1.
 --
--- "The ledger is the truth; balances are a cache." LMS 210 built the first half of
+-- "The ledger is the truth; balances are a cache." The ledger built the first half of
 -- that sentence and said, four times and in four files, that this table was the
--- second. Those files call this story LMS 214, which is what the backlog called it
--- when they were written. A merged migration is never edited, so they still say so;
+-- second. A merged migration is never edited, so those files still say so;
 -- this is that table.
 --
 -- The story is somebody opening the system on a Monday morning and seeing what they
@@ -109,7 +108,7 @@ CREATE TABLE leave_balance (
        joiner to 20 × 184/365 = 10.08 days, so what somebody is *owed* may carry a
        fraction; what they have *taken* may not, because FR 24 says a request is
        whole days and `leave_ledger_entry_requests_move_whole_days` refuses one that
-       is not. LMS 209 asked for exactly this line and LMS 210 drew it inside the
+       is not. The whole-days rule asked for exactly this line and the ledger drew it inside the
        ledger's own column; this is the same line drawn between two columns, where
        it is visible in the schema rather than in a constraint.
 
@@ -367,7 +366,7 @@ CREATE TRIGGER leave_balance_set_updated_at
 
 /* Every balance the ledger already knows about.
 
-   `leave_ledger_entry` has existed since LMS 210 and this table has not, so a
+   `leave_ledger_entry` has existed and this table has not, so a
    database that has been running has movements with no cache in front of them. A
    migration that created an empty table would leave every one of those balances
    reading zero until the next entry happened to be posted against it — which for a
@@ -419,7 +418,7 @@ GRANT SELECT ON leave_balance TO lms_app;
    **The writers that fill these columns.** `entitled` and `carried_over` are the
    year rollover's, `taken` and `pending` are the request state machine's, and none
    of those exist. Today every figure here arrives through FR 37's manual
-   adjustment, which is the one ledger writer LMS 210 shipped. The columns are not
+   adjustment, which is the one ledger writer that shipped. The columns are not
    waiting on anything: an entry of any of the eight kinds lands in the right bucket
    the moment somebody writes the story that posts it.
 

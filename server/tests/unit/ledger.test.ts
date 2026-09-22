@@ -22,7 +22,7 @@ import {
 } from '../../src/features/balance/ledger.js';
 
 /**
- * The balance ledger. FR 27, §5.7, design principle 1. LMS 210.
+ * The balance ledger. FR 27, §5.7, design principle 1.
  *
  * The rules are pure functions, so this file is where the story is proved. There
  * is an integration suite beside it — ../integration/ledger.test.ts — and what it
@@ -42,7 +42,7 @@ import {
  *   and every other type keeps a fixed one because of it.
  *
  *   A run of signed days is not a balance. {@link runningTotal} says what the rows
- *   did; available is five buckets and is LMS 211, and the gap between those two
+ *   did; available is five buckets and is the cached balance, and the gap between those two
  *   sentences is where a wrong figure would live.
  */
 
@@ -56,11 +56,11 @@ const SOUND: NewLedgerEntry = {
   reason: 'Annual entitlement for 2026',
 };
 
-/** FR 32c, LMS 507. What the two sides of one move are found by. */
+/** FR 32c. What the two sides of one move are found by. */
 const CORRELATION = '0b5f1d3e-0000-4000-8000-00000000abcd';
 
 /**
- * SOUND, plus the request id LMS 301 requires of the four request-shaped kinds.
+ * SOUND, plus the request id required of the four request-shaped kinds.
  *
  * The rule itself is asserted once, in its own block below. Everywhere else a
  * RESERVATION is a convenient example of something else — a sign, a size, a zero — and
@@ -73,7 +73,7 @@ function soundFor(entryType: LedgerEntryType): NewLedgerEntry {
     ...((REQUEST_MOVEMENTS as readonly string[]).includes(entryType)
       ? { leaveRequestId: '77' }
       : {}),
-    /** FR 32c, LMS 507. The one kind that also names the other side of itself. */
+    /** FR 32c. The one kind that also names the other side of itself. */
     ...(entryType === 'RECLASSIFICATION' ? { correlationId: CORRELATION } : {}),
   };
 }
@@ -81,7 +81,7 @@ function soundFor(entryType: LedgerEntryType): NewLedgerEntry {
 /**
  * A written entry, built from the same validation a real one goes through.
  *
- * Since LMS 301 the four request-shaped kinds have to name the request that caused
+ * The four request-shaped kinds have to name the request that caused
  * them, so one is supplied here for any test that asks about one. That keeps the rule
  * asserted in the one place below that is about it, rather than repeated in every case
  * that merely happens to use a RESERVATION to say something else.
@@ -149,7 +149,7 @@ describe('the ten kinds of movement, §5.7', () => {
    * is that the two agree rather than that both match a third copy written here.
    *
    * **The *last* migration to define the constraint is the one that counts**, and
-   * this searches for it rather than naming a file. LMS 218 added a ninth type by
+   * this searches for it rather than naming a file. A ninth type was added by
    * dropping and recreating the CHECK, which is what a migration has to do — the file
    * that first declared it is never edited once merged — so a test pinned to that
    * file would have gone on asserting against a constraint the database no longer
@@ -186,7 +186,7 @@ describe('the ten kinds of movement, §5.7', () => {
       expect(ENTRY_SIGNS[type], type).toBeDefined();
     }
 
-    /* FR 32c, LMS 507. RECLASSIFICATION joins it: one side of a move credits a balance
+    /* FR 32c. RECLASSIFICATION joins it: one side of a move credits a balance
        and the other charges one, and they are the same kind of entry. */
     expect(LEDGER_ENTRY_TYPES.filter((type) => ENTRY_SIGNS[type] === 'EITHER')).toEqual([
       'ADJUSTMENT',
@@ -195,7 +195,7 @@ describe('the ten kinds of movement, §5.7', () => {
   });
 
   /* §5.7's own table, restated as the assertion that the code matches it. LAPSE is
-     not in that table — it is FR 32e's, added by LMS 218 — and goes the way its
+     not in that table — it is FR 32e's — and goes the way its
      neighbour EXPIRY does, because both are days running out. */
   it('go the way the Technical Design Document says they go', () => {
     expect(ENTRY_SIGNS).toEqual({
@@ -224,7 +224,7 @@ describe('the ten kinds of movement, §5.7', () => {
    * Using one for the other would leave a paternity balance reading
    * `carriedOver: -14` on a type that cannot carry a single day. Available would come
    * out right and the column would be false, which is the failure design principle 1
-   * exists to prevent, and it is why LMS 218 spent a migration on a ninth type rather
+   * exists to prevent, and it is why a migration was spent on a ninth type rather
    * than reusing the eighth.
    */
   it('and the two clocks put their days back where each came from', () => {
@@ -320,7 +320,7 @@ describe('how many days moved', () => {
  * name on this condition.
  */
 /**
- * Which request a movement is about. LMS 301.
+ * Which request a movement is about.
  *
  * The column the immutable-leave-ledger migration refused to add until there was a
  * table to put behind it, and the rule it named when it did: "the four request-shaped
@@ -379,7 +379,7 @@ describe('which request a movement is about', () => {
   });
 });
 
-/* --------------------------------------- days past an allowance, FR 32a. LMS 312 */
+/* --------------------------------------- days past an allowance, FR 32a */
 
 describe('how many of a movement’s days were certified', () => {
   /**
@@ -455,8 +455,8 @@ describe('whole days, and the one place a fraction belongs', () => {
    *
    * The column is NUMERIC(6,2). A third decimal place is a figure nobody typed
    * appearing in an account whose whole claim is that every figure can be
-   * explained — refused rather than rounded, for the same reason LMS 209 refuses
-   * rather than rounds.
+   * explained — refused rather than rounded, for the same reason the whole-days rule
+   * refuses rather than rounds.
    */
   it('and is refused past the hundredth of a day', () => {
     expect(refusedField(() => validateNewLedgerEntry({ ...SOUND, days: 10.083 }))).toBe('days');
@@ -679,7 +679,7 @@ describe('reading a run of entries', () => {
    * once, not ten: the second moves them from held to taken. This total shows ten,
    * correctly, because it answers "what did these rows do" — and the test is here
    * so that nobody later reads it as the other question. Available is five buckets
-   * and is LMS 211.
+   * and is the cached balance.
    */
   it('and is deliberately not what the person may still book', () => {
     const account = runningTotal([
@@ -706,7 +706,7 @@ describe('reading a run of entries', () => {
 /* ------------------------------------------------------- a movement, in words */
 
 /**
- * What a row says it is. LMS 506.
+ * What a row says it is.
  *
  * Here rather than on the screen that shows a ledger, for the reason `countingBasisLabel` is
  * on the server: a wording kept beside the enum cannot fall out of step with it, and a screen

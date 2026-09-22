@@ -1,4 +1,4 @@
-/** The balance adjustment screen, assembled. FR 37, FR 27, LMS 506. */
+/** The balance adjustment screen, assembled. FR 37, FR 27. */
 
 import type { Actor } from '../../auth/actor.js';
 import type { Guard } from '../../auth/policy.js';
@@ -11,7 +11,7 @@ import type { BalanceStatementService } from './balance-statement.service.js';
 import { type LedgerEntry, movementInWords } from './ledger.js';
 import type { LedgerService } from './ledger.service.js';
 
-/** One movement, with what a reader needs beside it. FR 27, LMS 211. */
+/** One movement, with what a reader needs beside it. FR 27. */
 export interface Movement extends LedgerEntry {
   /** The figure the balance stood at after it. */
   after: number;
@@ -40,7 +40,7 @@ export interface AdjustmentView {
 
 export class BalanceAdjustmentService {
   constructor(
-    /** The figures as they stand, and the years to choose between. LMS 401. */
+    /** The figures as they stand, and the years to choose between. */
     private readonly statements: BalanceStatementService,
     /** FR 27. The movements those figures are made of. */
     private readonly ledger: LedgerService,

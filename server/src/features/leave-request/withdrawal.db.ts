@@ -1,4 +1,4 @@
-/** Database access for the asks to withdraw approved leave, and HR's answers. FR 47, LMS 324. */
+/** Database access for the asks to withdraw approved leave, and HR's answers. FR 47. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -76,7 +76,7 @@ export class WithdrawalRepository {
     return rows.map(toWithdrawal);
   }
 
-  /** The same for a whole page of requests, oldest first within each. FR 54, LMS 402. */
+  /** The same for a whole page of requests, oldest first within each. FR 54. */
   async forRequests(leaveRequestIds: readonly string[]): Promise<Withdrawal[]> {
     if (leaveRequestIds.length === 0) {
       return [];

@@ -29,7 +29,7 @@ import { validateNewLeaveType } from '../../src/features/leave-type/leave-type.j
 import { createScanner, ScannerUnavailable } from '../../src/scanning/index.js';
 
 /**
- * Evidence on a request. FR 12, FR 13, NFR SEC 07. LMS 310.
+ * Evidence on a request. FR 12, FR 13, NFR SEC 07.
  *
  * Everything pure: what the bytes are, what a name may be, which seat a file takes, and
  * whether a documentation rule is met by what is attached. That the row is written, the
@@ -339,17 +339,17 @@ describe('when evidence may go on, and come off', () => {
   });
 });
 
-/* --------------------------- the file a request was let through on, FR 13, LMS 311 */
+/* --------------------------- the file a request was let through on, FR 13 */
 
 describe('taking the last of a request’s evidence back off it', () => {
-  /* FR 13, LMS 311. A request that could not have been made without a certificate. */
+  /* FR 13. A request that could not have been made without a certificate. */
   const NEEDED_ONE = aRequest({ evidenceRequired: true });
 
   const CERTIFICATE = anAttachment({ id: 'attachment-1' });
   const A_SECOND = anAttachment({ id: 'attachment-2', slot: 2 });
 
   /**
-   * The hole LMS 310 could not have had, because nothing required anything.
+   * The hole attachments could not have had, because nothing required anything.
    *
    * Evidence that arrives with the request and is removed a minute later is evidence that
    * was chased after all, and the request is left on the books in a state submission would
@@ -409,7 +409,7 @@ describe('an unscanned file satisfies nothing', () => {
 });
 
 describe('whether a request has the documentation it needs', () => {
-  /* FR 13, LMS 311. Five days of sick leave that was let through on a certificate. */
+  /* FR 13. Five days of sick leave that was let through on a certificate. */
   const NEEDS_ONE = aRequest({ days: 5, evidenceRequired: true });
 
   it('is unsatisfied where the rule applied and nothing is attached', () => {
@@ -442,7 +442,7 @@ describe('whether a request has the documentation it needs', () => {
   });
 
   /**
-   * LMS 311, and it is the change worth pinning: `required` is the *request's* answer, not
+   * The change worth pinning: `required` is the *request's* answer, not
    * the type's as it now stands.
    *
    * Before this story the two were the same question, and they cannot be. FR 32a's threshold
@@ -500,7 +500,7 @@ describe('the scanner the environment builds', () => {
   });
 });
 
-/* NFR SEC 06, LMS 514. */
+/* NFR SEC 06. */
 describe('when a stored file is deleted', () => {
   it('is the retention period after the leave ends', () => {
     expect(fileDeletedOn('2026-03-06', 24)).toBe('2028-03-06');

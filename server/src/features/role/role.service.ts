@@ -1,4 +1,4 @@
-/** Assigning roles. §5.3., LMS 111, LMS 112, LMS 113. */
+/** Assigning roles. §5.3.. */
 
 import type { Actor } from '../../auth/actor.js';
 import type { Guard } from '../../auth/policy.js';
@@ -79,7 +79,7 @@ export class RoleService {
     return this.roles.grantsFor(await this.accountFor(employeeId));
   }
 
-  /** Everything that decides what somebody may do, in one read. LMS 112. */
+  /** Everything that decides what somebody may do, in one read. */
   async authorityFor(actor: Actor, employeeId: string): Promise<Authority> {
     this.guard.enforce(rolePolicy.read(actor, employeeId));
 

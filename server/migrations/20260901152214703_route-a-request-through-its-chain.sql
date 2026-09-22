@@ -1,9 +1,9 @@
 -- Up Migration
 
 -- A request goes to the approvers its leave type names, in order. FR 38, FR 38a, FR 40,
--- §6, §8. LMS 314.
+-- §6, §8.
 --
--- The chain has been configuration since LMS 204 and nothing has read it. The
+-- The chain has been configuration and nothing has read it. The
 -- leave-type-approval-chain migration said so in as many words under "what is not here
 -- yet": "The routing itself. Which *person* a request goes to, and what happens when it
 -- gets there, is FR 48 and Phase 3. This table says the chain for unpaid leave is HR then
@@ -13,7 +13,7 @@
 --
 -- ## Where a request has got to becomes two facts
 --
--- `status` has carried the whole of it since LMS 301, and it cannot carry this. A request
+-- `status` has carried the whole of it, and it cannot carry this. A request
 -- sitting with a manager and a request sitting with HR are in the same *state* — being
 -- decided, holding their days, blocking the calendar — and differ only in who is being
 -- waited on.
@@ -28,8 +28,8 @@
 --
 -- ## APPROVED, and why it is not an ending
 --
--- `leave_request_status_known` gains its fifth value, and the discipline LMS 209 set is
--- kept: the status arrives in the story that reaches it. `LeaveRequestService.approve()`
+-- `leave_request_status_known` gains its fifth value, and the discipline is
+-- kept: the status arrives with the transition that reaches it. `LeaveRequestService.approve()`
 -- reaches it the day this lands, at the moment a chain runs out of desks.
 --
 -- It is the first status that is neither pending nor an ending, and every list in the
@@ -41,8 +41,8 @@
 --   | `leave_request_never_overlaps` | yes | agreed leave is the most live leave there is |
 --   | the endings in `refuse_an_impossible_transition()` | no | it holds its days, it does not give them back |
 --
--- The middle one is the one that would have been missed. LMS 304 wrote that constraint's
--- predicate as `status IN ('SUBMITTED')` when that was a tautology, and said why: "the list
+-- The middle one is the one that would have been missed. That constraint's
+-- predicate was written as `status IN ('SUBMITTED')` when that was a tautology, for a reason: "the list
 -- is here from the start and the rule it states is the one that matters — a request blocks
 -- the days only while it is still live. The approval story edits this list." This is the
 -- story, and the edit is one word. Without it somebody could book a fortnight on top of
@@ -50,8 +50,8 @@
 --
 -- ## And the days become taken
 --
--- Approval is the movement `BalanceService.commit` has been built and unused for since LMS
--- 212. It does not consume days a second time — the RESERVATION did that — it moves the
+-- Approval is the movement `BalanceService.commit` was built and left unused for.
+-- It does not consume days a second time — the RESERVATION did that — it moves the
 -- same days out of `pending` and into `taken`, leaving available exactly where it was. The
 -- cached-balance migration described this before there was anything to describe: "DEDUCTION
 -- appears twice, and is the only kind that does. Approval does not consume days a second
@@ -183,7 +183,7 @@ ALTER TABLE leave_request
 
 -- --------------------------------------- agreed leave blocks the calendar too
 
-/* The one word LMS 304 wrote its predicate in advance for.
+/* The one word that predicate was written in advance for.
 
    `leave_request_never_overlaps` has carried `WHERE status IN ('SUBMITTED')` since that
    migration, which explained that the list "is here from the start and the rule it states
@@ -214,7 +214,7 @@ ALTER TABLE leave_request
 
 /* `refuse_an_impossible_transition()` widened, and its trigger renamed with it.
 
-   LMS 306 called the trigger `leave_request_ends_once`, which was the whole of the rule
+   The trigger used to be called `leave_request_ends_once`, which was the whole of the rule
    then: SUBMITTED could become any of the three endings, and an ending could become
    nothing. The rule now has a second half — SUBMITTED may also become APPROVED, and
    APPROVED may become nothing yet — and `leave_request_ends_once` is a puzzling thing to
@@ -451,7 +451,7 @@ CREATE TRIGGER leave_ledger_entry_is_never_deleted
    cached-balance migration did to build the cache in the first place.
 
    Without it the deductions are gone and `taken` still says five: a cached figure with
-   nothing behind it, which the nightly reconciliation of LMS 215 would report as a
+   nothing behind it, which the nightly reconciliation would report as a
    disagreement every night until somebody noticed. */
 
 SELECT rebuild_one_balance_from_the_ledger(employee_id, leave_type_id, leave_year_id)
@@ -467,7 +467,7 @@ UPDATE leave_request
    SET status = 'SUBMITTED'
  WHERE status = 'APPROVED';
 
-/* Back to the predicate LMS 304 wrote. Nothing moves in or out of it: every row this
+/* Back to the original predicate. Nothing moves in or out of it: every row this
    rebuild sees was SUBMITTED or APPROVED a moment ago and is SUBMITTED now, and both were
    inside the wider rule. */
 
@@ -488,7 +488,7 @@ ALTER TABLE leave_request
     ADD CONSTRAINT leave_request_status_known CHECK (
         status IN ('SUBMITTED', 'WITHDRAWN', 'CANCELLED', 'REFUSED'));
 
-/* The transition rule goes back to the one LMS 306 wrote, name and body.
+/* The transition rule goes back to the original, name and body.
 
    `CREATE OR REPLACE` rather than a drop, in both directions: the function is shared with
    its trigger and replacing the body is what "the same rule, refusing less" looks like. It

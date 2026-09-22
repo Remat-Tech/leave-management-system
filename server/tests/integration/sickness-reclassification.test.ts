@@ -39,7 +39,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Sickness during annual leave, moved to sick leave. FR 32c, §8.6c. LMS 507.
+ * Sickness during annual leave, moved to sick leave. FR 32c, §8.6c.
  *
  * ../unit/reclassification.test.ts proves what is pure: which days are being moved, which
  * certificate can stand, and what the one sentence says. What needs a server:
@@ -105,7 +105,7 @@ beforeAll(async () => {
     new LeaveDecisionRepository(db),
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     attachmentRepository,
     new RoleRepository(db),
@@ -134,7 +134,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. Every fixture here is leave that has already been taken, which is
+  /* FR 18. Every fixture here is leave that has already been taken, which is
      further back than annual leave's seven day window. Widened rather than dated forward,
      as ./withdrawal.test.ts widens it. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
@@ -367,7 +367,7 @@ describe('a holiday spent unwell, converted whole', () => {
     expect(moved.into.available).toBe(3 - cost);
     expect(moved.into.available).toBeLessThan(0);
 
-    /* FR 32a, LMS 312. The days past the allowance are the ones the certificate carried. */
+    /* FR 32a. The days past the allowance are the ones the certificate carried. */
     const charged = (await entriesFor(id)).find(
       (entry) => entry.entry_type === 'RECLASSIFICATION' && entry.leave_type_id === sickId,
     );

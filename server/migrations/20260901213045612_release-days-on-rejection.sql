@@ -1,23 +1,22 @@
 -- Up Migration
 
 -- Days come back on rejection, all of them, at the moment of the rejection. FR 43, §8.2.
--- LMS 317.
 --
 -- The story is somebody whose leave was turned down being able to ask for the same fortnight
 -- again straight away, rather than waiting for anybody to give the days back to them.
 --
--- **Most of it has been true since LMS 306**, and this migration says so rather than
--- pretending otherwise. That story built the three endings as one movement: refusing writes a
+-- **Most of it was already true**, and this migration says so rather than
+-- pretending otherwise. The three endings were built as one movement: refusing writes a
 -- RELEASE and a status in one transaction through `BalanceService.releaseForRequest`, so the
 -- days are back before the approver's screen has finished reloading, and `REFUSED` is not in
 -- `leave_request_never_overlaps`, so the dates stop blocking the calendar in the same
 -- instant. Nothing waits on anybody.
 --
--- What LMS 306 did not say is **how many** days come back.
+-- What the three endings did not say is **how many** days come back.
 --
 -- ## The hole this closes: a release that gave back some of them
 --
--- `leave_request_gives_its_days_back` has asked one question since LMS 306 — is there a
+-- `leave_request_gives_its_days_back` has asked one question — is there a
 -- RELEASE — and it is the right question asked short. A request that ends having released one
 -- day of the six it was holding satisfies it perfectly, and leaves five days in `pending` that
 -- nothing will ever give back: a balance permanently short, against a request that says it
@@ -31,7 +30,7 @@
 -- **Nothing that goes through the door can do it.** `daysToRelease()` refuses to give back
 -- more than is held and the amount it is asked for is the request's own frozen `days`, so a
 -- release is for the whole hold or it raises `NotEnoughHeld` and nothing is written at all.
--- What this catches is the second writer LMS 306 named and only half-covered: "a story that
+-- What this catches is the second writer named there and only half-covered: "a change that
 -- adds a `cancelAll` and updates statuses in a loop, a data fix in psql marking a batch
 -- REFUSED, a migration correcting somebody's leave." Each of those can as easily release the
 -- wrong figure as none.
@@ -48,7 +47,7 @@
 -- pair would have to work out which was the real rule, and `LeaveRequestRepository` would
 -- have to learn a second constraint name to say the same thing about.
 --
--- The same widening LMS 314 made to `refuse_an_impossible_transition()`, and for the same
+-- The same widening made to `refuse_an_impossible_transition()`, and for the same
 -- reason: replacing the body is what "the same rule, saying more" looks like in SQL.
 --
 -- ## What it is and is not judged against
@@ -71,7 +70,7 @@
 
 -- ------------------------------------- a request gives back what it was holding
 
-/* The body LMS 306 wrote, asked about the amount as well as the existence.
+/* The original body, asked about the amount as well as the existence.
 
    The two branches are one condition and two sentences, because the reader is a person
    holding a second writer and the two mistakes need different fixes: releasing nothing is a
@@ -85,7 +84,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     /* Typed as the column it sums rather than as a type written out here, which is the
-       honest declaration and not a way past LMS 209's rule that nothing in this schema
+       honest declaration and not a way past the rule that nothing in this schema
        holds a fraction. `leave_ledger_entry.days` is the one exception that rule names —
        §8.6d pro rates a joiner to 10.08 days — so a variable that adds those up holds
        whatever it holds, and saying `INTEGER` would be a rounding waiting for the day the
@@ -141,7 +140,7 @@ $$;
 
 -- Down Migration
 
-/* The body goes back to the one LMS 306 wrote, asking only whether anything came back.
+/* The body goes back to the original, asking only whether anything came back.
 
    `CREATE OR REPLACE` in both directions, and nothing else moves: the trigger, its `WHEN`
    and its constraint name were never touched, so there is no trigger to drop and no name for

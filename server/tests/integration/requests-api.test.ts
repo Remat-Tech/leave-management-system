@@ -47,7 +47,7 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * My request history over HTTP. FR 54. LMS 402.
+ * My request history over HTTP. FR 54.
  *
  * ../unit/request-history.test.ts proves the arrangement — which steps, in which order, with
  * which sentence — without a database, because all of it is pure. This suite is for the four
@@ -90,7 +90,7 @@ const guard = new Guard();
 const WHY_NOT =
   'Two of the team are already away that week and the desk can’t be empty.\nAsk again for April.';
 
-/** FR 44. What HR writes when policy prevails over a local decision. LMS 318. */
+/** FR 44. What HR writes when policy prevails over a local decision. */
 const BECAUSE_POLICY =
   'Her carry-over expires on the 30th and the company owes her the days.\nCover is HR’s to arrange.';
 
@@ -135,16 +135,16 @@ beforeAll(async () => {
     years,
     requestRepository,
     decisions,
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     new LeaveRoutingRepository(db),
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -157,7 +157,7 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: new BalanceRepository(db),
-    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    /** FR 27, FR 37. The ledger the adjustment screen reads, and the door it writes through. */
     ledger: new LedgerRepository(db),
     adjustments: balances,
     employees,
@@ -167,19 +167,19 @@ beforeAll(async () => {
     entitlementRules: new EntitlementRuleRepository(db),
     requests: requestRepository,
     /* The same service the fixtures above are written through, so a request made over HTTP
-       and a request made in this file go through one object. LMS 403. */
+       and a request made in this file go through one object. */
     leaveRequests: requests,
     decisions,
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     routing: new LeaveRoutingRepository(db),
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     withdrawals: new WithdrawalRepository(db),
-    /** FR 19, LMS 302. */
+    /** FR 19. */
     drafts: new LeaveRequestDraftRepository(db),
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
-    /** FR 25, §8.8, LMS 508. */
+    /** FR 25, §8.8. */
     holidayRecalculations: holidayRecalculationService(db, guard, balances),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
@@ -205,7 +205,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. The fixture days are months behind today, so annual leave's seven day
+  /* FR 18. The fixture days are months behind today, so annual leave's seven day
      backdating window would refuse almost every request in this file. Widened rather than
      dated forward: the window is a column HR sets, and the rule it states is
      ./leave-request.test.ts's to prove. */
@@ -297,7 +297,7 @@ describe('every request I have made', () => {
     await requests.approve(asTheirManager(), agreed);
     await requests.approve(asOfficer(), agreed);
 
-    /* FR 44, LMS 318. Both desks, because a manager's rejection carries the request on to HR
+    /* FR 44. Both desks, because a manager's rejection carries the request on to HR
        rather than ending it — so a request turned down once is still being decided. */
     const refused = await aRequest({ from: '2026-04-06', to: '2026-04-10' });
     await requests.refuse(asTheirManager(), refused, WHY_NOT);
@@ -378,10 +378,10 @@ describe('every request I have made', () => {
       'countingBasis',
       'countingBasisLabel',
       'days',
-      /** FR 48d, LMS 322. One approver answered every stage of it. */
+      /** FR 48d. One approver answered every stage of it. */
       'decidedBySingleApprover',
       'from',
-      /** FR 18, LMS 308. Why HR entered it late, where they did. */
+      /** FR 18. Why HR entered it late, where they did. */
       'lateEntryReason',
       'leaveTypeId',
       'leaveYearId',
@@ -398,7 +398,7 @@ describe('every request I have made', () => {
       'to',
       'trail',
       'typeName',
-      /* FR 47, LMS 324. Whether an ask to cancel is with HR, so the screen offers no second. */
+      /* FR 47. Whether an ask to cancel is with HR, so the screen offers no second. */
       'withdrawalAsked',
     ]);
   });
@@ -451,7 +451,7 @@ describe('how each was decided', () => {
   });
 
   /**
-   * FR 44, §7.2. The trail says which decision stood, and why. LMS 318.
+   * FR 44, §7.2. The trail says which decision stood, and why.
    *
    * The story's "so that": the reason stays visible for ever. A trail reading "Approved by
    * HR" under "Turned down at your manager's stage" would leave the person to work out
@@ -534,7 +534,7 @@ describe('how each was decided', () => {
 /* --------------------------------------------------------- deciding one, over HTTP */
 
 /**
- * The three verbs a desk decides with, through the routes. FR 38a, FR 39, FR 44. LMS 318.
+ * The three verbs a desk decides with, through the routes. FR 38a, FR 39, FR 44.
  *
  * What a screen actually calls, and the one thing a service test cannot show: that the
  * override asks for its justification at the boundary and that a plain button cannot be used
@@ -614,7 +614,7 @@ describe('deciding a request', () => {
   });
 
   /**
-   * Withdrawing a request before it is settled. FR 26, LMS 306.
+   * Withdrawing a request before it is settled. FR 26.
    *
    * A desk may already have answered — the rule is that the last one has not. So a request is
    * withdrawn by its owner straight after asking, after the manager approved, and after the
@@ -672,7 +672,7 @@ describe('deciding a request', () => {
   });
 
   /**
-   * Cancelling leave that was already approved: asked by its owner, answered by HR. FR 47, LMS 324.
+   * Cancelling leave that was already approved: asked by its owner, answered by HR. FR 47.
    *
    * A week still ahead, so granting gives all of it back and needs no reason. The round trip the
    * screens make: ask, see it on HR's list and nobody else's, answer it, and see it gone.
@@ -769,7 +769,7 @@ describe('deciding a request', () => {
   });
 
   /**
-   * And the other way round: the manager approved, and HR turns it down. FR 44, LMS 318.
+   * And the other way round: the manager approved, and HR turns it down. FR 44.
    *
    * What was found in use. HR pressed Refuse on the queue, which sent a plain refusal, which is
    * refused here because it contradicts the manager — so nothing changed and no email went. The
@@ -856,7 +856,7 @@ describe('deciding a request', () => {
   });
 
   /**
-   * And the row's version comes back with the decision, for whatever decides next. LMS 326.
+   * And the row's version comes back with the decision, for whatever decides next.
    *
    * Optimistic locking over the wire: `/me/approvals` hands a version out with every row, a
    * decision hands it back, and one that has moved since is refused with 409 rather than
@@ -879,7 +879,7 @@ describe('deciding a request', () => {
   });
 
   /* And the loser of two approvers deciding at once is answered with a sentence rather than
-     with "not your desk" or a stack trace. NFR DAT 02, LMS 326. */
+     with "not your desk" or a stack trace. NFR DAT 02. */
   it('and a decision sent from a screen the request has moved on from is refused with 409', async () => {
     const id = await aRequest();
 
@@ -912,7 +912,7 @@ describe('deciding a request', () => {
   });
 });
 
-/* ------------------------------------------------------- several at once. FR 51, LMS 328 */
+/* ------------------------------------------------------- several at once. FR 51 */
 
 describe('deciding several requests at once', () => {
   /** The story's first criterion, over the wire and off the queue's own rows. */
@@ -942,7 +942,7 @@ describe('deciding several requests at once', () => {
   });
 
   /**
-   * And a row somebody answered meanwhile is one item's news rather than the press's. LMS 326.
+   * And a row somebody answered meanwhile is one item's news rather than the press's.
    *
    * 200, because the other request was decided and there is no single status the whole reply
    * could carry. What refused it is the sentence the single door would have answered with.
@@ -1103,10 +1103,10 @@ interface JsonEntry {
   trail: JsonStep[];
 }
 
-/** What one desk's decision did to the request, as the route sends it. FR 44, LMS 318. */
+/** What one desk's decision did to the request, as the route sends it. FR 44. */
 interface JsonDecided {
   requestId: string;
-  /** NFR DAT 02, §8.1. Where the row stands after this decision. LMS 326. */
+  /** NFR DAT 02, §8.1. Where the row stands after this decision. */
   version: string;
   status: string;
   awaitingApprovalFrom: string | null;
@@ -1120,7 +1120,7 @@ interface JsonDecided {
   availableAfter: number;
 }
 
-/** FR 51. What one press did, request by request. LMS 328. */
+/** FR 51. What one press did, request by request. */
 interface JsonBulk {
   action: string;
   inWords: string;
@@ -1128,7 +1128,7 @@ interface JsonBulk {
   undecided: { requestId: string; error: string; message: string }[];
 }
 
-/** NFR DAT 02, §8.1. The rows a decision is taken from, each with its version. LMS 326. */
+/** NFR DAT 02, §8.1. The rows a decision is taken from, each with its version. */
 interface JsonQueue {
   items: { requestId: string; version: string }[];
 }
@@ -1146,7 +1146,7 @@ function get(path: string, { cookie }: { cookie: string }): Promise<Response> {
   });
 }
 
-/** A decision through the real route, as the person named. FR 44, LMS 318. */
+/** A decision through the real route, as the person named. FR 44. */
 function post(path: string, employeeId: string, body: unknown): Promise<Response> {
   return fetch(`${origin}${path}`, {
     method: 'POST',
@@ -1158,7 +1158,7 @@ function post(path: string, employeeId: string, body: unknown): Promise<Response
   });
 }
 
-/** Everything waiting on this approver, as the queue screen reads it. FR 20, LMS 404. */
+/** Everything waiting on this approver, as the queue screen reads it. FR 20. */
 async function queueFor(employeeId: string): Promise<JsonQueue> {
   const response = await get('/api/me/approvals', { cookie: mintSession(employeeId, SECRET) });
 
@@ -1185,7 +1185,7 @@ async function aRequest(period: { from?: string; to?: string } = {}): Promise<st
     from: period.from ?? '2026-03-02',
     to: period.to ?? '2026-03-06',
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. The fixture week is behind today, so annual leave is short of notice. */
+    /** FR 17. The fixture week is behind today, so annual leave is short of notice. */
     acknowledgesShortNotice: true,
   });
 

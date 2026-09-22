@@ -1,4 +1,4 @@
-/** Database access for the days of agreed leave that became sick leave. FR 32c, LMS 507. */
+/** Database access for the days of agreed leave that became sick leave. FR 32c. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -63,7 +63,7 @@ export class ReclassificationRepository {
     return rows.map(toReclassification);
   }
 
-  /** The same for a whole page of requests. FR 54, LMS 402. */
+  /** The same for a whole page of requests. FR 54. */
   async forRequests(leaveRequestIds: readonly string[]): Promise<Reclassification[]> {
     if (leaveRequestIds.length === 0) {
       return [];

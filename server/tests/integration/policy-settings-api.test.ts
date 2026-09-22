@@ -46,7 +46,7 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * The policy settings screen, over HTTP. FR 44, FR 48c, NFR SEC 06. LMS 505.
+ * The policy settings screen, over HTTP. FR 44, FR 48c, NFR SEC 06.
  *
  * ./organisation.test.ts proves the one-row table and its two triggers, and
  * ../unit/organisation.test.ts proves what a setting is. What is only checkable here is the
@@ -133,7 +133,7 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: new BalanceRepository(db),
-    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    /** FR 27, FR 37. The ledger the adjustment screen reads, and the door it writes through. */
     ledger: new LedgerRepository(db),
     adjustments: balances,
     employees,
@@ -152,7 +152,7 @@ beforeAll(async () => {
       decisions,
       new LeaveRoutingRepository(db),
       new WithdrawalRepository(db),
-      /** FR 32c, LMS 507. */
+      /** FR 32c. */
       new ReclassificationRepository(db),
       new AttachmentRepository(db),
       new RoleRepository(db),
@@ -168,7 +168,7 @@ beforeAll(async () => {
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
-    /** FR 25, §8.8, LMS 508. */
+    /** FR 25, §8.8. */
     holidayRecalculations: holidayRecalculationService(db, guard, balances),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),

@@ -1,14 +1,14 @@
 -- Up Migration
 
--- Holding one balance still while it is checked. FR 26, §8.2. LMS 212.
+-- Holding one balance still while it is checked. FR 26, §8.2.
 --
 -- The story is two screens open at once. Somebody asks for five days on one and five
 -- on the other, and both are checked against the same twelve days before either is
 -- written down. Both look affordable. Ten days are held against a balance that
 -- covered five of them twice.
 --
--- Nothing in the schema so far prevents that, and nothing should have: LMS 210 made
--- every movement a row nobody can change, and LMS 211 made the cache of those rows
+-- Nothing in the schema so far prevents that, and nothing should have: the ledger made
+-- every movement a row nobody can change, and the cache made those rows
 -- follow them in the same transaction. Neither is a rule about *whether a movement
 -- should happen*, and the overdraft above is two entries that are each individually
 -- correct. The rule that stops it is "check and write with nobody else in between",
@@ -24,7 +24,7 @@
 -- ## Why it is a function and not a line of SQL in the repository
 --
 -- Because the application cannot write that line. `lms_app` holds SELECT on
--- `leave_balance` and no UPDATE — LMS 211 revoked the INSERT the default privileges
+-- `leave_balance` and no UPDATE — the cached balance revoked the INSERT the default privileges
 -- give and never granted the rest — and **every row locking clause Postgres offers
 -- requires UPDATE**, `FOR KEY SHARE` included. The application asking for a row lock
 -- directly is refused with a bare permission error.
@@ -94,7 +94,7 @@ $$;
 
 /* **No rule about how many days may be held.** The obvious next thought is a trigger
    refusing a RESERVATION that takes a balance negative, and it would be wrong for the
-   reason LMS 211 declined to put a CHECK on any of the five figures: the write it
+   reason a CHECK was declined on any of the five figures: the write it
    refused would be the trigger's, and a rolled back trigger takes the ledger entry
    down with it. A movement that genuinely happened has to be recordable.
 

@@ -1,4 +1,4 @@
-/** Database access for the requests a moved reporting line carried. FR 07, §8.4, LMS 325. */
+/** Database access for the requests a moved reporting line carried. FR 07, §8.4. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';

@@ -1,5 +1,5 @@
 /**
- * A public holiday declared inside leave somebody already had agreed. FR 25, §8.8, LMS 508.
+ * A public holiday declared inside leave somebody already had agreed. FR 25, §8.8.
  */
 
 import { countLeaveDays, type LeavePeriod } from '../leave-calculator/leave-calculator.js';
@@ -81,7 +81,7 @@ export function whatAHolidayCredits(input: {
     return { days: 0, because: 'ALREADY_CREDITED' };
   }
 
-  /** FR 11, LMS 303. The basis the request was priced under, not the type's as it stands. */
+  /** FR 11. The basis the request was priced under, not the type's as it stands. */
   const basis = { ...type, countingBasis: request.countingBasis };
   const period: LeavePeriod = { from: request.from, to: request.to };
 

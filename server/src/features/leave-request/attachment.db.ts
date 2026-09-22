@@ -1,5 +1,5 @@
 /**
- * Database access for a request's attachments. FR 12, NFR SEC 07. LMS 310.
+ * Database access for a request's attachments. FR 12, NFR SEC 07.
  */
 
 import type { Kysely, Selectable } from 'kysely';
@@ -29,7 +29,7 @@ const CHECKED_FIELDS: Record<string, string> = {
   leave_request_attachment_size_within_the_cap: 'file',
   leave_request_attachment_slot_is_one_of_five: 'file',
   leave_request_attachment_five_per_request: 'file',
-  /** LMS 311. The same five seats, in the pile waiting for a request. */
+  /** The same five seats, in the pile waiting for a request. */
   leave_request_attachment_five_waiting_per_person: 'file',
 };
 
@@ -78,7 +78,7 @@ export class AttachmentRepository {
     return rows.map(toAttachment);
   }
 
-  /** What one person has uploaded and not yet put on a request. FR 13, LMS 311. */
+  /** What one person has uploaded and not yet put on a request. FR 13. */
   async waitingFor(employeeId: string): Promise<LeaveRequestAttachment[]> {
     const rows = await this.db
       .selectFrom('leave_request_attachment')
@@ -92,7 +92,7 @@ export class AttachmentRepository {
   }
 
   /**
-   * Puts waiting files onto the request they were uploaded for. FR 13, LMS 311.
+   * Puts waiting files onto the request they were uploaded for. FR 13.
    *
    * Called inside the transaction that writes the request, so the evidence and the leave
    * land together or neither does. Every clause of the `WHERE` is a guarantee rather than a
@@ -166,7 +166,7 @@ export class AttachmentRepository {
     return row === undefined ? undefined : toAttachment(row);
   }
 
-  /** Stored files on decided or ended leave that ended before this day. NFR SEC 06, LMS 514. */
+  /** Stored files on decided or ended leave that ended before this day. NFR SEC 06. */
   async keptOnLeaveEndedBefore(day: CalendarDate): Promise<KeptAttachment[]> {
     const rows = await this.db
       .selectFrom('leave_request_attachment as attachment')
@@ -186,7 +186,7 @@ export class AttachmentRepository {
     }));
   }
 
-  /** Records the stored file as deleted. Undefined where it already was. LMS 514. */
+  /** Records the stored file as deleted. Undefined where it already was. */
   async markFileDeleted(id: string): Promise<LeaveRequestAttachment | undefined> {
     const row = await this.db
       .updateTable('leave_request_attachment')

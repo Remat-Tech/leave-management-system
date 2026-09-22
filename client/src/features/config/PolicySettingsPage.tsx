@@ -15,7 +15,7 @@ import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
  * The settings that are about the company rather than a type, a year or a person.
- * FR 44, FR 48c, NFR SEC 06, LMS 505.
+ * FR 44, FR 48c, NFR SEC 06.
  *
  * The override rule, the `CEO` desk, the notice and back-dating windows, and how long a
  * certificate is kept. One screen because they are read together: "does any type ask for

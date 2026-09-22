@@ -1,5 +1,5 @@
 /**
- * Database access for download links and the access log. NFR SEC 04, NFR SEC 06. LMS 407.
+ * Database access for download links and the access log. NFR SEC 04, NFR SEC 06.
  */
 
 import type { Kysely, Selectable } from 'kysely';

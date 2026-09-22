@@ -1,4 +1,4 @@
-/** Who may read HR's reports. FR 63, NFR SEC 02, LMS 510. */
+/** Who may read HR's reports. FR 63, NFR SEC 02. */
 
 import { type Actor, holdsAny } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';

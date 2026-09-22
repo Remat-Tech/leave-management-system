@@ -1,4 +1,4 @@
-/** Pro rating an entitlement for part of a year. FR 29, FR 29a, §8.6, LMS 215, LMS 013. */
+/** Pro rating an entitlement for part of a year. FR 29, FR 29a, §8.6. */
 
 import { calendarDaysBetween, type CalendarDate } from '../../shared/time.js';
 
@@ -53,7 +53,7 @@ export const BY_CALENDAR_DAYS: ProRataRule = {
   },
 };
 
-/** A candidate, and **not the rule in force**. LMS 013. */
+/** A candidate, and **not the rule in force**. */
 export const BY_COMPLETED_TWELFTHS: ProRataRule = {
   name: 'completed-twelfths',
   says: 'a twelfth of the year for each complete twelfth of it employed',
@@ -75,7 +75,7 @@ export const BY_COMPLETED_TWELFTHS: ProRataRule = {
  * Every rule there is, so that a name read back off an old ledger entry can be turned into the sentence that explains it.
  */
 /**
- * §8.6d's share by calendar day, rounded to the nearest whole day. LMS 013, decided 2026-09-16.
+ * §8.6d's share by calendar day, rounded to the nearest whole day. Decided 2026-09-16.
  *
  * Whole days because a balance of 8.27 reads as a mistake to the person holding it. Calendar days
  * rather than completed months because months are harsher on exactly the people nobody means to
@@ -100,11 +100,11 @@ export const PRO_RATA_RULES: readonly ProRataRule[] = [
   BY_CALENDAR_DAYS_TO_THE_DAY,
 ];
 
-/** The one a leaver's accrual is settled by: to the hundredth, as payroll settles. §8.6, LMS 013. */
+/** The one a leaver's accrual is settled by: to the hundredth, as payroll settles. §8.6. */
 export const THE_RULE_IN_FORCE: ProRataRule = BY_CALENDAR_DAYS;
 
 /**
- * The one a joiner's grant is sized by: whole days, so nobody's balance reads 8.27. LMS 013.
+ * The one a joiner's grant is sized by: whole days, so nobody's balance reads 8.27.
  *
  * Apart from the settlement rule on purpose. A balance is something a person reads and plans
  * around; a settlement is money, and rounding what somebody is paid on leaving is a payroll

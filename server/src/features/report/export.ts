@@ -1,4 +1,4 @@
-/** Each report as one table to export. FR 58, FR 64, LMS 511. */
+/** Each report as one table to export. FR 58, FR 64. */
 
 import type { Table } from '../../export/table.js';
 import type {

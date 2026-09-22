@@ -1,10 +1,10 @@
 -- Up Migration
 
 -- Leave is approved when every stage has approved it, and refusing at any stage ends it.
--- FR 41, FR 42, §6, §8. LMS 316.
+-- FR 41, FR 42, §6, §8.
 --
 -- The story is an employee who never takes leave believing it was agreed when it was not,
--- and the routing of LMS 314 gives them that only while nothing moves. It walks the chain
+-- and the routing gives them that only while nothing moves. It walks the chain
 -- with a cursor — `awaiting_approval_from`, and the desk after the one that just signed —
 -- and FR 31 gives the chain to an HR Administrator, who may edit it while a request is in
 -- the queue.
@@ -18,8 +18,8 @@
 --
 -- The application half of the answer is `nextUnapproved()` — the first stage with no approval
 -- recorded rather than the one after the last signature — and it is a question about the
--- whole chain rather than about a position in it. That is only askable because LMS 315 made
--- decisions rows: until `leave_request_decision` existed, "has every stage approved" had no
+-- whole chain rather than about a position in it. That is only askable because decisions
+-- became rows: until `leave_request_decision` existed, "has every stage approved" had no
 -- answer in this system at all.
 --
 -- This migration is the half that holds when the application is not the writer.
@@ -46,9 +46,9 @@
 -- that was approved, and the two would make a DEDUCTION and an APPROVED status exist only
 -- together. That is a stronger and a truer statement of how this system works.
 --
--- **It is not this story's to make, because it retires `BalanceService.commit`.** That method
--- is the primitive behind the approval door and it is deliberately still there; LMS 314 said
--- why when it built the door beside it: "this posts the entry and leaves the request saying
+-- **It is not this migration's to make, because it retires `BalanceService.commit`.** That
+-- method is the primitive behind the approval door and it is deliberately still there; the
+-- reason was given when the door was built beside it: "this posts the entry and leaves the request saying
 -- it is still waiting to be decided, which is a balance and a request that disagree. This is
 -- the primitive rather than the door, and it stays for the same reason `release` does — the
 -- movement is a real one and a story that commits days for a reason other than a chain
@@ -56,8 +56,8 @@
 -- them: an already-approved request has no hold left to draw down.
 --
 -- Taking a movement away from the ledger is somebody's decision to make rather than a side
--- effect of tightening the approval workflow — the same judgement LMS 314 made about not
--- narrowing `leaveRequestPolicy.refuse` to the chain. The story that removes the primitive
+-- effect of tightening the approval workflow — the same judgement made about not
+-- narrowing `leaveRequestPolicy.refuse` to the chain. Whatever removes the primitive
 -- adds the converse here in one line.
 --
 -- What this migration takes is the half that is unambiguously FR 42 and costs nothing:
@@ -93,7 +93,7 @@
 
 /* Each stage decides once, which is now a rule the walk keeps and the schema can hold.
 
-   LMS 315 declined this index, and said why: "a chain reordered underneath a live request can
+   This index was declined earlier, for a stated reason: "a chain reordered underneath a live request can
    ask the same desk twice… a unique index here would be a rule FR 31 can break, refusing a
    legitimate approval with a message about a constraint." That was true of the walk it was
    written against. `nextUnapproved()` never returns a desk that has signed, so the second ask
@@ -175,8 +175,8 @@ CREATE CONSTRAINT TRIGGER leave_request_is_approved_by_every_stage
    The three endings are written out rather than said as "not approved", which is the
    narrowing the note above argues for and is also the discipline `RELEASING_STATUSES` keeps
    in /domain/leave-request.ts: a list is a decision somebody has to make, and a negation is a
-   decision that gets made for them. The same three names are in the transition trigger of
-   LMS 306, and the integration suite reads all of them back out of the catalogue and asserts
+   decision that gets made for them. The same three names are in the transition trigger for
+   the three endings, and the integration suite reads all of them back out of the catalogue and asserts
    they agree with the domain's list — so none of them can be extended alone.
 
    Deferred, because the status and the entry are written in one transaction and the order
@@ -234,7 +234,7 @@ CREATE CONSTRAINT TRIGGER leave_ledger_entry_takes_no_days_for_ended_leave
 /* The two checks come off, and nothing else has to be unpicked: neither wrote a row, and a
    database that has forgotten how to insist on every stage still holds every decision that
    was recorded while it did. That is the difference between rolling this back and rolling
-   back LMS 314, whose down section had to remove ledger entries because the figures would
+   back the routing, whose down section had to remove ledger entries because the figures would
    otherwise have stopped explaining themselves. */
 
 DROP TRIGGER IF EXISTS leave_ledger_entry_takes_no_days_for_ended_leave ON leave_ledger_entry;
@@ -243,7 +243,7 @@ DROP FUNCTION IF EXISTS refuse_days_taken_for_leave_that_ended();
 DROP TRIGGER IF EXISTS leave_request_is_approved_by_every_stage ON leave_request;
 DROP FUNCTION IF EXISTS refuse_an_approval_a_stage_never_gave();
 
-/* And the index, which the walk of LMS 314 would otherwise be refused by: `approverAfter()`
+/* And the index, which the old walk would otherwise be refused by: `approverAfter()`
    can ask a desk twice where a chain was reordered under a live request, and a rollback of
    this migration is a rollback to that walk. */
 

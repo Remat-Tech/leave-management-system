@@ -1,4 +1,4 @@
-/** Who may see and change an employee record. NFR SEC 02, §10., LMS 112, LMS 111, FR 03. */
+/** Who may see and change an employee record. NFR SEC 02, §10., FR 03. */
 
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';
@@ -55,7 +55,7 @@ export const employeePolicy = {
       : about.refuse(actor, 'list', null, 'holds no role that reads everybody');
   },
 
-  /** The reporting structure, drawn. FR 09, LMS 107. */
+  /** The reporting structure, drawn. FR 09. */
   chart(actor: Actor): Decision {
     return holdsAny(actor, ...READS_EVERY_RECORD)
       ? about.allow(actor, 'chart')

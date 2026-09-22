@@ -1,4 +1,4 @@
-/** An email, filled in on a made up request, so HR can read it before saving. FR 61, LMS 512. */
+/** An email, filled in on a made up request, so HR can read it before saving. FR 61. */
 
 import type { LeaveRequest } from '../leave-request/leave-request.js';
 import { noticeOf, type WhatHappened } from './notification.js';

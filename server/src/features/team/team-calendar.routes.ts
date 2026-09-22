@@ -1,4 +1,4 @@
-/** The team calendar, over HTTP. FR 57, LMS 406, LMS 409, NFR DAT 03. */
+/** The team calendar, over HTTP. FR 57, NFR DAT 03. */
 
 import { type Request, type Response, Router } from 'express';
 import type { LeaveYear } from '../leave-year/leave-year.js';
@@ -21,7 +21,7 @@ export function teamCalendarRoutes({ calendar }: TeamCalendarRoutes): Router {
   const routes = Router();
 
   /**
-   * Who is away, in the department I am in. FR 57, LMS 409.
+   * Who is away, in the department I am in. FR 57.
    *
    * `/me` names the *reader*, and there is no employee id to supply. `departmentId` is the one
    * thing that may be asked for, and asking for another department is HR's — the service
@@ -57,7 +57,7 @@ function oneYearIn(request: Request): string | undefined {
 }
 
 /**
- * The department asked for. LMS 409.
+ * The department asked for.
  *
  * The empty string is kept rather than dropped, because it is what "every department" is
  * asked for with — and it is `undefined`, the parameter not being there at all, that means
@@ -80,7 +80,7 @@ function calendarAsJson(view: TeamCalendarView): unknown {
     employeeId: view.employeeId,
     year: yearAsJson(view.year),
     years: view.years.map(yearAsJson),
-    /** LMS 409. Null where every department is being shown at once. */
+    /** Null where every department is being shown at once. */
     department: departmentAsJson(view.department),
     departments: view.departments.map(departmentAsJson),
     canChooseDepartment: view.canChooseDepartment,
@@ -111,7 +111,7 @@ function colleagueAsJson(colleague: Colleague): unknown {
     employeeId: colleague.employeeId,
     name: colleague.name,
     jobTitle: colleague.jobTitle,
-    /** LMS 409. The heading they sit under where the calendar spans more than one. */
+    /** The heading they sit under where the calendar spans more than one. */
     department: departmentAsJson(colleague.department),
     /** FR 06. */
     employmentStatus: colleague.employmentStatus,
@@ -144,7 +144,7 @@ function dayAsJson(day: AwayDay): unknown {
   };
 }
 
-/** A department, written out for the same reason everything else here is. LMS 409. */
+/** A department, written out for the same reason everything else here is. */
 function departmentAsJson(department: DepartmentOnTheCalendar | null): unknown {
   return department === null ? null : { id: department.id, name: department.name };
 }

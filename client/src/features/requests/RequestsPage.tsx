@@ -17,12 +17,12 @@ import { Icon, iconForLeaveType } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 import { AttachedFiles } from './Attachments';
 
-/** My request history. FR 54, LMS 402, FR 41, FR 39. */
+/** My request history. FR 54, FR 41, FR 39. */
 export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [history, setHistory] = useState<History | undefined>(undefined);
   const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  /** LMS 410. What "try again" would ask for, which is the year that failed and not the first. */
+  /** What "try again" would ask for, which is the year that failed and not the first. */
   const [showing, setShowing] = useState<string | undefined>(undefined);
 
   const load = useCallback(
@@ -41,7 +41,7 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
             return;
           }
 
-          /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
+          /** The server's own sentence, verbatim. NFR USA 03. */
           setProblem(problemFrom(error));
         })
         .finally(() => {
@@ -86,7 +86,7 @@ export function RequestsPage({ onSignedOut }: { onSignedOut: () => void }) {
             }}
           />
 
-          {/* FR 64, LMS 511. */}
+          {/* FR 64. */}
           <ExportButtons
             path={myRequestsExportPath(history.year?.id)}
             onSignedOut={onSignedOut}
@@ -141,7 +141,7 @@ function RequestCard({
 }) {
   return (
     <li className={`card request is-${entry.status.toLowerCase()}`}>
-      {/* LMS 409. What was asked for on the left, how it got where it is on the right — so
+      {/* What was asked for on the left, how it got where it is on the right — so
           the account of a decision sits beside the thing decided rather than under it. */}
       <div className="asked-and-answered">
         <div className="asked-for">
@@ -185,18 +185,18 @@ function RequestCard({
             </p>
           )}
 
-          {/* FR 12, NFR SEC 04, LMS 407. Shut, and asked for only when it is opened: a list of
+          {/* FR 12, NFR SEC 04. Shut, and asked for only when it is opened: a list of
               filenames is itself information about somebody's health. */}
           <AttachedFiles requestId={entry.requestId} onSignedOut={onSignedOut} />
 
           {/* Normally empty. A chain that has gained a desk since a request was approved is a
-              real and legitimate state — LMS 316's `stagesMissing` — and saying so is better
+              real and legitimate state — `stagesMissing` — and saying so is better
               than a screen that quietly implies somebody signed who never did. */}
           {entry.agreed && entry.stagesMissing.length > 0 ? (
             <p className="muted">Agreed under an earlier approval policy.</p>
           ) : null}
 
-          {/* FR 26, LMS 306. Only while the last desk has still to decide: a manager may already
+          {/* FR 26. Only while the last desk has still to decide: a manager may already
               have answered, but it is not settled until it leaves SUBMITTED. */}
           {entry.status === 'SUBMITTED' ? (
             <Withdraw
@@ -206,7 +206,7 @@ function RequestCard({
             />
           ) : null}
 
-          {/* FR 47, LMS 324. Approved leave is not taken back but asked about: the days are spent,
+          {/* FR 47. Approved leave is not taken back but asked about: the days are spent,
               so HR answers. One open ask at a time, which the server holds as well. */}
           {entry.status === 'APPROVED' ? (
             entry.withdrawalAsked ? (
@@ -230,7 +230,7 @@ function RequestCard({
 }
 
 /**
- * What a trail step is, in two or three words. LMS 409.
+ * What a trail step is, in two or three words.
  *
  * The server writes each step as a sentence — "You asked for this leave.", "Waiting with your
  * manager now." — which reads well in a paragraph and badly in a column of five. This is the
@@ -290,7 +290,7 @@ function deskLabel(desk: Desk): string {
 }
 
 /**
- * Taking a request back before it is settled. FR 26, LMS 306.
+ * Taking a request back before it is settled. FR 26.
  *
  * Two presses, because it cannot be undone: the request ends and its days go back, and asking
  * again is a new request that starts at the first desk. The server decides whether it is still
@@ -370,7 +370,7 @@ function Withdraw({
 }
 
 /**
- * Asking HR to cancel leave that has already been approved. FR 47, LMS 324.
+ * Asking HR to cancel leave that has already been approved. FR 47.
  *
  * A reason, because HR is answering somebody rather than pressing a button: the days are
  * already spent, and putting them back is a correction HR has to be able to account for.

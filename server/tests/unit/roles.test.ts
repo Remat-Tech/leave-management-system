@@ -13,7 +13,7 @@ import {
 } from '../../src/features/role/roles.js';
 
 /**
- * Roles, §5.3, LMS 111.
+ * Roles, §5.3.
  *
  * The rules, with no database. Two properties are worth pinning down here and
  * both are the kind that stop being true quietly: that the set of roles is

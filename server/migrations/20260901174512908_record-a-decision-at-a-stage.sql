@@ -1,12 +1,11 @@
 -- Up Migration
 
 -- Approving or turning down leave, with a reason and a name on it. FR 39, FR 52, §6, §8.
--- LMS 315.
 --
 -- The create-and-submit-a-leave-request migration listed what it was deliberately leaving
 -- out: "No `approved_by`, no `decided_at`, no `approval_step`. Those are the approval
--- story's and a nullable column with nothing able to write it is the switch with nothing
--- behind it that LMS 209 argued against." LMS 314 built the routing and still wrote none of
+-- later work's, and a nullable column with nothing able to write it is the switch with
+-- nothing behind it argued against earlier." The routing was built and still wrote none of
 -- them. This is the migration that brings all three, and it brings them as a table.
 --
 -- ## Why a table and not three columns on the request
@@ -17,7 +16,7 @@
 -- hold one of those and lose the other — and which one they lose is whichever was written
 -- second, silently.
 --
--- That is the same argument LMS 314 made about the *status*: the number of stages is
+-- That is the same argument made about the *status*: the number of stages is
 -- configuration, FR 31 gives it to an HR Administrator, and anything whose shape depends on
 -- how many desks there are has to be rows rather than columns. A fourth desk added to
 -- `leave_type_approval_step` needs nothing here.
@@ -53,7 +52,7 @@
 -- row names a person and the office they answered for, and they match.
 --
 -- A refusal need not. `TRANSITIONS` admits `THEIR_LINE_MANAGER` and `LEAVE_ADMINISTRATION`
--- to the REFUSE row, which LMS 314 deliberately did not narrow to the chain: an HR Officer
+-- to the REFUSE row, which was deliberately not narrowed to the chain: an HR Officer
 -- may turn down leave that is sitting with a line manager, and a line manager may turn down
 -- unpaid leave whose chain has no manager stage at all. Both are legitimate and both are
 -- somebody deciding at a stage that is not their own.
@@ -78,7 +77,7 @@
 -- reads the triggers back out of the catalogue and asserts the two agree.
 --
 -- The change to `leave_request.status` that a decision accompanies **is** audited, as it has
--- been since LMS 301, and the two land in one transaction — so the log answers "who moved
+-- been, and the two land in one transaction — so the log answers "who moved
 -- this out of SUBMITTED" and this table answers "and what did they say about it".
 
 -- --------------------------------------------------- one decision at one stage
@@ -246,7 +245,7 @@ CREATE TRIGGER leave_request_decision_is_never_deleted
 
 -- --------------------------------- a request that moved at a desk says who moved it
 
-/* The story's third criterion, and the fourth of a family whose shape LMS 314 settled.
+/* The third criterion, and the fourth of a family whose shape the routing settled.
 
    `leave_request_gives_its_days_back` catches an ending that released nothing.
    `leave_request_takes_its_days` catches an approval that committed nothing. This catches a
@@ -356,7 +355,7 @@ CREATE CONSTRAINT TRIGGER leave_request_records_its_decision
 DROP TRIGGER IF EXISTS leave_request_records_its_decision ON leave_request;
 DROP FUNCTION IF EXISTS refuse_a_move_no_decision_explains();
 
-/* The decisions themselves go with the table, and unlike the rollback of LMS 314 nothing
+/* The decisions themselves go with the table, and unlike the routing's rollback nothing
    has to be unpicked first: a decision moves no figure, so a balance that reconciled before
    this is dropped reconciles after it. What is lost is the record of who said what, which
    is the honest price of removing the table that holds it — the requests keep the statuses

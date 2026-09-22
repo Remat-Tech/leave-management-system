@@ -30,7 +30,7 @@ import { theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
 
 /**
- * Roles and role assignment, against a real database. §5.3, LMS 111.
+ * Roles and role assignment, against a real database. §5.3.
  *
  * The unit suite covers the rules. What needs a database is everything the
  * database itself decides, and it decides most of this story:
@@ -433,8 +433,8 @@ describe('the last System Administrator', () => {
 
 describe('every login is an employee', () => {
   it('grants the baseline as the login is created, not as the fixtures are loaded', async () => {
-    /* The gap this closed: production is migrated and never seeded, so before
-       LMS 111 the first login SignInService provisioned held no roles at all. */
+    /* The gap this closed: production is migrated and never seeded, so the first
+       login SignInService provisioned used to hold no roles at all. */
     const officer = await employees.byId(system, people.officer);
     const joiner = await employees.create(system, {
       employeeNumber: 'RH-0101',
@@ -554,7 +554,7 @@ describe('reviewing who holds what', () => {
 
 describe('what the roles are for', () => {
   it('makes the one time code mandatory the moment an HR role is granted', async () => {
-    /* LMS 110 reads roles at sign in rather than copying them, and this is the
+    /* Roles are read at sign in rather than copied, and this is the
        other end of that: granting through this service is enough, with nothing
        else to update. */
     expect(await logins.codePolicyFor(system, people.officer)).toEqual({

@@ -1,4 +1,4 @@
-/** Turning what the server sent into what a person reads. LMS 401, LMS 402. */
+/** Turning what the server sent into what a person reads. */
 
 /** A number of days, as it is written down. §8.6. */
 export function days(figure: number): string {
@@ -25,7 +25,7 @@ export function sentenceCase(sentence: string): string {
 }
 
 /**
- * Where a request stands, as the one word that goes in a pill. LMS 409.
+ * Where a request stands, as the one word that goes in a pill.
  *
  * **Not the server's `statusInWords`**, which is a sentence — "waiting to be decided" — written
  * to be read mid-paragraph. It still says what it says wherever there is room for a sentence;
@@ -57,7 +57,7 @@ export function statusLabel(status: string, inWords: string): string {
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**
- * A calendar date, as a person writes one. LMS 409.
+ * A calendar date, as a person writes one.
  *
  * **Read off the ten characters, never parsed.** `2026-05-12` becomes `12 May 2026` by slicing
  * and a lookup — `new Date()` is not called here and must not be, for the reason {@link moment}

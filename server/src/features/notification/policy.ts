@@ -1,5 +1,5 @@
 /**
- * Who may read somebody's notifications, and who may mark one read. FR 59, NFR SEC 02, §7.1, §10., LMS 329.
+ * Who may read somebody's notifications, and who may mark one read. FR 59, NFR SEC 02, §7.1, §10..
  */
 
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
@@ -36,7 +36,7 @@ export const notificationPolicy = {
   },
 
   /**
-   * Chasing an approver who has not decided, and reading which chases have gone. FR 50, LMS 330.
+   * Chasing an approver who has not decided, and reading which chases have gone. FR 50.
    *
    * The company's, not one person's: the daily run is `theSystem`, and HR is who asks about
    * it when somebody says nobody has answered them.
@@ -55,7 +55,7 @@ export const notificationPolicy = {
   },
 
   /**
-   * Draining the notices whose email did not send. FR 59, LMS 331.
+   * Draining the notices whose email did not send. FR 59.
    *
    * The company's post rather than one person's, so it is the same standing as the daily
    * chase: `theSystem` runs it, and HR runs it by hand when the mail server comes back.
@@ -73,7 +73,7 @@ export const notificationPolicy = {
     );
   },
 
-  /** Reading the wording of the emails. FR 61, LMS 512. */
+  /** Reading the wording of the emails. FR 61. */
   readWording(actor: Actor): Decision {
     return holdsAny(actor, ...READS_EVERY_RECORD)
       ? about.allow(actor, 'read the email wording')
@@ -86,7 +86,7 @@ export const notificationPolicy = {
         );
   },
 
-  /** Changing it, or putting it back. FR 61, LMS 512. */
+  /** Changing it, or putting it back. FR 61. */
   changeWording(actor: Actor, email: string): Decision {
     return holdsAny(actor, ...WORDS_THE_COMPANY_EMAILS)
       ? about.allow(actor, 'change the email wording', email)

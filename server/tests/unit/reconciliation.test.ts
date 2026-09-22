@@ -13,7 +13,7 @@ import {
 import { discrepancyEmail } from '../../src/features/balance/balance-reconciliation.job.js';
 
 /**
- * What a discrepancy means, once the database has found one. §7.4. LMS 213.
+ * What a discrepancy means, once the database has found one. §7.4.
  *
  * A short file, and for the same reason ./balance.test.ts is short: the arithmetic this
  * story is about is not in TypeScript. What the ledger says a balance should be is

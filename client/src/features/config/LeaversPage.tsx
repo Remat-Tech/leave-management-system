@@ -13,7 +13,7 @@ import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
- * What somebody who has left is owed, with its working. FR 37a, §8.6d, §8.7, LMS 509.
+ * What somebody who has left is owed, with its working. FR 37a, §8.6d, §8.7.
  *
  * The screen exists so a final payment can be checked rather than taken on trust, which is
  * the story's "so that". So every step of the sum is a row of its own, in the order it is

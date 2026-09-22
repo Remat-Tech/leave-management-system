@@ -1,6 +1,6 @@
 -- Up Migration
 
--- An approver is reminded every day until they decide. FR 50, FR 60, LMS 330.
+-- An approver is reminded every day until they decide. FR 50, FR 60.
 --
 -- No new table. A reminder is a notice like any other, so the daily one is an event on
 -- `notification`, and "has this person already been reminded about this request today" is a

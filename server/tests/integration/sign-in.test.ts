@@ -28,8 +28,7 @@ import { theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
 
 /**
- * Signing in with a company email address, against a real database. NFR SEC 01,
- * LMS 109.
+ * Signing in with a company email address, against a real database. NFR SEC 01.
  *
  * The unit suites cover the rules and the hashing. What needs a database is
  * everything the database itself decides, and everything the ordering of real
@@ -539,7 +538,7 @@ describe('what the database holds whatever is writing', () => {
 
   it('lets the application close a login and never delete one', async () => {
     /* The privilege is the enforcement. user_role rows point at a login, and
-       LMS 113's audit entries will name it; an account that was removed rather
+       audit entries will name it; an account that was removed rather
        than closed leaves a trail referring to somebody nobody can identify. */
     const { rows } = await admin.query<{ del: boolean; upd: boolean; ins: boolean }>(
       `SELECT has_table_privilege('lms_app', 'app_user', 'DELETE') AS del,
@@ -581,7 +580,7 @@ describe('what the database holds whatever is writing', () => {
 /**
  * Signs in and asserts that the door actually opened.
  *
- * Since LMS 110 a sign in either opens the door or sends a code, and everybody in
+ * A sign in either opens the door or sends a code, and everybody in
  * this file holds only EMPLOYEE, so it opens. Saying so through a helper rather
  * than a cast means that if somebody makes the code mandatory for everyone, these
  * tests fail with "expected SIGNED_IN, got CODE_SENT" rather than with a

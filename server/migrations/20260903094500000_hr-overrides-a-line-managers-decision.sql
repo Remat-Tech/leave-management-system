@@ -1,7 +1,6 @@
 -- Up Migration
 
 -- HR overturns a line manager's decision, with the reason in writing. FR 44, §7.2, §6, §8.
--- LMS 318.
 --
 -- Both stages decide before leave is finally confirmed or rejected, and the last stage to
 -- decide is the one whose word it lands on. Until now a refusal at any desk ended the request
@@ -142,8 +141,8 @@ CREATE CONSTRAINT TRIGGER leave_request_decision_reverses_the_same_request
    is that every stage decides, not that every stage agrees, and what makes the leave approved
    is the last stage saying yes.
 
-   That is weaker than LMS 316's rule and is the correct weakening — a stage that has not been
-   asked has neither an approval nor a rejection on record, so the failure that story was
+   That is weaker than the every-stage rule and is the correct weakening — a stage that has not
+   been asked has neither an approval nor a rejection on record, so the failure it was
    written against is caught exactly as before. */
 
 CREATE OR REPLACE FUNCTION refuse_an_approval_a_stage_never_gave() RETURNS trigger
@@ -190,7 +189,7 @@ $$;
 
    A request reaches APPROVED by an approval or an overturned rejection, and REFUSED by a
    refusal or an overturned approval. **And a request that changed desks without changing
-   status accepts any of the four**, which is the branch LMS 318 made necessary: an
+   status accepts any of the four**, which is the branch this made necessary: an
    intermediate decision used to be an approval by definition, and a manager's rejection is
    now one too.
 
@@ -238,8 +237,8 @@ $$;
 
 -- ------------------------------------------------------- one thing somebody was told
 
-/* FR 59's list gains the two events LMS 318 makes reachable, which the
-   tell-people-what-happened-to-their-leave migration said this story would bring.
+/* FR 59's list gains the two events this makes reachable, which the
+   tell-people-what-happened-to-their-leave migration said would be coming.
 
    `STAGE_REFUSED` is the counterpart of `STAGE_APPROVED`: a manager's no no longer ends the
    request, so "turned down, your days are back" would be wrong in both halves.
@@ -329,7 +328,7 @@ ALTER TABLE leave_request_decision
     ADD CONSTRAINT leave_request_decision_action_known CHECK (
         action IN ('APPROVE', 'REFUSE'));
 
-/* And the two rules go back to the bodies LMS 315 and LMS 316 wrote, each refusing more than
+/* And the two rules go back to their earlier bodies, each refusing more than
    the one above it. They go back last, after every row they would have refused has gone. */
 
 CREATE OR REPLACE FUNCTION refuse_an_approval_a_stage_never_gave() RETURNS trigger

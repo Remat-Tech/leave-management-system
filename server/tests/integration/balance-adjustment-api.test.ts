@@ -47,7 +47,7 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * The balance adjustment screen, over HTTP. FR 37, FR 27. LMS 506.
+ * The balance adjustment screen, over HTTP. FR 37, FR 27.
  *
  * ./adjustment.test.ts proves the movement itself — both signs, the mandatory reason, the
  * mistyped id, and the rule that only an HR Administrator may post one — and ./ledger.test.ts
@@ -162,7 +162,7 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: new BalanceRepository(db),
-    /** FR 27, FR 37, LMS 506. The ledger this screen reads, and the door it writes through. */
+    /** FR 27, FR 37. The ledger this screen reads, and the door it writes through. */
     ledger: new LedgerRepository(db),
     adjustments: movements,
     employees,
@@ -181,7 +181,7 @@ beforeAll(async () => {
       decisions,
       new LeaveRoutingRepository(db),
       new WithdrawalRepository(db),
-      /** FR 32c, LMS 507. */
+      /** FR 32c. */
       new ReclassificationRepository(db),
       new AttachmentRepository(db),
       new RoleRepository(db),
@@ -197,7 +197,7 @@ beforeAll(async () => {
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
-    /** FR 25, §8.8, LMS 508. */
+    /** FR 25, §8.8. */
     holidayRecalculations: holidayRecalculationService(db, guard, movements),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),

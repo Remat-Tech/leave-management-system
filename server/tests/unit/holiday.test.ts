@@ -16,7 +16,7 @@ import {
 import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
 
 /**
- * The gazetted public holiday calendar. FR 22, §5.4. LMS 206.
+ * The gazetted public holiday calendar. FR 22, §5.4.
  *
  * The rules are pure functions, so this is where the story is proved.
  * ../integration/holiday.test.ts shows that Ghana's 2026 calendar is on a migrated
@@ -197,7 +197,7 @@ describe('a leave year nobody has entered a calendar for', () => {
 });
 
 describe('a settled leave year keeps its days', () => {
-  /* The rule this story inherits from LMS 205. Every request over a day in a
+  /* The rule inherited from the leave year. Every request over a day in a
      closed year was counted against the calendar as it stood, and a closed year is
      never recalculated. */
   it('refuses a day inside one', () => {

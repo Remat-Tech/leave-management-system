@@ -1,4 +1,4 @@
-/** Database access for the nightly reconciliation. §7.4., LMS 213, §5.7. */
+/** Database access for the nightly reconciliation. §7.4., §5.7. */
 
 import { type Kysely, sql } from 'kysely';
 import type { Database } from '../../db/index.js';

@@ -4,7 +4,7 @@ import { NotEnoughDays } from '../../src/features/leave-request/leave-request.js
 import type { LeaveType } from '../../src/features/leave-type/leave-type.js';
 
 /**
- * What a refusal says to the person who met it. NFR USA 03, LMS 410.
+ * What a refusal says to the person who met it. NFR USA 03.
  *
  * ../integration/request-form-api.test.ts proves the domain's own sentences arrive over HTTP
  * intact. What is left is the two claims this layer is answerable for: the one sentence it

@@ -1,8 +1,8 @@
 -- Up Migration
 
--- An approver hands their approvals to a colleague for a date range. FR 49, §8.6a. LMS 327.
+-- An approver hands their approvals to a colleague for a date range. FR 49, §8.6a.
 --
--- LMS 320 routed round a desk that is empty; this covers one whose occupant is away. A
+-- Routing already covers a desk that is empty; this covers one whose occupant is away. A
 -- delegation is of a person, never of a desk: the desks follow from whatever the approver
 -- staffs on the day.
 

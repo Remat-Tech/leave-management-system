@@ -1,4 +1,4 @@
-/** The server entry point. LMS 401. */
+/** The server entry point. */
 
 import { config as loadEnv } from 'dotenv';
 import { Guard } from './auth/policy.js';
@@ -89,37 +89,37 @@ const db = createDatabase();
 const guard = new Guard();
 
 const employees = new EmployeeRepository(db);
-/** FR 57, LMS 409. */
+/** FR 57. */
 const departments = new DepartmentRepository(db);
 const accounts = new SignInAccountRepository(db);
 const roles = new RoleRepository(db);
 const types = new LeaveTypeRepository(db);
 const years = new LeaveYearRepository(db);
-/** FR 31, LMS 502. */
+/** FR 31. */
 const entitlementRules = new EntitlementRuleRepository(db);
-/** FR 22, LMS 206, LMS 504. */
+/** FR 22. */
 const holidays = new HolidayRepository(db);
 const requests = new LeaveRequestRepository(db);
 const decisions = new LeaveDecisionRepository(db);
-/** FR 48b, LMS 320. */
+/** FR 48b. */
 const routing = new LeaveRoutingRepository(db);
-/** FR 47, LMS 324. */
+/** FR 47. */
 const withdrawals = new WithdrawalRepository(db);
 const reversals = new ReversalRepository(db);
-/** FR 32c, LMS 507. */
+/** FR 32c. */
 const reclassifications = new ReclassificationRepository(db);
-/** FR 25, LMS 508. The holidays declared late and credited back. */
+/** FR 25. The holidays declared late and credited back. */
 const recalculations = new HolidayRecalculationRepository(db);
-/** FR 19, LMS 302. Requests started and not finished. */
+/** FR 19. Requests started and not finished. */
 const drafts = new LeaveRequestDraftRepository(db);
-/** FR 12, LMS 310. */
+/** FR 12. */
 const attachments = new AttachmentRepository(db);
-/** NFR SEC 04, LMS 407. */
+/** NFR SEC 04. */
 const attachmentLinks = new AttachmentLinkRepository(db);
 const balances = new BalanceRepository(db);
-/** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
+/** FR 48c. Who the `CEO` desk resolves to. */
 const organisation = new OrganisationRepository(db);
-/** FR 49, LMS 327. */
+/** FR 49. */
 const delegations = new ApprovalDelegationService(
   new ApprovalDelegationRepository(db),
   guard,
@@ -133,20 +133,20 @@ const patterns = new WorkPatternRepository(db);
 const mailer = createMailer();
 
 /**
- * The one place a balance moves. §5.7, FR 37, LMS 506.
+ * The one place a balance moves. §5.7, FR 37.
  *
  * Built once and handed to both doors below it, so an adjustment posted from the HR screen
  * and a day held by a leave request are the same act against the same cache.
  */
 const movements = new BalanceService(balances, guard, employees, new Transactions(db));
 
-/** FR 27, LMS 506. The movements behind a balance, which the adjustment screen reads. */
+/** FR 27. The movements behind a balance, which the adjustment screen reads. */
 const ledger = new LedgerRepository(db);
 
 /**
  * FR 59. Built once here, as the mailer is, and handed to both doors that write news.
  *
- * LMS 508 is the second caller: a holiday credited back is told in the same words and
+ * A recalculation is the second caller: a holiday credited back is told in the same words and
  * through the same retry as an approval, and a second instance would be a second backoff.
  */
 const notifications = new NotificationService(new NotificationRepository(db), mailer, guard);
@@ -159,7 +159,7 @@ const entitlementLookup = new EntitlementRuleService(
 );
 
 /**
- * The write door, built once here. LMS 301, LMS 403.
+ * The write door, built once here.
  *
  * Everything below it is what asking for leave actually needs: a balance service to hold the
  * days, a calculator to count them against the working pattern and the holiday calendar, and
@@ -198,7 +198,7 @@ const leaveRequests = new LeaveRequestService(
 );
 
 /**
- * FR 25, §8.8, LMS 508. The second write door, built here for the same reason the first is.
+ * FR 25, §8.8. The second write door, built here for the same reason the first is.
  *
  * Crediting a holiday back moves a balance and tells everybody it moved, so it needs the
  * transaction door and the notifier — and `buildApp` is deliberately not a place either is
@@ -217,7 +217,7 @@ const holidayRecalculations = new HolidayRecalculationService(
   earliestOpenDayFrom(years),
 );
 
-/** FR 32g, FR 32e, LMS 218. Births, bereavements and the like, and the grants they caused. */
+/** FR 32g, FR 32e. Births, bereavements and the like, and the grants they caused. */
 const events = new LeaveEventRepository(db);
 
 /** NFR SEC 04. Shared by the attachment routes and the certificate purge. */
@@ -227,10 +227,10 @@ const app = buildApp({
   guard,
   signIn: new SignInService(accounts, employees, roles, mailer, guard),
   balances,
-  /** FR 27, FR 37, LMS 506. */
+  /** FR 27, FR 37. */
   ledger,
   adjustments: movements,
-  /** FR 32g, LMS 218. */
+  /** FR 32g. */
   events,
   employees,
   departments,
@@ -238,7 +238,7 @@ const app = buildApp({
   years,
   entitlementRules,
   holidays,
-  /** FR 25, §8.8, LMS 508. */
+  /** FR 25, §8.8. */
   holidayRecalculations,
   requests,
   leaveRequests,
@@ -257,9 +257,9 @@ const app = buildApp({
   roles,
   delegations,
   organisation,
-  /** FR 61, LMS 512. */
+  /** FR 61. */
   emailWording: new EmailWordingRepository(db),
-  /** NFR AUD 01, LMS 513. */
+  /** NFR AUD 01. */
   audit: new AuditRepository(db),
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process
      before a socket is opened rather than while the first request is being served. */
@@ -421,7 +421,7 @@ const reminderTimer = every(HOUR_MS, () =>
   }),
 );
 
-/* FR 59, LMS 331. Every minute, the shortest backoff. */
+/* FR 59. Every minute, the shortest backoff. */
 const deliveryTimer = every(MINUTE_MS, () =>
   runJob('notification-retry', async () => {
     const run = await undelivered.run(theSystem('the notification retry'));

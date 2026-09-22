@@ -1,7 +1,6 @@
 -- Up Migration
 
 -- The audit log. NFR AUD 01 and NFR AUD 02. Technical Design Document §4.
--- LMS 113.
 --
 -- The story is a dispute two years from now: somebody's balance is wrong, or is
 -- said to be, and the question is how it got that way. Nobody remembers. The
@@ -30,8 +29,8 @@
 --   hash in a table the application can SELECT, which would make this table the
 --   easiest way to steal the credentials it exists to protect.
 --
--- What this migration deliberately does not add is user_role.granted_by. LMS 111
--- left that column out and said why: it wants an authenticated actor, and the
+-- What this migration deliberately does not add is user_role.granted_by. That column
+-- was left out for a stated reason: it wants an authenticated actor, and the
 -- place for "who did what" is the audit log rather than a column beside every
 -- row. This is that audit log, and a grant now has a name against it here.
 
@@ -319,8 +318,8 @@ CREATE TRIGGER app_user_is_audited
         'password_hash'
     );
 
-/* Who holds which role, filed under the login. This is what LMS 111 meant when
-   it left granted_by out: a grant already had a date on it, and now it has a name
+/* Who holds which role, filed under the login. This is what was meant by
+   leaving granted_by out: a grant already had a date on it, and now it has a name
    beside it, in the place where "who did what" belongs. */
 CREATE TRIGGER user_role_is_audited
     AFTER INSERT OR UPDATE OR DELETE ON user_role

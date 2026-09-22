@@ -25,7 +25,7 @@ import { theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
 
 /**
- * The one time code, against a real database. NFR SEC 01, LMS 110.
+ * The one time code, against a real database. NFR SEC 01.
  *
  * The unit suite covers the rules. What needs a database is the whole of what
  * makes a code a second factor rather than a formality:
@@ -205,7 +205,7 @@ describe('who is asked for a code', () => {
 
   it('starts asking the moment a role is granted, with nothing else changed', async () => {
     /* Read from user_role at the moment they sign in, never copied onto the
-       account. LMS 111 will grant roles through a service; whatever it writes,
+       account. Roles are granted through a service; whatever it writes,
        this is true the next time they sign in. */
     await withPassword(people.officer);
     await signedInDirectly(OFFICER_EMAIL);

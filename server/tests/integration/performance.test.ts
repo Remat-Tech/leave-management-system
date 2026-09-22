@@ -50,7 +50,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { holidayRecalculationService } from '../support/holiday-recalculations.js';
 import { delegationService } from '../support/delegations.js';
 
-/** Performance check. NFR PRF 01. LMS 603. */
+/** Performance check. NFR PRF 01. */
 
 const testDatabaseUrl = await databaseForThisFile();
 

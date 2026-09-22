@@ -25,7 +25,7 @@ import {
 import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
 import type { Actor } from '../../src/auth/actor.js';
 
-/** The approver queue, as rules. FR 20, FR 40, FR 17, FR 18, FR 48, §8.6a, LMS 404. */
+/** The approver queue, as rules. FR 20, FR 40, FR 17, FR 18, FR 48, §8.6a. */
 
 const YEAR_2026 = year('2026', '2026-01-01', '2026-12-31');
 
@@ -91,7 +91,7 @@ describe('the desks somebody staffs', () => {
         managerId: KOFI.id,
         awaiting: desk,
         chiefExecutiveId: AMA.id,
-        /** FR 49, LMS 327. Nobody is covering for anybody here. */
+        /** FR 49. Nobody is covering for anybody here. */
         standingIn: [],
       };
 
@@ -305,13 +305,13 @@ describe('what is flagged', () => {
     expect(item.warnings.map((one) => one.code)).toEqual(['BACKDATED', 'SHORT_NOTICE']);
     expect(item.warnings[0].inWords).toContain('already started');
     /* Inside the window, so it is the ordinary way an absence gets recorded rather than an
-       exception, and the flag says so. FR 18, LMS 308. */
+       exception, and the flag says so. FR 18. */
     expect(item.lateEntryReason).toBeNull();
     expect(item.warnings[0].inWords).toContain('allowed within the window');
   });
 
   /**
-   * FR 18, LMS 308. The story's second criterion, on the request only HR could have entered.
+   * FR 18. The story's second criterion, on the request only HR could have entered.
    *
    * Two different pieces of news under one flag, and the second is the one an approver weighs:
    * somebody made an exception, and the sentence they wrote is what says whether it was a good
@@ -428,7 +428,7 @@ function queueOf(facts: Partial<QueueFacts>): ApproverQueue {
     staffed: desksStaffedBy(asManager(), AMA.id),
     requests: [],
     people: PEOPLE,
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     covering: PEOPLE,
     types: [ANNUAL, UNPAID],
     years: [YEAR_2026],
@@ -516,7 +516,7 @@ function request(changes: Partial<LeaveRequest>): LeaveRequest {
     from: '2026-03-02',
     to: '2026-03-06',
     reason: 'My sister is getting married.',
-    /** FR 18, LMS 308. */
+    /** FR 18. */
     lateEntryReason: null,
     evidenceRequired: false,
     certifiedDays: 0,

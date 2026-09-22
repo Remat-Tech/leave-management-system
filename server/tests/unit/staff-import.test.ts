@@ -21,7 +21,7 @@ import {
 } from '../../src/features/staff-import/staff-import.js';
 
 /**
- * The rules a staff import obeys, checked without a database. FR 08, LMS 107.
+ * The rules a staff import obeys, checked without a database. FR 08.
  *
  * What is asserted here is everything that can be decided from the file and the
  * file alone: which column holds which field, what one row says, whether the

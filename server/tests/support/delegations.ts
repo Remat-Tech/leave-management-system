@@ -1,4 +1,4 @@
-/** The delegation service the leave doors take, built the one way. FR 49, LMS 327. */
+/** The delegation service the leave doors take, built the one way. FR 49. */
 
 import type { Kysely } from 'kysely';
 import type { Database } from '../../src/db/index.js';

@@ -1,4 +1,4 @@
-/** What a policy is, and what happens when one says no. NFR SEC 02, NFR SEC 03, §10., LMS 112. */
+/** What a policy is, and what happens when one says no. NFR SEC 02, NFR SEC 03, §10.. */
 
 import type { Actor } from './actor.js';
 import { type DeniedAttempt, type DenialLog, denialsToStderr } from './denials.js';

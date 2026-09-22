@@ -1,4 +1,4 @@
-/** The nightly balance reconciliation. §7.4., LMS 213, LMS 211, §5.7. */
+/** The nightly balance reconciliation. §7.4., §5.7. */
 
 import type { Actor } from '../../auth/actor.js';
 import { ledgerPolicy } from './policy.js';

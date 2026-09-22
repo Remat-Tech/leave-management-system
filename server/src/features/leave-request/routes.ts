@@ -1,4 +1,4 @@
-/** The request screens, over HTTP. FR 54, LMS 402, LMS 403, LMS 404, FR 10, FR 11, FR 13, FR 20, FR 55, FR 56, LMS 405, FR 19, LMS 302. */
+/** The request screens, over HTTP. FR 54, FR 10, FR 11, FR 13, FR 20, FR 55, FR 56, FR 19. */
 
 import { type Request, type Response, Router } from 'express';
 import type { LeaveYear } from '../leave-year/leave-year.js';
@@ -47,17 +47,17 @@ import { historyTable } from './history-export.js';
 
 export interface RequestRoutes {
   history: RequestHistoryService;
-  /** LMS 403. What each kind of leave asks of somebody, before any dates. */
+  /** What each kind of leave asks of somebody, before any dates. */
   form: RequestFormService;
-  /** LMS 403, LMS 301. What a period would cost, and the one door that writes a request. */
+  /** What a period would cost, and the one door that writes a request. */
   requests: LeaveRequestService;
-  /** LMS 404. Everything waiting on me. */
+  /** Everything waiting on me. */
   queue: ApproverQueueService;
-  /** FR 19, LMS 302. Requests started and not finished. */
+  /** FR 19. Requests started and not finished. */
   drafts: LeaveRequestDraftService;
-  /** FR 49, LMS 327. Who is covering my approvals while I am away. */
+  /** FR 49. Who is covering my approvals while I am away. */
   delegations: ApprovalDelegationService;
-  /** FR 51, LMS 328. Where a fault inside a batch is written down. */
+  /** FR 51. Where a fault inside a batch is written down. */
   failures?: FailureLog;
 }
 
@@ -72,7 +72,7 @@ export function requestRoutes({
 }: RequestRoutes): Router {
   const routes = Router();
 
-  /* ------------------------------------------- delegated approvals. FR 49, LMS 327 */
+  /* ------------------------------------------- delegated approvals. FR 49 */
 
   /** What I have handed over, and what has been handed to me. FR 49. */
   routes.get('/me/approval-delegations', (_request: Request, response: Response, next) => {
@@ -127,7 +127,7 @@ export function requestRoutes({
   });
 
   /**
-   * Everything waiting on me. FR 20, FR 40. LMS 404.
+   * Everything waiting on me. FR 20, FR 40.
    *
    * `/me` here means the same as it does below — the id off the verified cookie — but it names
    * the *approver* rather than the person taking the leave, which is why this is the one route
@@ -144,7 +144,7 @@ export function requestRoutes({
   });
 
   /**
-   * What a manager turned down that is now waiting on me. FR 44, §7.2. LMS 318.
+   * What a manager turned down that is now waiting on me. FR 44, §7.2.
    *
    * The dedicated view of the story's first criterion, and the same rows as `/me/approvals`
    * narrowed to the ones a manager said no to. Bounded by the same `leaveRequestPolicy.queue`
@@ -160,7 +160,7 @@ export function requestRoutes({
   });
 
   /**
-   * Answers several of them at once. FR 51, the story's first criterion. LMS 328.
+   * Answers several of them at once. FR 51, the story's first criterion.
    *
    * `/me/approvals`, because the desks are the reader's own and there is no id to supply — the
    * same argument the queue above makes. Every row named is decided at its own desk under its
@@ -187,7 +187,7 @@ export function requestRoutes({
   });
 
   /**
-   * Says yes at the desk this request is sitting on. FR 38, FR 38a, FR 40. LMS 314.
+   * Says yes at the desk this request is sitting on. FR 38, FR 38a, FR 40.
    *
    * A comment is optional here and required of everything below it, which is FR 39's
    * asymmetry: somebody whose leave is granted needs no explanation of the yes.
@@ -209,9 +209,9 @@ export function requestRoutes({
   });
 
   /**
-   * Turns it down at that desk, and says why. FR 39, FR 42, FR 44. LMS 315, LMS 318.
+   * Turns it down at that desk, and says why. FR 39, FR 42, FR 44.
    *
-   * Not an ending in itself since LMS 318: a rejection at a stage that is not the last sends
+   * Not an ending in itself: a rejection at a stage that is not the last sends
    * the request on to the next desk with the days still held.
    */
   routes.post('/requests/:id/refuse', (request: Request, response: Response, next) => {
@@ -231,7 +231,7 @@ export function requestRoutes({
   });
 
   /**
-   * Overturns the manager's decision. FR 44, §7.2. LMS 318.
+   * Overturns the manager's decision. FR 44, §7.2.
    *
    * Two verbs at one address, because they are one act with a direction: `OVERTURN_REJECTION`
    * lets leave a manager refused stand, `OVERTURN_APPROVAL` stops leave they agreed to. Which
@@ -259,7 +259,7 @@ export function requestRoutes({
   });
 
   /**
-   * Sends a request nobody could decide back into its chain. FR 48b, §8.6a. LMS 320.
+   * Sends a request nobody could decide back into its chain. FR 48b, §8.6a.
    *
    * HR's, and deliberately not a decision: it says nothing about the leave, and the request
    * comes back waiting on whichever desk can now be asked.
@@ -325,7 +325,7 @@ export function requestRoutes({
       .catch(next);
   });
 
-  /** Every ask to cancel agreed leave that this person may answer. FR 47, LMS 324. */
+  /** Every ask to cancel agreed leave that this person may answer. FR 47. */
   routes.get('/me/withdrawals', (_request: Request, response: Response, next) => {
     void requests
       .withdrawalsToAnswer(actorOf(response))
@@ -338,7 +338,7 @@ export function requestRoutes({
   });
 
   /**
-   * Takes back a request nobody has finished deciding, and gives its days back. FR 26, LMS 306.
+   * Takes back a request nobody has finished deciding, and gives its days back. FR 26.
    *
    * A desk may already have spoken — a manager who approved it, or one who refused it and sent
    * it on to HR — because the request stays `SUBMITTED` until the last desk decides. Once it is
@@ -354,7 +354,7 @@ export function requestRoutes({
   });
 
   /**
-   * Asks for leave every desk has agreed to be taken off the books. FR 47. LMS 324.
+   * Asks for leave every desk has agreed to be taken off the books. FR 47.
    *
    * The person's own, and the reason is mandatory — it is what HR answers.
    */
@@ -372,7 +372,7 @@ export function requestRoutes({
   });
 
   /**
-   * HR agreeing to it. FR 47. LMS 324.
+   * HR agreeing to it. FR 47.
    *
    * One address for both of the story's grants: whether this restores the whole request or
    * amends it to the days actually taken is the calendar's answer, not the caller's, so
@@ -392,7 +392,7 @@ export function requestRoutes({
       .catch(next);
   });
 
-  /** HR turning it down, with the reason. FR 47, FR 39. LMS 324. */
+  /** HR turning it down, with the reason. FR 47, FR 39. */
   routes.post('/requests/:id/withdrawal/refuse', (request: Request, response: Response, next) => {
     void requests
       .refuseWithdrawal(
@@ -407,7 +407,7 @@ export function requestRoutes({
   });
 
   /**
-   * Moves days of agreed leave to sick leave, on a certificate. FR 32c, §8.6c. LMS 507.
+   * Moves days of agreed leave to sick leave, on a certificate. FR 32c, §8.6c.
    *
    * `from` and `to` are optional and mean the whole request when left out — the story's
    * first criterion, and the reason there is no verb to pass. 201: what this creates is the
@@ -429,7 +429,7 @@ export function requestRoutes({
       .catch(next);
   });
 
-  /* ------------------------------------------------- drafts. FR 19, LMS 302 */
+  /* ------------------------------------------------- drafts. FR 19 */
 
   /** Everything I have started and not finished, the one I last worked on first. FR 19. */
   routes.get('/me/request-drafts', (_request: Request, response: Response, next) => {
@@ -504,11 +504,11 @@ export function requestRoutes({
       .submit(
         actorOf(response),
         asString(request.params.id),
-        /** FR 17, LMS 307. Answered when the draft is finished, never saved on it. */
+        /** FR 17. Answered when the draft is finished, never saved on it. */
         asAcknowledgement(bodyOf(request).acknowledgesShortNotice),
-        /** FR 18, LMS 308. Same argument: it is an answer given at the door, not a field. */
+        /** FR 18. Same argument: it is an answer given at the door, not a field. */
         asString(bodyOf(request).lateEntryReason),
-        /** FR 13, FR 32a, LMS 311. And the third: a draft holds no files either. */
+        /** FR 13, FR 32a. And the third: a draft holds no files either. */
         asIds(bodyOf(request).evidence),
       )
       .then((submitted) => {
@@ -529,7 +529,7 @@ export function requestRoutes({
       .catch(next);
   });
 
-  /** My requests, as a file. FR 64, LMS 511. */
+  /** My requests, as a file. FR 64. */
   routes.get('/me/requests/export', (request: Request, response: Response, next) => {
     void Promise.resolve()
       .then(async () => {
@@ -544,7 +544,7 @@ export function requestRoutes({
   });
 
   /**
-   * The kinds of leave I may ask for, and what each of them asks of me. LMS 403.
+   * The kinds of leave I may ask for, and what each of them asks of me.
    *
    * The whole of the story's second and third criteria, and a separate call from the quote
    * below rather than a field on it, because the two become answerable at different moments.
@@ -563,7 +563,7 @@ export function requestRoutes({
   });
 
   /**
-   * What this period would cost me, before anything is written. LMS 403's first criterion.
+   * What this period would cost me, before anything is written.
    *
    * **A GET, and the method is load bearing rather than a preference.** The service writes
    * nothing, reserves nothing, and is documented as safe to call on every keystroke that
@@ -596,7 +596,7 @@ export function requestRoutes({
   });
 
   /**
-   * Asks for the leave. FR 10, LMS 301.
+   * Asks for the leave. FR 10.
    *
    * 201, carrying the request that was written and the balance it left, because a screen
    * that has just submitted something has to say what happened: what it cost, and what is
@@ -607,9 +607,9 @@ export function requestRoutes({
    * reason this route takes only the four fields somebody actually filled in: a caller that
    * can supply a figure can supply a smaller one.
    *
-   * `acknowledgesShortNotice` is the fifth and is not one of them. FR 17, LMS 307: it answers
+   * `acknowledgesShortNotice` is the fifth and is not one of them. FR 17: it answers
    * a warning, and whether one was owed is the domain's to say rather than the caller's.
-   * `lateEntryReason` is the sixth and is the same shape. FR 18, LMS 308.
+   * `lateEntryReason` is the sixth and is the same shape. FR 18.
    */
   routes.post('/me/requests', (request: Request, response: Response, next) => {
     const sent = bodyOf(request);
@@ -621,11 +621,11 @@ export function requestRoutes({
         from: asString(sent.from),
         to: asString(sent.to),
         reason: asString(sent.reason),
-        /** FR 17, LMS 307. */
+        /** FR 17. */
         acknowledgesShortNotice: asAcknowledgement(sent.acknowledgesShortNotice),
-        /** FR 18, LMS 308. Refused unless the person holds an HR role. */
+        /** FR 18. Refused unless the person holds an HR role. */
         lateEntryReason: asString(sent.lateEntryReason),
-        /** FR 13, FR 32a, LMS 311. Ids from `POST /me/evidence`, not files. */
+        /** FR 13, FR 32a. Ids from `POST /me/evidence`, not files. */
         evidence: asIds(sent.evidence),
       })
       .then((submitted) => {
@@ -635,12 +635,12 @@ export function requestRoutes({
   });
 
   /**
-   * Puts somebody else's leave on the record. FR 18, LMS 308.
+   * Puts somebody else's leave on the record. FR 18.
    *
    * The one door that names an employee, and the reason it exists is the third criterion:
    * past its type's backdating window "only HR may enter the record, with a reason", and
    * `/me/requests` has no way to say whose leave it is. `leaveRequestPolicy.submit` has
-   * admitted HR on somebody's behalf since LMS 301; this is where they can reach it.
+   * admitted HR on somebody's behalf; this is where they can reach it.
    *
    * Not restricted to late leave, and not a second submission path: it is the same call with
    * the id supplied, and every refusal `/me/requests` can meet, this can meet. Somebody
@@ -656,11 +656,11 @@ export function requestRoutes({
         from: asString(sent.from),
         to: asString(sent.to),
         reason: asString(sent.reason),
-        /** FR 17, LMS 307. */
+        /** FR 17. */
         acknowledgesShortNotice: asAcknowledgement(sent.acknowledgesShortNotice),
-        /** FR 18, LMS 308. */
+        /** FR 18. */
         lateEntryReason: asString(sent.lateEntryReason),
-        /** FR 13, FR 32a, LMS 311. */
+        /** FR 13, FR 32a. */
         evidence: asIds(sent.evidence),
       })
       .then((submitted) => {
@@ -716,13 +716,13 @@ function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-/** An acknowledgement, and only `true` is one. FR 17, LMS 307. */
+/** An acknowledgement, and only `true` is one. FR 17. */
 function asAcknowledgement(value: unknown): boolean {
   return value === true;
 }
 
 /**
- * The evidence ids a submission names. FR 13, LMS 311.
+ * The evidence ids a submission names. FR 13.
  *
  * Coerced rather than validated, like every other field here: an id that is nobody's reaches
  * nothing in this person's waiting pile and is dropped, and what FR 13 refuses on is whether
@@ -733,7 +733,7 @@ function asIds(value: unknown): string[] {
 }
 
 /**
- * The version of the request the deciding screen was drawn from. NFR DAT 02, §8.1. LMS 326.
+ * The version of the request the deciding screen was drawn from. NFR DAT 02, §8.1.
  *
  * The whole of the optimistic half at the boundary: what a queue row carried is handed back,
  * and absent means "no screen behind this" rather than "any version".
@@ -743,7 +743,7 @@ function versionSent(sent: Record<string, unknown>): string | null {
 }
 
 /**
- * Which way an override goes. FR 44, §7.2. LMS 318.
+ * Which way an override goes. FR 44, §7.2.
  *
  * The one place in this file that reads a value rather than coercing one, because there is no
  * domain function further down that takes a string: `LeaveRequestService.override` is typed on
@@ -771,7 +771,7 @@ function bodyOf(request: Request): Record<string, unknown> {
 }
 
 /**
- * What a draft form sent, untouched. FR 19, LMS 302.
+ * What a draft form sent, untouched. FR 19.
  *
  * The four values are passed through rather than coerced, unlike {@link asString} above,
  * because absent and empty are the same state here and `validateDraftContents` is the one
@@ -786,7 +786,7 @@ function contentsOf(request: Request): DraftAsSent {
 /* ---------------------------------------------------------------- a draft, as JSON */
 
 /**
- * One unfinished request. FR 19, LMS 302.
+ * One unfinished request. FR 19.
  *
  * Every field may be null, which is the story. `progress` is what turns that into
  * something a screen can act on: what is still to fill in, and the sentence saying so.
@@ -817,7 +817,7 @@ function progressAsJson(progress: DraftProgress): unknown {
 
 /* ---------------------------------------------------------------- the queue, as JSON */
 
-/** One delegation, as a screen reads it. FR 49, LMS 327. */
+/** One delegation, as a screen reads it. FR 49. */
 function delegationAsJson(delegation: ApprovalDelegation): unknown {
   return {
     id: delegation.id,
@@ -848,7 +848,7 @@ function queueAsJson(queue: ApproverQueue): unknown {
 function queueItemAsJson(item: QueueItem): unknown {
   return {
     requestId: item.requestId,
-    /** NFR DAT 02, §8.1. What a decision from this row sends back. LMS 326. */
+    /** NFR DAT 02, §8.1. What a decision from this row sends back. */
     version: item.version,
     asker: {
       employeeId: item.asker.employeeId,
@@ -862,7 +862,7 @@ function queueItemAsJson(item: QueueItem): unknown {
     from: item.from,
     to: item.to,
     reason: item.reason,
-    /** FR 18, LMS 308. */
+    /** FR 18. */
     lateEntryReason: item.lateEntryReason,
     /** FR 11. Read off the request, never off the type. */
     countingBasis: item.countingBasis,
@@ -889,14 +889,14 @@ function queueItemAsJson(item: QueueItem): unknown {
     balance: balanceAsJson(item.balance),
     team: teamAsJson(item.team),
 
-    /** FR 49, LMS 327. Whose approvals this row is answered under, null where the reader's. */
+    /** FR 49. Whose approvals this row is answered under, null where the reader's. */
     answeringFor: item.answeringFor,
 
     /** FR 48, §8.6a. */
     actionable: item.actionable,
     notActionableBecause: item.notActionableBecause,
 
-    /** FR 44, §7.2. LMS 318. */
+    /** FR 44, §7.2. */
     managersDecision:
       item.managersDecision === null ? null : managersDecisionAsJson(item.managersDecision),
     /* Which of this desk's two verbs would be overturning the manager, so a screen can
@@ -982,7 +982,7 @@ function entryAsJson(entry: RequestHistoryEntry): unknown {
     from: entry.from,
     to: entry.to,
     reason: entry.reason,
-    /** FR 18, LMS 308. */
+    /** FR 18. */
     lateEntryReason: entry.lateEntryReason,
     countingBasis: entry.countingBasis,
     countingBasisLabel: entry.countingBasisLabel,
@@ -999,12 +999,12 @@ function entryAsJson(entry: RequestHistoryEntry): unknown {
     approvedBy: [...entry.progress.approvedBy],
     stillToApprove: [...entry.progress.stillToApprove],
     stagesMissing: [...entry.progress.stagesMissing],
-    /** FR 48d. One hand answered the whole chain. LMS 322. */
+    /** FR 48d. One hand answered the whole chain. */
     decidedBySingleApprover: entry.progress.singleApprover,
     progressInWords: entry.progress.inWords,
 
     trail: entry.trail.map(stepAsJson),
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     withdrawalAsked: entry.withdrawalAsked,
     reversed: entry.reversed,
   };
@@ -1014,7 +1014,7 @@ function stepAsJson(step: TrailStep): unknown {
   return {
     kind: step.kind,
     desk: step.desk,
-    /** LMS 409. Null on every step that is not a decision. */
+    /** Null on every step that is not a decision. */
     agreed: step.agreed,
     /** FR 39. */
     comment: step.comment,
@@ -1114,16 +1114,16 @@ function freeDayAsJson(day: FreeDay): unknown {
 /* ------------------------------------------------------- what was submitted, as JSON */
 
 /**
- * What one desk's decision did to the request. FR 38a, FR 39, FR 44. LMS 314, LMS 318.
+ * What one desk's decision did to the request. FR 38a, FR 39, FR 44.
  *
  * The decision itself as well as the request, because the two answer different questions: the
  * status says where the leave stands, and the decision says who decided it, what they said and
- * — since LMS 318 — which earlier decision it reversed.
+ * which earlier decision it reversed.
  */
 function decidedAsJson(decided: LeaveApproved): unknown {
   return {
     requestId: decided.request.id,
-    /** NFR DAT 02, §8.1. Where the row now stands, for whatever decides on it next. LMS 326. */
+    /** NFR DAT 02, §8.1. Where the row now stands, for whatever decides on it next. */
     version: versionOf(decided.request),
     status: decided.request.status,
     /** FR 38a. Null once there is nobody left to ask. */
@@ -1137,7 +1137,7 @@ function decidedAsJson(decided: LeaveApproved): unknown {
       /** FR 44. The decision this one reversed, where it reversed one. */
       overridesDecisionId: decided.decision.overridesDecisionId,
       decidedBy: decided.decision.decidedBy,
-      /** FR 49, FR 52, LMS 327. The approver whose absence this covered, where it covered one. */
+      /** FR 49, FR 52. The approver whose absence this covered, where it covered one. */
       delegatedFor: decided.decision.delegatedFor,
       decidedAt: decided.decision.decidedAt.toISOString(),
     },
@@ -1148,7 +1148,7 @@ function decidedAsJson(decided: LeaveApproved): unknown {
 }
 
 /**
- * What one press did, request by request. FR 51. LMS 328.
+ * What one press did, request by request. FR 51.
  *
  * `decided` is exactly what each row would have answered on its own, and `undecided` is the
  * refusal each of the others met — rendered by the same table every other refusal goes through,
@@ -1166,7 +1166,7 @@ function bulkAsJson(answered: BulkDecided, request: Request, failures: FailureLo
   };
 }
 
-/** An ask to take agreed leave off the books, or the answer to one. FR 47. LMS 324. */
+/** An ask to take agreed leave off the books, or the answer to one. FR 47. */
 function withdrawalAsJson(answered: WithdrawalAsked | WithdrawalAnswered): unknown {
   return {
     requestId: answered.request.id,
@@ -1188,7 +1188,7 @@ function withdrawalAsJson(answered: WithdrawalAsked | WithdrawalAnswered): unkno
   };
 }
 
-/** What moved, the two entries that moved it, and where it left both balances. FR 32c, LMS 507. */
+/** What moved, the two entries that moved it, and where it left both balances. FR 32c. */
 function reclassificationAsJson(moved: LeaveReclassified): unknown {
   return {
     requestId: moved.request.id,
@@ -1218,7 +1218,7 @@ function reclassificationAsJson(moved: LeaveReclassified): unknown {
   };
 }
 
-/** The request that was written, and the balance it left. LMS 301. */
+/** The request that was written, and the balance it left. */
 function submittedAsJson(submitted: LeaveRequested): unknown {
   return {
     requestId: submitted.request.id,
@@ -1232,9 +1232,9 @@ function submittedAsJson(submitted: LeaveRequested): unknown {
     days: submitted.request.days,
     calendarDays: submitted.request.calendarDays,
     status: submitted.request.status,
-    /** FR 13, FR 32a. Whether documentation was asked of it, and so is on it. LMS 311. */
+    /** FR 13, FR 32a. Whether documentation was asked of it, and so is on it. */
     evidenceRequired: submitted.request.evidenceRequired,
-    /** FR 32a, §8.6b. How many of its days the certificate carried. LMS 312. */
+    /** FR 32a, §8.6b. How many of its days the certificate carried. */
     certifiedDays: submitted.request.certifiedDays,
     /** FR 38a. The desk it is now sitting on. */
     awaitingApprovalFrom: submitted.request.awaitingApprovalFrom,

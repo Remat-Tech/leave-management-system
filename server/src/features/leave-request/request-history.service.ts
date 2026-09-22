@@ -1,4 +1,4 @@
-/** The request history screen, assembled. FR 54, §7.4., LMS 402, FR 55, FR 56. */
+/** The request history screen, assembled. FR 54, §7.4., FR 55, FR 56. */
 
 import type { Actor } from '../../auth/actor.js';
 import { leaveRequestPolicy } from './policy.js';
@@ -67,9 +67,9 @@ export class RequestHistoryService {
     private readonly types: LeaveTypeRepository,
     /** For the picker, and to tell a year that is nobody's from one that is empty. */
     private readonly years: LeaveYearRepository,
-    /** FR 48b. The stages each request's routing skipped. LMS 320. */
+    /** FR 48b. The stages each request's routing skipped. */
     private readonly routing: LeaveRoutingRepository,
-    /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
+    /** FR 47. The asks to take agreed leave off the books, and HR's answers. */
     private readonly withdrawals: WithdrawalRepository,
     /** The Chief Executive's reversals. Optional, so a history without them shows none. */
     private readonly reversals: ReversalRepository | null = null,
@@ -133,7 +133,7 @@ export class RequestHistoryService {
     };
   }
 
-  /** One person's requests, newest first, each with the account of how it was decided. LMS 402. */
+  /** One person's requests, newest first, each with the account of how it was decided. */
   async forEmployee(
     actor: Actor,
     employeeId: string,
@@ -166,9 +166,9 @@ export class RequestHistoryService {
         ...whoDecidedThem(decisions),
         ...whoReversedThem(reversals),
       ]),
-      /** FR 48b. A skipped stage is not still owed an answer. LMS 320. */
+      /** FR 48b. A skipped stage is not still owed an answer. */
       skipped: await this.routing.forRequests(shown.map((request) => request.id)),
-      /** FR 47, LMS 324. */
+      /** FR 47. */
       withdrawals: await this.withdrawals.forRequests(shown.map((request) => request.id)),
       reversals,
     });

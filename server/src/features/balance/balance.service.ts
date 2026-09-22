@@ -1,5 +1,5 @@
 /**
- * The one place a balance changes. FR 26, FR 30, FR 36, FR 37, §5.7, §8.2., LMS 211, LMS 217, LMS 301, LMS 306, LMS 212, LMS 214, LMS 216, FR 27, LMS 314, §8.2, FR 17, FR 13, FR 38a.
+ * The one place a balance changes. FR 26, FR 30, FR 36, FR 37, §5.7, §8.2., FR 27, §8.2, FR 17, FR 13, FR 38a.
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -105,7 +105,7 @@ export interface BalanceMovement extends BalanceKey {
   reason: string;
 }
 
-/** What HR supplies to move a balance by hand. FR 37, LMS 216. */
+/** What HR supplies to move a balance by hand. FR 37. */
 export interface Adjustment extends BalanceKey {
   /** Signed, and the only movement in this class that is. FR 37, §8.6. */
   days: number;
@@ -119,7 +119,7 @@ export interface BalanceMoved {
   balance: BalanceWithAvailable;
 }
 
-/** What HR supplies to grant entitlement for something that happened. FR 32g, LMS 218. */
+/** What HR supplies to grant entitlement for something that happened. FR 32g. */
 export interface EventGrant extends BalanceMovement {
   /** The day the thing happened, which is not the day it was recorded. */
   occurredOn: CalendarDate;
@@ -149,18 +149,18 @@ export interface EventLapse extends BalanceMovement {
   leaveEventId: string;
 }
 
-/** A movement caused by a leave request. LMS 301. */
+/** A movement caused by a leave request. */
 export interface RequestMovement extends BalanceMovement {
   leaveRequestId: string;
 }
 
-/** What `LeaveRequestService` supplies to submit one. FR 10, LMS 301. */
+/** What `LeaveRequestService` supplies to submit one. FR 10. */
 export interface RequestToSubmit {
   request: ValidatedLeaveRequest;
   /** FR 27. */
   reason: string;
   /**
-   * FR 13, FR 32a. Ids of evidence waiting to go on this request. LMS 311.
+   * FR 13, FR 32a. Ids of evidence waiting to go on this request.
    *
    * Put on the request inside the transaction that holds its days, so a request that needed
    * documentation and the certificate answering it commit together or not at all.
@@ -168,7 +168,7 @@ export interface RequestToSubmit {
   evidence?: readonly string[];
 }
 
-/** What `LeaveRequestService` supplies to end one outright. FR 26, §8.2., LMS 306, LMS 318. */
+/** What `LeaveRequestService` supplies to end one outright. FR 26, §8.2.. */
 export interface RequestToSettle {
   request: LeaveRequest;
   /** Withdrawing or cancelling; a refusal is a decision and goes through the other door. */
@@ -179,7 +179,7 @@ export interface RequestToSettle {
   reason: string;
 }
 
-/** What `LeaveRequestService` supplies to decide one. FR 38a, FR 40, FR 44, LMS 314, LMS 318. */
+/** What `LeaveRequestService` supplies to decide one. FR 38a, FR 40, FR 44. */
 export interface RequestToDecide {
   request: LeaveRequest;
   /** Which way this desk went, and whether it overrules the manager. FR 44. */
@@ -188,11 +188,11 @@ export interface RequestToDecide {
   chain: readonly ApproverRole[];
   /** FR 04. */
   chiefExecutiveId: string | null;
-  /** FR 48b. Who can be asked at each desk, for this requester. LMS 320. */
+  /** FR 48b. Who can be asked at each desk, for this requester. */
   available: DesksAvailable;
-  /** FR 48d. Who is at each of them. LMS 322. */
+  /** FR 48d. Who is at each of them. */
   occupants: DeskOccupants;
-  /** FR 49. Whose approvals the decider answers today, if anybody's. LMS 327. */
+  /** FR 49. Whose approvals the decider answers today, if anybody's. */
   standingIn: readonly DelegatedDesks[];
   /** FR 27. The sentence for a DEDUCTION, where this decision is a final yes. */
   reasonForTaking: string;
@@ -203,7 +203,7 @@ export interface RequestToDecide {
   /** FR 44. The manager's decision an override reverses, and null otherwise. */
   overturns: string | null;
   /**
-   * NFR DAT 02, §8.1. The version of the request the deciding screen was drawn from. LMS 326.
+   * NFR DAT 02, §8.1. The version of the request the deciding screen was drawn from.
    *
    * Null where the caller named none: it is what a screen offers, not what the row demands.
    */
@@ -212,16 +212,16 @@ export interface RequestToDecide {
   grantIfShort?: GrantOnApproval | null;
 }
 
-/** What `LeaveRequestService` supplies to send a request back into its chain. FR 48b, LMS 320. */
+/** What `LeaveRequestService` supplies to send a request back into its chain. FR 48b. */
 export interface RequestToReroute {
   request: LeaveRequest;
   /** FR 38a. */
   chain: readonly ApproverRole[];
   /** FR 48b. Who can be asked at each desk, as things now stand. */
   available: DesksAvailable;
-  /** FR 48d. Who is at each of them. LMS 322. */
+  /** FR 48d. Who is at each of them. */
   occupants: DeskOccupants;
-  /** FR 07. The reporting line that moved, where one did rather than HR asking. LMS 325. */
+  /** FR 07. The reporting line that moved, where one did rather than HR asking. */
   movedBy?: ReportingLineMove | null;
 }
 
@@ -230,14 +230,14 @@ export interface LeaveRequested extends BalanceMoved {
   request: LeaveRequest;
 }
 
-/** What `LeaveRequestService` supplies to ask for agreed leave to be withdrawn. FR 47, LMS 324. */
+/** What `LeaveRequestService` supplies to ask for agreed leave to be withdrawn. FR 47. */
 export interface WithdrawalToAsk {
   request: LeaveRequest;
   /** FR 47. The employee's account, which is what HR will answer. */
   reason: string;
 }
 
-/** What it supplies to answer one. FR 47, LMS 324. */
+/** What it supplies to answer one. FR 47. */
 export interface WithdrawalToAnswer {
   request: LeaveRequest;
   /** Which answer: the whole of it back, what is left of it, or none of it. */
@@ -250,7 +250,7 @@ export interface WithdrawalToAnswer {
   reasonForGivingBack: string;
 }
 
-/** What `LeaveRequestService` supplies to move days of agreed leave to sick leave. FR 32c, LMS 507. */
+/** What `LeaveRequestService` supplies to move days of agreed leave to sick leave. FR 32c. */
 export interface RequestToReclassify {
   request: LeaveRequest;
   /** What the days become. §8.6b makes it a type whose allowance may be exceeded. */
@@ -267,7 +267,7 @@ export interface RequestToReclassify {
   correlationId: string;
 }
 
-/** The move, the two entries it wrote, and where it left both balances. FR 32c, LMS 507. */
+/** The move, the two entries it wrote, and where it left both balances. FR 32c. */
 export interface LeaveReclassified {
   request: LeaveRequest;
   reclassification: Reclassification;
@@ -280,7 +280,7 @@ export interface LeaveReclassified {
   into: BalanceWithAvailable;
 }
 
-/** What `HolidayRecalculationService` supplies to credit a late holiday back. FR 25, LMS 508. */
+/** What `HolidayRecalculationService` supplies to credit a late holiday back. FR 25. */
 export interface RequestToRecalculate {
   request: LeaveRequest;
   /** The day the gazette declared after this leave was agreed. */
@@ -291,7 +291,7 @@ export interface RequestToRecalculate {
   reason: string;
 }
 
-/** The credit, the entry it wrote, and where it left the balance. FR 25, LMS 508. */
+/** The credit, the entry it wrote, and where it left the balance. FR 25. */
 export interface LeaveRecalculated {
   request: LeaveRequest;
   recalculation: Recalculation;
@@ -319,29 +319,29 @@ export interface LeaveReversed {
   balance: BalanceWithAvailable;
 }
 
-/** An ask on the record, and the balance it did not move. FR 47, LMS 324. */
+/** An ask on the record, and the balance it did not move. FR 47. */
 export interface WithdrawalAsked {
   request: LeaveRequest;
   withdrawal: Withdrawal;
   balance: BalanceWithAvailable;
 }
 
-/** HR's answer, what it gave back, and where that left things. FR 47, LMS 324. */
+/** HR's answer, what it gave back, and where that left things. FR 47. */
 export interface WithdrawalAnswered extends WithdrawalAsked {
   /** The `RECALCULATION`, and null where HR turned the ask down. */
   entry: LedgerEntry | null;
 }
 
-/** A request put back into its chain, and the balance it did not move. FR 48b, LMS 320. */
+/** A request put back into its chain, and the balance it did not move. FR 48b. */
 export interface LeaveRerouted {
   request: LeaveRequest;
   balance: BalanceWithAvailable;
-  /** FR 07. The handover recorded, where a reporting line moved it. LMS 325. */
+  /** FR 07. The handover recorded, where a reporting line moved it. */
   reassignment: RecordedReassignment | null;
 }
 
 /**
- * The same three from the other end of a request's life, and what was said about it. LMS 306, LMS 315.
+ * The same three from the other end of a request's life, and what was said about it.
  */
 export interface LeaveReleased extends LeaveRequested {
   /** FR 39. */
@@ -349,7 +349,7 @@ export interface LeaveReleased extends LeaveRequested {
 }
 
 /**
- * The same three from the middle of a request's life, with the entry allowed to be absent. FR 38a, LMS 314.
+ * The same three from the middle of a request's life, with the entry allowed to be absent. FR 38a.
  */
 export interface LeaveApproved extends Omit<LeaveRequested, 'entry'> {
   /** The `DEDUCTION`, where this approval decided it. */
@@ -374,12 +374,12 @@ export class BalanceService {
     private readonly guard: Guard,
     /** The employee records, for one question only: who is this person's manager. */
     private readonly employees: EmployeeRepository,
-    /** Where a movement is written. LMS 212. */
+    /** Where a movement is written. */
     private readonly transactions: Transactions,
   ) {}
 
   /**
-   * Every balance this person has, oldest leave year first and in the order leave types are shown in. FR 53, FR 55, FR 56, LMS 211.
+   * Every balance this person has, oldest leave year first and in the order leave types are shown in. FR 53, FR 55, FR 56.
    */
   async forEmployee(
     actor: Actor,
@@ -398,7 +398,7 @@ export class BalanceService {
     return withAvailable(await this.balances.forOne(key));
   }
 
-  /** Records a leave request and holds the days it costs. FR 10, FR 26, §8.2., LMS 301, FR 32a. */
+  /** Records a leave request and holds the days it costs. FR 10, FR 26, §8.2., FR 32a. */
   async reserveForRequest(actor: Actor, submission: RequestToSubmit): Promise<LeaveRequested> {
     const { request, reason } = submission;
     const owner = await this.ownerOf(request.employeeId);
@@ -430,10 +430,10 @@ export class BalanceService {
       const written = await repositories.requests.submit(actor, request);
 
       /* FR 48b. The stages the routing skipped to reach the desk this was written at, in
-         the same transaction as the row they explain. LMS 320. */
+         the same transaction as the row they explain. */
       await repositories.routing.record(actor, written.id, request.skips);
 
-      /* FR 13, FR 32a. The evidence, onto the request it was uploaded for. LMS 311.
+      /* FR 13, FR 32a. The evidence, onto the request it was uploaded for.
          `leave_request_that_needed_evidence_has_it` is deferred to the end of this
          transaction and refuses it outright where `evidence_required` is left standing with
          nothing clean under it — so a race that spent the certificate between the service's
@@ -450,7 +450,7 @@ export class BalanceService {
           ...key,
           entryType: 'RESERVATION',
           days: -days,
-          /* FR 32a, §8.6b, LMS 312. Off the row rather than worked out again: the request
+          /* FR 32a, §8.6b. Off the row rather than worked out again: the request
              was priced against a balance this lock is now holding still. */
           certifiedDays: written.certifiedDays,
           reason,
@@ -467,7 +467,7 @@ export class BalanceService {
   }
 
   /**
-   * Ends a leave request outright and gives back the days it was holding. FR 26, §8.2., LMS 306, LMS 318.
+   * Ends a leave request outright and gives back the days it was holding. FR 26, §8.2..
    *
    * Withdrawing and cancelling only. A refusal is a decision at a desk and goes through
    * {@link BalanceService.decideForRequest}, which releases the days when it turns out to
@@ -484,7 +484,7 @@ export class BalanceService {
     return this.transactions.allOrNothing(async (repositories) => {
       const held = await repositories.balances.holdStill(key);
 
-      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. LMS 326. */
+      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. */
       const current = await repositories.requests.holdStill(request.id);
 
       if (current === undefined) {
@@ -492,7 +492,7 @@ export class BalanceService {
       }
 
       /**
-       * Where the table says this act leaves the request as it stands *now*, rather than the destination the caller worked out before the lock. §6, LMS 313.
+       * Where the table says this act leaves the request as it stands *now*, rather than the destination the caller worked out before the lock. §6.
        */
       const to = settlementTo(current, action);
 
@@ -515,7 +515,7 @@ export class BalanceService {
           ...key,
           entryType: 'RELEASE',
           days,
-          /** FR 32a, LMS 312. All of them go back, so all of the certified ones do. */
+          /** FR 32a. All of them go back, so all of the certified ones do. */
           certifiedDays: current.certifiedDays,
           reason,
           leaveRequestId: current.id,
@@ -528,7 +528,7 @@ export class BalanceService {
         /* FR 39. Neither of these two is a decision at a desk. Withdrawing is somebody
            taking their own request back and cancelling is HR unwinding a row that should
            not be on the books, and a decision recorded for either would put a judgement in
-           front of the requester that nobody made. Since LMS 318 the type says so: the one
+           front of the requester that nobody made. The type says so: the one
            verb here that *was* a decision has moved to the door that decides. */
         decision: null,
         balance: withAvailable(await repositories.balances.forOne(key)),
@@ -538,7 +538,7 @@ export class BalanceService {
 
   /**
    * Sends a request on to the next desk in its chain, or — where there is none — approves
-   * it and turns its held days into taken ones. FR 26, FR 38, FR 38a, FR 40, §8.2. LMS 314.
+   * it and turns its held days into taken ones. FR 26, FR 38, FR 38a, FR 40, §8.2.
    *
    * The third door a request's life goes through, and the one that does two different
    * things under one name because they are two outcomes of one act. Somebody at a desk says
@@ -563,7 +563,7 @@ export class BalanceService {
    *
    * ## Every approval writes a decision, and that is the one thing both outcomes do
    *
-   * FR 39, FR 52. LMS 315. The movement is written only by the last desk and the decision is
+   * FR 39, FR 52. The movement is written only by the last desk and the decision is
    * written by all of them, which is the asymmetry {@link LeaveApproved} is shaped around: an
    * intermediate approval changes no figure in any balance and *does* change what somebody at
    * a desk has said, and the second of those is a fact this schema had nowhere to put until
@@ -612,7 +612,7 @@ export class BalanceService {
     const { reasonForTaking, reasonForGivingBack } = decision;
     const owner = await this.ownerOf(request.employeeId);
 
-    /* FR 48, §8.6a. LMS 319. The same first question the release door asks, in the same
+    /* FR 48, §8.6a. The same first question the release door asks, in the same
        words, at the top of the other decision door. It is redundant twice over here —
        `ledgerPolicy.commit` refuses the requester on the next line and
        `leaveRequestPolicy.approve` refuses them inside the lock — and it is written anyway,
@@ -626,7 +626,7 @@ export class BalanceService {
        desk; this asks whether they have any business moving this balance at all, and it is
        asked for the intermediate outcome as well as the final one — a stage approved by
        somebody who may not move the balance is a stage that would have to be unpicked. */
-    /** FR 49, LMS 327. Whose desks this decider is covering, for both doors below. */
+    /** FR 49. Whose desks this decider is covering, for both doors below. */
     const covering = standsInForAnApprover({
       ...owner,
       awaiting: request.awaitingApprovalFrom,
@@ -642,7 +642,7 @@ export class BalanceService {
       const held = await repositories.balances.holdStill(key);
 
       /* NFR DAT 02, §8.1. The row itself held still, and not merely read: nothing else moves
-         it between here and the write below. LMS 326. */
+         it between here and the write below. */
       const current = await repositories.requests.holdStill(request.id);
 
       /* Unreachable: the caller read this row a moment ago and `leave_request_is_never_
@@ -654,10 +654,10 @@ export class BalanceService {
 
       /* FR 44, FR 48d. What has been decided and by whom, read inside the lock for the
          reason the desk is: two officers deciding together would otherwise both find
-         themselves the first, and one of them is the same person as the other. LMS 322. */
+         themselves the first, and one of them is the same person as the other. */
       const recorded = await repositories.decisions.forRequest(current.id);
 
-      /* NFR DAT 02, §8.1. The race, lost, and here is where that answer binds. LMS 326.
+      /* NFR DAT 02, §8.1. The race, lost, and here is where that answer binds.
          Before the desk policy below, which would tell the loser they are not the desk. */
       assertNobodyGotThereFirst({
         request: current,
@@ -684,16 +684,16 @@ export class BalanceService {
         ...owner,
         awaiting: current.awaitingApprovalFrom,
         chiefExecutiveId,
-        /** FR 49, LMS 327. */
+        /** FR 49. */
         standingIn,
       };
 
       this.guard.enforce(leaveRequestPolicy.decide(actor, action, atTheDesk));
 
-      /** FR 44, FR 48d. The same rows, as the walk and the policy below want them. LMS 322. */
+      /** FR 44, FR 48d. The same rows, as the walk and the policy below want them. */
       const decisions = whoDecidedWhere(recorded);
 
-      /* FR 41, LMS 316. Which stages have signed, read inside the lock and against the rows
+      /* FR 41. Which stages have signed, read inside the lock and against the rows
          as they stand — the same discipline the status and the desk are held to, and it
          matters here for the sharpest reason of the three. Two approvals of one request
          arriving together are two movements on one balance, so this lock orders them: the
@@ -705,16 +705,16 @@ export class BalanceService {
         action,
         chain,
         decidedAlready: decisions,
-        /** FR 48d. Whose hand this one is. LMS 322. */
+        /** FR 48d. Whose hand this one is. */
         decider: actor.employeeId,
-        /* FR 48b, LMS 320. Read inside the lock for the reason the decisions are: two
+        /* FR 48b. Read inside the lock for the reason the decisions are: two
            approvals arriving together would otherwise both skip the same stage. */
         skipped: await repositories.routing.forRequest(current.id),
         available,
         occupants,
       });
 
-      /** FR 48d. Asked after the outcome, as the service asks it, and here it binds. LMS 322. */
+      /** FR 48d. Asked after the outcome, as the service asks it, and here it binds. */
       this.guard.enforce(
         leaveRequestPolicy.eachStageADifferentPerson(actor, owner, action, decisions),
       );
@@ -724,7 +724,7 @@ export class BalanceService {
         current.id,
         outcome.to,
         outcome.awaiting,
-        /** FR 48d. Stamped by the decision that settled it. LMS 322. */
+        /** FR 48d. Stamped by the decision that settled it. */
         outcome.singleApprover,
       );
 
@@ -734,7 +734,7 @@ export class BalanceService {
       }
 
       /* FR 48b. The stages this move had to skip, written before the status is judged at
-         COMMIT — `leave_request_is_approved_by_every_stage` reads them. LMS 320. */
+         COMMIT — `leave_request_is_approved_by_every_stage` reads them. */
       await repositories.routing.record(actor, current.id, outcome.skips);
 
       /* FR 32g. The final yes on per-occasion leave the balance cannot cover grants the
@@ -769,7 +769,7 @@ export class BalanceService {
             comment,
             /** FR 44. */
             overridesDecisionId: overturns,
-            /* FR 49, FR 52, LMS 327. The story's third criterion: `decided_by` is the hand
+            /* FR 49, FR 52. The story's third criterion: `decided_by` is the hand
                and this is the approver whose absence it covered. Worked out against
                `outcome.by`, the desk the walk found inside this lock. */
             delegatedFor: answeredOnBehalfOf(actor, outcome.by, atTheDesk),
@@ -796,7 +796,7 @@ export class BalanceService {
                      days go into `taken`, so available does not move and the balance stops
                      saying the leave is still being decided. */
                   days: -daysToCommit(held, current.days),
-                  /* FR 32a, §8.6b, LMS 312. The story's criterion where it counts: this is
+                  /* FR 32a, §8.6b. The story's criterion where it counts: this is
                      the entry that says certified sickness was actually taken. */
                   certifiedDays: current.certifiedDays,
                   reason: reasonForTaking,
@@ -809,7 +809,7 @@ export class BalanceService {
                   ...key,
                   entryType: 'RELEASE',
                   days: daysToRelease(held, current.days),
-                  /** FR 32a, LMS 312. */
+                  /** FR 32a. */
                   certifiedDays: current.certifiedDays,
                   reason: reasonForGivingBack,
                   leaveRequestId: current.id,
@@ -821,7 +821,7 @@ export class BalanceService {
   }
 
   /**
-   * Sends a request back into its chain. FR 48b, FR 07, §8.6a, §8.4. LMS 320, LMS 325.
+   * Sends a request back into its chain. FR 48b, FR 07, §8.6a, §8.4.
    *
    * The fourth door, and the only one that moves no days at all: the routing is worked out
    * again against the organisation as it now stands, and the request goes to whichever desk
@@ -848,7 +848,7 @@ export class BalanceService {
     return this.transactions.allOrNothing(async (repositories) => {
       await repositories.balances.holdStill(key);
 
-      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. LMS 326. */
+      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. */
       const current = await repositories.requests.holdStill(request.id);
 
       /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
@@ -869,7 +869,7 @@ export class BalanceService {
          anything reads the desk it went to. */
       await repositories.routing.record(actor, current.id, routed.skips);
 
-      /** FR 07, LMS 325. Before the move, for the same reason. */
+      /** FR 07. Before the move, for the same reason. */
       const reassignment =
         movedBy === null
           ? null
@@ -879,7 +879,7 @@ export class BalanceService {
               reassignmentFor(current, routed, movedBy),
             );
 
-      /* FR 07, LMS 325. A line that moved the person and not the desk changes no column:
+      /* FR 07. A line that moved the person and not the desk changes no column:
          the desk is the reporting line, so it is the new manager's already. */
       const stays =
         routed.to === current.status && routed.awaiting === current.awaitingApprovalFrom;
@@ -905,7 +905,7 @@ export class BalanceService {
   }
 
   /**
-   * Records somebody asking for their agreed leave to be taken off the books. FR 47, §8.2. LMS 324.
+   * Records somebody asking for their agreed leave to be taken off the books. FR 47, §8.2.
    *
    * The fifth door, and the second that moves no days. It takes the lock anyway, for the
    * reason {@link BalanceService.rerouteRequest} does: the status and the open ask are
@@ -922,7 +922,7 @@ export class BalanceService {
     return this.transactions.allOrNothing(async (repositories) => {
       await repositories.balances.holdStill(key);
 
-      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. LMS 326. */
+      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. */
       const current = await repositories.requests.holdStill(request.id);
 
       /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
@@ -959,10 +959,10 @@ export class BalanceService {
   }
 
   /**
-   * Answers one, putting back the days it gives back. FR 26, FR 27, FR 47, §8.2. LMS 324.
+   * Answers one, putting back the days it gives back. FR 26, FR 27, FR 47, §8.2.
    *
-   * The sixth door, and the only writer of a `RECALCULATION` — the movement LMS 314 said
-   * this story would need, against the `DEDUCTION` rather than the `RESERVATION`. A full
+   * The sixth door, and the only writer of a `RECALCULATION` — the movement the routing said
+   * would be needed, against the `DEDUCTION` rather than the `RESERVATION`. A full
    * withdrawal ends the request and gives back everything; an amendment leaves it `APPROVED`
    * and gives back what was not taken; a refusal moves nothing and is still written down.
    *
@@ -974,7 +974,7 @@ export class BalanceService {
     const { request, action, reason, days, reasonForGivingBack } = answer;
     const owner = await this.ownerOf(request.employeeId);
 
-    /** FR 48, §8.6a. Nobody answers their own ask. LMS 319. */
+    /** FR 48, §8.6a. Nobody answers their own ask. */
     this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, action));
     this.guard.enforce(leaveRequestPolicy.answerAWithdrawal(actor, action, owner));
     this.guard.enforce(ledgerPolicy.giveBackTakenDays(actor, owner));
@@ -984,7 +984,7 @@ export class BalanceService {
     return this.transactions.allOrNothing(async (repositories) => {
       const held = await repositories.balances.holdStill(key);
 
-      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. LMS 326. */
+      /** NFR DAT 02, §8.1. The row held still, as every door that moves one holds it. */
       const current = await repositories.requests.holdStill(request.id);
 
       /* Unreachable: the caller read this row a moment ago and nothing deletes one. */
@@ -1036,7 +1036,7 @@ export class BalanceService {
                 /* Positive. A RECALCULATION moves one bucket: the days come out of
                    `taken`, so available goes up by exactly what came back. */
                 days: daysToGiveBackFromTaken(held, days),
-                /* FR 32a, FR 47, LMS 312. Certified days come back first — the days that
+                /* FR 32a, FR 47. Certified days come back first — the days that
                    are kept are the ones the allowance takes back first. */
                 certifiedDays: certifiedDaysGivenBack(current.certifiedDays, days),
                 reason: reasonForGivingBack,
@@ -1165,7 +1165,7 @@ export class BalanceService {
   }
 
   /**
-   * Moves days of agreed leave into another leave type. FR 32c, §8.6c, §8.2. LMS 507.
+   * Moves days of agreed leave into another leave type. FR 32c, §8.6c, §8.2.
    *
    * The seventh door, and the only one that moves two balances. The days come back out of
    * `taken` where they were spent and go into `taken` where they now belong, as two
@@ -1228,7 +1228,7 @@ export class BalanceService {
           entryType: 'RECLASSIFICATION',
           /* Positive, out of `taken`, and no more than this leave ever spent there. */
           days: daysToGiveBackFromTaken(held.get(from.leaveTypeId)!, days),
-          /* FR 32a, LMS 312. Certified days come back first, as they do on a withdrawal. */
+          /* FR 32a. Certified days come back first, as they do on a withdrawal. */
           certifiedDays: certifiedDaysGivenBack(current.certifiedDays, days),
           reason,
           leaveRequestId: current.id,
@@ -1276,7 +1276,7 @@ export class BalanceService {
   }
 
   /**
-   * Credits back a public holiday declared inside agreed leave. FR 25, §8.8, §8.2. LMS 508.
+   * Credits back a public holiday declared inside agreed leave. FR 25, §8.8, §8.2.
    *
    * The eighth door, and the second writer of a `RECALCULATION` — the first being FR 47's
    * withdrawal, which gives back days for the opposite reason. One entry, against `taken`,
@@ -1325,7 +1325,7 @@ export class BalanceService {
           entryType: 'RECALCULATION',
           /* Positive, out of `taken`, and no more than this leave ever spent there. */
           days: daysToGiveBackFromTaken(held, days),
-          /* FR 32a, LMS 312. Certified days come back first, as on a withdrawal. */
+          /* FR 32a. Certified days come back first, as on a withdrawal. */
           certifiedDays: certifiedDaysGivenBack(current.certifiedDays, days),
           reason,
           leaveRequestId: current.id,
@@ -1349,7 +1349,7 @@ export class BalanceService {
   }
 
   /**
-   * Grants a year's entitlement. FR 30, LMS 214.
+   * Grants a year's entitlement. FR 30.
    *
    * The first movement that puts days *into* a balance rather than moving days already
    * there, and the one an employee sees first: this is what you have for the year.
@@ -1399,7 +1399,7 @@ export class BalanceService {
 
   /**
    * Records something that happened, and grants the entitlement it brings. FR 32g,
-   * §8.6aa. LMS 218.
+   * §8.6aa.
    *
    * The third movement that puts days into a balance from outside it, and the only one
    * that writes a row in another table while it does. That is the whole shape of this
@@ -1492,7 +1492,7 @@ export class BalanceService {
   }
 
   /**
-   * Lapses whatever is left of an event grant whose time is up. FR 32e, LMS 218.
+   * Lapses whatever is left of an event grant whose time is up. FR 32e.
    *
    * The story's third criterion, and the only movement in this class that takes days
    * away from somebody without a request or a person behind it.
@@ -1543,7 +1543,7 @@ export class BalanceService {
   }
 
   /**
-   * Carries last year's unused days into this one. FR 36, LMS 217.
+   * Carries last year's unused days into this one. FR 36.
    *
    * The second movement that puts days into a balance from outside it, and the sibling of
    * {@link BalanceService.grantTheYear} in every respect — same shape, same lock, same
@@ -1663,7 +1663,7 @@ export class BalanceService {
    * **Ending a request goes through {@link BalanceService.releaseForRequest} instead**,
    * and the difference is the status. This method posts the entry and leaves the request
    * saying it is still waiting to be decided; that one moves both in a single
-   * transaction, which is what LMS 306's story actually asks for. A request whose days
+   * transaction, which is what the three endings actually ask for. A request whose days
    * came back while it still reads `SUBMITTED` holds nothing and blocks the calendar
    * anyway — `blocksTheCalendar` reads the status, not the ledger.
    *
@@ -1688,8 +1688,7 @@ export class BalanceService {
   }
 
   /**
-   * Moves a balance by hand. FR 37, and the whole of LMS 216. Moved here from
-   * `LedgerService` by LMS 212.
+   * Moves a balance by hand. FR 37. Moved here from `LedgerService`.
    *
    * The story is a genuine mistake being fixed without editing history or losing the
    * explanation, and all three of its parts are already true of the table this writes
@@ -1763,7 +1762,7 @@ export class BalanceService {
 
   /**
    * Puts an earlier entry right, by posting its exact opposite. Moved here from
-   * `LedgerService` by LMS 212, because it is a movement and movements are written
+   * `LedgerService`, because it is a movement and movements are written
    * here.
    *
    * The amount is the negation of what was posted and is not the caller's to choose.
@@ -1816,7 +1815,7 @@ export class BalanceService {
    *   handed the held figure rather than fetching one.
    *
    *   **The entry is written in the same transaction**, so the lock is still held
-   *   when the movement lands. The trigger of LMS 211 recomputes the cache in that
+   *   when the movement lands. The cached balance's trigger recomputes it in that
    *   same transaction, which is why the read at the end is the figure this movement
    *   produced rather than the figure at the time of asking.
    *
@@ -1888,7 +1887,7 @@ export class BalanceService {
   }
 
   /**
-   * That the leave type and the leave year a movement names are real ones. LMS 216.
+   * That the leave type and the leave year a movement names are real ones.
    *
    * The immutable-leave-ledger migration puts it well: a leave type and a leave year
    * are headings things are filed under, and the ledger is the table doing the

@@ -27,7 +27,7 @@ import { LeaveYearService } from '../../src/features/leave-year/leave-year.servi
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * The balance ledger against a real database. FR 27, §5.7. LMS 210.
+ * The balance ledger against a real database. FR 27, §5.7.
  *
  * The unit suite covers what an entry is and what makes one valid; ../unit/ledger.test.ts
  * is where the pure half is proved. What needs a database is the half the database
@@ -179,7 +179,7 @@ async function writeDirectly(
     ...overrides,
   };
 
-  /* LMS 301: a RESERVATION, DEDUCTION, RELEASE or RECALCULATION has to name a request,
+  /* A RESERVATION, DEDUCTION, RELEASE or RECALCULATION has to name a request,
      and a request has to hold days — so a suite writing one of these straight to the
      table builds the request too. It is the same rule from the other side of the door as
      everything else in this file: what the database refuses is refused whoever asked.
@@ -200,7 +200,7 @@ async function writeDirectly(
     row.leave_request_id = await aRequestHoldingDays(row);
   }
 
-  /* FR 32c, LMS 507. A reclassification names the other side of itself, and the pair is
+  /* FR 32c. A reclassification names the other side of itself, and the pair is
      judged at COMMIT — so the correlation is supplied here and the other side is written
      beside it, unless the case at hand is about one of those two rules. */
   if (row.entry_type === 'RECLASSIFICATION' && row.correlation_id === undefined) {
@@ -225,7 +225,7 @@ async function insertEntry(row: Record<string, unknown>): Promise<Record<string,
 }
 
 /**
- * The two sides of one move, in one transaction. FR 32c, LMS 507.
+ * The two sides of one move, in one transaction. FR 32c.
  *
  * `leave_ledger_entry_correlates_a_pair` is deferred and judged at COMMIT, so a
  * reclassification written on its own is refused there however it was written. The other
@@ -290,7 +290,7 @@ async function aRequestHoldingDays(key: Record<string, unknown>): Promise<string
       [key.employee_id, key.leave_type_id, key.leave_year_id, id],
     );
 
-    /* FR 47, LMS 324. A RECALCULATION gives back days that were taken, and
+    /* FR 47. A RECALCULATION gives back days that were taken, and
        `leave_request_gives_back_no_more_than_it_took` refuses one against a request that
        never spent any — so the hold is drawn down first, as approving it would. */
     if (key.entry_type === 'RECALCULATION') {
@@ -314,7 +314,7 @@ async function aRequestHoldingDays(key: Record<string, unknown>): Promise<string
  * Where the next fixture request starts, counted in days from the leave year's first.
  *
  * Every request here used to begin on the first of January, which was fine until
- * `leave_request_never_overlaps` arrived with LMS 304: one person cannot hold the same
+ * `leave_request_never_overlaps` arrived: one person cannot hold the same
  * day twice, and a suite that wrote four requests for one person wrote four requests for
  * the first of January. Advancing the start day gives each fixture a period of its own,
  * which is what the rows were always meant to represent — this file is about the eight
@@ -368,7 +368,7 @@ function asThemselves() {
 }
 
 /**
- * The two writers this story shipped, which are `BalanceService`'s since LMS 212.
+ * The two writers this story shipped, which are `BalanceService`'s.
  *
  * That story's first criterion is that exactly one class posts a balance movement, so
  * `LedgerService` reads the account and writes nothing. These two are shims and are
@@ -424,7 +424,7 @@ describe('the ten kinds of movement, on a migrated database', () => {
 
   it('refuses a movement that goes the wrong way for its kind', async () => {
     for (const entryType of LEDGER_ENTRY_TYPES) {
-      /* FR 32c, LMS 507. RECLASSIFICATION beside it: both sides of a move are the same
+      /* FR 32c. RECLASSIFICATION beside it: both sides of a move are the same
          kind of entry, so its sign is free too and neither way round is wrong. */
       if (entryType === 'ADJUSTMENT' || entryType === 'RECLASSIFICATION') continue;
 
@@ -598,7 +598,7 @@ describe('an entry cannot be changed or removed by anybody', () => {
   });
 
   /* The same repair applied to the audit log, which had been getting the employee
-     record's hint since LMS 113 for the same reason. */
+     record's hint for the same reason. */
   it('as does the audit log, which shared the wrong one', async () => {
     const { rows } = await admin.query('SELECT id FROM audit_log LIMIT 1');
 

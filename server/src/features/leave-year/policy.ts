@@ -1,4 +1,4 @@
-/** Who may see and close a leave year. NFR SEC 02, §10., LMS 112, LMS 205, FR 36. */
+/** Who may see and close a leave year. NFR SEC 02, §10., FR 36. */
 
 import { type Actor, holdsAny } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';

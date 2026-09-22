@@ -12,7 +12,7 @@ import {
 import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
-/** The wording of every email the system sends, kept by HR. FR 61, LMS 512. */
+/** The wording of every email the system sends, kept by HR. FR 61. */
 export function EmailWordingPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [page, setPage] = useState<Page | undefined>(undefined);
   const [chosen, setChosen] = useState<string | undefined>(undefined);

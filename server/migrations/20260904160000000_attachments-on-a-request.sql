@@ -1,6 +1,6 @@
 -- Up Migration
 
--- Evidence attached to a request. FR 12, NFR SEC 07. LMS 310.
+-- Evidence attached to a request. FR 12, NFR SEC 07.
 --
 -- Bytes live behind `Storage`; `storage_key` is the handle it issued. NFR SEC 04.
 -- `content_type` is sniffed server side, never read off the extension.

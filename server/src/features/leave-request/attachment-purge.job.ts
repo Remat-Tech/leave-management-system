@@ -1,4 +1,4 @@
-/** Deletes stored certificates once the retention period has passed. NFR SEC 06, LMS 514. */
+/** Deletes stored certificates once the retention period has passed. NFR SEC 06. */
 
 import type { Storage } from '../../storage/index.js';
 import { type CalendarDate, calendarDateIn } from '../../shared/time.js';

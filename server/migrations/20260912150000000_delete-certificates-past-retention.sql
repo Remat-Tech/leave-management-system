@@ -1,6 +1,6 @@
 -- Up Migration
 
--- Certificates deleted once the retention window has passed. NFR SEC 06, LMS 514.
+-- Certificates deleted once the retention window has passed. NFR SEC 06.
 --
 -- The bytes go and the row stays, so history still says a file was there.
 

@@ -1,4 +1,4 @@
-/** Recording an event that grants leave, over HTTP. FR 32g, FR 32e, LMS 218. */
+/** Recording an event that grants leave, over HTTP. FR 32g, FR 32e. */
 
 import { type Request, type Response, Router } from 'express';
 import type { Guard } from '../../auth/policy.js';

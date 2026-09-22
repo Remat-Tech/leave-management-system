@@ -1,6 +1,6 @@
 -- Up Migration
 
--- Pending leave follows the reporting line. FR 07, §8.4, FR 48b. LMS 325.
+-- Pending leave follows the reporting line. FR 07, §8.4, FR 48b.
 --
 -- The MANAGER desk resolves through the line, so a request waiting there is the new
 -- manager's at once. What was missing: the record of the handover, and the two cases where
@@ -183,7 +183,7 @@ ALTER TABLE notification
                   'WITHDRAWAL_ASKED', 'WITHDRAWAL_GRANTED', 'LEAVE_AMENDED',
                   'WITHDRAWAL_REFUSED'));
 
-/* Back to the body LMS 320 wrote, which knows only about decisions. */
+/* Back to the earlier body, which knows only about decisions. */
 
 CREATE OR REPLACE FUNCTION refuse_a_move_no_decision_explains() RETURNS trigger
 LANGUAGE plpgsql

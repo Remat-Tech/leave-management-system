@@ -1,4 +1,4 @@
-/** The year rollover. FR 36, FR 36a, §11., LMS 217, §8.9, FR 32g, LMS 205, LMS 212, FR 37a. */
+/** The year rollover. FR 36, FR 36a, §11., §8.9, FR 32g, FR 37a. */
 
 import type { AnnualGrantRun } from '../entitlement/annual-grant.js';
 import { summaryOf as summaryOfTheGrant } from '../entitlement/annual-grant.js';

@@ -11,7 +11,7 @@ import { moment } from '../../format';
 import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
-/** Who changed what, searched by record and date. Read only. NFR AUD 01, NFR AUD 02, LMS 513. */
+/** Who changed what, searched by record and date. Read only. NFR AUD 01, NFR AUD 02. */
 
 const ACTIONS: Record<AuditLogEntry['action'], string> = {
   CREATE: 'Created',

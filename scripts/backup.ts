@@ -1,5 +1,5 @@
 /**
- * Backs up the database at DATABASE_MIGRATION_URL. LMS 604.
+ * Backs up the database at DATABASE_MIGRATION_URL.
  *
  *   npm run backup -- [directory]
  */

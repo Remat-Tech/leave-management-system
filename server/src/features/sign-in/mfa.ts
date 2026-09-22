@@ -1,4 +1,4 @@
-/** The one time code sent to a work address at sign in. NFR SEC 01, LMS 110. */
+/** The one time code sent to a work address at sign in. NFR SEC 01. */
 
 import { randomInt } from 'node:crypto';
 import type { Mail } from '../../mail/transport.js';
@@ -251,7 +251,7 @@ export function expiryFrom(now: Date, ttlMinutes: number): Date {
 export function resetEmail(to: string, code: string, ttlMinutes: number): Mail {
   return {
     to,
-    subject: `${code} is your Remat Holdings leave password reset code`,
+    subject: `${code} is your Rota password reset code`,
     text: [
       `Your password reset code is ${code}.`,
       '',
@@ -261,7 +261,7 @@ export function resetEmail(to: string, code: string, ttlMinutes: number): Mail {
       'If you did not ask to reset your password, somebody else is trying to get',
       'into your account. Do not use this code, and tell IT.',
       '',
-      'Remat Holdings Leave',
+      'Rota',
     ].join('\n'),
   };
 }
@@ -269,7 +269,7 @@ export function resetEmail(to: string, code: string, ttlMinutes: number): Mail {
 export function codeEmail(to: string, code: string, ttlMinutes: number): Mail {
   return {
     to,
-    subject: `${code} is your Remat Holdings leave sign in code`,
+    subject: `${code} is your Rota sign in code`,
     text: [
       `Your sign in code is ${code}.`,
       '',
@@ -278,7 +278,7 @@ export function codeEmail(to: string, code: string, ttlMinutes: number): Mail {
       'If you were not signing in, somebody else may have your password. Do not',
       'enter this code, and tell IT so that your password can be changed.',
       '',
-      'Remat Holdings Leave',
+      'Rota',
     ].join('\n'),
   };
 }

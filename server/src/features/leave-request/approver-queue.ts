@@ -1,5 +1,5 @@
 /**
- * Everything waiting on one approver, with what they need to decide it. FR 20, FR 40, FR 38a, FR 17, FR 18, FR 48, §8.6a, §8.6, NFR USA 03, LMS 404.
+ * Everything waiting on one approver, with what they need to decide it. FR 20, FR 40, FR 38a, FR 17, FR 18, FR 48, §8.6a, §8.6, NFR USA 03.
  */
 
 import {
@@ -59,11 +59,11 @@ import { type CalendarDate, formatDay } from '../../shared/time.js';
 export interface DesksStaffed {
   /** FR 38a. Every desk this person answers at, their own and their delegators', in order. */
   desks: readonly ApproverRole[];
-  /** The ones that are theirs rather than handed to them. FR 49, LMS 327. */
+  /** The ones that are theirs rather than handed to them. FR 49. */
   own: readonly ApproverRole[];
   /** Whose reports reach the `MANAGER` desk: their own id, and every manager covered for. */
   managerIds: readonly string[];
-  /** FR 49. What each colleague handed over, so a row can say whose it is. LMS 327. */
+  /** FR 49. What each colleague handed over, so a row can say whose it is. */
   delegated: readonly DelegatedDesks[];
 }
 
@@ -90,8 +90,8 @@ export function companyWideDesks(staffed: DesksStaffed): ApproverRole[] {
  * that judgement is made — and a backdated request is one `assertWithinBackdatingWindow`
  * already let through.
  *
- * `DOCUMENTATION_REQUIRED` is the obvious next one and is deliberately not here: LMS 404 asks
- * for two. The condition is `documentationRequired` and `quoteFor` has already written the
+ * `DOCUMENTATION_REQUIRED` is the obvious next one and is deliberately not here: the queue
+ * asks for two. The condition is `documentationRequired` and `quoteFor` has already written the
  * sentence, so the story that wants it adds a member and a branch in {@link flagsFor}.
  */
 export const QUEUE_FLAGS = [
@@ -182,7 +182,7 @@ export interface TeamContext {
 export interface QueueItem {
   requestId: string;
   /**
-   * NFR DAT 02, §8.1. The version of the request this row was drawn from. LMS 326.
+   * NFR DAT 02, §8.1. The version of the request this row was drawn from.
    *
    * Sent back with the decision, so a screen deciding on a request that has since moved is
    * refused rather than answered.
@@ -197,7 +197,7 @@ export interface QueueItem {
   to: CalendarDate;
   /** What the person said when they asked, where the type asked. FR 10. */
   reason: string | null;
-  /** FR 18. Why HR entered it past the backdating window, where they did. LMS 308. */
+  /** FR 18. Why HR entered it past the backdating window, where they did. */
   lateEntryReason: string | null;
   /** FR 11. Read off the request, never off the type. */
   countingBasis: CountingBasis;
@@ -232,7 +232,7 @@ export interface QueueItem {
   balance: AskerBalance;
   team: TeamContext;
 
-  /** FR 49. Whose approvals this row is answered under, null where the reader's own. LMS 327. */
+  /** FR 49. Whose approvals this row is answered under, null where the reader's own. */
   answeringFor: Asker | null;
 
   /** FR 48, §8.6a. False for the approver's own request. The story's second criterion. */
@@ -240,7 +240,7 @@ export interface QueueItem {
   /** The policy's own sentence, where it is not. Null where it is. NFR USA 03. */
   notActionableBecause: string | null;
 
-  /** FR 44, §7.2. What the manager said, where they have decided. LMS 318. */
+  /** FR 44, §7.2. What the manager said, where they have decided. */
   managersDecision: ManagersDecision | null;
   /**
    * FR 44. The override deciding this way would be, or null where it overrules nobody.
@@ -252,7 +252,7 @@ export interface QueueItem {
   refusingIs: OverridingAction | null;
 }
 
-/** What the manager decided, for the desk about to disagree with them. FR 44, LMS 318. */
+/** What the manager decided, for the desk about to disagree with them. FR 44. */
 export interface ManagersDecision {
   said: DecidingAction;
   /** FR 39. Their reason, which is the thing HR is weighing. */
@@ -283,7 +283,7 @@ export interface QueueFacts {
   requests: readonly LeaveRequest[];
   /** The people who asked, and their teammates. Keyed by id below. */
   people: readonly Employee[];
-  /** FR 49. The colleagues whose approvals this person is covering, to name them. LMS 327. */
+  /** FR 49. The colleagues whose approvals this person is covering, to name them. */
   covering: readonly Employee[];
   /** Every leave type, for each request's name and its chain as it now stands. */
   types: readonly LeaveType[];
@@ -315,7 +315,7 @@ export interface QueueFacts {
 }
 
 /**
- * The queue, from the facts the service has gathered. FR 20, FR 40, LMS 404.
+ * The queue, from the facts the service has gathered. FR 20, FR 40.
  *
  * **Own requests are in it.** The story says *never actionable*, and the shape that rules out
  * is a queue that hides them. §8.6a's case is ordinary rather than adversarial — unpaid leave
@@ -356,7 +356,7 @@ export function queueFor(facts: QueueFacts): ApproverQueue {
     itemFor({
       request,
       asker: peopleById.get(request.employeeId),
-      /** FR 49, LMS 327. */
+      /** FR 49. */
       answeringFor: answeringFor(facts, request, peopleById.get(request.employeeId), coveringById),
       type: typesById.get(request.leaveTypeId),
       year: yearsById.get(request.leaveYearId),
@@ -380,7 +380,7 @@ export function queueFor(facts: QueueFacts): ApproverQueue {
 }
 
 /**
- * The queue narrowed to what a manager turned down. FR 44, §7.2. LMS 318's first criterion.
+ * The queue narrowed to what a manager turned down. FR 44, §7.2.
  *
  * The dedicated view, and it is a narrowing of the approver queue rather than a second
  * screen assembled from its own query — a rejection no longer ends a request, so every one
@@ -412,7 +412,7 @@ function rejectionsInWords(items: readonly QueueItem[]): string {
 }
 
 /**
- * Whose approvals this row is being answered under, or null where they are the reader's own. FR 49, FR 52, LMS 327.
+ * Whose approvals this row is being answered under, or null where they are the reader's own. FR 49, FR 52.
  *
  * The same resolution `answeredOnBehalfOf` makes at the decide door, from the queue's side:
  * `MANAGER` is the asker's own manager, and the other two are whichever colleague handed
@@ -471,7 +471,7 @@ export function bySoonestToStart(left: LeaveRequest, right: LeaveRequest): numbe
 function itemFor(input: {
   request: LeaveRequest;
   asker: Employee | undefined;
-  /** FR 49, LMS 327. */
+  /** FR 49. */
   answeringFor: Asker | null;
   type: LeaveType | undefined;
   year: LeaveYear | undefined;
@@ -496,7 +496,7 @@ function itemFor(input: {
     refusedBy: desksThatRefused(decisions),
   });
 
-  /* FR 44, §7.2. LMS 318. What the manager said, and which of this desk's two verbs
+  /* FR 44, §7.2. What the manager said, and which of this desk's two verbs
      would be overruling them. Both are read from the decisions rather than decided here, so
      the queue and the decide door cannot disagree about what counts as an override. */
   const managers = theManagersDecision(decisions);
@@ -532,7 +532,7 @@ function itemFor(input: {
 
   return {
     requestId: request.id,
-    /** NFR DAT 02, §8.1. LMS 326. */
+    /** NFR DAT 02, §8.1. */
     version: versionOf(request),
     asker: {
       employeeId: request.employeeId,
@@ -545,7 +545,7 @@ function itemFor(input: {
     from: request.from,
     to: request.to,
     reason: request.reason,
-    /** FR 18, LMS 308. */
+    /** FR 18. */
     lateEntryReason: request.lateEntryReason,
     countingBasis: request.countingBasis,
     countingBasisLabel: countingBasisLabel(request.countingBasis),
@@ -572,20 +572,20 @@ function itemFor(input: {
       backdatedBy,
       noticeGivenDays,
       type,
-      /** FR 18, LMS 308. */
+      /** FR 18. */
       lateEntryReason: request.lateEntryReason,
     }),
 
     balance,
     team,
 
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     answeringFor: input.answeringFor,
 
     actionable: notActionableBecause === null,
     notActionableBecause,
 
-    /** FR 44, §7.2. LMS 318. */
+    /** FR 44, §7.2. */
     managersDecision:
       managers === undefined
         ? null
@@ -625,7 +625,7 @@ export function flagsFor(input: {
   backdatedBy: number;
   noticeGivenDays: number;
   type: LeaveType | undefined;
-  /** FR 18. HR's account of the lateness, where the window was exceeded. LMS 308. */
+  /** FR 18. HR's account of the lateness, where the window was exceeded. */
   lateEntryReason?: string | null;
 }): QueueWarning[] {
   const { typeName, shortNoticeBy, backdatedBy, noticeGivenDays, type } = input;
@@ -641,7 +641,7 @@ export function flagsFor(input: {
       inWords:
         `This leave had already started when it was asked for. It began ${days(backdatedBy)} ` +
         `before the request was made. ` +
-        /* LMS 308. Two different pieces of news, and the second is the one an approver has to
+        /* Two different pieces of news, and the second is the one an approver has to
            weigh: inside the window this is the ordinary way an absence gets recorded, and past
            it somebody made an exception and said why. */
         (lateEntryReason === null

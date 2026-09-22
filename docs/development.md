@@ -92,16 +92,16 @@ Everything lives in `.env`, which is git ignored. `.env.example` lists every key
 | `DATABASE_MIGRATION_URL` | Connection for migrations only, as the owner role. Never used by the application |
 | `TEST_DATABASE_URL` | Where integration tests build their disposable database. Point it at local Postgres 17; falls back to `DATABASE_MIGRATION_URL` |
 | `NODE_ENV` | `development` or `production`. It decides one thing that matters: whether the session cookie is marked `Secure`. A browser will not store a `Secure` cookie from `http://localhost`, so signing in would silently do nothing in development |
-| `PORT` | API port, defaults to 3000. Read since LMS 401, which is when there was first a server to listen on it |
-| `SESSION_SECRET` | Signs the session cookie. Read since LMS 401. **No default, and the process will not start without one** — a default signing key is a system that runs perfectly well in production while anybody can mint a cookie for anybody. Under 32 characters is refused too |
+| `PORT` | API port, defaults to 3000 |
+| `SESSION_SECRET` | Signs the session cookie. **No default, and the process will not start without one** — a default signing key is a system that runs perfectly well in production while anybody can mint a cookie for anybody. Under 32 characters is refused too |
 | `ALLOWED_EMAIL_DOMAINS` | Comma separated. Sign in is company email only, see NFR SEC 01. Settled at `rematholdings.com` |
 | `MFA_CODE_*` | Length and lifetime of the sign in code. Both have safe defaults; a value that is present and nonsense is refused |
 | `DISPLAY_TIMEZONE` | The zone instants are *shown* in. NFR DAT 03. Display only: everything is stored in UTC and every leave date has no zone at all, so changing it moves nothing in the database. Defaults to `Africa/Accra`; a name this Node does not know is refused rather than quietly falling back |
 | `SMTP_*` | Mail settings. Points at Mailpit in development |
 | `STORAGE_*` | Which attachment storage runs, and the local directory development writes to |
 | `SUPABASE_*` | Supabase Storage, when `STORAGE_DRIVER=supabase`. URL, service role key and bucket. The bucket is private and the key is server only |
-| `PG_BIN` | Folder holding `pg_dump` and `pg_restore` 17. Blank means `PATH`. LMS 604 |
-| `BACKUP_RESTORE_URL` | Owner connection to the server a restore creates its new database on. Never production. LMS 604 |
+| `PG_BIN` | Folder holding `pg_dump` and `pg_restore` 17. Blank means `PATH` |
+| `BACKUP_RESTORE_URL` | Owner connection to the server a restore creates its new database on. Never production |
 | `SCANNER_DRIVER` | Which virus scanner attachments go through. NFR SEC 07. `signature` in development flags the EICAR test file and calls everything else clean; `off` answers nothing, so every upload stays unscanned. **Production must set neither of those** |
 
 **Never commit a real `.env`.** A credential committed once stays in git history after it is deleted.
@@ -131,7 +131,7 @@ attacker knocks on.
 
 ### Signing in
 
-`SignInService` is the login door. NFR SEC 01, LMS 109 and LMS 110.
+`SignInService` is the login door. NFR SEC 01.
 
 ```ts
 const logins = new SignInService(
@@ -200,7 +200,7 @@ capital and a symbol produces.
 Signing in is two steps for anybody who needs a code. `signIn` either opens the
 door or sends a code and says so; `submitCode` answers it. Which of the two is
 decided here, not by the caller, and `SignInOutcome` is a union so that a caller
-cannot forget the second case exists. NFR SEC 01, LMS 110.
+cannot forget the second case exists. NFR SEC 01.
 
 **Mandatory for `HR_OFFICER`, `HR_ADMIN` and `SYS_ADMIN`.** Those three can read
 everybody's leave records and the medical certificates attached to them; an
@@ -237,8 +237,8 @@ that clicking links in sign in emails is normal, which is the habit every
 phishing attack against them will rely on. It does say what to do about a code
 nobody asked for, which is the most valuable sentence in it.
 
-What is not built, and is not hidden anywhere else either: no session or cookie
-(LMS 112), **no rate limit or lockout**,
+What is not built, and is not hidden anywhere else either: no session or cookie,
+**no rate limit or lockout**,
 no self service password change or reset, and no recovery codes — somebody locked
 out of their company mailbox is locked out of this until IT restores the mailbox.
 The rate limiter matters twice over now: a code challenge is answered by address,
@@ -253,7 +253,7 @@ set, so they are the two who will ask you for a code — read it in Mailpit.
 
 ### Roles
 
-`RoleService` assigns them. §5.3, LMS 111.
+`RoleService` assigns them. §5.3.
 
 ```ts
 const roles = new RoleService(
@@ -308,8 +308,8 @@ have removed access that is still there.
 Who may *call* it is [Authorisation](#authorisation), below: an HR Administrator
 or a System Administrator, and never the person the roles are about. There is
 still no audit trail of who granted what — the date is on the row, there is now
-an actor to name, and naming them is LMS 113's table rather than a column added
-here on the way past.
+an actor to name, and naming them belongs to the audit log's table rather than a column
+added here on the way past.
 
 ---
 
@@ -498,13 +498,13 @@ Once a migration is merged it is never edited. Fix a mistake with a new migratio
 Migrations bring a database up with everything the system cannot run without — the roles, the
 working week, the seven leave types, their chains and figures, the first two leave years, and
 Ghana's 2026 gazette. One thing they cannot: **who the Chief Executive is**. FR 48c, and
-[LMS 321](domain-rules.md#identifying-the-chief-executive).
+[Identifying the Chief Executive](domain-rules.md#identifying-the-chief-executive).
 
 ```sql
 SELECT ceo_employee_id FROM organisation_setting;
 ```
 
-Since LMS 505 that is a screen, **Policy**, beside the other configuration tabs. It says so at
+That is a screen, **Policy**, beside the other configuration tabs. It says so at
 the top of the page rather than leaving it to a psql prompt, and holds the other two org-wide
 settings: whether HR may overturn a line manager (FR 44) and how long a certificate is kept
 (NFR SEC 06).
@@ -584,13 +584,13 @@ Unit tests live in `server/tests/unit` and touch no database, no network and no
 fixtures. Anything that needs one of those is an integration test and belongs in
 `server/tests/integration`.
 
-**`integration/audit.test.ts` carries LMS 113 rather than supplementing it.**
+**`integration/audit.test.ts` carries the audit log rather than supplementing it.**
 Almost all of that story is in the database — the triggers that write the entries,
 the ones that refuse to change them, the privileges that make the refusals worth
 anything — so there is little to prove without one. `unit/audit.test.ts` covers
 the reading of an entry, which is a pure function.
 
-**`integration/time.test.ts` carries LMS 114 for the same reason.** Which type a
+**`integration/time.test.ts` carries the date and instant rules for the same reason.** Which type a
 column is, what a session does to a value on the way past, and what the driver
 hands back are all facts about a real server. It also holds the rule for tables
 nobody has written yet: any column typed `timestamp without time zone`, any
@@ -599,7 +599,7 @@ there. `unit/time.test.ts` covers the pure half, and `unit/migrations.test.ts`
 asks the same question of the SQL so the answer arrives in a second rather than a
 minute.
 
-**`integration/leave-request.test.ts` carries the half of LMS 301 that a pure
+**`integration/leave-request.test.ts` carries the half of submission that a pure
 function cannot reach**, and the test it exists for is one: submit a request,
 change the leave type's counting basis underneath it, and read the request back
 unchanged. FR 11 is a claim about what happens to yesterday's records when
@@ -610,7 +610,7 @@ a rollback are not properties any pure function has.
 `unit/leave-request.test.ts` covers what a quote says and what a request has to
 carry, and neither file names a leave type by its code.
 
-Since LMS 304 the same suite carries the overlap rule, and there the database half
+The same suite carries the overlap rule, and there the database half
 is a path real users take rather than a backstop for psql: the service is asked to
 book over leave it has already booked, and separately the owner connection is, which
 is the racing second submission made deterministic. It also reads
@@ -618,7 +618,7 @@ is the racing second submission made deterministic. It also reads
 predicate is exactly `LIVE_STATUSES` — the check that fails on the afternoon the
 approval story adds a status to one list and not the other.
 
-Since LMS 305 it also carries the balance refusal, and what needs a database there
+It also carries the balance refusal, and what needs a database there
 is that the figure in the sentence is the one in the table: it holds six days
 against the balance and asserts the *next* refusal names fourteen rather than the
 entitlement. The same suite submits one over-long request past both checks — the
@@ -627,21 +627,21 @@ asserts the two agree on the available figure, the days requested and the
 shortfall, so [neither can be loosened alone](#days-that-are-not-there).
 `unit/leave-request.test.ts` covers the sentence, which is most of that story.
 
-LMS 309 leans on the same suite for a requirement that is an absence: [no maximum
+The same suite carries a requirement that is an absence: [no maximum
 request length](#no-maximum-request-length) is proved by asking for an entire leave
 year at once, having first put the entitlement up by hand so the balance is not what
 answers. A cap anywhere in the path refuses that whatever value it holds, so the test
 passes only if there is nothing — which is the same trick `unit/one-writer.test.ts`
 plays on a second ledger writer, done by behaviour instead of by reading source.
 
-LMS 313 adds `unit/state-machine.test.ts` beside it, which is three criteria in one
-file because they are one design: the table pinned in full, the source read for a
+The state machine adds `unit/state-machine.test.ts` beside it, which is three criteria in
+one file because they are one design: the table pinned in full, the source read for a
 second writer of `status`, and the split between the two questions the policy and the
 table each answer. Its integration half asserts that the trigger permits exactly the
 endings the table holds, and that every move lands in the audit log with the person who
 made it and the state it came from.
 
-LMS 314 puts the walk in that same unit file, against chains written out by hand —
+The routing puts the walk in that same unit file, against chains written out by hand —
 manager-then-HR, HR-then-CEO, one desk, three desks, and a chain changed under a waiting
 request. That is deliberate: `approvalTo()` is a function of a list of desks, so proving it
 against a leave type would be proving less. Which desks the policy actually admits is
@@ -653,7 +653,7 @@ with HR because of rows the migration wrote, that rewriting a chain moves where 
 request starts with no deployment, that the last approval writes a `DEDUCTION` and the ones
 before it write nothing, and that leave which has been agreed still blocks its own days.
 
-And since LMS 306 it carries [the three endings](#the-days-come-back), where the
+And it carries [the three endings](#the-days-come-back), where the
 database half is again a real path rather than a psql backstop. The test the story
 exists for is one: submit a fortnight, be refused the same fortnight, withdraw the
 first, and book it. That cannot be written without a real exclusion constraint and a
@@ -664,7 +664,7 @@ three database guarantees from the owner connection — a status moved with no
 `RELEASE`, a settled request moved again, and a second `RELEASE` against one
 request.
 
-**`unit/leave-type.test.ts` is where LMS 201 is proved and
+**`unit/leave-type.test.ts` is where the leave type rules are proved and
 `integration/leave-type.test.ts` is what stops it being proved against itself.**
 The rules are pure functions, so what a threshold means and which fields may not
 disagree are settled without a database. What needs one is the half the database
@@ -677,7 +677,7 @@ before any test touched it, rather than from a list written out in the file —
 otherwise the first assertion would be checking the migration against a copy of
 itself.
 
-**`unit/entitlement-rule.test.ts` is where LMS 203 is proved, and it is the story's
+**`unit/entitlement-rule.test.ts` is where the entitlement rules are proved, and it is the
 fourth criterion made good.** "Resolution logic implemented once and unit tested
 hard" has two halves: that there is one implementation, and that it is tested
 without a database. The resolution tests are written to fail if the rule is ever
@@ -690,7 +690,7 @@ effect refuses to be rewritten by the owner connection as well as by the service
 that the fixture reload puts the statutory figures back — and that no view has
 appeared to resolve the rule a second time.
 
-That snapshot earns its keep twice over in LMS 202. A type deleted and then put
+That snapshot earns its keep twice over when the statutory set is restored. A type deleted and then put
 back by `ensure_statutory_leave_types()` is compared against it column by column,
 which is the one comparison worth making: the reference set now exists in two
 migrations, and this is what stops the two quietly disagreeing about what a leave
@@ -700,7 +700,7 @@ type retired — and `unit/migrations.test.ts` asks the cheap half of the questi
 without a database, which is that the seven come from a migration rather than
 from the fixture seed no production database runs.
 
-**`unit/approval-chain.test.ts` proves LMS 204 without ever naming a leave type.**
+**`unit/approval-chain.test.ts` proves the chain without ever naming a leave type.**
 Every assertion sets a chain and reads the answer back; not one of them builds a
 type called maternity and expects a chain from it, which is the only way to tell a
 system that is configured from one with the seven cases written into it.
@@ -720,8 +720,8 @@ types nobody can approve leave against. It calls
 `ensure_statutory_approval_chains()`, as it calls the function that owns the
 figures, so that nothing in a test file knows who approves unpaid leave.
 
-**`integration/leave-year.test.ts` carries most of LMS 205, because most of that
-story is in the database.** The rules that keep a day in exactly one year are an
+**`integration/leave-year.test.ts` carries most of the leave year rules, because most of
+them are in the database.** The rules that keep a day in exactly one year are an
 exclusion constraint and a deferred trigger, and the lock is a third trigger, so
 the assertions that matter are made against the owner connection: an overlap
 refused, a gap refused, a boundary moved in one transaction and the same move
@@ -737,7 +737,7 @@ the policy offers no decision, and neither service nor repository has a method.
 That is an odd-looking test and the right one, because the absence is the feature —
 a lock with an undo is not a lock.
 
-**`integration/holiday.test.ts` proves the two halves of LMS 206 a unit test
+**`integration/holiday.test.ts` proves the two halves of the holiday calendar a unit test
 cannot**: that Ghana's fourteen days for 2026 are on a database nothing has seeded,
 and that a settled leave year keeps its days against the owner connection as well as
 against the service. It also exercises the three verbs as privileges rather than
@@ -746,7 +746,7 @@ remove a day would be one where the first mistake is permanent.
 `unit/holiday.test.ts` proves the pure half: one row to a day, both ends of a move
 judged separately, and the leave years nobody has entered a calendar for.
 
-**`unit/leave-calculator.test.ts` is where LMS 207 is proved**, because the
+**`unit/leave-calculator.test.ts` is where the day calculator is proved**, because the
 calculator is a pure function and every case is arithmetic. Two of its tests read
 the source rather than call it, and both are the story rather than cleverness: one
 asserts the file never mentions `.code`, which is design principle 5 as a check
@@ -758,12 +758,12 @@ Wednesdays off, and a fortnight over the actual Christmas coming out at the numb
 somebody would get counting off a wall calendar.
 
 That part timer is not a fixture invented for that suite. The seed has carried her
-since LMS 106, with the reason written beside her: "The counting tests in Technical
+from the start, with the reason written beside her: "The counting tests in Technical
 Design Document section 7.3 need a pattern that is not simply weekends off, or a bug
 that assumes Saturday and Sunday are the only non working days passes every test."
 
 **`unit/leave-calculator-cases.test.ts` proves the answers, which is not the same
-as proving the rules.** LMS 208. A calculator can obey every rule in its own
+as proving the rules.** A calculator can obey every rule in its own
 description and still be a day out over Christmas, so this one is a single table of
 worked examples: seventeen rows, each carrying the period, the week, the calendar in
 force, the arithmetic written out in words, and both totals — what it costs as
@@ -794,7 +794,7 @@ the bug it was written to find; the eastern two are kept because the opposite
 mistake — a date built at local midnight and read back at UTC — fails there and
 nowhere else.
 
-**`integration/ledger.test.ts` carries most of LMS 210, because the story's central
+**`integration/ledger.test.ts` carries most of the ledger, because its central
 claim is one only a database can make.** That an entry cannot be changed or removed
 is not a property of the application declining to try: the assertions that matter
 are run on the *owner* connection, because an immutability the migration user can
@@ -811,7 +811,7 @@ module exports no verb that changes an entry, and `correctionFor()` takes no amo
 from the caller. Both are the feature. A ledger with an edit is not a ledger, and a
 correction somebody can size is one that can be the wrong size.
 
-**`integration/balance.test.ts` carries nearly all of LMS 211, for a reason that is
+**`integration/balance.test.ts` carries nearly all of the cached balance, for a reason that is
 not the ledger's.** There the central claim was one only a database can make; here
 the central *arithmetic* is one only a database performs. The projection is SQL,
 deliberately and once, so the only place it can be asked whether it is right is
@@ -824,14 +824,14 @@ back identical — which is what "the ledger is the truth, balances are a cache"
 means when it is a property rather than a slogan.
 
 `unit/balance.test.ts` carries the arithmetic of both stories: the five figures and
-what they add up to, and since LMS 212 the three rules a movement has to pass. One of
+what they add up to, and the three rules a movement has to pass. One of
 its tests asserts that the domain exports nothing that turns ledger entries into a
 balance — a `balanceFrom(entries)` would be twenty testable lines and a second
 implementation of the sum, which is the drift the cache exists to be checked against.
 Whoever adds one has to argue with that test first.
 
-**`integration/leave-event.test.ts` carries most of LMS 218, and the unit suite beside
-it carries two arithmetic rules.** The split is the annual grant's, for the same reason:
+**`integration/leave-event.test.ts` carries most of event-based grants, and the unit suite
+beside it carries two arithmetic rules.** The split is the annual grant's, for the same reason:
 when a grant runs out and what is left when it does are pure functions, and everything
 the story is actually about is a claim only a database can make. That the grant and the
 event cannot come apart is a foreign key and a rollback. That `LAPSE` lands in
@@ -845,8 +845,8 @@ on the month arithmetic, because six months after 31 August is the case that is 
 exactly the dates nobody tests.
 
 **`unit/year-rollover.test.ts` proves what carries and `integration/year-rollover.test.ts`
-proves that it survives a boundary.** LMS 217 splits along the same line the annual grant
-does, for the same reason: what carries is a pure function of three facts and none of them
+proves that it survives a boundary.** The rollover splits along the same line the annual
+grant does, for the same reason: what carries is a pure function of three facts and none of them
 needs a server, while the two criteria the job exists for are claims a database has to
 make. That the three acts happen in *that order* is only visible in the rows afterwards —
 a settled year, a `CARRY_FORWARD` in the year ahead of it, a `GRANT` beside it — and
@@ -860,7 +860,7 @@ half-finished run is finished rather than repeated. Its fixture defines a 2025 w
 entitlement figures of its own, because a year can only be closed once it has ended — which
 turns out to be the only shape in which the resolution date is visible at all.
 
-**`integration/adjustment.test.ts` is LMS 216 read end to end, and is deliberately
+**`integration/adjustment.test.ts` is the adjustment read end to end, and is deliberately
 thin where the two suites above are thick.** That an entry can never be changed or
 removed is `integration/ledger.test.ts`'s, and that an `ADJUSTMENT` moves the
 `adjustment` column and no other is `integration/balance.test.ts`'s against `BUCKETS`;
@@ -875,9 +875,9 @@ Officer is refused *openly* and told which desk can — which is where the story
 "as an HR Officer" and §10's matrix disagree, asserted rather than left as prose.
 
 **`unit/pro-rata.test.ts` proves two different things and keeps them apart**, because
-LMS 215 is a story shipped under a block. One half is that §8.6d's formula is right —
+pro rating shipped under a block. One half is that §8.6d's formula is right —
 the 1 July joiner, a leap year, an April to March leave year — and that half will
-outlive whatever LMS 013 decides. The other is that swapping the rule works, which is
+outlive whatever the settled formula turns out to be. The other is that swapping the rule works, which is
 what the block is being survived with: the candidate rule answers 10 where the rule in
 force answers 10.08, so a test that swaps them can tell whether the swap did anything.
 
@@ -906,11 +906,11 @@ anything.** "Only writer of balance movements" is a claim about code that does n
 exist, so it is checked by reading the source: nothing outside three named files
 posts a ledger entry, nothing else holds a `LedgerRepository`, `LedgerService` writes
 nothing, and nothing but the one writer consults the three rules. The failure it
-guards against is not a rogue `UPDATE` — the database has refused those since LMS 211
+guards against is not a rogue `UPDATE` — the database refuses those
 — it is an honest second service posting an honest `DEDUCTION` without the lock that
 made the first one safe.
 
-**`unit/leaver-statement.test.ts` carries nearly all of LMS 509, and the integration suite
+**`unit/leaver-statement.test.ts` carries nearly all of the leaver figure, and the integration suite
 beside it carries the two halves arithmetic cannot have.** The figure is a formula over two
 dates and five stored columns, so the accrual, the working and the rule that decides which
 leave types are settled are all pure. What needs a server is that the figures are the ones a
@@ -997,7 +997,7 @@ neither `TRUNCATE` nor `DELETE` on `employee`.
 
 | Who | Why they are in there |
 |---|---|
-| Kwame Asante, CEO | The only employee with no manager, so every upward walk stops somewhere. Also what the seed names in `organisation_setting` — since [LMS 321](domain-rules.md#identifying-the-chief-executive) those are two separate facts that happen to agree |
+| Kwame Asante, CEO | The only employee with no manager, so every upward walk stops somewhere. Also what the seed names in `organisation_setting` — see [Identifying the Chief Executive](domain-rules.md#identifying-the-chief-executive), since those are two separate facts that happen to agree |
 | Akosua Darko, Kofi Boateng | Managers who are also somebody's report. Breaks anything assuming approvers and requesters are different people |
 | Abena Sarpong | Part time, Wednesdays off. A pattern of merely "weekends off" would let a hard coded weekend pass every test |
 | Kojo Antwi | Left in July, still on the books. FR 06 keeps the record; FR 37a needs exactly this shape to calculate a leaver figure |
@@ -1008,10 +1008,10 @@ HR function, so her own leave has nobody in HR left to approve it and must fall
 to the CEO. That is the reciprocal routing of FR 48b. Get it wrong and an HR
 officer approves their own leave, which is the defect the rule exists to stop.
 
-Since [LMS 319](#nobody-approves-their-own-request) the defect is refused rather
+Since [Nobody approves their own request](#nobody-approves-their-own-request) the defect is refused rather
 than merely designed against: Ama's own request sitting at the HR desk she is
 admits nobody, at four altitudes down to the table the decision is written to. And
-since LMS 320 the request no longer sits there at all — the HR stage falls to the
+the request no longer sits there at all — the HR stage falls to the
 CEO, the skip is recorded on the request, and Kwame decides it.
 
 Kwame's own leave is the same story from the other end, which is why he is in the
@@ -1024,9 +1024,9 @@ one has to be a decision rather than an accident.
 
 Concurrency tests matter more than they look. Two approvers deciding one request, and two requests submitted against a thin balance, are the defects that never appear in manual testing and only surface as a balance that is quietly wrong.
 
-**`integration/performance.test.ts` carries LMS 603.** NFR PRF 01: API p95 under 500 ms and landing page load p95 under 2 s, at 25 users at once. Needs `npm run web:build` first. Logs p50 and p95 for each check.
+**`integration/performance.test.ts` carries the performance budget.** NFR PRF 01: API p95 under 500 ms and landing page load p95 under 2 s, at 25 users at once. Needs `npm run web:build` first. Logs p50 and p95 for each check.
 
-**`integration/backup.test.ts` carries LMS 604.** Backs up, restores into a new database, verifies, and proves verification catches a tampered restore. Needs `PG_BIN`. Procedure: [backup-and-restore.md](backup-and-restore.md).
+**`integration/backup.test.ts` carries backup and restore.** Backs up, restores into a new database, verifies, and proves verification catches a tampered restore. Needs `PG_BIN`. Procedure: [backup-and-restore.md](backup-and-restore.md).
 
 ---
 

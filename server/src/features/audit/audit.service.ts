@@ -1,4 +1,4 @@
-/** Reading the account of what happened. NFR AUD 01, NFR AUD 02, LMS 113, LMS 513. */
+/** Reading the account of what happened. NFR AUD 01, NFR AUD 02. */
 
 import { auditPolicy } from './policy.js';
 import type { Actor } from '../../auth/actor.js';
@@ -16,7 +16,7 @@ import type { AuditRepository, HistoryOptions } from './audit.db.js';
 import type { EmployeeRepository } from '../employee/employee.db.js';
 import type { SignInAccountRepository } from '../sign-in/sign-in-account.db.js';
 
-/** A search as it arrived. LMS 513. */
+/** A search as it arrived. */
 export type AuditQuery = Partial<Record<keyof AuditSearch, string>>;
 
 export interface AuditSearchResult {
@@ -108,7 +108,7 @@ export class AuditService {
     return this.entries.recent(options);
   }
 
-  /** The log searched by record and date, newest first. LMS 513. */
+  /** The log searched by record and date, newest first. */
   async search(
     actor: Actor,
     asked: AuditQuery,

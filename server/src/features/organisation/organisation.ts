@@ -1,4 +1,4 @@
-/** Who the Chief Executive is, and the rest of the policy settings. FR 44, FR 48c, NFR SEC 06, §4.3.1, LMS 321, LMS 505. */
+/** Who the Chief Executive is, and the rest of the policy settings. FR 44, FR 48c, NFR SEC 06, §4.3.1. */
 
 import type { Employee } from '../employee/employee.js';
 
@@ -17,11 +17,11 @@ export interface OrganisationSettings {
 export const UNCONFIGURED: Omit<OrganisationSettings, 'updatedAt'> = {
   chiefExecutiveId: null,
   overridesAreAllowed: true,
-  /** NFR SEC 06, LMS 514. */
+  /** NFR SEC 06. */
   attachmentRetentionMonths: 24,
 };
 
-/** The settings that are not the Chief Executive. That one has its own door. LMS 505. */
+/** The settings that are not the Chief Executive. That one has its own door. */
 export interface PolicyChanges {
   overridesAreAllowed?: boolean;
   attachmentRetentionMonths?: number | null;
@@ -99,7 +99,7 @@ export class InvalidPolicySetting extends Error {
   }
 }
 
-/** An override attempted while the rule is switched off. FR 44, LMS 505. */
+/** An override attempted while the rule is switched off. FR 44. */
 export class OverridesAreSwitchedOff extends Error {
   /** FR 44. */
   readonly code = 'OVERRIDES_ARE_SWITCHED_OFF';
@@ -157,7 +157,7 @@ export function isReadyForGoLive(settings: OrganisationSettings): boolean {
 
 /* ----------------------------------------------------------------- the words */
 
-/** What the override rule means for a manager, as it stands. FR 44, LMS 505. */
+/** What the override rule means for a manager, as it stands. FR 44. */
 export function overrideRuleInWords(allowed: boolean): string {
   return allowed
     ? 'HR sees every request a manager turned down and can overturn it, in writing. The ' +
@@ -166,7 +166,7 @@ export function overrideRuleInWords(allowed: boolean): string {
         'reverse it.';
 }
 
-/** What the retention window means for a certificate. NFR SEC 06, LMS 505. */
+/** What the retention window means for a certificate. NFR SEC 06. */
 export function retentionInWords(months: number | null): string {
   if (months === null) {
     return 'Certificates and supporting documents are kept indefinitely.';

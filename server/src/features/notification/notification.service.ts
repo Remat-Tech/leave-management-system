@@ -1,4 +1,4 @@
-/** Telling somebody what happened to their leave. FR 59, §7.1., LMS 329, FR 60. */
+/** Telling somebody what happened to their leave. FR 59, §7.1., FR 60. */
 
 import type { Actor } from '../../auth/actor.js';
 import { notificationPolicy } from './policy.js';
@@ -46,15 +46,15 @@ export interface Telling {
   availableAfter: number;
   /** FR 44. */
   overturned?: { desk: ApproverRole; said: 'APPROVE' | 'REFUSE' } | null;
-  /** FR 47. How many days came back, where that is not all of them. LMS 324. */
+  /** FR 47. How many days came back, where that is not all of them. */
   daysBack?: number | null;
-  /** FR 32c. What the days became, and what that balance holds now. LMS 507. */
+  /** FR 32c. What the days became, and what that balance holds now. */
   movedInto?: { typeName: string; availableAfter: number } | null;
-  /** FR 25. The day the gazette declared late. LMS 508. */
+  /** FR 25. The day the gazette declared late. */
   declared?: { name: string; date: CalendarDate } | null;
 }
 
-/** One approver chased about one request on one day. FR 50, FR 60, LMS 330. */
+/** One approver chased about one request on one day. FR 50, FR 60. */
 export interface Reminding {
   /** Who is being chased: somebody at the desk it sits at. FR 48, FR 49. */
   approver: Employee;
@@ -74,9 +74,9 @@ export interface Told {
   emailed: boolean;
   /** What went wrong, in the failing component's own words. */
   couldNotTell: string | null;
-  /** FR 59, LMS 331. When the send will be tried again, null where it will not be. */
+  /** FR 59. When the send will be tried again, null where it will not be. */
   tryingAgainAt: Date | null;
-  /** LMS 331. True where nothing more will be attempted and it never arrived. */
+  /** True where nothing more will be attempted and it never arrived. */
   gaveUp: boolean;
 }
 
@@ -89,9 +89,9 @@ export interface UndeliveredNotice {
   /** Which half failed: writing the notice down, or sending the email. */
   stage: 'write' | 'email';
   because: string;
-  /** LMS 331. Which send this was, and zero where the notice was never written. */
+  /** Which send this was, and zero where the notice was never written. */
   attempt: number;
-  /** LMS 331. When the next is due, null where there is not one. */
+  /** When the next is due, null where there is not one. */
   tryingAgainAt: Date | null;
 }
 
@@ -113,7 +113,7 @@ export function undeliveredToStderr(): NoticeLog {
           notice: failure.event,
           stage: failure.stage,
           because: failure.because,
-          /** LMS 331. What tells an operator a hiccup apart from a mailbox that is gone. */
+          /** What tells an operator a hiccup apart from a mailbox that is gone. */
           attempt: failure.attempt,
           tryingAgainAt: failure.tryingAgainAt?.toISOString() ?? null,
         }),
@@ -122,7 +122,7 @@ export function undeliveredToStderr(): NoticeLog {
   };
 }
 
-/** The send a notice gets at the moment it is written. LMS 331. */
+/** The send a notice gets at the moment it is written. */
 const FIRST_ATTEMPT = 1;
 
 export class NotificationService {
@@ -156,11 +156,11 @@ export class NotificationService {
       comment: telling.comment,
       availableAfter: telling.availableAfter,
       overturned: telling.overturned ?? null,
-      /** FR 47, LMS 324. */
+      /** FR 47. */
       daysBack: telling.daysBack ?? null,
-      /** FR 32c, LMS 507. */
+      /** FR 32c. */
       movedInto: telling.movedInto ?? null,
-      /** FR 25, LMS 508. */
+      /** FR 25. */
       declared: telling.declared ?? null,
     };
 
@@ -179,7 +179,7 @@ export class NotificationService {
   }
 
   /**
-   * Reminds one approver that a request is still theirs to decide. FR 50, FR 60, LMS 330.
+   * Reminds one approver that a request is still theirs to decide. FR 50, FR 60.
    *
    * The story's third criterion is what this does *not* do: it writes a notice and sends an
    * email, and touches no request, no desk and no balance.
@@ -212,7 +212,7 @@ export class NotificationService {
   }
 
   /**
-   * Sends again everything whose email did not go and is due another try. FR 59, LMS 331.
+   * Sends again everything whose email did not go and is due another try. FR 59.
    *
    * The story's second criterion is what this does *not* do: it opens no transaction, moves
    * no day and touches no request. A notice is claimed, sent and stamped, and a mail server
@@ -279,7 +279,7 @@ export class NotificationService {
     };
   }
 
-  /** Who has already been reminded about which request since then. FR 50, LMS 330. */
+  /** Who has already been reminded about which request since then. FR 50. */
   async remindersSince(actor: Actor, since: Date): Promise<ReminderSent[]> {
     this.guard.enforce(notificationPolicy.remind(actor));
 
@@ -346,7 +346,7 @@ export class NotificationService {
   }
 
   /**
-   * Composes in HR's wording, or the original where there is none. FR 61, LMS 512.
+   * Composes in HR's wording, or the original where there is none. FR 61.
    *
    * Wording that cannot be read, or fills in to nothing, sends the original.
    */
@@ -379,7 +379,7 @@ export class NotificationService {
         event: composed.event,
         stage: 'write',
         because: becauseOf(error),
-        /* Nothing was written, so there is no row to try again from. LMS 331. */
+        /* Nothing was written, so there is no row to try again from. */
         attempt: 0,
         tryingAgainAt: null,
       });
@@ -389,7 +389,7 @@ export class NotificationService {
   }
 
   /**
-   * Sends it, and stamps what became of that attempt on the row either way. FR 59, LMS 331.
+   * Sends it, and stamps what became of that attempt on the row either way. FR 59.
    *
    * The one send path. A first attempt and a sixth are the same code, so the backoff, the
    * record and the log cannot drift apart between them — and it never throws, because by the
@@ -451,7 +451,7 @@ function becauseOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** No row, so nothing to retry from. The one failure LMS 331's backoff cannot reach. */
+/** No row, so nothing to retry from. The one failure the backoff cannot reach. */
 function nothingWasWritten(): Told {
   return {
     notice: null,

@@ -34,7 +34,7 @@ import {
 import { isAboutAWithdrawal } from '../../src/features/leave-request/withdrawal.js';
 
 /**
- * A request moves through defined states and no others. §6. LMS 313.
+ * A request moves through defined states and no others. §6.
  *
  * The story is a request nobody can explain or resolve, and the three criteria are three
  * different defences against it. They are tested together here because they are one
@@ -87,7 +87,7 @@ function aRequestIn(status: RequestStatus, awaiting: ApproverRole = 'MANAGER'): 
     from: '2026-03-02',
     to: '2026-03-10',
     reason: 'My sister is getting married',
-    /** FR 18, LMS 308. */
+    /** FR 18. */
     lateEntryReason: null,
     evidenceRequired: false,
     certifiedDays: 0,
@@ -107,13 +107,13 @@ function aRequestIn(status: RequestStatus, awaiting: ApproverRole = 'MANAGER'): 
 const ANYBODY: DesksAvailable = { MANAGER: 'CAN_DECIDE', HR: 'CAN_DECIDE', CEO: 'CAN_DECIDE' };
 
 /**
- * The four arguments LMS 320 replaced with one, for every assertion written before it.
+ * The four arguments later replaced with one, for every assertion written before that.
  *
  * Routing around an empty desk is ./routing.test.ts's; what is asserted below is where a
  * decision lands when every desk can be asked, which is what these all meant.
  *
- * A different officer at every desk, which is the ordinary case, so LMS 322's stamp is false
- * in all of these. The exception itself is ./routing.test.ts's. FR 48d.
+ * A different officer at every desk, which is the ordinary case, so the one-person stamp is
+ * false in all of these. The exception itself is ./routing.test.ts's. FR 48d.
  */
 function decisionTo(
   request: LeaveRequest,
@@ -125,7 +125,7 @@ function decisionTo(
     request,
     action,
     chain,
-    /** FR 48d, LMS 322. A different officer at each of them, which is the ordinary case. */
+    /** FR 48d. A different officer at each of them, which is the ordinary case. */
     decidedAlready: decidedAlready.map((desk, index) => ({ desk, by: `officer-${index}` })),
     decider: 'the officer deciding now',
     skipped: [],
@@ -214,7 +214,7 @@ describe('the transitions a request may make', () => {
    * does nothing.
    */
   /**
-   * And everything can be done to a request that is waiting to be decided. LMS 318.
+   * And everything can be done to a request that is waiting to be decided.
    *
    * Still every verb there is: `OVERTURN_APPROVAL` was the one that might have needed a state
    * of its own, and it does not — a manager's approval leaves the request `SUBMITTED` at the
@@ -222,15 +222,15 @@ describe('the transitions a request may make', () => {
    */
   it('and everything can be done to a request that is waiting to be decided', () => {
     for (const action of REQUEST_ACTIONS) {
-      /* FR 47, LMS 324. The four withdrawal verbs are the ones this state has no row for:
+      /* FR 47. The four withdrawal verbs are the ones this state has no row for:
          they are about leave every desk has agreed to, and a request still being decided is
          taken back by `WITHDRAW` without anybody's permission.
 
-         FR 07, LMS 325. `ROUTE` was among them until the reporting line was allowed to move
+         FR 07. `ROUTE` was among them until the reporting line was allowed to move
          a request nobody has answered. */
-      /* FR 32c, LMS 507. `RECLASSIFY` is the fifth: days are moved to sick leave out of
+      /* FR 32c. `RECLASSIFY` is the fifth: days are moved to sick leave out of
          leave that was agreed and taken, and a request still being decided has taken none.
-         FR 25, LMS 508. `RECALCULATE` is the sixth, for the same reason. */
+         FR 25. `RECALCULATE` is the sixth, for the same reason. */
       /* And the two reversals, which are about a request every desk has finished. */
       if (
         isAboutAWithdrawal(action) ||
@@ -248,7 +248,7 @@ describe('the transitions a request may make', () => {
   });
 
   /**
-   * And a request nobody could decide can be moved, but never decided. FR 48b. LMS 320.
+   * And a request nobody could decide can be moved, but never decided. FR 48b.
    *
    * The point of the status: it is stuck rather than settled, so the person may take it
    * back and HR may unwind it or put it back into the chain — and no verb there reaches
@@ -333,7 +333,7 @@ describe('the transitions a request may make', () => {
   });
 
   /**
-   * And approval is the one verb that does not always move the status. FR 38a. LMS 314.
+   * And approval is the one verb that does not always move the status. FR 38a.
    *
    * The row says `SUBMITTED → APPROVED`, and that is where the *last* desk leaves it. Every
    * desk before the last leaves the status exactly where it is and moves the request along
@@ -342,7 +342,6 @@ describe('the transitions a request may make', () => {
    */
   /**
    * And the verbs whose destination keeps the request alive are the two that say yes. FR 44.
-   * LMS 318.
    *
    * `OVERTURN_REJECTION` joined `APPROVE` here, and the pair is the point: an override is an
    * ordinary decision that happens to disagree with an earlier stage, so it lands exactly
@@ -351,10 +350,10 @@ describe('the transitions a request may make', () => {
   it('and the verbs that say yes are the only rows whose destination keeps the request alive', () => {
     const live = TRANSITIONS.filter((transition) => !isSettled(transition.to));
 
-    /* `ROUTE` joined them with LMS 320 and again with LMS 325, and it is the one that decides
-       nothing. FR 48b, FR 07. Three of FR 47's four joined with LMS 324, and they are the rows
+    /* `ROUTE` joined them twice over, and it is the one that decides
+       nothing. FR 48b, FR 07. Three of FR 47's four joined later, and they are the rows
        whose destination is the state they started in: asking, amending and turning an ask down
-       all leave agreed leave agreed. LMS 324. */
+       all leave agreed leave agreed. */
     expect(live.map((transition) => transition.action)).toEqual([
       'APPROVE',
       'ROUTE',
@@ -363,9 +362,9 @@ describe('the transitions a request may make', () => {
       'ASK_TO_WITHDRAW',
       'AMEND',
       'REFUSE_WITHDRAWAL',
-      /** FR 32c, LMS 507. It moves two balances and leaves the request exactly as it was. */
+      /** FR 32c. It moves two balances and leaves the request exactly as it was. */
       'RECLASSIFY',
-      /** FR 25, LMS 508. It moves one, and leaves the request exactly as it was. */
+      /** FR 25. It moves one, and leaves the request exactly as it was. */
       'RECALCULATE',
       /** The Chief Executive turning a refusal into an approval. */
       'REVERSE_REFUSAL',
@@ -383,7 +382,7 @@ describe('where a settlement lands', () => {
   /**
    * The destination comes off the table, which is what makes the table load bearing.
    *
-   * Before LMS 313 the service named it at each call site — `settle(actor, id,
+   * The service used to name it at each call site — `settle(actor, id,
    * 'WITHDRAWN', …)` — so the table could have said anything and the code would still
    * have written whatever the caller asked for. There is now nowhere to say it.
    */
@@ -403,7 +402,7 @@ describe('where a settlement lands', () => {
   });
 
   /**
-   * And an approved request goes nowhere either, but is told something else. LMS 314.
+   * And an approved request goes nowhere either, but is told something else.
    *
    * The two refusals are the same shape and different sentences, and the difference is what
    * is true. "This leave was already withdrawn and its days have been given back" is the
@@ -433,7 +432,7 @@ describe('where a settlement lands', () => {
   );
 
   /**
-   * And taking a request back is not a question about the desk. FR 46. LMS 323.
+   * And taking a request back is not a question about the desk. FR 46.
    *
    * The property that makes "cancel a request I have not yet had approved" true of a chain
    * of any length, and it is a property of the *table* rather than of a method — which is
@@ -464,7 +463,7 @@ describe('where a settlement lands', () => {
 
 /**
  * Approval advances to the next stage, or to approved if none remains. FR 38, FR 38a, FR
- * 40. LMS 314's second criterion, and the whole of the routing.
+ * 40. The whole of the routing.
  *
  * Asserted against chains written out here rather than read from a leave type, because that
  * is exactly the point: {@link decisionTo} is a function of a list of desks, and the same
@@ -509,8 +508,7 @@ describe('where an approval lands', () => {
   });
 
   /**
-   * And unpaid leave goes HR then the Chief Executive, with no manager stage. LMS 314's
-   * third criterion.
+   * And unpaid leave goes HR then the Chief Executive, with no manager stage.
    *
    * The same function, the same request, a different list — and the walk skips a stage
    * nothing told it to skip, because the stage was never in the chain. A manager
@@ -562,8 +560,8 @@ describe('where an approval lands', () => {
    * annual leave from manager-then-HR to HR alone while somebody's request sits with their
    * manager; the manager approves.
    *
-   * LMS 314 refused it because the walk would otherwise have approved the leave. LMS 316
-   * removed that danger — the chain still has a stage nobody has signed, so the walk would
+   * The routing refused it because the walk would otherwise have approved the leave. Asking
+   * which stage has not signed removed that danger — the chain still has a stage nobody has signed, so the walk would
    * route the request to HR rather than approve it — and the refusal stays for the reason
    * that survived: every approval on record has to belong to a stage, or "every stage has
    * approved" is a claim about a set with strangers in it.
@@ -594,7 +592,7 @@ describe('where an approval lands', () => {
 
   /**
    * And a stage added *in front of* a request in flight is asked before it is agreed. FR
-   * 41. LMS 316, and the case the old walk got wrong.
+   * 41. The case the old walk got wrong.
    *
    * The manager has signed and the request is with HR. An HR Administrator puts the Chief
    * Executive at the head of the chain — FR 31 says they may — and HR approves.
@@ -650,7 +648,7 @@ describe('where an approval lands', () => {
 /* ------------------------------------------- a rejection that is not the end, FR 44 */
 
 /**
- * A rejection routes, and HR overturns one. FR 44, §7.2. LMS 318.
+ * A rejection routes, and HR overturns one. FR 44, §7.2.
  *
  * The story's rule is that both stages decide before leave is finally confirmed or
  * rejected, and the last stage to decide is the one whose word it lands on. Everything
@@ -665,7 +663,7 @@ describe('a manager’s rejection', () => {
   /**
    * It no longer ends the request, which is the whole change.
    *
-   * Before LMS 318 this was `REFUSED` with the days released and HR never saw it. The
+   * This used to be `REFUSED` with the days released and HR never saw it. The
    * manager's no is now a decision at their stage like their yes, and it carries the
    * request to the desk that decides it finally.
    */
@@ -739,12 +737,12 @@ describe('a manager’s rejection', () => {
   });
 
   /**
-   * And a stage after HR is still asked, which is LMS 316's guarantee surviving this story.
+   * And a stage after HR is still asked, which is that guarantee surviving the change.
    *
    * The tempting shortcut is "HR's decision is final, so an override approves the leave".
    * It is right for the chain everybody uses and wrong for any chain with a desk after HR —
-   * FR 31 lets an HR Administrator write one — and the failure is the one LMS 316 exists
-   * against: somebody told their leave is agreed while a stage the policy names has not seen
+   * FR 31 lets an HR Administrator write one — and the failure is the one the every-stage
+   * rule exists against: somebody told their leave is agreed while a stage the policy names has not seen
    * it. Reading the destination off the walk rather than off the verb costs nothing and
    * cannot make that mistake.
    */
@@ -763,7 +761,7 @@ describe('a manager’s rejection', () => {
   /**
    * And the walk asks which stage has *decided*, not which has approved.
    *
-   * The one-line difference between this story and LMS 316. Asked the old way, a request
+   * The one-line difference from the every-stage rule. Asked the old way, a request
    * the manager had turned down would route back to the manager for ever, because their
    * stage would never count as answered.
    */
@@ -790,7 +788,6 @@ describe('a manager’s rejection', () => {
 
 /**
  * What a person is told about a request they are about to book a flight on. FR 41, FR 42.
- * LMS 316.
  *
  * The story's "so that", and the half that is not about routing: *I never take leave
  * believing it was agreed when it was not*. Every fact needed to be wrong about that is
@@ -891,7 +888,7 @@ describe('how far through its chain a request has got', () => {
       approvedBy: [],
     });
 
-    /* "Decided" rather than "approved" since LMS 318, because a stage that turned it down
+    /* "Decided" rather than "approved", because a stage that turned it down
        has had its say and the request is still going: a sentence counting only approvals
        would say nobody had looked at a request the manager had already refused. */
     expect(inWords).toMatch(/Nobody has decided it yet/);
@@ -902,7 +899,7 @@ describe('how far through its chain a request has got', () => {
 /* ---------------------------------------------------- the table, written down */
 
 /**
- * The table is these three rows and no others. §6, criterion one. LMS 313.
+ * The table is these three rows and no others. §6, criterion one.
  *
  * Pinned in full rather than checked for properties, and the reason is the lesson the
  * seven-leave-types suite learned: a test that derives its expectation from the thing it
@@ -930,7 +927,7 @@ describe('the table, written out', () => {
         to: 'WITHDRAWN',
         by: ['THE_REQUESTER', 'LEAVE_ADMINISTRATION'],
       },
-      /* FR 44, LMS 318. Narrowed from the manager and HR alike to the desk the request
+      /* FR 44. Narrowed from the manager and HR alike to the desk the request
          is sitting on, because a rejection now advances the chain: one made away from the
          desk would mark a stage decided by somebody who was never asked. */
       {
@@ -951,7 +948,7 @@ describe('the table, written out', () => {
         to: 'APPROVED',
         by: ['THE_DESK_IT_IS_WITH'],
       },
-      /* FR 07, §8.4, LMS 325. The routing worked out again under a request nobody has
+      /* FR 07, §8.4. The routing worked out again under a request nobody has
          answered, because the reporting line moved. Nothing is decided by it, so it leaves
          a request being decided still being decided. */
       {
@@ -960,7 +957,7 @@ describe('the table, written out', () => {
         to: 'SUBMITTED',
         by: ['LEAVE_ADMINISTRATION'],
       },
-      /* FR 44, §7.2, LMS 318. The same standing as the two plain verbs, because an override
+      /* FR 44, §7.2. The same standing as the two plain verbs, because an override
          is an ordinary decision that happens to disagree with an earlier stage. */
       {
         from: 'SUBMITTED',
@@ -974,7 +971,7 @@ describe('the table, written out', () => {
         to: 'REFUSED',
         by: ['THE_DESK_IT_IS_WITH'],
       },
-      /* FR 48b, §8.6a, LMS 320. A request nobody could be found to decide: the person may
+      /* FR 48b, §8.6a. A request nobody could be found to decide: the person may
          take it back, HR may unwind it, and HR may put it back into its chain. No decision
          among them, because no desk was ever filled. */
       {
@@ -995,7 +992,7 @@ describe('the table, written out', () => {
         to: 'SUBMITTED',
         by: ['LEAVE_ADMINISTRATION'],
       },
-      /* FR 47, LMS 324. Leave every desk has agreed to: the person asks and HR answers.
+      /* FR 47. Leave every desk has agreed to: the person asks and HR answers.
          `THE_REQUESTER` alone on the ask, where the `WITHDRAW` rows above admit HR beside
          them — HR asking on somebody's behalf and then agreeing to it would put one desk on
          both sides of the conversation. */
@@ -1024,7 +1021,7 @@ describe('the table, written out', () => {
         by: ['LEAVE_ADMINISTRATION'],
       },
 
-      /* FR 32c, §8.6c, LMS 507. Sickness during agreed leave, and the row that moves no
+      /* FR 32c, §8.6c. Sickness during agreed leave, and the row that moves no
          request at all: what changes is two balances. */
       {
         from: 'APPROVED',
@@ -1033,7 +1030,7 @@ describe('the table, written out', () => {
         by: ['LEAVE_ADMINISTRATION'],
       },
 
-      /* FR 25, §8.8, LMS 508. A public holiday declared inside agreed leave, and the second
+      /* FR 25, §8.8. A public holiday declared inside agreed leave, and the second
          row that moves no request: what changes is one balance. */
       {
         from: 'APPROVED',
@@ -1069,16 +1066,16 @@ describe('the table, written out', () => {
       'APPROVE',
       'OVERTURN_REJECTION',
       'OVERTURN_APPROVAL',
-      /** FR 48b, LMS 320. */
+      /** FR 48b. */
       'ROUTE',
-      /** FR 47, LMS 324. */
+      /** FR 47. */
       'ASK_TO_WITHDRAW',
       'WITHDRAW_APPROVED',
       'AMEND',
       'REFUSE_WITHDRAWAL',
-      /** FR 32c, LMS 507. */
+      /** FR 32c. */
       'RECLASSIFY',
-      /** FR 25, LMS 508. */
+      /** FR 25. */
       'RECALCULATE',
       'REVERSE_APPROVAL',
       'REVERSE_REFUSAL',
@@ -1097,14 +1094,14 @@ describe('the table, written out', () => {
    *
    * `RELEASING_ACTIONS` is written out rather than derived, for the reason
    * `RELEASING_STATUSES` is: "every action but the approving one" is a definition that
-   * absorbs whatever verb arrives next. LMS 324 is the story that collected on it —
+   * absorbs whatever verb arrives next. Withdrawing approved leave collected on it —
    * `WITHDRAW_APPROVED` ends a request and is emphatically not here, because it gives back
    * days that have already been taken and a `RELEASE` against them would find no hold.
    */
   /**
-   * And the two that end a request outright are written out rather than subtracted. LMS 318.
+   * And the two that end a request outright are written out rather than subtracted.
    *
-   * `REFUSE` left this list with LMS 318, which is the change said in one line: a refusal is
+   * `REFUSE` left this list, which is the change said in one line: a refusal is
    * a decision that may or may not end the request, so it goes through the decision door and
    * releases days only when it is the last word. What is left is the two verbs that are not
    * decisions at all.
@@ -1122,7 +1119,7 @@ describe('the table, written out', () => {
 
 /**
  * The policy answers "is this your business" and the table answers "is this move
- * available", and the order matters in both directions. §6, §10. LMS 313.
+ * available", and the order matters in both directions. §6, §10.
  *
  * Both are keyed by the action; only the second is keyed by the from-status. That split
  * is not tidiness, it is the only arrangement in which each refusal is both true and
@@ -1170,7 +1167,7 @@ describe('the two questions, and the order they are asked in', () => {
    * different states makes this too permissive, and the test that catches it is the one
    * asserting the table is exactly three rows.
    */
-  /* LMS 320 gave `WITHDRAW` and `CANCEL` a second row each, out of `UNROUTABLE`, and both
+  /* `WITHDRAW` and `CANCEL` gained a second row each, out of `UNROUTABLE`, and both
      carry exactly the standings their `SUBMITTED` row carries — so the union is still every
      row's own list. A story giving one action different desks in different states makes it
      too permissive, and this is what fails. FR 48b. */
@@ -1200,7 +1197,7 @@ const sources = readdirSync(SOURCE, { recursive: true, encoding: 'utf8' })
   }));
 
 /**
- * Only the state machine writes `leave_request.status`. §6. LMS 313.
+ * Only the state machine writes `leave_request.status`. §6.
  *
  * The story's second criterion, and a claim about code that does not exist — so it is
  * read out of the source, exactly as ./one-writer.test.ts reads the ledger's.
@@ -1254,7 +1251,7 @@ describe('one writer of the status column', () => {
    * second writer would take, and it would be four characters added to a method that
    * already had the row in hand.
    *
-   * **This is the assertion LMS 314 had to be built around**, and it is worth saying so.
+   * **This is the assertion the routing had to be built around**, and it is worth saying so.
    * Approval needed a second kind of move — one that changes the desk a request is waiting
    * at and leaves the status alone — and the obvious shape for it was an `advance()` beside
    * `settle()`. Two methods, both correct, both writing the column: exactly the second
@@ -1292,7 +1289,7 @@ describe('one writer of the status column', () => {
    * it. Both take an *action* — one implicitly, by being the approval door — and ask the
    * table inside the lock, so a caller cannot name where a request ends up.
    *
-   * `approveForRequest` is the sharper case since LMS 314, because it is handed a chain and
+   * `approveForRequest` is the sharper case, because it is handed a chain and
    * could plausibly have been handed an outcome. It is not: `decisionTo` is called again
    * inside the transaction, and a caller that could pass the destination could approve a
    * request one desk early.
@@ -1305,7 +1302,7 @@ describe('one writer of the status column', () => {
     expect(door?.code).toMatch(/holdStill\(/);
   });
 
-  /* And the verb is not the caller's either, since LMS 318. `decideForRequest` takes a
+  /* And the verb is not the caller's either. `decideForRequest` takes a
      {@link DecidingAction} and asks the table what it means; a door that took a destination
      could turn leave down at a desk that had approved it. */
   it('and the door is handed a verb rather than a destination', () => {

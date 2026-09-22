@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * There is one writer of balance movements. FR 26, §8.2. LMS 212.
+ * There is one writer of balance movements. FR 26, §8.2.
  *
  * The story's first acceptance criterion, and the only one of the four that cannot be
  * proved by running anything. The other three are behaviour — available is the right
@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
  * ## What this is actually protecting against
  *
  * Not a rogue `UPDATE leave_balance`. The database has refused those on every
- * connection since LMS 211, and `db/schema.ts` types the columns so one does not
+ * connection, and `db/schema.ts` types the columns so one does not
  * compile.
  *
  * The realistic second writer is an honest service. The rollover story needs to post
@@ -66,7 +66,7 @@ const sources = readdirSync(SOURCE, { recursive: true, encoding: 'utf8' })
  * `balance-service.ts` posts through it, and is the door.
  *
  * `ledger-service.ts` is deliberately not here. It reads the account and wrote
- * nothing after LMS 212 moved `adjust` and `correct` out of it.
+ * nothing after `adjust` and `correct` moved out of it.
  */
 const MAY_POST = [
   'features/balance/ledger.db.ts',
@@ -79,7 +79,7 @@ const MAY_POST = [
  *
  * Exempt from the "holds one" check below and from nothing else. They contain no rule and
  * write no row: what they do with a `LedgerRepository` is hand it to `LedgerService`, which
- * the test two below asserts cannot post. Since LMS 506 they have to name it, because the
+ * the test two below asserts cannot post. They have to name it, because the
  * adjustment screen reads a ledger and `buildApp` is where a read service is built.
  */
 const ASSEMBLY = ['main.ts', 'http/app.ts'];

@@ -1,7 +1,6 @@
 -- Up Migration
 
 -- Roles, and what may be done with them. Technical Design Document §5.3.
--- LMS 111.
 --
 -- The two tables arrived with the organisation migration: `role`, seeded with
 -- the four the story names, and `user_role` joining them to logins. What was
@@ -62,9 +61,9 @@ ALTER TABLE role
    has to guard.
 
    Who granted it is deliberately not here. It wants an authenticated actor, and
-   there is none until LMS 112 puts a session in front of this; a nullable
+   there is none until a session is put in front of this; a nullable
    granted_by that is null on every row would be a column pretending to hold
-   something. The audit log of LMS 113 is where "who did what" belongs, and it
+   something. The audit log is where "who did what" belongs, and it
    can carry this one when it arrives. */
 
 ALTER TABLE user_role

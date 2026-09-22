@@ -19,7 +19,7 @@ import {
 } from '../../src/features/work-pattern/work-pattern.js';
 
 /**
- * The case list of §7.3, worked. LMS 208.
+ * The case list of §7.3, worked.
  *
  * ./leave-calculator.test.ts proves the rules: one walk with one branch, the branch
  * on the counting basis and never on the code, a period costing nothing answered as
@@ -56,7 +56,7 @@ import {
  *   **The year end.** Thirty first of December into the first of January, which is
  *   where a leave *year* boundary and a calendar year boundary sit on top of each
  *   other. This counts straight through; splitting a period across two leave years
- *   is the ledger's problem and is LMS 210, not this function's.
+ *   is the ledger's problem, not this function's.
  *
  *   **February.** The whole of the leap one and the whole of the ordinary one, and
  *   the three days either side of the twenty ninth. The leap year costs exactly one
@@ -90,7 +90,7 @@ afterEach(() => {
 /* The two weeks the table is priced against. FR 23.
 
    Abena Sarpong's is not "weekends off with a day missing" — it is the pattern the
-   seed has carried since LMS 106 with the reason written beside it: a bug that
+   seed has carried with the reason written beside it: a bug that
    assumes Saturday and Sunday are the only non working days passes every test that
    only ever uses the standard week. */
 const STANDARD = pattern('Standard Mon-Fri', MONDAY_TO_FRIDAY);
@@ -346,7 +346,7 @@ const CASES: Case[] = [
 /**
  * What a case costs as annual leave.
  *
- * A plain call since LMS 303: the calculator answers every row, nought included, and
+ * A plain call: the calculator answers every row, nought included, and
  * carries the free days it did not charge for whether or not it charged for anything.
  * This used to catch `LeaveCountsNoDays` and read it as a zero, which is exactly the
  * shape of handling the split removed.

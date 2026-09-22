@@ -1,5 +1,5 @@
 /**
- * Database access for a leave request draft. FR 19, LMS 302.
+ * Database access for a leave request draft. FR 19.
  */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';

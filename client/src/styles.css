@@ -1,5 +1,5 @@
 /**
- * The stylesheet. LMS 409 brought the brand; it lives in the two token blocks below.
+ * The stylesheet. The brand lives in the two token blocks below.
  *
  * The brand guidelines' five colours are `--brand-*` and appear nowhere else — every rule
  * reaches for a semantic token instead, so a repaint is an edit to the top of this file.
@@ -7,11 +7,11 @@
  * Sora for headings and figures, Montserrat for running text.
  *
  * Colour never carries meaning alone: every one of them has a word beside it. NFR USA 03.
- * One layout told how to bend rather than a phone stylesheet. LMS 408, NFR USA 01.
+ * One layout told how to bend rather than a phone stylesheet. NFR USA 01.
  */
 
 /**
- * Sora, the company's primary typeface. LMS 409.
+ * Sora, the company's primary typeface.
  *
  * Served from `client/public/fonts` rather than fetched from Google: this is an internal
  * system behind a login, and a font request told Google the IP of everybody signing in to it.
@@ -53,7 +53,7 @@
 }
 
 /**
- * Montserrat, the company's secondary typeface. Guidelines p6, LMS 409.
+ * Montserrat, the company's secondary typeface. Guidelines p6.
  *
  * The guidelines name Area Normal and Founders Grotesk, and both are licensed faces this
  * project has no licence for — so the sentence that matters is the one they end on: *when
@@ -119,7 +119,7 @@
      brand has two blues and no green, and the tag beside it says the word. */
   --agreed: color-mix(in srgb, var(--brand-blue) 88%, var(--brand-black));
 
-  /* Who is who on the away calendar. LMS 409. Assigned in order and wrapping after ten; the
+  /* Who is who on the away calendar. Assigned in order and wrapping after ten; the
      legend is what says whose is whose. */
   --who-0: var(--brand-blue);
   --who-1: var(--brand-sky);
@@ -199,13 +199,13 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 
-  /* LMS 408. Stops mobile Safari inflating prose on rotation while the figures beside it stay
+  /* Stops mobile Safari inflating prose on rotation while the figures beside it stay
      put. Not a zoom lock — pinch zoom is untouched. */
   text-size-adjust: 100%;
   -webkit-text-size-adjust: 100%;
 }
 
-/* LMS 409. The primary face carries every heading and, below, every figure. */
+/* The primary face carries every heading and, below, every figure. */
 h1,
 h2,
 h3,
@@ -229,10 +229,10 @@ h1 {
   border-radius: 4px;
 }
 
-/* ------------------------------------------------------------ the shell. LMS 408, LMS 409 */
+/* ------------------------------------------------------------ the shell */
 
-/* A dark rail down the side, in the brand black, and the work beside it. LMS 409. Grid
-   rather than fixed, so below 56rem the column collapses into LMS 408's top strip. */
+/* A dark rail down the side, in the brand black, and the work beside it. Grid
+   rather than fixed, so below 56rem the column collapses into a top strip. */
 .shell {
   display: grid;
   grid-template-columns: var(--rail-width) minmax(0, 1fr);
@@ -294,7 +294,7 @@ h1 {
   flex-direction: column;
 }
 
-/* LMS 408. The gap plus whatever the phone says is unusable on that edge — nought everywhere
+/* The gap plus whatever the phone says is unusable on that edge — nought everywhere
    but a notched phone on its side. */
 .page {
   width: 100%;
@@ -333,7 +333,7 @@ h1 {
   white-space: nowrap;
 }
 
-/* LMS 409. The leave year, in the bar, on the screens a year decides the contents of. */
+/* The leave year, in the bar, on the screens a year decides the contents of. */
 .year select {
   font-size: 0.875rem;
   font-weight: 500;
@@ -446,7 +446,7 @@ button {
   color: var(--ink);
 }
 
-/* LMS 408. `font: inherit` took the size from the enclosing `<label>`, so every field was
+/* `font: inherit` took the size from the enclosing `<label>`, so every field was
    13px — and mobile Safari zooms in on a focused field under 16px and never zooms back out.
    The label stays small; only the box grows. `maximum-scale=1` would fix it by taking pinch
    zoom away from everybody. */
@@ -508,10 +508,10 @@ button:hover:not(:disabled) {
 }
 
 /**
- * The screens, down the rail. LMS 402, LMS 403, LMS 409.
+ * The screens, down the rail.
  *
- * **Anchors since the third screen arrived**, which is what LMS 402 said would happen: it left
- * these as buttons "because there are no addresses yet" and named the story that would bring
+ * **Anchors since the third screen arrived**, which is what was said would happen: these were
+ * left as buttons "because there are no addresses yet", naming the screen that would bring
  * them. They are addresses now, so they are links — and a tab somebody can middle click,
  * bookmark and go back from is the whole of what that bought.
  *
@@ -530,7 +530,7 @@ button:hover:not(:disabled) {
 }
 
 .screen-tab {
-  /* Keeps the label centred once the tab is given a fingertip's height. LMS 408. */
+  /* Keeps the label centred once the tab is given a fingertip's height. */
   display: flex;
   align-items: center;
   gap: 0.7rem;
@@ -576,7 +576,7 @@ button:hover:not(:disabled) {
  * this company works at — rather than three and a column of nothing.
  */
 /**
- * The balance cards, three to a row. LMS 409.
+ * The balance cards, three to a row.
  *
  * A fixed three rather than `auto-fill`, which packed as many as the width allowed and gave a
  * different count on every screen. Three keeps the headline figure large enough to be the
@@ -638,7 +638,7 @@ button:hover:not(:disabled) {
   overflow-wrap: break-word;
 }
 
-/* LMS 409. The mark on a card: a rounded square, tinted with the accent rather than filled
+/* The mark on a card: a rounded square, tinted with the accent rather than filled
    with it, so it reads as a label on the card and not as a button. */
 .chip {
   flex: none;
@@ -672,7 +672,7 @@ button:hover:not(:disabled) {
 }
 
 /**
- * A pill, filled and in the words' own case. LMS 409.
+ * A pill, filled and in the words' own case.
  *
  * It was outlined and set in capitals, which shouted "YOUR LINE MANAGER" and turned a status
  * into three lines of upper case. Half of these hold a person's name or a job, and a name is
@@ -829,7 +829,7 @@ button:hover:not(:disabled) {
   padding-top: 0.75rem;
 }
 
-/* FR 12, LMS 407. The documents on a request, as a bar rather than a line of text: it is a
+/* FR 12. The documents on a request, as a bar rather than a line of text: it is a
    thing to press, and the mark says what is behind it before anybody presses. */
 .attachments {
   border: 1px solid var(--line);
@@ -971,7 +971,7 @@ button:hover:not(:disabled) {
 /* -------------------------------------------------------------- the request history */
 
 /**
- * One column rather than the balance screen's grid. LMS 402.
+ * One column rather than the balance screen's grid.
  *
  * A history is read in order — newest first — and a grid that reflowed to two columns would
  * put the second request beside the first rather than under it, which for a list whose whole
@@ -1085,7 +1085,7 @@ button:hover:not(:disabled) {
 
 /* FR 41. The sentence a person acts on, so it is the weight of one. */
 /* FR 41. The sentence a person acts on, as a caption rather than a paragraph: the trail
-   beside it says the same thing in steps, and set at full weight the two competed. LMS 409. */
+   beside it says the same thing in steps, and set at full weight the two competed. */
 .progress {
   margin: 0;
   font-size: 0.8125rem;
@@ -1097,7 +1097,7 @@ button:hover:not(:disabled) {
   color: var(--agreed);
 }
 
-/* LMS 409. What was asked for, and beside it how it got where it is. */
+/* What was asked for, and beside it how it got where it is. */
 .asked-and-answered {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
@@ -1199,7 +1199,7 @@ button:hover:not(:disabled) {
   color: var(--ink-faint);
 }
 
-/* The desk, and what it said. A label and a word rather than a sentence. LMS 409. */
+/* The desk, and what it said. A label and a word rather than a sentence. */
 .step-what {
   display: flex;
   flex-wrap: wrap;
@@ -1245,7 +1245,7 @@ button:hover:not(:disabled) {
 /* ------------------------------------------------------------------ the request form */
 
 /**
- * Two columns: what somebody is deciding, and what the system says about it. LMS 403.
+ * Two columns: what somebody is deciding, and what the system says about it.
  *
  * The form is the wider of the two and comes first in the source, so that on a narrow screen
  * they stack as question then answer. A cost that reflowed above the dates it was about would
@@ -1451,7 +1451,7 @@ textarea:disabled {
   border-left-color: var(--accent);
 }
 
-/* FR 17, LMS 307. An answer rather than an entry, so it reads as a sentence beside a box
+/* FR 17. An answer rather than an entry, so it reads as a sentence beside a box
    rather than as a labelled field. */
 .acknowledge {
   flex-direction: row;
@@ -1495,7 +1495,7 @@ textarea:disabled {
   font-size: 1.0625rem;
 }
 
-/* LMS 409. A panel's own heading. */
+/* A panel's own heading. */
 .summary-title,
 .panel-title {
   font-size: 1.125rem;
@@ -1604,7 +1604,7 @@ textarea:disabled {
   margin: var(--gap) 0;
 }
 
-/* LMS 410. A notice is a sentence and, where retrying is the fix, a button — so it stacks. */
+/* A notice is a sentence and, where retrying is the fix, a button — so it stacks. */
 .notice > p {
   margin: 0;
 }
@@ -1617,7 +1617,7 @@ textarea:disabled {
   color: var(--ink-soft);
 }
 
-/* LMS 410. Its own line under the sentence, not wrapped into it. 44px, LMS 408. */
+/* Its own line under the sentence, not wrapped into it. 44px. */
 .notice .retry {
   margin-top: 0.6rem;
   min-height: 44px;
@@ -1631,7 +1631,7 @@ textarea:disabled {
   height: 1rem;
 }
 
-/* LMS 410. The box a refusal named. `aria-invalid` carries it; the colour only says where. */
+/* The box a refusal named. `aria-invalid` carries it; the colour only says where. */
 input[aria-invalid='true'],
 textarea[aria-invalid='true'],
 select[aria-invalid='true'] {
@@ -1691,7 +1691,7 @@ select[aria-invalid='true'] {
   }
 }
 
-/* ------------------------------------------------------ the approver queue. LMS 404 */
+/* ------------------------------------------------------ the approver queue */
 
 /* The person is the heading here rather than the dates, so it is set as a name and not as a
    figure — the reverse of `.card.request .card-head h3`, which this overrides. */
@@ -1784,7 +1784,7 @@ select[aria-invalid='true'] {
   font-variant-numeric: tabular-nums;
 }
 
-/* ------------------------------------ deciding, in the queue. FR 39, FR 51, LMS 409 */
+/* ------------------------------------ deciding, in the queue. FR 39, FR 51 */
 
 /* Clearing the queue in one press. Sticks under the bar so it is still reachable at the
    bottom of a long queue, which is where somebody actually finishes deciding. */
@@ -2156,10 +2156,10 @@ select[aria-invalid='true'] {
   }
 }
 
-/* ------------------------------------------ who is away. FR 57, LMS 406, LMS 409 */
+/* ------------------------------------------ who is away. FR 57 */
 
 /**
- * A month at a time, with a stripe per person. LMS 409.
+ * A month at a time, with a stripe per person.
  *
  * A lane holds its row across the whole month, so a stretch of leave draws as one line. The
  * cell is never filled in: a filled day says "spoken for", and the truth is "one of nine is
@@ -2337,7 +2337,7 @@ select[aria-invalid='true'] {
   color: var(--ink-faint);
 }
 
-/* Whose colour is whose. LMS 409, NFR USA 03. Only those away in the month being shown. */
+/* Whose colour is whose. NFR USA 03. Only those away in the month being shown. */
 .who-legend {
   list-style: none;
   margin: var(--gap) 0 0;
@@ -2577,7 +2577,7 @@ select[aria-invalid='true'] {
   overflow-x: auto;
 }
 
-/* ---------------------------------------- certificates. FR 12, NFR SEC 04, LMS 407 */
+/* ---------------------------------------- certificates. FR 12, NFR SEC 04 */
 
 /**
  * Documents on a request, and documents on their way onto one.
@@ -2626,7 +2626,7 @@ select[aria-invalid='true'] {
 }
 
 /**
- * LMS 409. The zone a file is dropped on.
+ * The zone a file is dropped on.
  *
  * The input is stretched over the whole box rather than sitting beside it, so the drop target
  * and the thing that looks like one are the same element — a file input already accepts a
@@ -2696,9 +2696,9 @@ select[aria-invalid='true'] {
   color: var(--ink-faint);
 }
 
-/* ------------------------------------------------------- on a phone. LMS 408, NFR USA 01 */
+/* ------------------------------------------------------- on a phone. NFR USA 01 */
 
-/* The rail lies down. LMS 408, LMS 409. Wordmark on the first row, tabs scrolling sideways
+/* The rail lies down. Wordmark on the first row, tabs scrolling sideways
    under it, motto dropped — it is the decorative part and this is where room runs out. */
 @media (max-width: 56rem) {
   .shell {
@@ -2840,7 +2840,7 @@ select[aria-invalid='true'] {
   }
 }
 
-/* ---------------------------------------- leave type configuration. FR 31, FR 32, LMS 501 */
+/* ---------------------------------------- leave type configuration. FR 31, FR 32 */
 
 /* The rules on a type, as a definition list: a label and the value the column holds. */
 .settings {
@@ -2994,7 +2994,7 @@ select[aria-invalid='true'] {
   height: 0.85rem;
 }
 
-/* ------------------------------------ entitlement rules. FR 31, LMS 502 */
+/* ------------------------------------ entitlement rules. FR 31 */
 
 /* One kind of leave and the rules under it. The heading carries the type, so a card only
    has to say who and how many — the two things that differ between rules of one type. */
@@ -3047,7 +3047,7 @@ select[aria-invalid='true'] {
   min-width: 12rem;
 }
 
-/* ------------------------------------ approval chains. FR 38a, LMS 503 */
+/* ------------------------------------ approval chains. FR 38a */
 
 /* A grid rather than one column. A chain is a name and at most three short pills, so a card
    the width of the page left the steps stranded at its left end. `auto-fill` with a minimum
@@ -3155,7 +3155,7 @@ select[aria-invalid='true'] {
   height: 8rem;
 }
 
-/* ------------------------------------ the dialog, and the leave type list. LMS 501 */
+/* ------------------------------------ the dialog, and the leave type list */
 
 /* The platform's dialog. `showModal()` puts it on the top layer, so nothing here needs a
    z-index: there is no stacking context above it to lose to. */
@@ -3373,7 +3373,7 @@ select[aria-invalid='true'] {
   }
 }
 
-/* ------------------------------------ the holiday calendar. FR 22, LMS 504 */
+/* ------------------------------------ the holiday calendar. FR 22 */
 
 /* How many days that year holds, at the end of its heading. Nothing else puts a count in a
    `.ruleset` heading, so this does not reach the entitlement screen's. */
@@ -3447,7 +3447,7 @@ select[aria-invalid='true'] {
   padding-top: 0;
 }
 
-/* FR 25, §8.8, LMS 508. Crediting a late-declared day back. Its own line under the row,
+/* FR 25, §8.8. Crediting a late-declared day back. Its own line under the row,
    because the answer is a list of people rather than a figure and it has to be read
    before the button is pressed. */
 .recalculation {
@@ -3508,7 +3508,7 @@ select[aria-invalid='true'] {
   }
 }
 
-/* ------------------------------- policy settings. FR 44, FR 48c, NFR SEC 06, LMS 505 */
+/* ------------------------------- policy settings. FR 44, FR 48c, NFR SEC 06 */
 
 /* One setting and what it means, in a card the width of the panels above it. Each writes
    through its own door, so each carries its own refusal and its own button. */
@@ -3576,7 +3576,7 @@ select[aria-invalid='true'] {
   text-align: left;
 }
 
-/* ------------------------------- balance adjustments. FR 37, FR 27, LMS 506 */
+/* ------------------------------- balance adjustments. FR 37, FR 27 */
 
 /* The figures being corrected. Scrolls inside itself rather than pushing the page sideways,
    as `.windows` does: seven columns do not fit a phone and wrapping them loses the row. */
@@ -3734,7 +3734,7 @@ select[aria-invalid='true'] {
   }
 }
 
-/* FR 37a, §8.7, LMS 509. The leaver figure, and the working that reaches it. */
+/* FR 37a, §8.7. The leaver figure, and the working that reaches it. */
 
 .leaver-figure {
   display: flex;
@@ -3838,7 +3838,7 @@ select[aria-invalid='true'] {
   }
 }
 
-/* FR 63, LMS 510. HR's reports. Tables scroll inside themselves on a phone. */
+/* FR 63. HR's reports. Tables scroll inside themselves on a phone. */
 
 .report-table {
   overflow-x: auto;
@@ -3858,7 +3858,7 @@ select[aria-invalid='true'] {
   min-width: 9rem;
 }
 
-/* FR 64, LMS 511. Saving what is on screen. */
+/* FR 64. Saving what is on screen. */
 
 .export-buttons {
   display: inline-flex;
@@ -3877,7 +3877,7 @@ select[aria-invalid='true'] {
   height: 1rem;
 }
 
-/* ------------------------------------------ the wording of the emails. FR 61, LMS 512 */
+/* ------------------------------------------ the wording of the emails. FR 61 */
 
 .pick-email {
   max-width: 26rem;
@@ -3932,7 +3932,7 @@ select[aria-invalid='true'] {
   white-space: pre-wrap;
 }
 
-/* NFR AUD 01, LMS 513. The audit log. */
+/* NFR AUD 01. The audit log. */
 
 .audit-table td {
   vertical-align: top;
@@ -4135,7 +4135,7 @@ button.linkish.file-name {
 }
 
 /* ------------------------------------------------------------ withdrawing a request
-   FR 26, LMS 306. Last on the card, and a confirmation in place rather than a dialog. */
+   FR 26. Last on the card, and a confirmation in place rather than a dialog. */
 
 .withdraw {
   display: flex;

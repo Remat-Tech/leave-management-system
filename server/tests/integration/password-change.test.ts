@@ -77,7 +77,7 @@ describe('a password HR set', () => {
 
   it('is marked the same way when the login is created with one', async () => {
     /* The provisioning script hands a password over as it creates the login, which is the
-       other way one arrives already known to somebody else. LMS 109. */
+       other way one arrives already known to somebody else. */
     const { rows } = await admin.query<{ id: string }>(
       `INSERT INTO employee (
          employee_number, first_name, last_name, work_email, job_title,

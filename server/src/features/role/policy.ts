@@ -1,4 +1,4 @@
-/** Who may grant a role, and who may see who holds one. NFR SEC 02, §5.3, §10., LMS 112, LMS 111. */
+/** Who may grant a role, and who may see who holds one. NFR SEC 02, §5.3, §10.. */
 
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';

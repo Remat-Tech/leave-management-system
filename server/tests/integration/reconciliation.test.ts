@@ -15,7 +15,7 @@ import { recordingMailer, type RecordingMailer } from '../support/recording-mail
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * The nightly balance reconciliation against a real database. §7.4. LMS 213.
+ * The nightly balance reconciliation against a real database. §7.4.
  *
  * Almost all of this story is here, because the thing it does is notice something the
  * rest of the system has arranged to be impossible. The cache follows the ledger by
@@ -119,7 +119,7 @@ async function post(
     ...overrides,
   };
 
-  /* LMS 301: a request-shaped entry names the request that caused it, and a request
+  /* A request-shaped entry names the request that caused it, and a request
      holds days — judged at COMMIT, so the pair goes in one transaction. A RESERVATION
      is the hold and brings a request of its own; a DEDUCTION or RELEASE draws down the
      one the RESERVATION before it made. */
@@ -207,7 +207,7 @@ async function postBehindTheTriggersBack(
  * A cached figure moved with no movement behind it.
  *
  * Through the seam the rebuild function uses, because nothing else can write this
- * table at all — which is LMS 211's whole point and is why the drift this job exists
+ * table at all — which is the cached balance's whole point and is why the drift this job exists
  * to find has to be manufactured rather than provoked.
  */
 async function driftTheCache(set: string): Promise<void> {

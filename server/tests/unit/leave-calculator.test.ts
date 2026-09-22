@@ -16,7 +16,7 @@ import {
 } from '../../src/features/work-pattern/work-pattern.js';
 
 /**
- * How many days a period of leave costs. FR 21, FR 22, §7.3. LMS 207.
+ * How many days a period of leave costs. FR 21, FR 22, §7.3.
  *
  * The calculator is a pure function, so this file is the whole of the story. There
  * is an integration suite beside it — ../integration/leave-calculator.test.ts —
@@ -39,7 +39,7 @@ import {
  * which is FR 22's "expressed as a continuous period of absence rather than an
  * allowance of workdays" made arithmetic.
  *
- * **Nothing at all is counted, and nought is returned.** LMS 303 moved the refusal
+ * **Nothing at all is counted, and nought is returned.** The refusal moved
  * out of this function and into the submission validator — see
  * ../../src/features/leave-request/leave-request.ts and ./leave-request.test.ts. A Saturday of annual
  * leave costs nothing, which is arithmetic; whether somebody may *ask* for it is a
@@ -271,7 +271,7 @@ describe('the branch is on the counting basis, never on the type code', () => {
 
 describe('leave that costs nothing counts as nought, and says which days were free', () => {
   /**
-   * The story's fourth criterion seen from this side of the LMS 303 split.
+   * The fourth criterion seen from this side of the split.
    *
    * A weekend of annual leave against a Monday to Friday week costs nothing, and
    * nothing is what comes back: this function reports and the submission validator
@@ -369,7 +369,7 @@ describe('two dates that are not a period', () => {
   /**
    * And it is not a maximum request length, which FR 20a says there is not one of.
    *
-   * LMS 309. That bound is the only length check anywhere in the request path, so it
+   * That bound is the only length check anywhere in the request path, so it
    * is the only thing that could quietly become the cap the requirement forbids — and
    * the way that happens is somebody tightening it to a "sensible" thirty for
    * validation's sake, on an afternoon when nothing says why not.

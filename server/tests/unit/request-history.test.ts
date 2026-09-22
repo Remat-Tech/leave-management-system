@@ -31,7 +31,7 @@ import {
 } from '../../src/features/leave-request/request-history.js';
 
 /**
- * My request history, as rules rather than as a screen. FR 54, §7.4. LMS 402.
+ * My request history, as rules rather than as a screen. FR 54, §7.4.
  *
  * Every decision this story makes is a pure function of rows somebody else read, so nearly
  * all of it is here rather than in ../integration/requests-api.test.ts. What that suite is
@@ -244,7 +244,7 @@ describe('the trail', () => {
   /**
    * The decision this file exists to make, and the one a reasonable person would leave out.
    *
-   * A trail that ended at the newest approval reads as agreement. LMS 316 is the story about
+   * A trail that ended at the newest approval reads as agreement. The every-stage rule is about
    * exactly that, and the answer here is that the stages nobody has been asked are on the
    * list, marked by having no time on them.
    */
@@ -486,7 +486,7 @@ function request(changes: Partial<LeaveRequest>): LeaveRequest {
     from: '2026-03-02',
     to: '2026-03-13',
     reason: 'Two weeks with family.',
-    /** FR 18, LMS 308. */
+    /** FR 18. */
     lateEntryReason: null,
     evidenceRequired: false,
     certifiedDays: 0,
@@ -510,7 +510,7 @@ function decision(changes: Partial<LeaveDecision>): LeaveDecision {
     action: 'APPROVE',
     onBehalfOf: 'MANAGER',
     comment: null,
-    /** FR 44. Null on everything that is not an override. LMS 318. */
+    /** FR 44. Null on everything that is not an override. */
     overridesDecisionId: null,
     delegatedFor: null,
     /* What `signedInAs` actually writes into the column — a handle for a log rather than a

@@ -1,4 +1,4 @@
-/** Database access for leave types. FR 21, FR 31, FR 32, §5.5., LMS 201, LMS 204. */
+/** Database access for leave types. FR 21, FR 31, FR 32, §5.5.. */
 
 import type { Insertable, Kysely, Selectable, Updateable } from 'kysely';
 import type { Database } from '../../db/index.js';

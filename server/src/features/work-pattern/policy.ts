@@ -1,4 +1,4 @@
-/** Who may see and change a working pattern. NFR SEC 02, §10., LMS 112, FR 23, LMS 106. */
+/** Who may see and change a working pattern. NFR SEC 02, §10., FR 23. */
 
 import { type Actor, holdsAny } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';

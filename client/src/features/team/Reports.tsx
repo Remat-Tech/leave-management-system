@@ -3,7 +3,7 @@ import { days, inDays, period } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
 
 /**
- * What a direct report has left and what they have booked. FR 55, FR 56, LMS 405, LMS 409.
+ * What a direct report has left and what they have booked. FR 55, FR 56.
  *
  * Takes a `TeamMember` and never a `Colleague`: only `/api/me/team` may name a leave type.
  */

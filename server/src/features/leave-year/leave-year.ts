@@ -1,4 +1,4 @@
-/** The leave year, and what closing one means. §5.4., LMS 205, LMS 201, LMS 203, LMS 210, LMS 211. */
+/** The leave year, and what closing one means. §5.4.. */
 
 import { type CalendarDate, dayAfter, dayBefore, isCalendarDate } from '../../shared/time.js';
 
@@ -253,8 +253,8 @@ export function yearFor(years: readonly LeaveYear[], day: CalendarDate): LeaveYe
  * The first day still open to change, or null where nothing has been closed.
  *
  * The day after the latest closed year ends, which is what
- * {@link EarliestOpenDay} in ./entitlement-rule.ts has been asking for since
- * LMS 203 and being told `NOTHING_IS_CLOSED_YET`. Null keeps meaning exactly what
+ * {@link EarliestOpenDay} in ./entitlement-rule.ts has long been asking for
+ * and being told `NOTHING_IS_CLOSED_YET`. Null keeps meaning exactly what
  * it meant then — no year has been closed — which is the true answer on a fresh
  * database and stays a truthful one rather than becoming a stub.
  *

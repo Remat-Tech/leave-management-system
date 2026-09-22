@@ -1,4 +1,4 @@
-/** Turning a request into an Actor. NFR SEC 02, §10., LMS 401, LMS 112. */
+/** Turning a request into an Actor. NFR SEC 02, §10.. */
 
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { type Actor, signedInAs } from '../auth/actor.js';

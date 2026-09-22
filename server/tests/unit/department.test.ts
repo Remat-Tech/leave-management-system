@@ -11,7 +11,7 @@ import {
 } from '../../src/features/department/department.js';
 
 /**
- * The rules for a department, checked without a database. LMS 105.
+ * The rules for a department, checked without a database.
  *
  * The database holds the same rules as a CHECK and a unique index and refuses
  * the same records; that is asserted in the integration suite. What is asserted

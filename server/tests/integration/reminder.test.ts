@@ -38,7 +38,7 @@ import { delegationService } from '../support/delegations.js';
 import { calendarDateIn, dayAfter } from '../../src/shared/time.js';
 
 /**
- * The approver is chased every day until they decide. FR 50, FR 60, §7.1. LMS 330.
+ * The approver is chased every day until they decide. FR 50, FR 60, §7.1.
  *
  * ../unit/reminder.test.ts proves what a reminder says. What needs a server is everything
  * the story's three criteria are actually about:
@@ -118,11 +118,11 @@ beforeAll(async () => {
     new LeaveDecisionRepository(db),
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -133,7 +133,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. The fixture week is months behind today, as in every leave suite here. */
+  /* FR 18. The fixture week is months behind today, as in every leave suite here. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
 
   await admin.query('TRUNCATE leave_balance');
@@ -195,7 +195,7 @@ function aRequest(overrides: Partial<NewLeaveRequest> = {}): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. */
+    /** FR 17. */
     acknowledgesShortNotice: true,
     ...overrides,
   };
@@ -270,7 +270,7 @@ describe('a request waiting at a desk chases the person it is waiting on', () =>
     expect(await remindersFor(people.teamLead)).toHaveLength(0);
   });
 
-  /* FR 49, LMS 327. A delegate is at the desk for as long as the nomination runs, so the
+  /* FR 49. A delegate is at the desk for as long as the nomination runs, so the
      chase follows the cover rather than the name on the reporting line. */
   it('and a colleague covering for an approver, as well as the approver', async () => {
     const id = await submit();

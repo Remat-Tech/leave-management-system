@@ -12,7 +12,7 @@ import {
 } from '../../src/features/leave-type/leave-type.js';
 
 /**
- * What a kind of leave asks of somebody, before they have typed anything. LMS 403, FR 13, FR 17, FR 18, FR 32f.
+ * What a kind of leave asks of somebody, before they have typed anything. FR 13, FR 17, FR 18, FR 32f.
  *
  * All of it is pure, so this is where the story's second and third criteria are proved.
  * ../integration/request-form-api.test.ts shows the same sentences arriving over a socket
@@ -68,7 +68,7 @@ function kindsOf(type: LeaveType): FormRuleKind[] {
 }
 
 describe('documentation, explained before anything is submitted', () => {
-  /* LMS 311. "Have it ready" became "or you are refused", which is what the rule now does. */
+  /* "Have it ready" became "or you are refused", which is what the rule now does. */
   it('says so for a type that always needs it, and says a request without it is refused', () => {
     const said_ = said(stored({ documentation: 'ALWAYS' }), 'DOCUMENTATION');
 

@@ -29,7 +29,7 @@ import {
 } from '../../src/features/leave-request/leave-request.js';
 
 /**
- * Approving or turning down leave, with a comment. FR 39, FR 52. LMS 315.
+ * Approving or turning down leave, with a comment. FR 39, FR 52.
  *
  * The story is a person who has been told no finding out why without chasing anybody, and
  * the two criteria that can be checked without a database are the two about the comment: a
@@ -76,7 +76,7 @@ describe('the verbs that are a decision at a desk', () => {
     ]);
   });
 
-  /* FR 44, LMS 318. And the two that reverse somebody else's decision are the two that ask
+  /* FR 44. And the two that reverse somebody else's decision are the two that ask
      for a justification. An override recorded as an approval with a flag beside it would
      read as an approval in every query that forgot the flag. */
   it('and the two that reverse a manager are their own values', () => {
@@ -184,7 +184,7 @@ describe('a decision on its way to being written', () => {
       action: 'APPROVE',
       onBehalfOf: 'HR',
       comment: 'Fine by me',
-      /** FR 44. Null on everything that is not an override. LMS 318. */
+      /** FR 44. Null on everything that is not an override. */
       overridesDecisionId: null,
       delegatedFor: null,
     });
@@ -228,12 +228,12 @@ describe('a decision on its way to being written', () => {
     expect(Object.keys(written).sort()).toEqual([
       'action',
       'comment',
-      /* FR 49, LMS 327. Whose approvals were answered — the desk's own resolution, not the
+      /* FR 49. Whose approvals were answered — the desk's own resolution, not the
          decider's claim about themselves. */
       'delegatedFor',
       'leaveRequestId',
       'onBehalfOf',
-      /* FR 44, LMS 318. Null on everything but an override, and supplied by the door rather
+      /* FR 44. Null on everything but an override, and supplied by the door rather
          than by whoever pressed the button. */
       'overridesDecisionId',
     ]);
@@ -276,7 +276,7 @@ describe('the refusal among a request’s decisions', () => {
 
 /**
  * The desks that have said yes, which is what "every stage has approved" is read against.
- * FR 41. LMS 316.
+ * FR 41.
  *
  * The reason this table could carry the next story at all: until these rows existed there was
  * a cursor saying where a request had got to and nothing saying who had actually signed, and
@@ -323,7 +323,7 @@ describe('the desks that have approved a request', () => {
 /* ------------------------------------------ overturning a manager, FR 44 */
 
 /**
- * What an override has to say, and what it has to be reversing. FR 44, §7.2. LMS 318.
+ * What an override has to say, and what it has to be reversing. FR 44, §7.2.
  *
  * The story's second and fourth criteria are both here: a justification in writing, and a
  * decision value of its own rather than a flag on an approval.
@@ -395,7 +395,7 @@ describe('overturning a manager’s decision', () => {
 });
 
 /**
- * Which verb would be overruling the manager. FR 44, §7.2. LMS 318.
+ * Which verb would be overruling the manager. FR 44, §7.2.
  *
  * The pairing that makes the justification unavoidable rather than offered: a desk about to
  * decide the opposite way to the manager is overruling them whether the button it
@@ -450,10 +450,10 @@ describe('the override a plain verb would have to be', () => {
   });
 });
 
-/* --------------------------------------- two approvers at one desk. NFR DAT 02, LMS 326 */
+/* --------------------------------------- two approvers at one desk. NFR DAT 02 */
 
 /**
- * What the loser of two decisions arriving at once is told. NFR DAT 02, §8.1. LMS 326.
+ * What the loser of two decisions arriving at once is told. NFR DAT 02, §8.1.
  *
  * The reading half of the story: which decision was already there, and what the refusal says
  * about it. ../integration/concurrent-decisions.test.ts races two real transactions.
@@ -533,7 +533,7 @@ const sources = readdirSync(SOURCE, { recursive: true, encoding: 'utf8' })
 
 /**
  * A decision is written by one repository, from one service, inside the transaction that
- * moves the request. FR 39, FR 52. LMS 315.
+ * moves the request. FR 39, FR 52.
  *
  * The realistic second writer is an honest one, exactly as it is for the ledger and for the
  * status column: a queue screen that records the manager's comment as it renders, a bulk

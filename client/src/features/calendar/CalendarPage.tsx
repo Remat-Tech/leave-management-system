@@ -20,7 +20,7 @@ import { Reports } from '../team/Reports';
 import { Month, nameOf, step } from './Month';
 
 /**
- * Who is away, in a department. FR 55, FR 56, FR 57, LMS 406, LMS 409.
+ * Who is away, in a department. FR 55, FR 56, FR 57.
  *
  * Dates and names for everybody; a report's balances and bookings for their own manager, out
  * of `/api/me/team`, which is the only call that may name a leave type.
@@ -31,7 +31,7 @@ export function CalendarPage({
   onYears,
 }: {
   onSignedOut: () => void;
-  /** LMS 409. The year the picker in the bar is showing. */
+  /** The year the picker in the bar is showing. */
   yearId: string | undefined;
   onYears: (years: Year[], showing: string) => void;
 }) {
@@ -39,7 +39,7 @@ export function CalendarPage({
   const [team, setTeam] = useState<Team | undefined>(undefined);
   const [month, setMonth] = useState<string | undefined>(undefined);
 
-  /** LMS 409. Held here rather than read back off the answer, so changing the year in the bar
+  /** Held here rather than read back off the answer, so changing the year in the bar
       does not quietly reset an HR reader's department back to their own. */
   const [departmentId, setDepartmentId] = useState<string | undefined>(undefined);
   const [problem, setProblem] = useState<Problem | undefined>(undefined);
@@ -62,7 +62,7 @@ export function CalendarPage({
             return;
           }
 
-          /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
+          /** The server's own sentence, verbatim. NFR USA 03. */
           setProblem(problemFrom(error));
         })
         .finally(() => {
@@ -109,7 +109,7 @@ export function CalendarPage({
         <p className="muted">{whoseCalendar(calendar)}</p>
 
         <div className="controls">
-          {/* LMS 409. HR only — everybody else gets their own department and no picker. */}
+          {/* HR only — everybody else gets their own department and no picker. */}
           {calendar.canChooseDepartment ? (
             <DepartmentPicker
               departments={calendar.departments}
@@ -264,7 +264,7 @@ function ColleagueCard({
 }: {
   colleague: Colleague;
   report: TeamMember | undefined;
-  /** LMS 409. Whether the department is worth saying, which it is across all of them. */
+  /** Whether the department is worth saying, which it is across all of them. */
   named: boolean;
 }) {
   const left = colleague.employmentStatus === 'TERMINATED';
@@ -320,7 +320,7 @@ function AbsenceRow({ absence }: { absence: Absence }) {
   );
 }
 
-/** LMS 409. HR's filter. Labelled rather than placeholder-ed, as the year picker is. */
+/** HR's filter. Labelled rather than placeholder-ed, as the year picker is. */
 function DepartmentPicker({
   departments,
   showing,
@@ -387,7 +387,7 @@ function summaryOf(calendar: TeamAwayCalendar): string {
 }
 
 /**
- * What one person has booked, as a count. LMS 409.
+ * What one person has booked, as a count.
  *
  * The server's sentence — "Akosua Darko has 1 absence booked in 2026, over 3 days" — repeated
  * the name at the top of the card and the dates listed underneath it.
@@ -404,7 +404,7 @@ function bookedInShort(colleague: Colleague): string {
   return `${left}${String(colleague.absences.length)} ${colleague.absences.length === 1 ? 'absence' : 'absences'} · ${inDays(total)}`;
 }
 
-/** Whose calendar this is, as a caption. LMS 409. */
+/** Whose calendar this is, as a caption. */
 function whoseCalendar(calendar: TeamAwayCalendar): string {
   const where = calendar.department === null ? 'the company' : calendar.department.name;
 

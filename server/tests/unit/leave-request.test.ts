@@ -59,7 +59,7 @@ import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
 import { eachDay } from '../../src/shared/time.js';
 
 /**
- * Asking for leave, and being told what it costs first. FR 10, FR 11. LMS 301.
+ * Asking for leave, and being told what it costs first. FR 10, FR 11.
  *
  * The story's first two criteria are pure functions and are proved here: the four
  * fields a request is made of, and the quote a person is shown before they commit to a
@@ -144,7 +144,7 @@ function aStoredRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     from: BOOKED.from,
     to: BOOKED.to,
     reason: 'My sister is getting married',
-    /** FR 18, LMS 308. */
+    /** FR 18. */
     lateEntryReason: null,
     evidenceRequired: false,
     certifiedDays: 0,
@@ -409,7 +409,7 @@ describe('when a document is asked for, and on which of the two grounds', () => 
   });
 });
 
-/* ------------------------------------------- certified days, FR 32a, §8.6b. LMS 312 */
+/* ------------------------------------------- certified days, FR 32a, §8.6b */
 
 describe('how many of a request’s days go past the allowance', () => {
   /**
@@ -447,7 +447,7 @@ describe('how many of a request’s days go past the allowance', () => {
 
 describe('certified days given back', () => {
   /**
-   * FR 47, LMS 324. Certified days come back first, because the days that are kept are
+   * FR 47. Certified days come back first, because the days that are kept are
    * the ones the allowance takes back first: five days with two certified, one given
    * back, leaves four days of which one is past an allowance of three.
    */
@@ -593,7 +593,7 @@ describe('how much notice a request gives', () => {
   });
 });
 
-/* ------------------------------------------------ acknowledging it. FR 17, LMS 307 */
+/* ------------------------------------------------ acknowledging it. FR 17 */
 
 /**
  * FR 17's second criterion: warned, acknowledged, and never blocked.
@@ -688,7 +688,7 @@ describe('short notice is acknowledged rather than refused', () => {
   });
 });
 
-/* ---------------------------------------------- recording it afterwards. FR 18, LMS 308 */
+/* ---------------------------------------------- recording it afterwards. FR 18 */
 
 /**
  * FR 18, and the half of it that is about who is asking rather than about the dates.
@@ -809,7 +809,7 @@ describe('what a request has to say', () => {
        314 — see the case below about where a request starts. */
     approvalChain: ['MANAGER', 'HR'] as const,
     /* FR 48b. Every desk staffed by somebody who is not the requester, which is the
-       ordinary case; routing around an empty one is ./routing.test.ts's. LMS 320. */
+       ordinary case; routing around an empty one is ./routing.test.ts's. */
     available: {
       MANAGER: 'CAN_DECIDE',
       HR: 'CAN_DECIDE',
@@ -839,20 +839,19 @@ describe('what a request has to say', () => {
 
     expect(validateNewLeaveRequest(SOUND)).toEqual({
       ...stored,
-      /** FR 18, LMS 308. Nothing to explain: this one is not a late entry. */
+      /** FR 18. Nothing to explain: this one is not a late entry. */
       lateEntryReason: null,
       evidenceRequired: false,
       certifiedDays: 0,
       status: 'SUBMITTED',
       awaitingApprovalFrom: 'MANAGER',
-      /** FR 48b. Nothing was skipped: every desk can be asked. LMS 320. */
+      /** FR 48b. Nothing was skipped: every desk can be asked. */
       skips: [],
     });
   });
 
   /**
-   * And where it starts is the first stage of the type's chain. FR 38, FR 38a. LMS 314's
-   * first criterion.
+   * And where it starts is the first stage of the type's chain. FR 38, FR 38a.
    *
    * The chain goes in and the desk comes out, and the desk is the front of whatever list
    * was handed over. That is the whole criterion: annual leave starts with the manager
@@ -961,7 +960,7 @@ describe('what a request has to say', () => {
   });
 
   /**
-   * And the check on `days` has a floor and no ceiling. FR 20a, LMS 309.
+   * And the check on `days` has a floor and no ceiling. FR 20a.
    *
    * The rule is "at least one", and the absence of a second half to that sentence is
    * the requirement. `requireWholeDays` is where a maximum would go if the system had
@@ -1029,7 +1028,7 @@ describe('what the reservation says it is for', () => {
 /* --------------------------------------------- dates that are obviously wrong */
 
 /**
- * FR 16, FR 16a, §8.3. LMS 303.
+ * FR 16, FR 16a, §8.3.
  *
  * The story is somebody finding out while the form is still open rather than after two
  * days in an approver's queue, so every refusal below is a pure function of what was
@@ -1224,7 +1223,7 @@ describe('a period that crosses a leave year end', () => {
 /* ------------------------------------------- leave over leave already booked */
 
 /**
- * FR 15, §5.6. LMS 304.
+ * FR 15, §5.6.
  *
  * The defect is a balance consumed twice for the same days, and what makes it worth a
  * story of its own is that nothing about it looks wrong while it happens: two
@@ -1266,7 +1265,7 @@ describe('which requests hold the days', () => {
    *
    * The note here used to say the two would stop agreeing "the moment the approval story
    * lands: APPROVED joins this list, and WITHDRAWN, CANCELLED and REFUSED do not". Both
-   * halves of that happened. LMS 306 added three that stayed out, and LMS 314 added one
+   * halves of that happened. The three endings stayed out, and approval added one
    * that came in — because leave that has been agreed is the most live leave there is: the
    * person will be away, the days are gone as `taken`, and something booked on top of them
    * is FR 15's defect exactly.
@@ -1277,7 +1276,7 @@ describe('which requests hold the days', () => {
    * or a fortnight booked over leave a manager and HR have both signed off.
    */
   it('is a list of its own, not a reading of every status', () => {
-    /* `UNROUTABLE` joined with LMS 320 and had to be asked about separately: its RESERVATION
+    /* `UNROUTABLE` joined later and had to be asked about separately: its RESERVATION
        still stands, so the days are gone from the balance and the dates are spoken for even
        though nobody can decide it. FR 48b. */
     expect([...LIVE_STATUSES]).toEqual(['SUBMITTED', 'APPROVED', 'UNROUTABLE']);
@@ -1311,7 +1310,7 @@ describe('which requests hold the days', () => {
   });
 
   /**
-   * And none of LMS 306's three endings holds them, which is what the list was for.
+   * And none of the three endings holds them, which is what the list was for.
    *
    * Until they existed this list and `REQUEST_STATUSES` held the same single value and
    * every query filtering by it filtered nothing. Three statuses arrived, none joined
@@ -1334,10 +1333,10 @@ describe('which requests hold the days', () => {
   });
 });
 
-/* --------------------------------------------------- the three endings, LMS 306 */
+/* --------------------------------------------------- the three endings */
 
 /**
- * A request ends once, and gives its days back when it does. FR 26, §8.2. LMS 306.
+ * A request ends once, and gives its days back when it does. FR 26, §8.2.
  *
  * The domain's whole share of the story: which statuses end a request, whether one may
  * be ended, and what the movement says it was for. The movement itself is
@@ -1554,7 +1553,7 @@ describe('per-occasion leave, asked for before its days are granted', () => {
 /* --------------------------------------------------- days that are not there */
 
 /**
- * Told at once that the days are not there. FR 14, NFR USA 03. LMS 305.
+ * Told at once that the days are not there. FR 14, NFR USA 03.
  *
  * The rule is four lines and the sentence is the story, so most of what follows is about
  * the sentence. A person who is refused has to be able to act without going and looking
@@ -1733,8 +1732,8 @@ describe('where this story stops', () => {
    *
    * A list of eight with three unreachable would be a promise the schema cannot keep — LMS
    * 209's rule — so `leave_request_status_known` holds exactly these five and every one of
-   * them is reached by a method that exists. LMS 306 extended the single value LMS 301 left,
-   * LMS 314 extended it again for approval, and each did it in a migration of its own. This
+   * them is reached by a method that exists. The three endings extended the single value
+   * submission left, approval extended it again, and each did it in a migration of its own. This
    * test is what fails if somebody adds a status here without the migration that lets the
    * database hold it.
    */
@@ -1742,7 +1741,7 @@ describe('where this story stops', () => {
     expect([...REQUEST_STATUSES]).toEqual([
       'SUBMITTED',
       'APPROVED',
-      /** FR 48b, LMS 320. Reached by a routing that ran out of desks it could fill. */
+      /** FR 48b. Reached by a routing that ran out of desks it could fill. */
       'UNROUTABLE',
       'WITHDRAWN',
       'CANCELLED',
@@ -1751,10 +1750,10 @@ describe('where this story stops', () => {
   });
 
   /**
-   * And what follows `APPROVED` is FR 47's conversation and nothing else. LMS 324.
+   * And what follows `APPROVED` is FR 47's conversation and nothing else.
    *
-   * LMS 314 left this state with no rows at all and said what the story filling it would have
-   * to bring: a movement against the `DEDUCTION`, because `daysToRelease` would find no hold
+   * The routing left this state with no rows at all and said what would have
+   * to be brought to fill it: a movement against the `DEDUCTION`, because `daysToRelease` would find no hold
    * to work on. That is `RECALCULATION`, and none of the three endings' verbs is here — the
    * person asks, HR answers, and only one of the three answers ends the request.
    */
@@ -1764,9 +1763,9 @@ describe('where this story stops', () => {
       'WITHDRAW_APPROVED',
       'AMEND',
       'REFUSE_WITHDRAWAL',
-      /** FR 32c, §8.6c, LMS 507. Sickness during it, moved to sick leave. */
+      /** FR 32c, §8.6c. Sickness during it, moved to sick leave. */
       'RECLASSIFY',
-      /** FR 25, §8.8, LMS 508. A public holiday declared inside it, credited back. */
+      /** FR 25, §8.8. A public holiday declared inside it, credited back. */
       'RECALCULATE',
       /** Or the Chief Executive reversing the approval before it starts. */
       'REVERSE_APPROVAL',
@@ -1778,9 +1777,9 @@ describe('where this story stops', () => {
   });
 
   /**
-   * And a desk nobody can fill is skipped rather than waited at. FR 48b. LMS 320.
+   * And a desk nobody can fill is skipped rather than waited at. FR 48b.
    *
-   * The gap LMS 314 left on purpose and this story closes. The whole of the routing is
+   * The gap the routing left on purpose and this closes. The whole of the routing is
    * ./routing.test.ts's; what is pinned here is that the walk a decision makes reads it —
    * a stage with nobody at it hands the request on and is recorded, and nothing is agreed
    * by running out of people to ask.
@@ -1799,7 +1798,7 @@ describe('where this story stops', () => {
       occupants: { MANAGER: [], HR: ['efua'], CEO: ['kofi'] },
     });
 
-    /* FR 48d, LMS 322. One officer answered both stages, because the manager's was empty. */
+    /* FR 48d. One officer answered both stages, because the manager's was empty. */
     expect(outcome).toEqual({
       by: 'HR',
       to: 'APPROVED',
@@ -1810,10 +1809,10 @@ describe('where this story stops', () => {
   });
 });
 
-/* -------------------------------- two approvers deciding at once. NFR DAT 02, LMS 326 */
+/* -------------------------------- two approvers deciding at once. NFR DAT 02 */
 
 /**
- * A decision the answer arrived ahead of. NFR DAT 02, §8.1. LMS 326.
+ * A decision the answer arrived ahead of. NFR DAT 02, §8.1.
  *
  * The rule the two doors both ask — `LeaveRequestService.decide` for the sentence and
  * `BalanceService.decideForRequest` inside the lock, where it binds. What it is asked *of*

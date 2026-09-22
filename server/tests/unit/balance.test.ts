@@ -22,7 +22,7 @@ import {
 import { BUCKETS, LEDGER_ENTRY_TYPES } from '../../src/features/balance/ledger.js';
 
 /**
- * The cached balance. §5.7, design principle 1. LMS 211.
+ * The cached balance. §5.7, design principle 1.
  *
  * A short file for a short story, and the shortness is the point rather than a gap.
  * The arithmetic this story is about — which of the eight kinds of movement lands in
@@ -126,7 +126,7 @@ describe('what a balance adds up to', () => {
     expect(available(balance)).toBe(10.1);
   });
 
-  /* Whole days out of a fractional entitlement, which is the line LMS 209 drew and
+  /* Whole days out of a fractional entitlement, which is the line the whole-days rule drew and
      this table draws between two columns: what somebody is owed may carry a
      fraction, what they have taken may not. */
   it('takes whole days out of a fractional entitlement', () => {
@@ -135,7 +135,7 @@ describe('what a balance adds up to', () => {
 });
 
 /**
- * The three rules a movement has to pass. FR 26, LMS 212.
+ * The three rules a movement has to pass. FR 26.
  *
  * These are the arithmetic behind "my days cannot be deducted twice", and they are
  * pure functions, so this is where that claim is actually proved. What
@@ -186,7 +186,7 @@ describe('holding days for leave that has been asked for', () => {
     expect(daysToReserve(balanceOf({ entitled: 0 }), 3, true)).toBe(3);
   });
 
-  /* FR 24, and the four request-shaped entry types LMS 209 held to it. Refused here
+  /* FR 24, and the four request-shaped entry types held to it. Refused here
      as well as by the column, so the message names the field while the form is open. */
   it('refuses half a day, and a figure that is not days at all', () => {
     expect(() => daysToReserve(twelve, 0.5, false)).toThrow(InvalidBalanceMovement);
@@ -209,7 +209,7 @@ describe('holding days for leave that has been asked for', () => {
 });
 
 /**
- * A year's entitlement. FR 30, LMS 214.
+ * A year's entitlement. FR 30.
  *
  * The first movement that puts days into a balance rather than moving days already
  * there, and the only rule about it that is not the ledger's own: it happens once.
@@ -335,7 +335,7 @@ describe('which balance this is', () => {
  * The two files that have to agree about what the five columns are called.
  *
  * `BUCKETS` in features/balance/ledger.ts says which of them each kind of movement moves, and
- * was written by LMS 210 before this table existed. `BALANCE_BUCKETS` here says what
+ * was written with the ledger, before this table existed. `BALANCE_BUCKETS` here says what
  * the columns are. They are edited in different files for different reasons, so a
  * name in one that the other has never heard of is a projection into a column that
  * does not exist — which the type system now catches, and which this catches from
@@ -371,7 +371,7 @@ describe('the five columns, as the ledger names them', () => {
    * first one.
    *
    * So the domain exports nothing that takes a ledger entry. Every function here
-   * takes a *balance* — the three LMS 212 added included, which decide what may
+   * takes a *balance* — the three added with the one writer included, which decide what may
    * happen to one rather than what one adds up to. If that changes, this fails, and
    * whoever changed it has to argue here.
    */
@@ -385,7 +385,7 @@ describe('the five columns, as the ledger names them', () => {
       'BalanceOverdrawn',
       'InvalidBalanceMovement',
       'NotEnoughHeld',
-      /** FR 47, LMS 324. */
+      /** FR 47. */
       'NotEnoughTaken',
       'available',
       'committed',
@@ -393,7 +393,7 @@ describe('the five columns, as the ledger names them', () => {
       'daysToCommit',
       /** FR 36a. */
       'daysToExpire',
-      /** FR 47, LMS 324. */
+      /** FR 47. */
       'daysToGiveBackFromTaken',
       'daysToGrant',
       'daysToLapse',

@@ -1,5 +1,5 @@
 /**
- * Setting what a leave type is worth, and asking what it was worth on a day. FR 31, §5.5., LMS 203, LMS 205, LMS 217, LMS 210, LMS 211, LMS 013, LMS 215.
+ * Setting what a leave type is worth, and asking what it was worth on a day. FR 31, §5.5..
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -30,7 +30,7 @@ export class EntitlementRuleService {
     private readonly rules: EntitlementRuleRepository,
     /** NFR SEC 02. */
     private readonly guard: Guard,
-    /** Where a closed leave year ends. LMS 205. */
+    /** Where a closed leave year ends. */
     private readonly earliestOpenDay: EarliestOpenDay,
   ) {}
 

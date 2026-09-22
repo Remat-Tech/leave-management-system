@@ -1,4 +1,4 @@
-/** The annual grant of entitlement. FR 30, LMS 214, LMS 215, FR 29, §8.6. */
+/** The annual grant of entitlement. FR 30, FR 29, §8.6. */
 
 import type { Actor } from '../../auth/actor.js';
 import {
@@ -22,7 +22,7 @@ import type { LeaveYearService } from '../leave-year/leave-year.service.js';
 
 export class AnnualGrant {
   constructor(
-    /** The one door that writes a movement. LMS 212. */
+    /** The one door that writes a movement. */
     private readonly balances: BalanceService,
     /** Which year is being granted, and when it began. */
     private readonly years: LeaveYearService,

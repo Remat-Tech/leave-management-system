@@ -50,7 +50,7 @@ export interface WorkPatternDayTable {
   is_working_day: Generated<boolean>;
 }
 
-/** A leave type and the rules it carries. FR 21, FR 31, FR 32, §5.5., LMS 201, FR 38a. */
+/** A leave type and the rules it carries. FR 21, FR 31, FR 32, §5.5., FR 38a. */
 export interface LeaveTypeTable {
   id: Generated<string>;
   code: string;
@@ -92,20 +92,19 @@ export interface LeaveTypeTable {
   updated_at: Timestamp;
 }
 
-/** Who approves a kind of leave, and in what order. FR 38a, §5.5., LMS 204. */
+/** Who approves a kind of leave, and in what order. FR 38a, §5.5.. */
 export interface LeaveTypeApprovalStepTable {
   leave_type_id: string;
   step_order: number;
   approver_role: string;
 }
 
-/** The sign in account. NFR SEC 01, LMS 109. */
+/** The sign in account. NFR SEC 01. */
 export interface AppUserTable {
   id: Generated<string>;
   employee_id: string;
   company_email: string;
   password_hash: string | null;
-  /** LMS 110. */
   mfa_enabled: Generated<boolean>;
   mfa_code_hash: string | null;
   mfa_code_expires_at: Date | null;
@@ -129,15 +128,15 @@ export interface RoleTable {
   name: string;
 }
 
-/** Who holds which. LMS 110, LMS 111. */
+/** Who holds which. */
 export interface UserRoleTable {
   user_id: string;
   role_id: string;
-  /** When it was granted. LMS 111, LMS 112, LMS 113. */
+  /** When it was granted. */
   granted_at: Generated<Date>;
 }
 
-/** The audit log. NFR AUD 01, NFR AUD 02, LMS 113. */
+/** The audit log. NFR AUD 01, NFR AUD 02. */
 export interface AuditLogTable {
   id: Generated<string>;
   occurred_at: Timestamp;
@@ -150,7 +149,7 @@ export interface AuditLogTable {
   actor_employee_id: ColumnType<string | null, never, never>;
 }
 
-/** What a leave type is worth, and from when. FR 31, §5.5., LMS 203. */
+/** What a leave type is worth, and from when. FR 31, §5.5.. */
 export interface LeaveEntitlementRuleTable {
   id: Generated<string>;
   leave_type_id: string;
@@ -173,7 +172,7 @@ export interface LeaveEntitlementRuleTable {
   updated_at: Timestamp;
 }
 
-/** The leave year, and what closing one means. §5.4., LMS 205. */
+/** The leave year, and what closing one means. §5.4.. */
 export interface LeaveYearTable {
   id: Generated<string>;
   label: string;
@@ -186,7 +185,7 @@ export interface LeaveYearTable {
   updated_at: Timestamp;
 }
 
-/** The gazetted public holiday calendar. FR 22, §5.4., LMS 206. */
+/** The gazetted public holiday calendar. FR 22, §5.4.. */
 export interface HolidayTable {
   id: Generated<string>;
   name: string;
@@ -196,7 +195,7 @@ export interface HolidayTable {
   updated_at: Timestamp;
 }
 
-/** The balance ledger. FR 27, §5.7, LMS 210, LMS 211. */
+/** The balance ledger. FR 27, §5.7. */
 export interface LeaveLedgerEntryTable {
   id: Generated<string>;
   employee_id: string;
@@ -204,23 +203,23 @@ export interface LeaveLedgerEntryTable {
   leave_year_id: string;
   /** One of the eight of §5.7, held closed by leave_ledger_entry_type_known. */
   entry_type: string;
-  /** How many days, signed. §8.6, FR 24, LMS 211. */
+  /** How many days, signed. §8.6, FR 24. */
   days: string;
-  /** FR 32a, §8.6b. How many of them went past the allowance on a certificate. LMS 312. */
+  /** FR 32a, §8.6b. How many of them went past the allowance on a certificate. */
   certified_days: number;
   /** FR 27. */
   reason: string;
   corrects_id: string | null;
-  /** The request that caused this movement. LMS 301. */
+  /** The request that caused this movement. */
   leave_request_id: string | null;
-  /** The other side of a move between two leave types. FR 32c, §8.6c, LMS 507. */
+  /** The other side of a move between two leave types. FR 32c, §8.6c. */
   correlation_id: string | null;
   created_by: ColumnType<string, never, never>;
   created_by_employee_id: ColumnType<string | null, never, never>;
   created_at: Timestamp;
 }
 
-/** The cached balance. §5.7, LMS 211, §8.6. */
+/** The cached balance. §5.7, §8.6. */
 export interface LeaveBalanceTable {
   id: ColumnType<string, never, never>;
   employee_id: ColumnType<string, never, never>;
@@ -232,14 +231,14 @@ export interface LeaveBalanceTable {
   entitled: ColumnType<string, never, never>;
   carried_over: ColumnType<string, never, never>;
   adjustment: ColumnType<string, never, never>;
-  /** Days consumed by approved leave, and days held for leave not yet decided. FR 24, LMS 209. */
+  /** Days consumed by approved leave, and days held for leave not yet decided. FR 24. */
   taken: ColumnType<number, never, never>;
   pending: ColumnType<number, never, never>;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
 
-/** Every balance where the cache and the ledger do not say the same thing. §7.4., LMS 213, §5.7. */
+/** Every balance where the cache and the ledger do not say the same thing. §7.4., §5.7. */
 export interface BalanceDisagreementView {
   employee_id: ColumnType<string, never, never>;
   /** The handle a person acts on. FR 08, FR 63. */
@@ -261,7 +260,7 @@ export interface BalanceDisagreementView {
   ledger_pending: ColumnType<string, never, never>;
 }
 
-/** What the ledger says every balance is. §5.7, LMS 213. */
+/** What the ledger says every balance is. §5.7. */
 export interface WhatTheLedgerSaysView {
   employee_id: ColumnType<string, never, never>;
   leave_type_id: ColumnType<string, never, never>;
@@ -273,7 +272,7 @@ export interface WhatTheLedgerSaysView {
   pending: ColumnType<string, never, never>;
 }
 
-/** Something that happened, and the entitlement it brought with it. FR 32g, FR 32e, LMS 218. */
+/** Something that happened, and the entitlement it brought with it. FR 32g, FR 32e. */
 export interface LeaveEntitlementEventTable {
   id: Generated<string>;
   employee_id: ColumnType<string, string, never>;
@@ -293,7 +292,7 @@ export interface LeaveEntitlementEventTable {
   updated_at: ColumnType<Date, never, never>;
 }
 
-/** A period of leave somebody has asked for. FR 10, FR 11, §8., LMS 301, FR 17, FR 18. */
+/** A period of leave somebody has asked for. FR 10, FR 11, §8., FR 17, FR 18. */
 export interface LeaveRequestTable {
   id: Generated<string>;
   employee_id: ColumnType<string, string, never>;
@@ -306,11 +305,11 @@ export interface LeaveRequestTable {
   end_date: ColumnType<string, string, never>;
   /** FR 10. Where the type asks for one. Never `''`; nothing to say is NULL. */
   reason: string | null;
-  /** FR 18. Why HR entered it past the type's backdating window. Written once. LMS 308. */
+  /** FR 18. Why HR entered it past the type's backdating window. Written once. */
   late_entry_reason: ColumnType<string | null, string | null, never>;
-  /** FR 13, FR 32a. Whether this request had to arrive with documentation. LMS 311. */
+  /** FR 13, FR 32a. Whether this request had to arrive with documentation. */
   evidence_required: ColumnType<boolean, boolean, never>;
-  /** FR 32a, §8.6b. How many of its days went past the allowance on a certificate. LMS 312. */
+  /** FR 32a, §8.6b. How many of its days went past the allowance on a certificate. */
   certified_days: ColumnType<number, number, never>;
   /** FR 11, the story's third criterion. */
   counting_basis: ColumnType<string, string, never>;
@@ -320,14 +319,14 @@ export interface LeaveRequestTable {
   status: string;
   /** FR 38a, FR 40. */
   awaiting_approval_from: string | null;
-  /** FR 48d. One hand answered every stage, because there was nobody else. LMS 322. */
+  /** FR 48d. One hand answered every stage, because there was nobody else. */
   decided_by_a_single_approver: ColumnType<boolean, never, boolean>;
   submitted_at: Timestamp;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
 
-/** A leave request somebody has started and not finished. FR 19, LMS 302. */
+/** A leave request somebody has started and not finished. FR 19. */
 export interface LeaveRequestDraftTable {
   id: Generated<string>;
   /** Never moved, by `leave_request_draft_stays_with_whose_it_is`. */
@@ -342,14 +341,14 @@ export interface LeaveRequestDraftTable {
   updated_at: Timestamp;
 }
 
-/** A certificate or supporting document on a request. FR 12, NFR SEC 07, LMS 310. */
+/** A certificate or supporting document on a request. FR 12, NFR SEC 07. */
 export interface LeaveRequestAttachmentTable {
   id: Generated<string>;
-  /** Null while the file is waiting for the request it will evidence. LMS 311. */
+  /** Null while the file is waiting for the request it will evidence. */
   leave_request_id: ColumnType<string | null, string | null, string>;
-  /** Whose evidence it is. Never moved. LMS 311. */
+  /** Whose evidence it is. Never moved. */
   held_for_employee_id: ColumnType<string, string, never>;
-  /** One of five, and moved only when the file goes onto a request. LMS 311. */
+  /** One of five, and moved only when the file goes onto a request. */
   slot: ColumnType<number, number, number>;
   /** A label for a screen. Never a path. */
   filename: ColumnType<string, string, never>;
@@ -368,11 +367,11 @@ export interface LeaveRequestAttachmentTable {
   uploaded_by: ColumnType<string, never, never>;
   uploaded_by_employee_id: ColumnType<string | null, never, never>;
   uploaded_at: Timestamp;
-  /** When retention deleted the stored file. Set once. NFR SEC 06, LMS 514. */
+  /** When retention deleted the stored file. Set once. NFR SEC 06. */
   file_deleted_at: ColumnType<Date | null, never, Date>;
 }
 
-/** A short-lived address for one attachment's bytes. NFR SEC 04, NFR SEC 06, LMS 407. */
+/** A short-lived address for one attachment's bytes. NFR SEC 04, NFR SEC 06. */
 export interface AttachmentDownloadLinkTable {
   id: Generated<string>;
   attachment_id: ColumnType<string, string, never>;
@@ -389,7 +388,7 @@ export interface AttachmentDownloadLinkTable {
   issued_at: Timestamp;
 }
 
-/** One reach for a certificate, and what became of it. NFR SEC 04, LMS 407. */
+/** One reach for a certificate, and what became of it. NFR SEC 04. */
 export interface AttachmentAccessTable {
   id: Generated<string>;
   /** Neither of these is a foreign key: the log outlives the file and the link. */
@@ -404,7 +403,7 @@ export interface AttachmentAccessTable {
   accessed_at: Timestamp;
 }
 
-/** What one approver said at one stage, and when. FR 39, FR 52, LMS 315, LMS 314. */
+/** What one approver said at one stage, and when. FR 39, FR 52. */
 export interface LeaveRequestDecisionTable {
   id: Generated<string>;
   leave_request_id: ColumnType<string, string, never>;
@@ -413,16 +412,16 @@ export interface LeaveRequestDecisionTable {
   on_behalf_of: ColumnType<string, string, never>;
   /** FR 39. */
   comment: ColumnType<string | null, string | null, never>;
-  /** The decision this one reverses. FR 44, §7.2, LMS 318. */
+  /** The decision this one reverses. FR 44, §7.2. */
   overrides_decision_id: ColumnType<string | null, string | null, never>;
-  /** FR 49, FR 52. Whose approvals were answered, null where the decider's own. LMS 327. */
+  /** FR 49, FR 52. Whose approvals were answered, null where the decider's own. */
   delegated_for_employee_id: ColumnType<string | null, string | null, never>;
   decided_by: ColumnType<string, never, never>;
   decided_by_employee_id: ColumnType<string | null, never, never>;
   decided_at: Timestamp;
 }
 
-/** An ask for approved leave to be taken off the books, or HR's answer to one. FR 47, LMS 324. */
+/** An ask for approved leave to be taken off the books, or HR's answer to one. FR 47. */
 export interface LeaveRequestWithdrawalTable {
   id: Generated<string>;
   leave_request_id: ColumnType<string, string, never>;
@@ -449,7 +448,7 @@ export interface LeaveRequestReversalTable {
   recorded_at: Timestamp;
 }
 
-/** Days of approved leave that became sick leave. FR 32c, §8.6c, LMS 507. */
+/** Days of approved leave that became sick leave. FR 32c, §8.6c. */
 export interface LeaveRequestReclassificationTable {
   id: Generated<string>;
   /** The leave the days came out of. Its dates and its price are untouched. */
@@ -472,7 +471,7 @@ export interface LeaveRequestReclassificationTable {
   recorded_at: Timestamp;
 }
 
-/** A public holiday declared inside agreed leave, credited back. FR 25, §8.8, LMS 508. */
+/** A public holiday declared inside agreed leave, credited back. FR 25, §8.8. */
 export interface LeaveRequestRecalculationTable {
   id: Generated<string>;
   /** The leave the day fell inside. Its dates and its price are untouched. */
@@ -491,7 +490,7 @@ export interface LeaveRequestRecalculationTable {
   recorded_at: Timestamp;
 }
 
-/** One stage of a request's chain that another desk answered. FR 48b, §8.6a, LMS 320. */
+/** One stage of a request's chain that another desk answered. FR 48b, §8.6a. */
 export interface LeaveRequestRoutingTable {
   id: Generated<string>;
   leave_request_id: ColumnType<string, string, never>;
@@ -506,7 +505,7 @@ export interface LeaveRequestRoutingTable {
   recorded_at: Timestamp;
 }
 
-/** One request a reporting-line change carried to a new manager. FR 07, §8.4, LMS 325. */
+/** One request a reporting-line change carried to a new manager. FR 07, §8.4. */
 export interface LeaveRequestReassignmentTable {
   id: Generated<string>;
   leave_request_id: ColumnType<string, string, never>;
@@ -523,7 +522,7 @@ export interface LeaveRequestReassignmentTable {
   recorded_at: Timestamp;
 }
 
-/** One approver's approvals, handed to a colleague for a date range. FR 49, §8.6a, LMS 327. */
+/** One approver's approvals, handed to a colleague for a date range. FR 49, §8.6a. */
 export interface ApprovalDelegationTable {
   id: Generated<string>;
   /** Whose approvals these are, and who answers them meanwhile. */
@@ -543,20 +542,20 @@ export interface ApprovalDelegationTable {
   nominated_at: Timestamp;
 }
 
-/** What the company itself is configured as. FR 48c, §4.3.1, LMS 321. */
+/** What the company itself is configured as. FR 48c, §4.3.1. */
 export interface OrganisationSettingTable {
   id: Generated<string>;
   /** FR 48c. Who the `CEO` desk resolves to, until HR names somebody it is nobody. */
   ceo_employee_id: string | null;
-  /** FR 44. FALSE makes a line manager's decision final. LMS 505. */
+  /** FR 44. FALSE makes a line manager's decision final. */
   overrides_are_allowed: Generated<boolean>;
-  /** NFR SEC 06. Null is kept indefinitely. LMS 505. */
+  /** NFR SEC 06. Null is kept indefinitely. */
   attachment_retention_months: number | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
 
-/** One thing somebody was told about their leave. FR 59, §7.1., LMS 329. */
+/** One thing somebody was told about their leave. FR 59, §7.1.. */
 export interface NotificationTable {
   id: Generated<string>;
   /** Who was told. FR 59, FR 60. */
@@ -569,16 +568,16 @@ export interface NotificationTable {
   read_at: ColumnType<Date | null, never, Date | null>;
   emailed_at: ColumnType<Date | null, never, Date | null>;
   email_failure: ColumnType<string | null, never, string | null>;
-  /** Sends made, delivered or not. LMS 331. */
+  /** Sends made, delivered or not. */
   email_attempts: ColumnType<number, never, number>;
-  /** When the next send is due, null where none is. LMS 331. */
+  /** When the next send is due, null where none is. */
   email_next_attempt_at: ColumnType<Date | null, never, Date | null>;
-  /** When the last permitted attempt failed. LMS 331. */
+  /** When the last permitted attempt failed. */
   email_gave_up_at: ColumnType<Date | null, never, Date | null>;
   created_at: Generated<Date>;
 }
 
-/** HR's wording for one email. No row is the original. FR 61, LMS 512. */
+/** HR's wording for one email. No row is the original. FR 61. */
 export interface NotificationTemplateTable {
   id: Generated<string>;
   name: string;
@@ -590,9 +589,9 @@ export interface NotificationTemplateTable {
 
 export interface Database {
   app_user: AppUserTable;
-  /** FR 49, LMS 327. */
+  /** FR 49. */
   approval_delegation: ApprovalDelegationTable;
-  /** NFR SEC 04, LMS 407. */
+  /** NFR SEC 04. */
   attachment_access: AttachmentAccessTable;
   attachment_download_link: AttachmentDownloadLinkTable;
   audit_log: AuditLogTable;
@@ -618,7 +617,7 @@ export interface Database {
   leave_type_approval_step: LeaveTypeApprovalStepTable;
   leave_year: LeaveYearTable;
   notification: NotificationTable;
-  /** FR 61, LMS 512. */
+  /** FR 61. */
   notification_template: NotificationTemplateTable;
   organisation_setting: OrganisationSettingTable;
   role: RoleTable;

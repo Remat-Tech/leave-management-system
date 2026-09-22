@@ -21,7 +21,7 @@ import { LeaveYearService } from '../../src/features/leave-year/leave-year.servi
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * Moving a balance by hand. FR 37. LMS 216.
+ * Moving a balance by hand. FR 37.
  *
  * The story is one HR person putting a genuine mistake right: a figure that is wrong,
  * a sentence saying why, and a movement anybody can find afterwards. Its three
@@ -46,8 +46,8 @@ import { seed } from '../../seeds/seed.mjs';
  *
  * ## What is here
  *
- * The story as somebody in HR would actually meet it, end to end, and the two things
- * LMS 216 changed:
+ * The adjustment as somebody in HR would actually meet it, end to end, and the two things
+ * it changed:
  *
  *   **Both directions, in one balance, netting to what they add up to.** FR 37 asks
  *   for "positive or negative" and the interesting case is a balance that has had
@@ -480,7 +480,7 @@ describe('who may move a balance by hand, FR 37 and §10', () => {
    * And **not** an HR Officer, which is where this story and the authorisation matrix
    * disagree.
    *
-   * LMS 216 is written "as an HR Officer"; §10 has an ✗ against that column and every
+   * The requirement is written "as an HR Officer"; §10 has an ✗ against that column and every
    * other one. The matrix is what the code follows — an adjustment moves days by
    * fiat, with no request and no rule behind it, and can never be removed, only
    * compensated — and the argument is `ledgerPolicy.adjust`'s.

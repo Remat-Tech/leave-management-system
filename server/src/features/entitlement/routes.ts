@@ -1,4 +1,4 @@
-/** The entitlement rule screen, over HTTP. FR 31, LMS 502. */
+/** The entitlement rule screen, over HTTP. FR 31. */
 
 import { type Request, type Response, Router } from 'express';
 import type { Actor } from '../../auth/actor.js';

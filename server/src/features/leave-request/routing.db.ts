@@ -1,4 +1,4 @@
-/** Database access for the stages a request's routing had to skip. FR 48b, §8.6a, LMS 320. */
+/** Database access for the stages a request's routing had to skip. FR 48b, §8.6a. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';

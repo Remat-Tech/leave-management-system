@@ -1,4 +1,4 @@
-/** Retrying a notification whose email did not send. FR 59, §7.1., LMS 331. */
+/** Retrying a notification whose email did not send. FR 59, §7.1.. */
 
 import type { Notice } from './notification.js';
 
@@ -22,7 +22,7 @@ export function backoffAfter(attempt: number): number {
 }
 
 /**
- * When the send after this one is due, or null where there is not one. LMS 331.
+ * When the send after this one is due, or null where there is not one.
  *
  * No jitter. Everything due is drained by one job through one mailer, one message at a
  * time, so notices that failed together cannot stampede a mail server on the way back.
@@ -52,7 +52,7 @@ export interface Undelivered {
   to: string;
 }
 
-/** What became of one drained notice. LMS 331. */
+/** What became of one drained notice. */
 export interface Redelivered {
   noticeId: string;
   employeeId: string;

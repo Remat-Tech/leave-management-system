@@ -11,7 +11,7 @@ import {
 import { summaryOf } from '../../src/features/notification/reminder.job.js';
 
 /**
- * What an approver is chased with, every day until they decide. FR 50, FR 60. LMS 330.
+ * What an approver is chased with, every day until they decide. FR 50, FR 60.
  *
  * The message is written to somebody other than the person whose leave it is, so the two
  * things it must never get wrong are whose days these are and what a reminder is: it is the
@@ -193,7 +193,7 @@ describe('the reminder', () => {
   /* The same sign off every message here ends with, which is how a reader tells a real one
      from a forgery. */
   it('and ends the way every other message does', () => {
-    expect(reminderOf(waiting()).body.trimEnd().endsWith('Remat Holdings Leave')).toBe(true);
+    expect(reminderOf(waiting()).body.trimEnd().endsWith('Rota')).toBe(true);
   });
 
   /* It goes through `validateNotice`, the same gate `noticeOf` does, so a reminder is

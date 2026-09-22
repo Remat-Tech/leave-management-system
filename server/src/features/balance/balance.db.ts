@@ -1,4 +1,4 @@
-/** Database access for the cached balance. §5.7., LMS 211, FR 26, §8.2. */
+/** Database access for the cached balance. §5.7., FR 26, §8.2. */
 
 import { type Kysely, type Selectable, sql } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -23,7 +23,7 @@ export class BalanceRepository {
     return row === undefined ? noMovementsYet(key) : toBalance(row);
   }
 
-  /** One balance, held still until the transaction ends. §8.2, FR 26, LMS 212. */
+  /** One balance, held still until the transaction ends. §8.2, FR 26. */
   async holdStill(key: BalanceKey): Promise<LeaveBalance> {
     const held = await sql<BalanceRow>`
       SELECT * FROM hold_one_balance_while_it_is_checked(
@@ -36,7 +36,7 @@ export class BalanceRepository {
   }
 
   /**
-   * Several named balances in one statement. LMS 404.
+   * Several named balances in one statement.
    *
    * {@link BalanceRepository.forOne} for a list of keys, so a screen showing many people's
    * figures at once — the approver queue — asks once rather than once per row. A key nothing
@@ -68,7 +68,7 @@ export class BalanceRepository {
   }
 
   /**
-   * Every balance several people hold, in one statement. FR 55, LMS 405.
+   * Every balance several people hold, in one statement. FR 55.
    *
    * {@link BalanceRepository.forEmployee} for a team, so a manager's screen asks once rather
    * than once per report. Same ordering, and a key nothing has moved has no row here either.

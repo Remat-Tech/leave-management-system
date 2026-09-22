@@ -277,7 +277,7 @@ describe('the dates', () => {
   });
 });
 
-describe('the department, LMS 105', () => {
+describe('the department', () => {
   /**
    * Only the half that needs nothing but the record in hand. Whether the id is a
    * department, and whether it is one still open, are questions about another

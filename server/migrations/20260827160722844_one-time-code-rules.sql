@@ -1,7 +1,7 @@
 -- Up Migration
 
 -- The one time code, and what a challenge in progress has to look like.
--- NFR SEC 01. LMS 110.
+-- NFR SEC 01.
 --
 -- Three of the four columns arrived with the organisation migration —
 -- mfa_enabled, mfa_code_hash, mfa_code_expires_at — and the
@@ -88,7 +88,7 @@ ALTER TABLE app_user
 
    role and user_role are read by the mandatory-for-HR rule and are not written by
    it. lms_app holds SELECT on both from the default privileges, and the INSERT
-   and DELETE that assigning a role needs are LMS 111's to use, not this story's. */
+   and DELETE that assigning a role needs belong to role assignment, not here. */
 
 -- ------------------------------------------------------------------ the stale
 
@@ -101,7 +101,7 @@ ALTER TABLE app_user
    in overwrites it.
 
    What it is, is untidy, and it is the kind of untidy that a purge job of the
-   sort Phase 5 collects — LMS 514 already exists for attachments — can clear in
+   sort Phase 5 collects — one already exists for attachments — can clear in
    one statement whenever somebody wants the table clean. There is no index for
    that here, because a partial index maintained on every sign in to serve a job
    nobody has written yet costs more than the scan it would save. */

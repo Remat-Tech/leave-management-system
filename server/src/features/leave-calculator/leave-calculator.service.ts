@@ -1,5 +1,5 @@
 /**
- * Asking what a period of leave would cost. FR 21, FR 22, §7.3., LMS 207, LMS 210, LMS 211, §8.6, FR 17, FR 18, FR 13, §8.
+ * Asking what a period of leave would cost. FR 21, FR 22, §7.3., §8.6, FR 17, FR 18, FR 13, §8.
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -26,7 +26,7 @@ export class LeaveCalculatorService {
     private readonly guard: Guard,
   ) {}
 
-  /** What this period of this kind of leave costs this person. NFR USA 03, LMS 303, FR 25. */
+  /** What this period of this kind of leave costs this person. NFR USA 03, FR 25. */
   async count(
     actor: Actor,
     employee: Employee,

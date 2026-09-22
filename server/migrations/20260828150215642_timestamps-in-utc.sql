@@ -1,7 +1,7 @@
 -- Up Migration
 
 -- Every session reads and writes in UTC, and reads dates as YYYY-MM-DD.
--- NFR DAT 03. LMS 114.
+-- NFR DAT 03.
 --
 -- The story is an employee whose leave never appears to shift by a day. That is
 -- two rules with nothing in common except how easily they are confused:

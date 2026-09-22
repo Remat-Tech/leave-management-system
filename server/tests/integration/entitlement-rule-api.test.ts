@@ -46,7 +46,7 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * The entitlement rule screen, over HTTP. FR 31. LMS 502.
+ * The entitlement rule screen, over HTTP. FR 31.
  *
  * ../unit/entitlement-rule.test.ts proves precedence, and ./entitlement-rule.test.ts proves
  * the table, the trigger and the closed-year boundary against a real database. What is only
@@ -123,7 +123,7 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: new BalanceRepository(db),
-    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    /** FR 27, FR 37. The ledger the adjustment screen reads, and the door it writes through. */
     ledger: new LedgerRepository(db),
     adjustments: balances,
     employees,
@@ -142,7 +142,7 @@ beforeAll(async () => {
       decisions,
       new LeaveRoutingRepository(db),
       new WithdrawalRepository(db),
-      /** FR 32c, LMS 507. */
+      /** FR 32c. */
       new ReclassificationRepository(db),
       new AttachmentRepository(db),
       new RoleRepository(db),
@@ -158,7 +158,7 @@ beforeAll(async () => {
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
-    /** FR 25, §8.8, LMS 508. */
+    /** FR 25, §8.8. */
     holidayRecalculations: holidayRecalculationService(db, guard, balances),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
@@ -241,7 +241,7 @@ describe('who sets the figures', () => {
   });
 
   /**
-   * Unlike the leave types of LMS 501, the whole list *is* HR's — because a rule may name
+   * Unlike the leave types, the whole list *is* HR's — because a rule may name
    * one person, and the list of exceptions is the list of arrangements.
    */
   it('refuses the list to somebody who does not read every record, and says why', async () => {

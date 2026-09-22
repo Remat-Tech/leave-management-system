@@ -1,5 +1,5 @@
 /**
- * What a kind of leave asks of somebody, said before they have typed anything. LMS 403, FR 13, FR 17, FR 18, FR 32f, FR 32a, FR 32g, FR 11, FR 22, FR 38a.
+ * What a kind of leave asks of somebody, said before they have typed anything. FR 13, FR 17, FR 18, FR 32f, FR 32a, FR 32g, FR 11, FR 22, FR 38a.
  */
 
 import {

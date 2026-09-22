@@ -1,4 +1,4 @@
-/** Database access for what people have been told. FR 59, §7.1., LMS 329. */
+/** Database access for what people have been told. FR 59, §7.1.. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -18,7 +18,7 @@ export interface NoticeListOptions {
   limit?: number;
 }
 
-/** What became of one attempt to send a notice. LMS 331. */
+/** What became of one attempt to send a notice. */
 export type EmailOutcome =
   | { attempt: number; sentAt: Date }
   | {
@@ -33,7 +33,7 @@ export type EmailOutcome =
 export class NotificationRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  /** HR's wording for one email, or undefined where it is the original. FR 61, LMS 512. */
+  /** HR's wording for one email, or undefined where it is the original. FR 61. */
   async wordingFor(name: EmailName): Promise<Wording | undefined> {
     return this.db
       .selectFrom('notification_template')
@@ -53,7 +53,7 @@ export class NotificationRepository {
     return toNotice(row);
   }
 
-  /** Stamps what became of one attempt at the email. FR 59, LMS 331. */
+  /** Stamps what became of one attempt at the email. FR 59. */
   async recordTheEmail(id: string, outcome: EmailOutcome): Promise<Notice | undefined> {
     const row = await this.db
       .updateTable('notification')
@@ -79,7 +79,7 @@ export class NotificationRepository {
   }
 
   /**
-   * Notices whose email is due another try, oldest due first. FR 59, LMS 331.
+   * Notices whose email is due another try, oldest due first. FR 59.
    *
    * The address is joined rather than stored on the notice, so a corrected work address is
    * the one a retry goes to. Read only — {@link claimForAnotherTry} is what takes one.
@@ -100,7 +100,7 @@ export class NotificationRepository {
   }
 
   /**
-   * Takes one due notice, counting the attempt and scheduling the one after it. LMS 331.
+   * Takes one due notice, counting the attempt and scheduling the one after it.
    *
    * Claimed before the send rather than after, so a process that dies mid-send leaves a
    * notice that comes due again rather than one nobody will ever look at. `seenAttempts` is
@@ -123,7 +123,7 @@ export class NotificationRepository {
     return row === undefined ? undefined : toNotice(row);
   }
 
-  /** How many notices are waiting on another try. LMS 331. */
+  /** How many notices are waiting on another try. */
   async howManyAreDue(asAt: Date): Promise<number> {
     const row = await this.db
       .selectFrom('notification')
@@ -190,7 +190,7 @@ export class NotificationRepository {
   }
 
   /**
-   * Who has already been reminded about which request since then. FR 50, LMS 330.
+   * Who has already been reminded about which request since then. FR 50.
    *
    * What stops a second run in one day chasing everybody twice. Read across everybody
    * rather than per request, because the job asks it once a morning.

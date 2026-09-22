@@ -1,4 +1,4 @@
-/** Database access for the decisions on a leave request. FR 39, FR 52, LMS 315. */
+/** Database access for the decisions on a leave request. FR 39, FR 52. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -21,13 +21,13 @@ const CHECK_VIOLATION = '23514';
 /** Postgres `unique_violation`. */
 const UNIQUE_VIOLATION = '23505';
 
-/** The index that holds one decision to a desk. NFR DAT 02, §8.1, LMS 326. */
+/** The index that holds one decision to a desk. NFR DAT 02, §8.1. */
 const ONCE_PER_DESK = 'leave_request_decision_once_per_desk';
 
-/** The CHECK that carries LMS 315's first criterion into the schema. */
+/** The CHECK that carries a refusal's reason into the schema. */
 const REFUSAL_SAYS_WHY = 'leave_request_refusal_says_why';
 
-/** The CHECK that carries FR 44's second criterion into the schema. LMS 318. */
+/** The CHECK that carries FR 44's second criterion into the schema. */
 const OVERRIDE_SAYS_WHY = 'leave_request_override_says_why';
 
 type DecisionRow = Selectable<LeaveRequestDecisionTable>;
@@ -62,7 +62,7 @@ export class LeaveDecisionRepository {
     return rows.map(toDecision);
   }
 
-  /** The decisions on a whole page of requests, oldest first within each. FR 54, LMS 402. */
+  /** The decisions on a whole page of requests, oldest first within each. FR 54. */
   async forRequests(leaveRequestIds: readonly string[]): Promise<LeaveDecision[]> {
     if (leaveRequestIds.length === 0) {
       return [];
@@ -85,7 +85,7 @@ export class LeaveDecisionRepository {
     } catch (error) {
       const failure = error as { code?: string; constraint?: string };
 
-      /* NFR DAT 02, §8.1, LMS 326. The desk answered twice. `BalanceService.decideForRequest`
+      /* NFR DAT 02, §8.1. The desk answered twice. `BalanceService.decideForRequest`
          reads the decisions inside the lock and refuses this with the winner named, so what
          reaches here is a writer that found another way in — and it is told the same thing
          rather than a message about an index. */
@@ -116,7 +116,7 @@ function rowFor(decision: ValidatedDecision): Insertable<LeaveRequestDecisionTab
     comment: decision.comment,
     /** FR 44. */
     overrides_decision_id: decision.overridesDecisionId,
-    /** FR 49, FR 52, LMS 327. */
+    /** FR 49, FR 52. */
     delegated_for_employee_id: decision.delegatedFor,
   };
 }
@@ -129,7 +129,7 @@ function toDecision(row: DecisionRow): LeaveDecision {
     onBehalfOf: row.on_behalf_of as ApproverRole,
     comment: row.comment,
     overridesDecisionId: row.overrides_decision_id,
-    /** FR 49, FR 52, LMS 327. */
+    /** FR 49, FR 52. */
     delegatedFor: row.delegated_for_employee_id,
     decidedBy: row.decided_by,
     decidedByEmployeeId: row.decided_by_employee_id,

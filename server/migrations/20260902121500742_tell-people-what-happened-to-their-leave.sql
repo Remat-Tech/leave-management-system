@@ -1,14 +1,13 @@
 -- Up Migration
 
 -- Being told what happened to your leave, rather than refreshing a screen. FR 59, §7.1.
--- LMS 329.
 --
--- Every story in Phase 3 so far has ended with the same sentence in its notes, in the
--- future tense. LMS 306: "Being *told* that a request went away — the approver who had it
--- in their queue — is FR 59's". LMS 315: "That somebody is *told* their leave was refused
--- is FR 45 and is a story of its own; what this one guarantees is that there is something
--- true to tell them." LMS 323: "Being *told* the request went away is FR 59, which owns
--- notification for every event in a request's life." This is that story, and this table is
+-- Everything in Phase 3 so far has ended with the same sentence in its notes, in the
+-- future tense: "Being *told* that a request went away — the approver who had it
+-- in their queue — is FR 59's"; "That somebody is *told* their leave was refused
+-- is FR 45 and is a piece of its own; what this one guarantees is that there is something
+-- true to tell them"; "Being *told* the request went away is FR 59, which owns
+-- notification for every event in a request's life." This is that piece, and this table is
 -- the half of it a database can hold.
 --
 -- ## Why the in-app notice is a row and not a query
@@ -93,7 +92,7 @@ CREATE TABLE notification (
 
        It will have to become nullable the day something else notifies — a balance running
        low, an entitlement about to lapse — and that is a migration rather than a hole left
-       open now. The same rule LMS 209 set for `leave_request_status_known`: a column that
+       open now. The same rule set for `leave_request_status_known`: a column that
        nothing can write is a promise the schema cannot keep. */
     leave_request_id BIGINT NOT NULL REFERENCES leave_request(id),
 
@@ -144,7 +143,7 @@ CREATE TABLE notification (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     /* The closed list. Six values, and every one of them is reachable by something this
-       system can already do — which is LMS 209's rule applied to an event list rather than
+       system can already do — which is that rule applied to an event list rather than
        to a status list.
 
        FR 59 names an override among the things somebody is told about, and there is
@@ -159,8 +158,8 @@ CREATE TABLE notification (
        different pieces of news, and telling them apart is the entire point of the story's
        "so that". "Your line manager approved it, HR still has to" and "your leave is
        agreed" are the sentences somebody with an aeroplane ticket in the other tab is
-       choosing between, and a single APPROVED that meant both would be the defect LMS 316
-       was written against arriving by email. */
+       choosing between, and a single APPROVED that meant both would be the defect the
+       every-stage rule was written against arriving by email. */
     CONSTRAINT notification_event_known CHECK (
         event IN ('SUBMITTED', 'STAGE_APPROVED', 'APPROVED', 'REFUSED', 'WITHDRAWN',
                   'CANCELLED')),
@@ -283,7 +282,7 @@ CREATE TRIGGER notification_is_never_deleted
    pressed.
 
    What a notice records is derived from records that *are* audited. `leave_request` has been
-   audited since LMS 301 and answers who moved it and when; this says what the person was
+   audited and answers who moved it and when; this says what the person was
    told about it. AUDITED_ENTITIES in /domain/audit.ts is the list that must not gain this
    table, and the integration suite reads the triggers back out of the catalogue and asserts
    the two agree. */

@@ -1,6 +1,6 @@
 -- Up Migration
 
--- The gazetted public holiday calendar. FR 22, §5.4. LMS 206.
+-- The gazetted public holiday calendar. FR 22, §5.4.
 --
 -- The leave-type-rules migration named this table before it existed: "Whether a
 -- public holiday inside a request is free follows from counting_basis and the
@@ -96,7 +96,7 @@ CREATE UNIQUE INDEX holiday_one_per_day ON holiday (holiday_date);
 
 -- ---------------------------------------------- a settled year keeps its days
 
-/* The rule this story inherits from LMS 205, and the reason it is here rather
+/* The rule this inherits from the leave year, and the reason it is here rather
    than left to the service.
 
    Adding the twenty fifth of December 2026 to the calendar in 2028 changes what

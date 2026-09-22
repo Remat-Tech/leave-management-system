@@ -1,6 +1,6 @@
 -- Up Migration
 
--- What a leave type is worth, and from when. FR 31, §5.5. LMS 203.
+-- What a leave type is worth, and from when. FR 31, §5.5.
 --
 -- The leave-type table says what *kind* of arithmetic a type is subject to. This
 -- one says what numbers go into it — twenty days of annual leave, three of sick,
@@ -9,7 +9,7 @@
 --
 -- FR 31 in full: "No leave rule shall require a code change or a deployment", and
 -- a change to one "shall not retroactively alter closed leave years". The first
--- half is LMS 201 and is a table. The second half is these columns, and it is the
+-- half is the leave type table. The second half is these columns, and it is the
 -- harder half, because the failure it prevents is silent. HR raises annual leave
 -- from twenty days to twenty two next January; without a date on the figure,
 -- every balance ever calculated is now calculated against twenty two, last year's
@@ -46,7 +46,7 @@
 -- rows for a person and a type; ../src/domain/entitlement-rule.ts picks between
 -- them, and ../tests/unit/entitlement-rule.test.ts is where that is proved.
 --
--- **The closed leave year is LMS 205.** `leave_year` and its closed flag do not
+-- **The closed leave year comes later.** `leave_year` and its closed flag do not
 -- exist yet. What exists here is the half of "closed years are never recomputed"
 -- that needs nothing else: a rule that has taken effect cannot be rewritten by
 -- anybody, on any connection. The other half — refusing a *new* rule that reaches
@@ -62,7 +62,7 @@ CREATE TABLE leave_entitlement_rule (
     /* Which type this is the figure for. No cascade: a leave type is retired and
        never deleted, and once a rule points at one the key refuses the deletion
        on its own — which is the guarantee the leave-type table has been carrying
-       as a withheld privilege since LMS 201. */
+       as a withheld privilege. */
     leave_type_id          BIGINT NOT NULL REFERENCES leave_type(id),
 
     /* The scope, as the two things that can narrow it. Both NULL is the rule for
@@ -99,8 +99,8 @@ CREATE TABLE leave_entitlement_rule (
 
        Read only for QUOTA types: an event based entitlement is granted when the
        event happens, so there is no part year to take a proportion of. The
-       formula itself is LMS 013 and is applied by LMS 215; this column is only
-       whether it is applied at all.
+       formula itself is not settled yet, and pro rating applies it; this column is
+       only whether it is applied at all.
 
        Defaulted FALSE rather than TRUE, because pro rating takes days off
        somebody. A rule that says nothing should grant the figure it names. */
@@ -109,7 +109,7 @@ CREATE TABLE leave_entitlement_rule (
     /* FR 36. Whether days left at the end of the leave year survive it.
 
        Annual leave and nothing else today, and this is the column that keeps the
-       rollover job of LMS 217 from being a branch on a type code: "sick leave
+       rollover job from being a branch on a type code: "sick leave
        does not carry" is this boolean being false, not an `if` in the job. */
     carries_over           BOOLEAN NOT NULL DEFAULT FALSE,
 
@@ -353,7 +353,7 @@ GRANT UPDATE, DELETE ON leave_entitlement_rule TO lms_app;
    seeded, and a leave system whose annual leave is worth nothing is one where
    every balance is zero.
 
-   Owned by a function for the reason LMS 202 gave — so that the repair for a lost
+   Owned by a function for the stated reason — so that the repair for a lost
    figure is a call rather than five rows retyped — and here that is not
    hypothetical. The fixture seed truncates `employee`, this table has a foreign
    key to it, and TRUNCATE CASCADE empties every referencing table wholesale. So
@@ -362,7 +362,7 @@ GRANT UPDATE, DELETE ON leave_entitlement_rule TO lms_app;
    figures that could drift from these.
 
    Effective from the first of January 2026, which is the leave year the system
-   goes live in and the first of the two LMS 205 seeds. Everything before that
+   goes live in and the first of the two seeded leave years. Everything before that
    date resolves to no rule at all, which is the honest answer: this system holds
    no entitlement history from before it existed, and inventing one would be worse
    than saying so.
@@ -469,20 +469,20 @@ $$;
 
 -- ------------------------------------------------------ what is not here yet
 
-/* **The leave year.** LMS 205, `leave_year`, with a start, an end and a closed
+/* **The leave year.** `leave_year`, with a start, an end and a closed
    flag, and 2026 and 2027 seeded. It is what turns "this figure applies on this
    day" into "this figure applies to this year", and it is what a closed year is.
    Nothing here needs it: a date is a date whether or not somebody has drawn a
    year around it, and the rules above are already safe against a rewrite.
 
    **The grant.** A resolved figure becomes days somebody actually has only when
-   the ledger records it — LMS 210 and LMS 214 — and that is the other half of why
+   the ledger records it — the ledger and the cached balance — and that is the other half of why
    a closed year cannot move. A grant is an entry with an amount on it, written
    once; recalculating it is a compensating entry that says so, never a quiet
    subtraction. This table is what the grant is calculated *from*, on the day it
    is calculated.
 
-   **The pro rating formula.** LMS 013 obtained it and LMS 215 applies it.
+   **The pro rating formula.** It is obtained elsewhere and pro rating applies it.
    `prorate_on_join` is only whether it applies at all; where the fraction comes
    from is not a column here, because it is one calculation for the whole company
    rather than a figure per rule. */

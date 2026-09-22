@@ -1,4 +1,4 @@
-/** HR's reports, assembled. FR 63, LMS 510, FR 58, LMS 511. */
+/** HR's reports, assembled. FR 63, FR 58. */
 
 import type { Actor } from '../../auth/actor.js';
 import type { Guard } from '../../auth/policy.js';

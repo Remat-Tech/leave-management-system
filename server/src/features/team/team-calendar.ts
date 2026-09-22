@@ -1,4 +1,4 @@
-/** Who is away and when, across a department. FR 57, LMS 406, LMS 409. */
+/** Who is away and when, across a department. FR 57. */
 
 import type { Department } from '../department/department.js';
 import type { Employee, EmploymentStatus } from '../employee/employee.js';
@@ -34,7 +34,7 @@ export interface Absence {
   inWords: string;
 }
 
-/** A department, as the calendar names one. LMS 409. */
+/** A department, as the calendar names one. */
 export interface DepartmentOnTheCalendar {
   id: string;
   name: string;
@@ -45,7 +45,7 @@ export interface Colleague {
   employeeId: string;
   name: string;
   jobTitle: string | null;
-  /** LMS 409. The heading a colleague sits under where the calendar spans more than one. */
+  /** The heading a colleague sits under where the calendar spans more than one. */
   department: DepartmentOnTheCalendar | null;
   /** FR 06. A leaver is still on the line until HR moves it. */
   employmentStatus: EmploymentStatus;
@@ -76,17 +76,17 @@ export interface AwayDay {
   isEverybody: boolean;
 }
 
-/** The team calendar, for one leave year. FR 57, LMS 406, LMS 409. */
+/** The team calendar, for one leave year. FR 57. */
 export interface TeamCalendarView {
   /** The reader. */
   employeeId: string;
   year: LeaveYear;
   years: LeaveYear[];
-  /** LMS 409. The department being shown, or null for every one of them at once. */
+  /** The department being shown, or null for every one of them at once. */
   department: DepartmentOnTheCalendar | null;
-  /** LMS 409. The departments that may be asked for. Only the reader's own, unless HR. */
+  /** The departments that may be asked for. Only the reader's own, unless HR. */
   departments: DepartmentOnTheCalendar[];
-  /** LMS 409. Whether the picker is a choice or a label. */
+  /** Whether the picker is a choice or a label. */
   canChooseDepartment: boolean;
   from: CalendarDate;
   to: CalendarDate;
@@ -111,11 +111,11 @@ export interface TeamCalendarFacts {
   team: readonly Employee[];
   year: LeaveYear;
   years: readonly LeaveYear[];
-  /** LMS 409. The department being shown, or null for all of them at once. */
+  /** The department being shown, or null for all of them at once. */
   showing: Department | null;
-  /** LMS 409. The departments this reader may ask for. */
+  /** The departments this reader may ask for. */
   departments: readonly Department[];
-  /** LMS 409. Whether `departments` is a choice or a label. */
+  /** Whether `departments` is a choice or a label. */
   canChooseDepartment: boolean;
   /** The team's live leave in this year, from `LeaveRequestRepository.liveOverlapping`. */
   leave: readonly LeaveRequest[];
@@ -124,7 +124,7 @@ export interface TeamCalendarFacts {
 }
 
 /**
- * The calendar, from the facts the service gathered. FR 57, LMS 406, LMS 409.
+ * The calendar, from the facts the service gathered. FR 57.
  *
  * **Dates and names, and nothing else.** No leave type reaches this function and no reason
  * ever could: `TeamCalendarFacts` carries no `LeaveType`, so a type name is not something
@@ -254,7 +254,7 @@ function calendarInWords(
 ): string {
   const year = facts.year;
 
-  /* LMS 409. Named, because the same screen answers for one department or for all of them and
+  /* Named, because the same screen answers for one department or for all of them and
      a count with no scope on it is a figure somebody will read as the whole company. "Your
      department" only where it is: an HR officer reading Finance is not in Finance. */
   const scope =

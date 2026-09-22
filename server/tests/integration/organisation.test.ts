@@ -17,7 +17,7 @@ import { OrganisationService } from '../../src/features/organisation/organisatio
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * Who the Chief Executive is, against a real database. FR 48c, FR 04, §4.3.1. LMS 321.
+ * Who the Chief Executive is, against a real database. FR 48c, FR 04, §4.3.1.
  *
  * ../unit/organisation.test.ts covers what the rules mean. What needs a database is the half
  * the database itself decides:

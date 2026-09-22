@@ -44,7 +44,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Certified sickness beyond the three days. FR 32a, FR 32b, FR 33, §8.6b. LMS 312.
+ * Certified sickness beyond the three days. FR 32a, FR 32b, FR 33, §8.6b.
  *
  * ../unit/leave-request.test.ts proves the arithmetic of which days are past the allowance;
  * ../integration/required-documentation.test.ts proves the certificate has to arrive with the
@@ -107,11 +107,11 @@ beforeAll(async () => {
     new LeaveDecisionRepository(db),
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     attachmentRepository,
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -321,7 +321,7 @@ describe('sick leave past the three days', () => {
   });
 });
 
-/* ------------------------------------------- the tag in the ledger, FR 32a. LMS 312 */
+/* ------------------------------------------- the tag in the ledger, FR 32a */
 
 describe('the days past the allowance, in the account', () => {
   /**
@@ -363,7 +363,7 @@ describe('the days past the allowance, in the account', () => {
   });
 
   /**
-   * FR 47, LMS 324. What was given back was certified too, so what the year says was
+   * FR 47. What was given back was certified too, so what the year says was
    * certified goes back to nothing.
    *
    * Read off the DEDUCTION less the RECALCULATION rather than off every row, for the reason

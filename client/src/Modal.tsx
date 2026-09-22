@@ -1,4 +1,4 @@
-/** A dialog over the page. LMS 501. */
+/** A dialog over the page. */
 
 import { type ReactNode, useEffect, useRef } from 'react';
 import { Icon } from './Icon';

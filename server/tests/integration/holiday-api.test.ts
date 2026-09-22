@@ -48,7 +48,7 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * The holiday calendar screen, over HTTP. FR 22, LMS 504.
+ * The holiday calendar screen, over HTTP. FR 22.
  *
  * ./holiday.test.ts proves the table, the one-per-day index and the settled-year trigger
  * against a real database, and ../unit/holiday.test.ts proves what a holiday is. What is
@@ -141,7 +141,7 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: new BalanceRepository(db),
-    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    /** FR 27, FR 37. The ledger the adjustment screen reads, and the door it writes through. */
     ledger: new LedgerRepository(db),
     adjustments: balances,
     employees,
@@ -160,7 +160,7 @@ beforeAll(async () => {
       decisions,
       new LeaveRoutingRepository(db),
       new WithdrawalRepository(db),
-      /** FR 32c, LMS 507. */
+      /** FR 32c. */
       new ReclassificationRepository(db),
       new AttachmentRepository(db),
       new RoleRepository(db),
@@ -176,7 +176,7 @@ beforeAll(async () => {
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
-    /** FR 25, §8.8, LMS 508. */
+    /** FR 25, §8.8. */
     holidayRecalculations: holidayRecalculationService(db, guard, balances),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
@@ -249,7 +249,7 @@ describe('the line everything is mounted behind', () => {
 
 describe('who keeps the calendar', () => {
   /**
-   * Unlike the entitlement rules of LMS 502, the whole calendar is everybody's to read: it
+   * Unlike the entitlement rules, the whole calendar is everybody's to read: it
    * is what a leave quote is priced against, and the person who most needs to know the
    * office is shut on the sixth of March is the one about to book it as leave.
    */

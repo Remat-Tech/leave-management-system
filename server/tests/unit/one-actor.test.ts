@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * An actor is derived, never accepted. NFR SEC 02. LMS 112, LMS 401.
+ * An actor is derived, never accepted. NFR SEC 02.
  *
  * The sibling of ./one-writer.test.ts, and it exists for the same reason: this is a claim
  * about code that does not exist, so the only way to check it is to read the source.

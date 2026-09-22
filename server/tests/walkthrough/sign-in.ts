@@ -24,8 +24,7 @@ import { theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
 
 /**
- * A walkthrough of signing in, for a person rather than for a build. LMS 109 and
- * LMS 110.
+ * A walkthrough of signing in, for a person rather than for a build.
  *
  * It builds a disposable database of its own, so nothing you have is touched,
  * and it sends real mail through the real transport, so the codes land in

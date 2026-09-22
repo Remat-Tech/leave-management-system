@@ -1,5 +1,5 @@
 /**
- * Who may see and keep the public holiday calendar. FR 22, NFR SEC 02, §10., LMS 112, LMS 206, §5.5.
+ * Who may see and keep the public holiday calendar. FR 22, NFR SEC 02, §10., §5.5.
  */
 
 import { type Actor, holdsAny } from '../../auth/actor.js';
@@ -51,7 +51,7 @@ export const holidayPolicy = {
   },
 
   /**
-   * Crediting a late-declared day back into leave people already had. FR 25, §8.8, LMS 508.
+   * Crediting a late-declared day back into leave people already had. FR 25, §8.8.
    *
    * The same desk that declares the day, because it is the same act finished: a holiday on
    * the calendar that nobody has been credited for is a day the office was closed and

@@ -26,11 +26,11 @@ import { Evidence } from './Attachments';
  */
 const REASON_LIMIT = 500;
 
-/** LMS 410. What an input the refusal named points a screen reader at. */
+/** What an input the refusal named points a screen reader at. */
 const REFUSAL_ID = 'ask-refusal';
 
 /**
- * Asking for leave, told the rules while you fill it in. FR 10, FR 11, FR 13, FR 17, FR 32f, LMS 403, LMS 307.
+ * Asking for leave, told the rules while you fill it in. FR 10, FR 11, FR 13, FR 17, FR 32f.
  *
  * The story's failure is finding out *after* — a fortnight submitted and then a message
  * saying it needed a certificate, or that compassionate leave was never anybody's to promise.
@@ -56,10 +56,10 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [reason, setReason] = useState('');
-  /** FR 17, LMS 307. Answered about one period, so it is cleared whenever the period moves. */
+  /** FR 17. Answered about one period, so it is cleared whenever the period moves. */
   const [acknowledged, setAcknowledged] = useState(false);
   /**
-   * FR 12, FR 13, LMS 311, LMS 407. What has been uploaded and not yet asked for leave with.
+   * FR 12, FR 13. What has been uploaded and not yet asked for leave with.
    *
    * Ids and never files: the bytes went to the server when they were chosen, so this holds
    * what to *name* on submission. It is not cleared when the dates move, unlike the
@@ -98,7 +98,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
           return;
         }
 
-        /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
+        /** The server's own sentence, verbatim. NFR USA 03. */
         setProblem(problemFrom(error));
       });
   }, [onSignedOut]);
@@ -114,7 +114,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
    * figures for half-written dates on the way to the one they meant.
    */
   useEffect(() => {
-    /* FR 17, LMS 307. The tick answered the period that has just changed, so it goes with it —
+    /* FR 17. The tick answered the period that has just changed, so it goes with it —
        an acknowledgement carried onto different dates is one nobody made. */
     setAcknowledged(false);
 
@@ -173,8 +173,8 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
     setAsking(true);
     setRefusal(undefined);
 
-    /* FR 17, LMS 307. Sent as it stands: whether one was owed is the server's answer. And
-       FR 13, LMS 311: the ids of what was uploaded, for the same reason — whether this kind
+    /* FR 17. Sent as it stands: whether one was owed is the server's answer. And
+       FR 13: the ids of what was uploaded, for the same reason — whether this kind
        of leave needed one is not a question a browser answers. */
     askForLeave({
       leaveTypeId,
@@ -207,7 +207,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
     setReason('');
     setAcknowledged(false);
     /* The files that went on the last request went with it. What is waiting now is whatever
-       the panel reads back when it comes round again. FR 13, LMS 311. */
+       the panel reads back when it comes round again. FR 13. */
     setEvidence([]);
     setQuote(undefined);
     setQuoteProblem(undefined);
@@ -238,9 +238,9 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
   }
 
   /**
-   * The input the refusal is about, where it named one. LMS 410.
+   * The input the refusal is about, where it named one.
    *
-   * `field` has been on the wire since LMS 401 and nothing read it, so a refusal about the last
+   * `field` has been on the wire and nothing read it, so a refusal about the last
    * day sat under the button with both dates looking equally fine.
    */
   const badField = refusal?.field;
@@ -294,7 +294,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
                 <input
                   type="date"
                   value={from}
-                  /* FR 18, LMS 308. The earliest day this kind of leave may still be entered,
+                  /* FR 18. The earliest day this kind of leave may still be entered,
                      off `maxBackdateCalendarDays` rather than off anything decided here. It
                      narrows the picker and refuses nothing — the server answers a date typed
                      past it with the sentence naming HR. */
@@ -365,14 +365,14 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
                 : `${sentenceCase(chosen.approvedBy)} will read what you write here.`}
             </p>
 
-            {/* FR 12, FR 13, LMS 407. Here rather than after submitting, because FR 13 is
+            {/* FR 12, FR 13. Here rather than after submitting, because FR 13 is
                 answered *at* submission: a kind of leave that asks for a certificate refuses
                 a request that arrives without one. Shown for every kind, because anybody may
                 attach something — whether one is needed is in the rules above, written by
                 the server. */}
             <Evidence disabled={asking} onChange={setEvidence} onSignedOut={onSignedOut} />
 
-            {/* FR 17, LMS 307. On the left, because it is something to decide rather than
+            {/* FR 17. On the left, because it is something to decide rather than
                 something the system is saying. Shown exactly when the server warns. */}
             {quote?.warnings.some((warning) => warning.code === 'SHORT_NOTICE') !== true ? null : (
               <label className="acknowledge">
@@ -392,7 +392,7 @@ export function NewRequestPage({ onSignedOut }: { onSignedOut: () => void }) {
               </label>
             )}
 
-            {/* LMS 410. The retry is offered only where trying again could come out
+            {/* The retry is offered only where trying again could come out
                 differently — a dropped connection or a fault at our end. A rule that said no
                 is not answered by pressing submit twice. */}
             {refusal === undefined ? null : (
@@ -634,8 +634,8 @@ function Cost({
  * second copy of the rule that eventually disagrees with the one that counts. So the button
  * stays enabled and the server answers, with a sentence.
  *
- * `SHORT_NOTICE` is the one that also asks something back — the tick above the button, FR 17
- * and LMS 307. It is rendered off the presence of this warning rather than off a notice
+ * `SHORT_NOTICE` is the one that also asks something back — the tick above the button, FR 17.
+ * It is rendered off the presence of this warning rather than off a notice
  * window read here, and the server refuses an unacknowledged submission either way.
  */
 function Warning({ warning }: { warning: QuoteWarning }) {
@@ -728,7 +728,7 @@ function Skeleton() {
 }
 
 /**
- * The earliest day this kind of leave may still be entered. FR 18, LMS 308.
+ * The earliest day this kind of leave may still be entered. FR 18.
  *
  * Ten characters, built by walking a UTC date back rather than by arithmetic on a string, and
  * undefined before a type is chosen — a bound invented here would be a bound nothing enforces.

@@ -46,7 +46,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { holidayRecalculationService } from '../support/holiday-recalculations.js';
 import { delegationService } from '../support/delegations.js';
 
-/** The audit log screen, over HTTP. NFR AUD 01, NFR AUD 02, LMS 513. */
+/** The audit log screen, over HTTP. NFR AUD 01, NFR AUD 02. */
 
 const testDatabaseUrl = await databaseForThisFile();
 
@@ -192,7 +192,9 @@ describe('who may search it', () => {
       const response = await send('GET', '/api/audit', who);
 
       expect(response.status).toBe(403);
-      expect(((await response.json()) as { message: string }).message).toContain('LMS 513');
+      expect(((await response.json()) as { message: string }).message).toContain(
+        'searched by an HR Administrator or a System Administrator',
+      );
     }
   });
 });

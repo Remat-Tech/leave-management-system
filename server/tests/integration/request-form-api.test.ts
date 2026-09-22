@@ -47,7 +47,7 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * The request form over HTTP. FR 10, FR 11, FR 13, FR 32f. LMS 403.
+ * The request form over HTTP. FR 10, FR 11, FR 13, FR 32f.
  *
  * ../unit/request-form.test.ts proves the wording — which rules, in which order, marked as
  * asking or as explaining — against types it configures itself, and it is deliberately unable
@@ -126,16 +126,16 @@ beforeAll(async () => {
     years,
     requestRepository,
     decisions,
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     new LeaveRoutingRepository(db),
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -148,7 +148,7 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: new BalanceRepository(db),
-    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    /** FR 27, FR 37. The ledger the adjustment screen reads, and the door it writes through. */
     ledger: new LedgerRepository(db),
     adjustments: balances,
     employees,
@@ -159,16 +159,16 @@ beforeAll(async () => {
     requests: requestRepository,
     leaveRequests: requests,
     decisions,
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     routing: new LeaveRoutingRepository(db),
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     withdrawals: new WithdrawalRepository(db),
-    /** FR 19, LMS 302. */
+    /** FR 19. */
     drafts: new LeaveRequestDraftRepository(db),
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
-    /** FR 25, §8.8, LMS 508. */
+    /** FR 25, §8.8. */
     holidayRecalculations: holidayRecalculationService(db, guard, balances),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
@@ -194,7 +194,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. The fixture days are months behind today, so annual leave's seven day
+  /* FR 18. The fixture days are months behind today, so annual leave's seven day
      backdating window would refuse almost every request in this file. Widened rather than
      dated forward: the window is a column HR sets, and the rule it states is
      ./leave-request.test.ts's to prove. */
@@ -221,8 +221,8 @@ beforeEach(async () => {
     reason: 'Annual entitlement for 2026',
   });
 
-  /* FR 10. Unpaid leave is the type that asks for a reason, and it is a QUOTA type since
-     LMS 326 — so there has to be an allowance behind it for the reason to be what fails. */
+  /* FR 10. Unpaid leave is the type that asks for a reason, and it is a QUOTA type —
+     so there has to be an allowance behind it for the reason to be what fails. */
   await balances.grantTheYear(system, {
     employeeId: people.officer,
     leaveTypeId: unpaidId,
@@ -304,7 +304,7 @@ describe('what each kind of leave asks of me', () => {
     const maternity = await typeOnTheForm(people.headOfHr, maternityId);
 
     expect(said(maternity, 'DOCUMENTATION')).toContain('needs supporting documentation');
-    /** LMS 311. And that a request without it is refused rather than chased. */
+    /** And that a request without it is refused rather than chased. */
     expect(said(maternity, 'DOCUMENTATION')).toContain('Upload it before you ask');
     expect(ruleOf(maternity, 'DOCUMENTATION')?.asks).toBe(true);
   });
@@ -499,7 +499,7 @@ describe('what the leave would cost', () => {
 describe('when a rule says no', () => {
   /**
    * The claim this whole section exists for. Every refusal below already carries the sentence
-   * that says what to do instead, and before LMS 403 each of them reached a browser as
+   * that says what to do instead, and each of them used to reach a browser as
    * "Something went wrong. It has been logged." — which sends a developer to the logs instead
    * of the person who can fix it.
    */
@@ -542,7 +542,7 @@ describe('when a rule says no', () => {
       from: '2026-03-02',
       to: '2026-03-06',
       reason: 'My sister is getting married',
-      /** FR 17, LMS 307. Every period in this file is behind today, so all of it is short. */
+      /** FR 17. Every period in this file is behind today, so all of it is short. */
       acknowledgesShortNotice: true,
     });
 
@@ -613,7 +613,7 @@ describe('when a rule says no', () => {
   });
 
   /**
-   * FR 17, LMS 307. Short notice is answered rather than refused, and the wire says which.
+   * FR 17. Short notice is answered rather than refused, and the wire says which.
    *
    * A 400, because what has to change is part of what was sent rather than the state of the
    * world — the dates are fine and the days are there. The same body with the flag on it is a
@@ -646,7 +646,7 @@ describe('when a rule says no', () => {
   });
 
   /**
-   * FR 18, LMS 308. And the other window, which refuses rather than asking.
+   * FR 18. And the other window, which refuses rather than asking.
    *
    * A 409 for the person whose leave it is, because nothing they retype fixes it — the state
    * of the world is that the days are further back than the type allows, and the fix is a
@@ -730,7 +730,7 @@ describe('asking for the leave', () => {
     expect(submitted.calendarDays).toBe(9);
     expect(submitted.countingBasis).toBe('WORKING_DAYS');
 
-    /* FR 38a, LMS 314. Sitting at the first desk of annual leave's chain. */
+    /* FR 38a. Sitting at the first desk of annual leave's chain. */
     expect(submitted.status).toBe('SUBMITTED');
     expect(submitted.awaitingApprovalFrom).toBe('MANAGER');
 
@@ -786,7 +786,7 @@ describe('asking for the leave', () => {
   /**
    * And it turns up on the history screen, which is the next thing somebody looks at.
    *
-   * The two screens are joined here rather than assumed: LMS 402 reads what LMS 403 wrote,
+   * The two screens are joined here rather than assumed: the history reads what the form wrote,
    * and the day count on the history is the one the submission counted rather than a second
    * opinion. Four days, because 6 March 2026 is Independence Day.
    */
@@ -856,7 +856,7 @@ interface JsonSubmitted {
   availableAfter: number;
 }
 
-/** A calendar date this many days either side of today, in UTC. FR 18, LMS 308. */
+/** A calendar date this many days either side of today, in UTC. FR 18. */
 function daysFromToday(offset: number): string {
   const day = new Date();
 

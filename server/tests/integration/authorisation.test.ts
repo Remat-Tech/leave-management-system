@@ -23,7 +23,7 @@ import { recordingMailer, type RecordingMailer } from '../support/recording-mail
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * Records protected on the server. NFR SEC 02 and NFR SEC 03. §10. LMS 112.
+ * Records protected on the server. NFR SEC 02 and NFR SEC 03. §10.
  *
  * The unit suite covers the rules — server/tests/unit/policy.test.ts enumerates
  * every role against every action, which is possible because a policy is a pure
@@ -133,8 +133,8 @@ afterAll(async () => {
  * would be testing a policy, not a system.
  *
  * It answers the one time code where one is asked for, which is how the HR
- * roles get in: LMS 110 makes a code mandatory for exactly the roles this story
- * gives the interesting powers to.
+ * roles get in: a code is mandatory for exactly the roles that hold
+ * the interesting powers.
  */
 async function signIn(email: string): Promise<Actor> {
   const outcome = await logins.signIn(email, PASSWORD);
@@ -177,7 +177,7 @@ describe('the actor signing in produces', () => {
   });
 
   it('carries a role granted a moment ago, because nothing is copied onto the account', async () => {
-    /* The same property LMS 110 relies on for the mandatory code. Grant the role
+    /* The same property the mandatory code relies on. Grant the role
        this morning and the next sign in has it, with nothing else to update. */
     await withPasswords(people.officer);
     expect((await signIn(OFFICER_EMAIL)).roles).toEqual(['EMPLOYEE']);
@@ -416,7 +416,7 @@ describe('assigning roles', () => {
     await withPasswords(people.headOfHr, people.hrOfficer, people.officer);
   });
 
-  it('is an administrator, which is the sentence LMS 111 left for this story', async () => {
+  it('is an administrator, which the role rules left unenforced', async () => {
     const ama = await signIn(HR_ADMIN_EMAIL);
     const efua = await signIn(HR_OFFICER_EMAIL);
 

@@ -46,7 +46,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { holidayRecalculationService } from '../support/holiday-recalculations.js';
 import { delegationService } from '../support/delegations.js';
 
-/** HR reporting over HTTP, against a real ledger. FR 63, LMS 510. */
+/** HR reporting over HTTP, against a real ledger. FR 63. */
 
 const testDatabaseUrl = await databaseForThisFile();
 
@@ -320,7 +320,7 @@ describe('zero leave taken, and carried over balances', () => {
   });
 });
 
-describe('filters and export. FR 58, FR 64, LMS 511', () => {
+describe('filters and export. FR 58, FR 64', () => {
   it('narrows a report to one department and lists what may be chosen', async () => {
     await twentyDaysFor(people.engineer);
     await twentyDaysFor(people.opsManager);

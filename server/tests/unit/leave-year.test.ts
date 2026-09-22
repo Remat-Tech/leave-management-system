@@ -20,7 +20,7 @@ import {
 } from '../../src/features/leave-year/leave-year.js';
 
 /**
- * The leave year, and what closing one means. §5.4. LMS 205.
+ * The leave year, and what closing one means. §5.4.
  *
  * The rules are pure functions, so this is where the story is proved.
  * ../integration/leave-year.test.ts shows that 2026 and 2027 are on a migrated
@@ -347,7 +347,7 @@ describe('a closed year is history', () => {
 });
 
 describe('the boundary a closed year sets', () => {
-  /* What EarliestOpenDay has been asking for since LMS 203 and getting
+  /* What EarliestOpenDay has been asking for and getting
      NOTHING_IS_CLOSED_YET for. Null keeps meaning exactly what it meant then. */
   it('is nothing at all while no year has been closed', () => {
     expect(earliestOpenDayOf([Y2026, Y2027])).toBeNull();

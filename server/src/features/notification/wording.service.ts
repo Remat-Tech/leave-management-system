@@ -1,4 +1,4 @@
-/** Reading and changing the wording of the emails. FR 61, LMS 512. */
+/** Reading and changing the wording of the emails. FR 61. */
 
 import type { Actor } from '../../auth/actor.js';
 import type { Guard } from '../../auth/policy.js';

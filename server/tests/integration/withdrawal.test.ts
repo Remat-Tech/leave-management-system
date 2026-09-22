@@ -36,7 +36,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Withdrawing leave every desk has agreed to. FR 47, §8.2. LMS 324.
+ * Withdrawing leave every desk has agreed to. FR 47, §8.2.
  *
  * ../unit/withdrawal.test.ts proves what is pure: which grant the calendar chooses, what is
  * left of a period, and what each act is owed in writing. What needs a server is everything
@@ -100,12 +100,12 @@ beforeAll(async () => {
     decisions,
     routing,
     withdrawals,
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -125,7 +125,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. The fixture days are months behind today, so annual leave's seven day
+  /* FR 18. The fixture days are months behind today, so annual leave's seven day
      backdating window would refuse almost every request in this file. Widened rather than
      dated forward: the window is a column HR sets, and the rule it states is
      ./leave-request.test.ts's to prove. */
@@ -226,7 +226,7 @@ async function anApprovedRequest(from: string, to: string): Promise<string> {
     from,
     to,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. Every period here is inside annual leave's fourteen day window. */
+    /** FR 17. Every period here is inside annual leave's fourteen day window. */
     acknowledgesShortNotice: true,
   });
 
@@ -434,7 +434,7 @@ describe('HR agreeing before the leave has started', () => {
     expect(told.map((notice) => notice.event)).toContain('WITHDRAWAL_GRANTED');
   });
 
-  /* FR 48, LMS 319 from the other end. An HR officer's own agreed leave is answered by
+  /* FR 48 from the other end. An HR officer's own agreed leave is answered by
      another HR desk, whatever they hold — the ask is theirs and the answer is not. */
   it('and nobody answers their own ask, whatever they hold', async () => {
     await balances.grantTheYear(system, {
@@ -454,7 +454,7 @@ describe('HR agreeing before the leave has started', () => {
       acknowledgesShortNotice: true,
     });
 
-    /* FR 48d, LMS 322. The head of HR is this officer's manager and the whole of the HR
+    /* FR 48d. The head of HR is this officer's manager and the whole of the HR
        desk once she is out of it, so the second stage falls to the Chief Executive rather
        than back to the hand that signed the first. */
     await requests.approve(asTheHeadOfHr(), request.id);
@@ -752,8 +752,8 @@ describe('the rules the database keeps, whatever wrote', () => {
 
 describe('the account on somebody’s own history', () => {
   /**
-   * The trail said "taken back before it was decided" of every `WITHDRAWN` request until
-   * this story, and that is false of exactly the ones LMS 324 makes.
+   * The trail used to say "taken back before it was decided" of every `WITHDRAWN` request,
+   * and that is false of exactly the ones a withdrawal from approved makes.
    */
   it('says agreed leave came off the books rather than that nobody had decided', async () => {
     const id = await anApprovedRequest(...nextFortnight());

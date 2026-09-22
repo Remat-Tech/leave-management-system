@@ -1,4 +1,4 @@
-/** The email wording screen, over HTTP. FR 61, LMS 512. */
+/** The email wording screen, over HTTP. FR 61. */
 
 import { type Request, type Response, Router } from 'express';
 import { actorOf } from '../../http/identify.js';

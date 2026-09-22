@@ -41,7 +41,7 @@ import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
-/** Stored certificates deleted after retention, rows kept. NFR SEC 06, LMS 514. */
+/** Stored certificates deleted after retention, rows kept. NFR SEC 06. */
 
 const testDatabaseUrl = await databaseForThisFile();
 

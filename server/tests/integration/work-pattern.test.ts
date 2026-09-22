@@ -24,7 +24,7 @@ import { theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
 
 /**
- * Working patterns against a real database. FR 23, LMS 106.
+ * Working patterns against a real database. FR 23.
  *
  * The unit suite covers the rules. What needs a database is everything the
  * database itself decides: that the standard Monday to Friday week is in every

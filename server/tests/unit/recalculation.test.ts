@@ -19,7 +19,7 @@ import { type LeaveType, validateNewLeaveType } from '../../src/features/leave-t
 import type { WorkPattern } from '../../src/features/work-pattern/work-pattern.js';
 
 /**
- * A public holiday declared inside leave somebody already had. FR 25, §8.8. LMS 508.
+ * A public holiday declared inside leave somebody already had. FR 25, §8.8.
  *
  * Everything pure: how much a late-declared day is worth to one piece of agreed leave, and
  * the sentences that go with it. That the day actually comes back — a `RECALCULATION`, a
@@ -175,7 +175,7 @@ describe('what it leaves alone', () => {
     });
   });
 
-  /* FR 11, LMS 303. The request's own basis, not the type's as it now stands: a type
+  /* FR 11. The request's own basis, not the type's as it now stands: a type
      switched to calendar days last week does not un-credit leave priced before that. */
   it('and reads the basis off the request rather than off the type', () => {
     expect(

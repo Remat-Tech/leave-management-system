@@ -1,4 +1,4 @@
-/** The holiday calendar screen, over HTTP. FR 22, LMS 504. */
+/** The holiday calendar screen, over HTTP. FR 22. */
 
 import { type Request, type Response, Router } from 'express';
 import type { HolidayService } from './holiday.service.js';
@@ -25,7 +25,7 @@ export interface HolidayRoutes {
   holidays: HolidayService;
   /** FR 22. Where the closed years end, and what each day is filed under. */
   years: LeaveYearRepository;
-  /** FR 25, §8.8. Crediting a late-declared day back into leave people already had. LMS 508. */
+  /** FR 25, §8.8. Crediting a late-declared day back into leave people already had. */
   recalculations: HolidayRecalculationService;
 }
 
@@ -99,7 +99,7 @@ export function holidayRoutes(parts: HolidayRoutes): Router {
       .catch(next);
   });
 
-  /* FR 25, §8.8, LMS 508. What crediting this day back would do, before HR does it. A read
+  /* FR 25, §8.8. What crediting this day back would do, before HR does it. A read
      rather than a dry run of the write: nothing here opens a transaction. */
   routes.get('/holidays/:id/recalculation', (request: Request, response: Response, next) => {
     void parts.recalculations
@@ -110,7 +110,7 @@ export function holidayRoutes(parts: HolidayRoutes): Router {
       .catch(next);
   });
 
-  /* FR 25, §8.8, LMS 508. The story's first criterion: HR presses this, and it is safe to
+  /* FR 25, §8.8. The story's first criterion: HR presses this, and it is safe to
      press twice — the second run credits nobody and says so. */
   routes.post('/holidays/:id/recalculation', (request: Request, response: Response, next) => {
     void parts.recalculations

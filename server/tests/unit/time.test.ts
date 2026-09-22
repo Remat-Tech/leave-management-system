@@ -16,7 +16,7 @@ import {
 } from '../../src/shared/time.js';
 
 /**
- * Dates, instants, and the line between them. NFR DAT 03. LMS 114.
+ * Dates, instants, and the line between them. NFR DAT 03.
  *
  * The half of the story that needs no database. The other half — that the
  * columns are the right types and that every session speaks UTC — is
@@ -97,7 +97,7 @@ describe('a calendar date', () => {
 });
 
 /**
- * The one piece of arithmetic this file does on a day. LMS 205.
+ * The one piece of arithmetic this file does on a day.
  *
  * It exists for `earliestOpenDayOf` in ../../src/features/leave-year/leave-year.ts — the day
  * after a closed year ends — and everything worth asserting about it is a

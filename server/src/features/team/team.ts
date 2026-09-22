@@ -1,5 +1,5 @@
 /**
- * A manager's direct reports, with what each has left and what each has booked. FR 55, FR 56, §7.4, NFR USA 03, LMS 405.
+ * A manager's direct reports, with what each has left and what each has booked. FR 55, FR 56, §7.4, NFR USA 03.
  */
 
 import type { ApproverRole } from '../leave-type/approval-chain.js';
@@ -103,7 +103,7 @@ export interface TeamCalendar {
   inWords: string;
 }
 
-/** A manager's team, for one leave year. FR 55, FR 56, LMS 405. */
+/** A manager's team, for one leave year. FR 55, FR 56. */
 export interface TeamView {
   managerId: string;
   /** The year these figures are for. */
@@ -137,7 +137,7 @@ export interface TeamFacts {
 }
 
 /**
- * The team, from the facts the service has gathered. FR 55, FR 56, LMS 405.
+ * The team, from the facts the service has gathered. FR 55, FR 56.
  *
  * **Direct reports only.** The wider structure beneath them is not here and is not filtered
  * out here either — `EmployeeRepository.findReportsOf` is asked for one level, so a report

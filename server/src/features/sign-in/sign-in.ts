@@ -1,4 +1,4 @@
-/** The sign in account, and what makes one usable. NFR SEC 01, LMS 109, LMS 012. */
+/** The sign in account, and what makes one usable. NFR SEC 01. */
 
 import type { Employee } from '../employee/employee.js';
 
@@ -10,7 +10,6 @@ export interface SignInAccount {
   companyEmail: string;
   /** Whether this login may be used at all. */
   isActive: boolean;
-  /** LMS 110. */
   mfaEnabled: boolean;
   /** When this login was last used. */
   lastLoginAt: Date | null;

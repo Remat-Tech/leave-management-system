@@ -1,8 +1,8 @@
 -- Up Migration
 
--- Who the Chief Executive is, as a setting. FR 48c, FR 04, FR 38a, §4.3.1, §6, §8. LMS 321.
+-- Who the Chief Executive is, as a setting. FR 48c, FR 04, FR 38a, §4.3.1, §6, §8.
 --
--- The `CEO` desk has to resolve to a person. Since LMS 314 it resolved to FR 04's root — the
+-- The `CEO` desk has to resolve to a person. It resolved to FR 04's root — the
 -- one employee with no line manager — which is a shape of the reporting lines standing in for
 -- a fact nobody wrote down. It fails the way a job title fails: quietly, from a screen with
 -- nothing to do with leave.

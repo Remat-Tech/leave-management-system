@@ -1,5 +1,5 @@
 /**
- * Who may read and post to the balance ledger. FR 27, FR 37, NFR SEC 02, §10., LMS 210, FR 53, FR 55, FR 56, §10, LMS 212, FR 38a.
+ * Who may read and post to the balance ledger. FR 27, FR 37, NFR SEC 02, §10., FR 53, FR 55, FR 56, §10, FR 38a.
  */
 
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
@@ -68,7 +68,7 @@ export const ledgerPolicy = {
         );
   },
 
-  /** Holding days for leave that has been asked for. FR 26, LMS 212, FR 18. */
+  /** Holding days for leave that has been asked for. FR 26, FR 18. */
   reserve(actor: Actor, owner: BalanceOwner): Decision {
     if (isSelf(actor, owner.employeeId) || holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)) {
       return about.allow(actor, 'reserve', owner.employeeId);
@@ -84,14 +84,14 @@ export const ledgerPolicy = {
   },
 
   /**
-   * Turning held days into taken days, which is what approval does. FR 26, §10, FR 38a, LMS 314, FR 32h, FR 04, §4.3.1.
+   * Turning held days into taken days, which is what approval does. FR 26, §10, FR 38a, FR 32h, FR 04, §4.3.1.
    */
   commit(
     actor: Actor,
     owner: BalanceOwner,
     /** FR 04. */
     chiefExecutiveId: string | null = null,
-    /** FR 49. Whether a colleague handed them a desk of this request. LMS 327. */
+    /** FR 49. Whether a colleague handed them a desk of this request. */
     standsInForAnApprover = false,
   ): Decision {
     if (isSelf(actor, owner.employeeId)) {
@@ -108,7 +108,7 @@ export const ledgerPolicy = {
       isSelf(actor, owner.managerId) ||
       isSelf(actor, chiefExecutiveId) ||
       holdsAny(actor, ...READS_EVERY_RECORD) ||
-      /** FR 49, LMS 327. A delegate moves what the approver they cover would have moved. */
+      /** FR 49. A delegate moves what the approver they cover would have moved. */
       standsInForAnApprover
     ) {
       return about.allow(actor, 'commit', owner.employeeId);
@@ -124,7 +124,7 @@ export const ledgerPolicy = {
     );
   },
 
-  /** Granting a year's entitlement. FR 30, LMS 214. */
+  /** Granting a year's entitlement. FR 30. */
   grant(actor: Actor, owner: BalanceOwner): Decision {
     return holdsAny(actor, ...SETS_UP_THE_ORGANISATION)
       ? about.allow(actor, 'grant', owner.employeeId)
@@ -139,7 +139,7 @@ export const ledgerPolicy = {
         );
   },
 
-  /** Recording something that happened, and the entitlement it brings. FR 32g, LMS 218. */
+  /** Recording something that happened, and the entitlement it brings. FR 32g. */
   grantForAnEvent(actor: Actor, owner: BalanceOwner): Decision {
     return holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS)
       ? about.allow(actor, 'grantForAnEvent', owner.employeeId)
@@ -155,7 +155,7 @@ export const ledgerPolicy = {
         );
   },
 
-  /** Lapsing an event grant that was not used in time. FR 32e, LMS 218. */
+  /** Lapsing an event grant that was not used in time. FR 32e. */
   lapse(actor: Actor, owner: BalanceOwner): Decision {
     return holdsAny(actor, ...SETS_UP_THE_ORGANISATION)
       ? about.allow(actor, 'lapse', owner.employeeId)
@@ -170,7 +170,7 @@ export const ledgerPolicy = {
         );
   },
 
-  /** Carrying last year's unused days into the new one. FR 36, LMS 217. */
+  /** Carrying last year's unused days into the new one. FR 36. */
   carryForward(actor: Actor, owner: BalanceOwner): Decision {
     return holdsAny(actor, ...SETS_UP_THE_ORGANISATION)
       ? about.allow(actor, 'carryForward', owner.employeeId)
@@ -199,7 +199,7 @@ export const ledgerPolicy = {
         );
   },
 
-  /** Checking every balance in the company against the ledger. §7.4, LMS 213. */
+  /** Checking every balance in the company against the ledger. §7.4. */
   reconcile(actor: Actor): Decision {
     return holdsAny(actor, ...READS_EVERY_RECORD)
       ? about.allow(actor, 'reconcile', null)
@@ -215,7 +215,7 @@ export const ledgerPolicy = {
   },
 
   /**
-   * Putting back days that were already taken, when agreed leave comes off the books. FR 47, §10, LMS 324.
+   * Putting back days that were already taken, when agreed leave comes off the books. FR 47, §10.
    *
    * Narrower than {@link ledgerPolicy.release}: neither the employee nor their manager
    * may reverse a `DEDUCTION`. Both HR desks, unlike {@link ledgerPolicy.adjust} — the figure
@@ -237,7 +237,7 @@ export const ledgerPolicy = {
   },
 
   /**
-   * Moving taken days from one leave type's balance to another's. FR 32c, §8.6c, §10, LMS 507.
+   * Moving taken days from one leave type's balance to another's. FR 32c, §8.6c, §10.
    *
    * The same standing as {@link ledgerPolicy.giveBackTakenDays} and for the same reason: one
    * side of the move is a `DEDUCTION` being put back.

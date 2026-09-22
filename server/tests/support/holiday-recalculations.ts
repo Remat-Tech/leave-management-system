@@ -1,4 +1,4 @@
-/** The recalculation door `buildApp` takes, built the one way. FR 25, §8.8, LMS 508. */
+/** The recalculation door `buildApp` takes, built the one way. FR 25, §8.8. */
 
 import type { Kysely } from 'kysely';
 import type { Database } from '../../src/db/index.js';

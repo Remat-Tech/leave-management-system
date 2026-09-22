@@ -1,6 +1,6 @@
 import type { AwayDay, Colleague } from '../../api';
 
-/** A month of away days, one stripe per person. FR 57, LMS 409. */
+/** A month of away days, one stripe per person. FR 57. */
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 

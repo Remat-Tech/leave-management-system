@@ -25,7 +25,7 @@ import {
 import { isWholeDays, WHOLE_DAYS_ONLY } from '../../src/shared/whole-days.js';
 
 /**
- * Leave is recorded in whole days only. FR 24. LMS 209.
+ * Leave is recorded in whole days only. FR 24.
  *
  * The story has two criteria and they are checked in two different ways, because
  * they fail in two different ways.
@@ -168,7 +168,7 @@ function storedType(overrides: Partial<NewLeaveType> = {}): LeaveType {
  * It is a list somebody has to extend, and there is no scan that can extend it
  * automatically — "this argument is a number of days" is not a thing the type
  * `number` says. What keeps it honest is that it is short enough to check against
- * ../../src/domain by eye, and that the two figures added since LMS 201 are both
+ * ../../src/domain by eye, and that the two figures added are both
  * on it. A day figure added without a line here is the gap this story leaves open,
  * and naming it is more use than a count that only catches the list shrinking.
  */
@@ -321,7 +321,7 @@ describe('what the calculator hands back is always a whole day', () => {
           const from = dayOfYear(start);
           const to = dayOfYear(start + length);
 
-          /* Every period comes back with a number since LMS 303, a single Saturday of
+          /* Every period comes back with a number, a single Saturday of
              annual leave included — that one costs nought, and nought is whole. The
              sweep used to skip those, which is a sweep that stopped looking at exactly
              the periods most likely to produce a fraction. */
@@ -334,7 +334,7 @@ describe('what the calculator hands back is always a whole day', () => {
       }
     }
 
-    /* 2 bases × 52 starts × 6 lengths, and none skipped since LMS 303. */
+    /* 2 bases × 52 starts × 6 lengths, and none skipped. */
     expect(counted).toBe(2 * 52 * 6);
   });
 

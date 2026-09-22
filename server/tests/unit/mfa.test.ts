@@ -19,7 +19,7 @@ import {
 import type { SignInAccount } from '../../src/features/sign-in/sign-in.js';
 
 /**
- * NFR SEC 01, the second factor. LMS 110.
+ * NFR SEC 01, the second factor.
  *
  * The rules, with no database and no mail server. What is worth pinning down
  * here is everything that quietly stops being true: a code that is predictable,

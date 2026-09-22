@@ -21,7 +21,7 @@ import { theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
 
 /**
- * Departments against a real database. LMS 105.
+ * Departments against a real database.
  *
  * The unit suite covers the rules. What needs a database is everything the
  * database itself decides: that the name really is unique and really is compared

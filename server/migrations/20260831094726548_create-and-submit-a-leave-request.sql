@@ -1,6 +1,6 @@
 -- Up Migration
 
--- Asking for leave. FR 10, FR 11, §8. LMS 301.
+-- Asking for leave. FR 10, FR 11, §8.
 --
 -- The first table of Phase 3, and the one every table built so far was pointing at.
 -- The leave-type-rules migration said `leave_request.leave_type_id will point here
@@ -21,15 +21,15 @@
 --   **Submitting holds the days.** The README has said since Phase 1 that "pending
 --   days are reserved: submitting a request writes a RESERVATION entry immediately.
 --   This is what stops somebody with five days left having three separate five day
---   requests in flight." `BalanceService.reserve` has been built and unused since
---   LMS 212 waiting for exactly this, and the request row and its RESERVATION are one
---   act — both land or neither does, the same shape LMS 218 gave a birth and the
+--   requests in flight." `BalanceService.reserve` was built and left unused,
+--   waiting for exactly this, and the request row and its RESERVATION are one
+--   act — both land or neither does, the same shape given to a birth and the
 --   grant it caused.
 --
 -- ## What this migration deliberately does not bring
 --
 -- **No state machine.** `status` is held to one value, and that is not an oversight
--- being papered over — it is LMS 209's rule applied honestly. A CHECK listing six
+-- being papered over — it is the same rule applied honestly. A CHECK listing six
 -- states of which one is reachable is a promise the schema cannot keep, and the
 -- approval story extends the list in its own migration exactly as
 -- event-based-entitlement-grants extended `leave_ledger_entry_type_known` to admit
@@ -45,7 +45,7 @@
 -- story's, named here so it is inherited rather than rediscovered.
 --
 -- **No splitting.** `leave_type.may_be_split` and `assertMayBeSplit()` have been in
--- the domain since LMS 201 and nothing calls them. A period crossing a leave year
+-- the domain and nothing calls them. A period crossing a leave year
 -- boundary is refused outright below rather than split in two, because a split is two
 -- requests with one approval between them and that is a decision rather than an
 -- arithmetic.
@@ -77,8 +77,8 @@
      **Where it has got to.** `status`, and the reservation it caused.
 
    No `approved_by`, no `decided_at`, no `approval_step`. Those are the approval
-   story's and a nullable column with nothing able to write it is the switch with
-   nothing behind it that LMS 209 argued against — the same argument the ledger made
+   later work's, and a nullable column with nothing able to write it is the switch with
+   nothing behind it argued against earlier — the same argument the ledger made
    when it refused `leave_request_id` until this table existed. */
 
 CREATE TABLE leave_request (
@@ -381,7 +381,7 @@ CREATE TRIGGER leave_request_is_audited
 
    Its own words: "a nullable id with no foreign key behind it would be a column
    nothing could populate and nothing could check — the switch with nothing behind it
-   that LMS 209 argued against. It arrives with the request table, as a column, a
+   argued against earlier. It arrives with the request table, as a column, a
    foreign key, and the rule that the four request-shaped entry types must carry one."
    All three are here.
 

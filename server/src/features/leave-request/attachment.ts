@@ -1,5 +1,5 @@
 /**
- * A certificate or supporting document on a request. FR 12, FR 13, NFR SEC 07. LMS 310.
+ * A certificate or supporting document on a request. FR 12, FR 13, NFR SEC 07.
  */
 
 import type { LeaveType } from '../leave-type/leave-type.js';
@@ -52,14 +52,14 @@ export type ScanStatus = (typeof SCAN_STATUSES)[number];
 export interface LeaveRequestAttachment {
   id: string;
   /**
-   * The request this evidences, or null while it is still waiting for one. LMS 311.
+   * The request this evidences, or null while it is still waiting for one.
    *
    * FR 13 is answered at submission, which is before a request exists — so a file is
    * uploaded, waits under {@link LeaveRequestAttachment.heldForEmployeeId}, and is put on
    * the request in the same transaction as the row itself.
    */
   leaveRequestId: string | null;
-  /** Whose evidence this is. The one thing a waiting file can be addressed by. LMS 311. */
+  /** Whose evidence this is. The one thing a waiting file can be addressed by. */
   heldForEmployeeId: string;
   /** Which of the five seats this holds — on the request, or in the pile waiting for one. */
   slot: number;
@@ -79,13 +79,13 @@ export interface LeaveRequestAttachment {
   uploadedBy: string;
   uploadedByEmployeeId: string | null;
   uploadedAt: Date;
-  /** When retention deleted the stored file. The row stays. NFR SEC 06, LMS 514. */
+  /** When retention deleted the stored file. The row stays. NFR SEC 06. */
   fileDeletedAt: Date | null;
 }
 
 /** What a validated upload holds, before it is written. */
 export interface NewAttachment {
-  /** Null where it is being uploaded ahead of the request it will evidence. LMS 311. */
+  /** Null where it is being uploaded ahead of the request it will evidence. */
   leaveRequestId: string | null;
   heldForEmployeeId: string;
   slot: number;
@@ -125,7 +125,7 @@ export function evidenceOn(
   request: LeaveRequest,
   attachments: readonly LeaveRequestAttachment[],
 ): EvidenceOnARequest {
-  /* LMS 311. Read off the request rather than asked of the type again, and the two are not
+  /* Read off the request rather than asked of the type again, and the two are not
      the same question: FR 32a's threshold is the balance, which has moved since, and FR 13's
      is a rule HR may have reworded. What this reports is what the leave was allowed on. */
   const required = request.evidenceRequired;
@@ -176,14 +176,14 @@ function evidenceInWords(
 
 /* ----------------------------------------------------------------- retention */
 
-/** A stored file on leave that is decided or ended. NFR SEC 06, LMS 514. */
+/** A stored file on leave that is decided or ended. NFR SEC 06. */
 export interface KeptAttachment {
   attachment: LeaveRequestAttachment;
   leaveRequestId: string;
   leaveEndedOn: CalendarDate;
 }
 
-/** The day the stored file is deleted: the retention period after the leave ends. LMS 514. */
+/** The day the stored file is deleted: the retention period after the leave ends. */
 export function fileDeletedOn(leaveEndedOn: CalendarDate, retentionMonths: number): CalendarDate {
   return monthsAfter(leaveEndedOn, retentionMonths);
 }
@@ -260,10 +260,10 @@ export class AttachmentTooLarge extends Error {
   }
 }
 
-/** FR 12. Five seats, on a request or in the pile waiting for one. LMS 311. */
+/** FR 12. Five seats, on a request or in the pile waiting for one. */
 export class TooManyAttachments extends Error {
   readonly code = 'TOO_MANY_FILES';
-  /** Null where the five that are full are the ones waiting for a request. LMS 311. */
+  /** Null where the five that are full are the ones waiting for a request. */
   readonly leaveRequestId: string | null;
   readonly maxFiles = MAX_ATTACHMENTS_PER_REQUEST;
 
@@ -319,7 +319,7 @@ export class AttachmentNotScanned extends Error {
   }
 }
 
-/** NFR SEC 06. Deleted under retention; the name and details stay. LMS 514. */
+/** NFR SEC 06. Deleted under retention; the name and details stay. */
 export class AttachmentFileDeleted extends Error {
   readonly code = 'FILE_DELETED';
   readonly attachmentId: string;
@@ -366,9 +366,9 @@ export function assertAttachmentsAreOpen(
 }
 
 /**
- * The file a request was let through on, being taken back off. FR 13, LMS 311.
+ * The file a request was let through on, being taken back off. FR 13.
  *
- * The hole LMS 310 could not have: evidence that arrives with the request and leaves a minute
+ * The hole attachments could not have: evidence that arrives with the request and leaves a minute
  * later is evidence that was chased after all. A second certificate attached first frees this
  * one, so it refuses the *last* usable file rather than any of them.
  */
@@ -392,7 +392,7 @@ export class DocumentationCannotBeRemoved extends Error {
 }
 
 /**
- * Refuses taking the last of a request's evidence off it. FR 13, LMS 311.
+ * Refuses taking the last of a request's evidence off it. FR 13.
  *
  * `leave_request_attachment_is_what_it_was_allowed_on` holds the same rule where no sentence
  * can reach, and on every connection.

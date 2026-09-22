@@ -29,7 +29,7 @@ export default tseslint.config(
     },
   },
 
-  // And since LMS 401 the React client runs in a browser, which is the block the
+  // And the React client runs in a browser, which is the block the
   // note above predicted. Scoped to client/** so that `window` and `document` are
   // defined exactly where they exist and nowhere else — a server file that reached
   // for one would still be an error, which is the point of scoping it.

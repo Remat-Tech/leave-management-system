@@ -36,7 +36,7 @@ import { seed } from '../../seeds/seed.mjs';
 
 /**
  * Entitlement that arrives with an event, against a real database. FR 32g, FR 32e,
- * §8.6aa. LMS 218.
+ * §8.6aa.
  *
  * ../unit/leave-event.test.ts proves the two rules that are arithmetic — when a grant
  * runs out, and what is left when it does. What needs a server is everything the story
@@ -187,7 +187,7 @@ function aBirthFor(employeeId: string, leaveTypeId: string, occurredOn = A_BIRTH
 }
 
 /**
- * Days taken, the way they are actually taken since LMS 301.
+ * Days taken, the way they are actually taken.
  *
  * A RESERVATION has to name a request and a request has to hold days, so "five days
  * gone" is no longer one call — it is a request that holds them and an approval that
@@ -228,7 +228,7 @@ async function holdDays(movement: {
       from: rows[0].start_date,
       to: rows[0].end_date,
       reason: movement.reason,
-      /** FR 18, LMS 308. */
+      /** FR 18. */
       lateEntryReason: null,
       evidenceRequired: false,
       certifiedDays: 0,
@@ -236,9 +236,9 @@ async function holdDays(movement: {
       days: movement.days,
       calendarDays: movement.days,
       /* FR 38a. Where a request starts, which `LeaveRequestService` reads off the leave
-         type's chain. This fixture goes straight to the door, so it says it. LMS 314. */
+         type's chain. This fixture goes straight to the door, so it says it. */
       awaitingApprovalFrom: 'MANAGER' as const,
-      /** FR 48b. Nothing to skip: every desk can be asked. LMS 320. */
+      /** FR 48b. Nothing to skip: every desk can be asked. */
       skips: [],
       status: 'SUBMITTED' as const,
     },
@@ -414,7 +414,7 @@ describe('what an event may be recorded against', () => {
    * Reported by name rather than granted as nought, because a ledger entry of no days is
    * not a movement.
    *
-   * **The example is made rather than borrowed, and that is LMS 401's doing.** This used
+   * **The example is made rather than borrowed.** This used
    * to reach for unpaid leave, which was an event type with no figure — FR 32h read as
    * agreed occasion by occasion. Unpaid leave is now ten working days a year and every
    * statutory type carries a figure, so there is no longer a shipped type in this state.
@@ -541,7 +541,7 @@ describe('the expiry job lapses whatever remains', () => {
    * As a `LAPSE`, and it takes the days back out of `entitled` where the grant put
    * them.
    *
-   * This is the whole reason LMS 218 spent a migration on a ninth entry type. An
+   * This is the whole reason a migration was spent on a ninth entry type. An
    * `EXPIRY` moves `carriedOver` — FR 36a's clock — and using it here would leave a
    * paternity balance reading `carriedOver: -14` on a type that cannot carry a single
    * day. Available would be right and the column would be false.

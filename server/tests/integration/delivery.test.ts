@@ -38,7 +38,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * A failed notification is retried rather than dropped. FR 59, §7.1. LMS 331.
+ * A failed notification is retried rather than dropped. FR 59, §7.1.
  *
  * ../unit/delivery.test.ts proves the arithmetic of the backoff. What needs a server is the
  * story's two criteria:
@@ -114,7 +114,7 @@ beforeAll(async () => {
     new LeaveDecisionRepository(db),
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     new AttachmentRepository(db),
     new RoleRepository(db),
@@ -128,7 +128,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. The fixture week is months behind today, as in every leave suite here. */
+  /* FR 18. The fixture week is months behind today, as in every leave suite here. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
 
   await admin.query('TRUNCATE leave_balance');

@@ -1,4 +1,4 @@
-/** Setting the organisation up: the Chief Executive, the override rule and the retention window. FR 44, FR 48c, NFR SEC 06, §4.3.1, LMS 321, LMS 505. */
+/** Setting the organisation up: the Chief Executive, the override rule and the retention window. FR 44, FR 48c, NFR SEC 06, §4.3.1. */
 
 import type { Actor } from '../../auth/actor.js';
 import type { Guard } from '../../auth/policy.js';
@@ -42,7 +42,7 @@ export class OrganisationService {
   }
 
   /**
-   * Changes the settings that are not a person. FR 44, NFR SEC 06. LMS 505.
+   * Changes the settings that are not a person. FR 44, NFR SEC 06.
    *
    * Its own door rather than a field on {@link OrganisationService.nameTheChiefExecutive}:
    * that one names a record and refuses three ways about who it names, and these are two
@@ -81,7 +81,7 @@ export class OrganisationService {
   }
 
   /**
-   * The Chief Executive, or null where nobody is named. FR 48c, LMS 505.
+   * The Chief Executive, or null where nobody is named. FR 48c.
    *
    * {@link OrganisationService.chiefExecutive} throws; this is for a screen that has to draw
    * the empty seat.
@@ -97,7 +97,7 @@ export class OrganisationService {
   }
 
   /**
-   * Everybody who could be named Chief Executive, or nobody. FR 48c, LMS 505.
+   * Everybody who could be named Chief Executive, or nobody. FR 48c.
    *
    * Empty rather than a refusal: reading the settings is everybody's, the staff directory
    * behind the picker is not. `permits` rather than `enforce`, so a read is not a denial in

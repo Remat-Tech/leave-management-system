@@ -12,7 +12,7 @@ import {
 } from '../../src/features/leave-request/reassignment.js';
 
 /**
- * Pending leave follows the reporting line. FR 07, §8.4, LMS 325.
+ * Pending leave follows the reporting line. FR 07, §8.4.
  *
  * The pure half: which requests a moved line carries, and what the record of the handover
  * says. Which people the desks resolve to is a database question and is
@@ -62,7 +62,7 @@ describe('the requests a moved line carries', () => {
     expect(requestsThatFollow([waiting])).toEqual([waiting]);
   });
 
-  /** FR 48b, LMS 320. An empty manager's desk is one of the things that strands a request. */
+  /** FR 48b. An empty manager's desk is one of the things that strands a request. */
   it('and one that stopped because nobody could decide it', () => {
     const stuck = aRequestIn('UNROUTABLE');
 

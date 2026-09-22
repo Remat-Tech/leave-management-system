@@ -1,6 +1,6 @@
 -- Up Migration
 
--- A failed send is retried with backoff rather than dropped. FR 59, §7.1., LMS 331.
+-- A failed send is retried with backoff rather than dropped. FR 59, §7.1..
 --
 -- No new table. The notice row is the outbox: it already records what was said and what
 -- became of the email, and what it lacked was when to try again.
@@ -110,7 +110,7 @@ BEGIN
             USING ERRCODE = 'restrict_violation',
                   CONSTRAINT = 'notification_delivery_is_finished_once',
                   HINT = 'It was delivered, or it was given up on. Either way there is no '
-                         'further attempt to record. FR 59, LMS 331.';
+                         'further attempt to record. FR 59.';
     END IF;
 
     IF NEW.email_attempts < OLD.email_attempts THEN
@@ -120,7 +120,7 @@ BEGIN
             USING ERRCODE = 'restrict_violation',
                   CONSTRAINT = 'notification_email_attempts_only_rise',
                   HINT = 'How many sends have been made is what the backoff is measured '
-                         'from. LMS 331.';
+                         'from.';
     END IF;
 
     RETURN NEW;

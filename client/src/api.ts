@@ -1,4 +1,4 @@
-/** The one place this application talks to the server. LMS 401. */
+/** The one place this application talks to the server. */
 
 /** A leave year, as the picker and the heading show it. */
 export interface Year {
@@ -47,7 +47,7 @@ export interface Statement {
   lines: BalanceLine[];
 }
 
-/** ------------------------------------------------ my request history. FR 54, LMS 402. */
+/** ------------------------------------------------ my request history. FR 54. */
 
 /** A desk in an approval chain — not a role somebody holds. */
 export type Desk = 'MANAGER' | 'HR' | 'CEO';
@@ -56,7 +56,7 @@ export type Desk = 'MANAGER' | 'HR' | 'CEO';
 export type RequestStatus =
   | 'SUBMITTED'
   | 'APPROVED'
-  /** Nobody could be found to decide it. FR 48b, LMS 320. */
+  /** Nobody could be found to decide it. FR 48b. */
   | 'UNROUTABLE'
   | 'WITHDRAWN'
   | 'CANCELLED'
@@ -66,10 +66,10 @@ export type RequestStatus =
 export type TrailStepKind =
   | 'ASKED'
   | 'DECIDED'
-  /** A decision that reversed the manager's. FR 44, LMS 318. */
+  /** A decision that reversed the manager's. FR 44. */
   | 'OVERTURNED'
   | 'ENDED'
-  /** An ask for agreed leave to come off the books, or HR's answer. FR 47, LMS 324. */
+  /** An ask for agreed leave to come off the books, or HR's answer. FR 47. */
   | 'WITHDRAWAL'
   /** The Chief Executive reversed the settled outcome. */
   | 'REVERSED'
@@ -80,7 +80,7 @@ export interface TrailStep {
   kind: TrailStepKind;
   /** The desk this step belongs to, where it belongs to one. */
   desk: Desk | null;
-  /** Whether the step said yes. Null on every step that is not a decision. LMS 409. */
+  /** Whether the step said yes. Null on every step that is not a decision. */
   agreed: boolean | null;
   /** FR 39. */
   comment: string | null;
@@ -183,7 +183,7 @@ export interface History {
   entries: RequestEntry[];
 }
 
-/** ---------------------------------------------------- the request form. LMS 403. */
+/** ---------------------------------------------------- the request form. */
 
 /**
  * What kind of thing one rule is.
@@ -290,7 +290,7 @@ export interface Quote {
   warnings: QuoteWarning[];
 }
 
-/** What came back from asking. LMS 301. */
+/** What came back from asking. */
 export interface Submitted {
   requestId: string;
   leaveTypeId: string;
@@ -303,9 +303,9 @@ export interface Submitted {
   days: number;
   calendarDays: number;
   status: RequestStatus;
-  /** FR 13, FR 32a. Whether documentation was asked of it, and so is on it. LMS 311. */
+  /** FR 13, FR 32a. Whether documentation was asked of it, and so is on it. */
   evidenceRequired: boolean;
-  /** FR 32a, §8.6b. How many of its days went past the allowance on that certificate. LMS 312. */
+  /** FR 32a, §8.6b. How many of its days went past the allowance on that certificate. */
   certifiedDays: number;
   /** FR 38a. The desk it is now sitting on. */
   awaitingApprovalFrom: Desk | null;
@@ -314,7 +314,7 @@ export interface Submitted {
   availableAfter: number;
 }
 
-/** ------------------------------------------- everything waiting on me. FR 20, LMS 404. */
+/** ------------------------------------------- everything waiting on me. FR 20. */
 
 /** FR 17, FR 18. Worth pointing out before deciding, and not a refusal. */
 export type QueueFlag = 'SHORT_NOTICE' | 'BACKDATED';
@@ -368,7 +368,7 @@ export interface TeamContext {
 export interface QueueItem {
   requestId: string;
   /**
-   * NFR DAT 02, §8.1. What this row was drawn from, sent back with the decision. LMS 326.
+   * NFR DAT 02, §8.1. What this row was drawn from, sent back with the decision.
    *
    * A screen that hands it back is told its decision lost a race — 409, and the server's own
    * sentence — rather than answering a request somebody else has.
@@ -414,7 +414,7 @@ export interface QueueItem {
   /** FR 48, §8.6a. False for my own request, whatever desk it is sitting at. */
   actionable: boolean;
   notActionableBecause: string | null;
-  /** FR 44. What the line manager said, where they have said anything. LMS 318. */
+  /** FR 44. What the line manager said, where they have said anything. */
   managersDecision: ManagersDecision | null;
   /**
    * FR 44. Whether each button would overrule the manager, and so has to go as an override
@@ -424,7 +424,7 @@ export interface QueueItem {
   refusingIs: OverridingAction | null;
 }
 
-/** An ask to cancel agreed leave, as HR answers it. FR 47, LMS 324. */
+/** An ask to cancel agreed leave, as HR answers it. FR 47. */
 export interface WithdrawalToAnswer {
   requestId: string;
   employeeName: string;
@@ -444,7 +444,7 @@ export async function withdrawalsToAnswer(): Promise<WithdrawalToAnswer[]> {
   return items;
 }
 
-/** Asking HR to cancel your own approved leave, and saying why. FR 47, LMS 324. */
+/** Asking HR to cancel your own approved leave, and saying why. FR 47. */
 export async function askToCancel(requestId: string, reason: string): Promise<void> {
   await request<unknown>('POST', `/api/requests/${encodeURIComponent(requestId)}/withdrawal`, {
     reason,
@@ -470,7 +470,7 @@ export async function refuseWithdrawal(requestId: string, reason: string): Promi
 }
 
 /**
- * Takes back your own request before its last desk has decided. FR 26, LMS 306.
+ * Takes back your own request before its last desk has decided. FR 26.
  *
  * Refused once it is approved: the days are taken by then, and giving them back is HR's.
  */
@@ -478,7 +478,7 @@ export async function withdrawRequest(requestId: string): Promise<void> {
   await request<unknown>('POST', `/api/requests/${encodeURIComponent(requestId)}/withdraw`);
 }
 
-/** Deciding the opposite way to the line manager. FR 44, LMS 318. */
+/** Deciding the opposite way to the line manager. FR 44. */
 export type OverridingAction = 'OVERTURN_APPROVAL' | 'OVERTURN_REJECTION';
 
 /** What the line manager decided, as HR weighs it. FR 44. */
@@ -491,7 +491,7 @@ export interface ManagersDecision {
 }
 
 /**
- * Deciding one request the opposite way to its line manager. FR 44, LMS 318.
+ * Deciding one request the opposite way to its line manager. FR 44.
  *
  * One request at a time, never a batch: the reason is the account of this decision, and one
  * reason spread across a selection is the account of none of them.
@@ -512,7 +512,7 @@ export interface ApproverQueue {
   items: QueueItem[];
 }
 
-/** ------------------------------------------------- my direct reports. FR 55, FR 56, LMS 405. */
+/** ------------------------------------------------- my direct reports. FR 55, FR 56. */
 
 /** FR 06. A leaver still reports to somebody until HR moves the line. */
 export type EmploymentStatus = 'ACTIVE' | 'SUSPENDED' | 'TERMINATED';
@@ -595,7 +595,7 @@ export interface Team {
   calendar: TeamCalendar;
 }
 
-/** ------------------------------------------ the team I am on. FR 57, LMS 406. */
+/** ------------------------------------------ the team I am on. FR 57. */
 
 /**
  * One absence on the team calendar. FR 57.
@@ -614,7 +614,7 @@ export interface Absence {
   inWords: string;
 }
 
-/** A department, as the calendar names one. LMS 409. */
+/** A department, as the calendar names one. */
 export interface DepartmentOnTheCalendar {
   id: string;
   name: string;
@@ -625,7 +625,7 @@ export interface Colleague {
   employeeId: string;
   name: string;
   jobTitle: string | null;
-  /** LMS 409. The heading they sit under where the calendar spans more than one. */
+  /** The heading they sit under where the calendar spans more than one. */
   department: DepartmentOnTheCalendar | null;
   /** FR 06. */
   employmentStatus: EmploymentStatus;
@@ -654,16 +654,16 @@ export interface AwayDay {
   away: AwayOn[];
 }
 
-/** Who is away and when, in the department I am in. FR 57, LMS 409. */
+/** Who is away and when, in the department I am in. FR 57. */
 export interface TeamAwayCalendar {
   employeeId: string;
   year: Year;
   years: Year[];
-  /** LMS 409. The department being shown, or null where every one of them is, at once. */
+  /** The department being shown, or null where every one of them is, at once. */
   department: DepartmentOnTheCalendar | null;
-  /** LMS 409. What may be asked for. Only my own, unless I am HR. */
+  /** What may be asked for. Only my own, unless I am HR. */
   departments: DepartmentOnTheCalendar[];
-  /** LMS 409. Whether the picker is a choice or a label. */
+  /** Whether the picker is a choice or a label. */
   canChooseDepartment: boolean;
   from: string;
   to: string;
@@ -679,7 +679,7 @@ export interface TeamAwayCalendar {
   days: AwayDay[];
 }
 
-/** ---------------------------------------- requests I have not finished. FR 19, LMS 302. */
+/** ---------------------------------------- requests I have not finished. FR 19. */
 
 /** A field a draft may still be missing, in the order the form asks for them. */
 export type DraftField = 'leaveTypeId' | 'from' | 'to' | 'reason';
@@ -719,7 +719,7 @@ export interface DraftFields {
   reason?: string | null;
 }
 
-/** ------------------------------------ leave types, as HR sets them up. FR 31, FR 32, LMS 501 */
+/** ------------------------------------ leave types, as HR sets them up. FR 31, FR 32 */
 
 export type CountingBasis = 'WORKING_DAYS' | 'CALENDAR_DAYS';
 export type EntitlementBasis = 'QUOTA' | 'EVENT';
@@ -800,7 +800,7 @@ export interface ConfiguredLeaveType {
   approvalChain: Desk[];
   /** In the requester's voice: "your manager then HR". What the request form says. */
   approvedBy: string;
-  /** The same chain as a configuration screen names it: "Manager then HR". LMS 503. */
+  /** The same chain as a configuration screen names it: "Manager then HR". */
   approvedByLabel: string;
 
   /** §7.4. The order the balance screen and the request form list them in. */
@@ -922,7 +922,7 @@ export async function reinstateLeaveType(id: string): Promise<ConfiguredLeaveTyp
   );
 }
 
-/** ------------------------- what a leave type is worth, and from when. FR 31, LMS 502 */
+/** ------------------------- what a leave type is worth, and from when. FR 31 */
 
 /** How narrowly a rule is aimed, and therefore which one wins. */
 export type RuleScope = 'EVERYBODY' | 'DEPARTMENT' | 'EMPLOYEE';
@@ -991,7 +991,7 @@ export interface RulePerson {
   departmentId: string;
 }
 
-/** What a new rule is unless the person says otherwise. On the wire, as LMS 501's are. */
+/** What a new rule is unless the person says otherwise, on the wire. */
 export interface EntitlementRuleDefaults {
   entitlementDays: number;
   prorateOnJoin: boolean;
@@ -1071,7 +1071,7 @@ export async function withdrawEntitlementRule(id: string): Promise<void> {
   await request<void>('DELETE', `/api/entitlement-rules/${encodeURIComponent(id)}`);
 }
 
-/** ------------------------------- the days the office is closed. FR 22, LMS 504 */
+/** ------------------------------- the days the office is closed. FR 22 */
 
 /** One gazetted day, as the screen that keeps it sees one. FR 22. */
 export interface Holiday {
@@ -1151,7 +1151,7 @@ export async function removeHoliday(id: string): Promise<void> {
   await request<void>('DELETE', `/api/holidays/${encodeURIComponent(id)}`);
 }
 
-/** ---------- a day declared after leave was approved. FR 25, §8.8, LMS 508 */
+/** ---------- a day declared after leave was approved. FR 25, §8.8 */
 
 /** One piece of agreed leave the day falls inside, and what it is worth to that person. */
 export interface AffectedLeave {
@@ -1219,7 +1219,7 @@ export async function recalculateForHoliday(id: string): Promise<RecalculationRu
   return request<RecalculationRun>('POST', `/api/holidays/${encodeURIComponent(id)}/recalculation`);
 }
 
-/** --------------- the settings that are about the company. FR 44, FR 48c, NFR SEC 06, LMS 505 */
+/** --------------- the settings that are about the company. FR 44, FR 48c, NFR SEC 06 */
 
 /** Every org-wide setting, with the sentence each one adds up to. */
 export interface PolicySettings {
@@ -1298,7 +1298,7 @@ export async function nameChiefExecutive(employeeId: string): Promise<PolicySett
   return request<PolicySettings>('PUT', '/api/policy-settings/chief-executive', { employeeId });
 }
 
-/** ------------------------------------------ the wording of the emails. FR 61, LMS 512 */
+/** ------------------------------------------ the wording of the emails. FR 61 */
 
 /** A subject line and a message, with `{{placeholders}}`. */
 export interface Wording {
@@ -1347,7 +1347,7 @@ export async function previewEmail(name: string, wording: Wording): Promise<Word
   );
 }
 
-/** ------------------------------ putting a balance right by hand. FR 37, FR 27, LMS 506 */
+/** ------------------------------ putting a balance right by hand. FR 37, FR 27 */
 
 /** Every kind of movement a balance is made of. §5.7. */
 export type MovementType =
@@ -1390,7 +1390,7 @@ export interface Entry {
   createdAt: string;
 }
 
-/** The same, read as one of a run: named, with the figure it left behind it. LMS 211. */
+/** The same, read as one of a run: named, with the figure it left behind it. */
 export interface Movement extends Entry {
   typeName: string;
   after: number;
@@ -1456,7 +1456,7 @@ export async function adjustBalance(fields: AdjustmentFields): Promise<Adjusted>
   return request<Adjusted>('POST', '/api/balance-adjustments', fields);
 }
 
-/** ------------------------------------------- events that grant leave. FR 32g, LMS 218 */
+/** ------------------------------------------- events that grant leave. FR 32g */
 
 export interface EventPerson {
   id: string;
@@ -1522,7 +1522,7 @@ export async function recordEvent(fields: {
   return request<EventGranted>('POST', '/api/leave-events', fields);
 }
 
-/** ------------------------------------------- the leaver figure. FR 37a, §8.7, LMS 509 */
+/** ------------------------------------------- the leaver figure. FR 37a, §8.7 */
 
 /** Somebody who has left. FR 06. */
 export interface Leaver {
@@ -1582,7 +1582,7 @@ export interface LeaverSettlement {
   year: Year;
   /** The part of that year they were employed for. */
   portion: { from: string; to: string };
-  /** LMS 013. The figure says which rule produced it. */
+  /** The figure says which rule produced it. */
   proRataRule: { name: string; says: string };
   lines: SettlementLine[];
 }
@@ -1597,7 +1597,7 @@ export async function leaverFigure(employeeId: string): Promise<LeaverSettlement
   return request<LeaverSettlement>('GET', `/api/leavers/${employeeId}`);
 }
 
-/** ------------------------------------------------------ HR reports. FR 63, LMS 510 */
+/** ------------------------------------------------------ HR reports. FR 63 */
 
 /** One kind of leave, as a report line is headed. */
 export interface ReportLeaveType {
@@ -1619,7 +1619,7 @@ export interface LiabilityLine extends ReportLeaveType {
   unused: number;
 }
 
-/** What a report's filters offer. FR 58, LMS 511. */
+/** What a report's filters offer. FR 58. */
 export interface ReportChoices {
   departments: { id: string; name: string }[];
   types: { id: string; name: string }[];
@@ -1729,7 +1729,7 @@ export async function carriedOverReport(asked: ReportQuery): Promise<CarriedOver
   return request<CarriedOverReport>('GET', `/api/reports/carried-over${query({ ...asked })}`);
 }
 
-/** ------------------------------------------------------- exports. FR 64, LMS 511 */
+/** ------------------------------------------------------- exports. FR 64 */
 
 export type ExportFormat = 'csv' | 'xlsx';
 
@@ -1769,7 +1769,7 @@ export async function saveExport(path: string, format: ExportFormat): Promise<vo
   }, 1000);
 }
 
-/** ------------------------------------------------------ the audit log. LMS 513 */
+/** ------------------------------------------------------ the audit log */
 
 /** One field that moved. */
 export interface AuditChange {
@@ -1835,7 +1835,7 @@ export interface SignedIn {
   lastName: string;
 }
 
-/** The second factor was sent instead of a session being opened. LMS 110. */
+/** The second factor was sent instead of a session being opened. */
 export interface CodeSent {
   status: 'CODE_SENT';
   companyEmail: string;
@@ -1867,7 +1867,7 @@ export function isNotSignedIn(error: unknown): boolean {
 export const UNREACHABLE = 0;
 
 /**
- * Every call this file makes, with a dropped connection given a sentence. LMS 410.
+ * Every call this file makes, with a dropped connection given a sentence.
  *
  * `fetch` rejects with a `TypeError` reading "Failed to fetch", which is what the screens used
  * to show — the one failure here with no sentence behind it. It does not claim the request was
@@ -1966,7 +1966,7 @@ export async function myBalances(leaveYearId?: string): Promise<Statement> {
 }
 
 /**
- * Every request I have made, or only those in one leave year. FR 54. LMS 402.
+ * Every request I have made, or only those in one leave year. FR 54.
  *
  * `leaveYearId` is left off by default and that means **everything**, which is the opposite
  * of what leaving it off means for {@link myBalances}. A balance is per leave year and cannot
@@ -1983,7 +1983,7 @@ export async function myRequests(leaveYearId?: string): Promise<History> {
 }
 
 /**
- * The kinds of leave I may ask for, and what each of them asks of me. LMS 403.
+ * The kinds of leave I may ask for, and what each of them asks of me.
  *
  * Asked once, when the form opens. Nothing in it depends on what somebody types, which is
  * the whole point: the rule that maternity leave needs a certificate is true before a date
@@ -1994,7 +1994,7 @@ export async function requestForm(): Promise<RequestForm> {
 }
 
 /**
- * What this period would cost, before anything is written. LMS 403's first criterion.
+ * What this period would cost, before anything is written.
  *
  * A GET, because it is one: it writes nothing and reserves nothing, and is meant to be
  * called again every time a date changes.
@@ -2018,7 +2018,7 @@ export async function quoteLeave(input: {
 }
 
 /**
- * Everything waiting on me. FR 20, FR 40. LMS 404.
+ * Everything waiting on me. FR 20, FR 40.
  *
  * No parameters, and there is nothing to pass: the desks are established from the session, so
  * there is no id a browser could name and nothing to narrow by.
@@ -2034,7 +2034,7 @@ export async function myApprovals(): Promise<ApproverQueue> {
 }
 
 /**
- * The people who report to me, for one leave year. FR 55, FR 56. LMS 405.
+ * The people who report to me, for one leave year. FR 55, FR 56.
  *
  * `/me` names the *manager* here, and there is no id to pass: the team is whoever reports to
  * the session. Direct reports only — a manager two levels up sees their own reports and
@@ -2051,7 +2051,7 @@ export async function myTeam(leaveYearId?: string): Promise<Team> {
 }
 
 /**
- * Who is away in a department, for one leave year. FR 57, LMS 406, LMS 409.
+ * Who is away in a department, for one leave year. FR 57.
  *
  * `/me` names the *reader*, and there is no employee id to pass: the calendar is the
  * department they are in.
@@ -2086,15 +2086,15 @@ export async function myCalendar(
   return request<TeamAwayCalendar>('GET', `/api/me/calendar${asked === '' ? '' : `?${asked}`}`);
 }
 
-/** What `departmentId` is when the calendar is being asked for every department. LMS 409. */
+/** What `departmentId` is when the calendar is being asked for every department. */
 export const EVERY_DEPARTMENT = '';
 
-/* ------------------------------------------ several at once. FR 51, LMS 328 */
+/* ------------------------------------------ several at once. FR 51 */
 
 /** One request a batch decided, as the single door answers it too. FR 38a, FR 39. */
 export interface Decided {
   requestId: string;
-  /** NFR DAT 02. Where the row now stands, for whatever decides on it next. LMS 326. */
+  /** NFR DAT 02. Where the row now stands, for whatever decides on it next. */
   version: string;
   status: RequestStatus;
   /** FR 38a. Null once there is nobody left to ask. */
@@ -2106,7 +2106,7 @@ export interface Decided {
     comment: string | null;
     overridesDecisionId: string | null;
     decidedBy: string;
-    /** FR 49. The approver whose absence this covered. LMS 327. */
+    /** FR 49. The approver whose absence this covered. */
     delegatedFor: string | null;
     decidedAt: string;
   };
@@ -2115,7 +2115,7 @@ export interface Decided {
   availableAfter: number;
 }
 
-/** One a batch left where it was, carrying the server's own refusal. FR 51, LMS 328. */
+/** One a batch left where it was, carrying the server's own refusal. FR 51. */
 export interface Undecided {
   requestId: string;
   /** The refusal's name, to branch on — `NotAuthorised` for my own request, FR 48. */
@@ -2125,7 +2125,7 @@ export interface Undecided {
   field?: string;
 }
 
-/** What one press did. FR 51, LMS 328. */
+/** What one press did. FR 51. */
 export interface BulkDecided {
   action: 'APPROVE' | 'REFUSE';
   inWords: string;
@@ -2134,12 +2134,12 @@ export interface BulkDecided {
 }
 
 /**
- * Answers several requests at once. FR 51, LMS 328.
+ * Answers several requests at once. FR 51.
  *
  * Never a refusal of the whole selection: each row is decided at its own desk and the ones
  * that could not be are in `undecided` with the sentence saying why. The versions are the
  * ones the queue rows carried — a row somebody else has since answered is refused on its own
- * rather than taking the batch down with it. NFR DAT 02, LMS 326.
+ * rather than taking the batch down with it. NFR DAT 02.
  *
  * `comment` is required of a refusal and goes on every one in the batch. FR 39.
  */
@@ -2159,10 +2159,10 @@ export async function decideMany(input: {
  * — a quote is not a promise, and a caller that could hand over a figure could hand over a
  * smaller one.
  *
- * `acknowledgesShortNotice` answers the quote's `SHORT_NOTICE` warning. FR 17, LMS 307. Sent
+ * `acknowledgesShortNotice` answers the quote's `SHORT_NOTICE` warning. FR 17. Sent
  * either way; whether one was owed is the server's to decide.
  *
- * `evidence` answers its `DOCUMENTATION_REQUIRED` one. FR 13, FR 32a, LMS 311. Ids from
+ * `evidence` answers its `DOCUMENTATION_REQUIRED` one. FR 13, FR 32a. Ids from
  * {@link holdEvidence}, uploaded before this call, because a type that asks for documentation
  * refuses a request that arrives without it.
  */
@@ -2173,13 +2173,13 @@ export async function askForLeave(input: {
   /** FR 10. Sent as typed; whether nothing is allowed is the leave type's rule. */
   reason: string;
   acknowledgesShortNotice?: boolean;
-  /** FR 13, FR 32a. Attachment ids, never files. LMS 311. */
+  /** FR 13, FR 32a. Attachment ids, never files. */
   evidence?: string[];
 }): Promise<Submitted> {
   return request<Submitted>('POST', '/api/me/requests', input);
 }
 
-/* ------------------------------------------------------- drafts. FR 19, LMS 302 */
+/* ------------------------------------------------------- drafts. FR 19 */
 
 /** Everything I have started and not finished, the one I last worked on first. */
 export async function myDrafts(): Promise<{ drafts: Draft[] }> {
@@ -2217,12 +2217,12 @@ export async function discardDraft(draftId: string): Promise<void> {
  * submission leaves the draft exactly where it was.
  *
  * The acknowledgement is given here rather than saved on the draft: how short the notice is
- * depends on the day it is finished. FR 17, LMS 307.
+ * depends on the day it is finished. FR 17.
  */
 export async function submitDraft(
   draftId: string,
   acknowledgesShortNotice = false,
-  /** FR 13, FR 32a, LMS 311. Given here for the same reason: a draft holds no files. */
+  /** FR 13, FR 32a. Given here for the same reason: a draft holds no files. */
   evidence: string[] = [],
 ): Promise<Submitted> {
   return request<Submitted>(
@@ -2232,7 +2232,7 @@ export async function submitDraft(
   );
 }
 
-/* ---------------------------------------------- attachments. FR 12, LMS 310 */
+/* ---------------------------------------------- attachments. FR 12 */
 
 /** NFR SEC 07. `PENDING` is a file nothing has checked; it counts as no evidence. */
 export type ScanStatus = 'PENDING' | 'CLEAN' | 'INFECTED';
@@ -2246,9 +2246,9 @@ export type AttachmentContentType =
 
 export interface Attachment {
   attachmentId: string;
-  /** FR 13. Null while the file is waiting for the request it will evidence. LMS 311. */
+  /** FR 13. Null while the file is waiting for the request it will evidence. */
   leaveRequestId: string | null;
-  /** FR 13. Whose evidence it is. LMS 311. */
+  /** FR 13. Whose evidence it is. */
   heldForEmployeeId: string;
   slot: number;
   filename: string;
@@ -2264,7 +2264,7 @@ export interface Attachment {
   downloadable: boolean;
   uploadedBy: string | null;
   uploadedAt: string;
-  /** NFR SEC 06. When retention deleted the stored file. LMS 514. */
+  /** NFR SEC 06. When retention deleted the stored file. */
   fileDeletedAt: string | null;
 }
 
@@ -2283,7 +2283,7 @@ export interface Attachments {
   evidence: Evidence;
 }
 
-/** FR 13. What has been uploaded and not yet asked for leave with. LMS 311. */
+/** FR 13. What has been uploaded and not yet asked for leave with. */
 export interface EvidenceWaiting {
   employeeId: string;
   attachments: Attachment[];
@@ -2333,7 +2333,7 @@ async function upload(path: string, file: File): Promise<Attachment> {
 }
 
 /**
- * Uploads evidence ahead of the request it will go on. FR 13, FR 32a. LMS 311.
+ * Uploads evidence ahead of the request it will go on. FR 13, FR 32a.
  *
  * The call a form makes *before* it submits, because a type that asks for documentation
  * refuses a request that arrives without it. The id that comes back is what
@@ -2343,7 +2343,7 @@ export async function holdEvidence(file: File): Promise<Attachment> {
   return upload('/api/me/evidence', file);
 }
 
-/** What is waiting, and how much of it counts. FR 13, LMS 311. */
+/** What is waiting, and how much of it counts. FR 13. */
 export async function evidenceWaiting(): Promise<EvidenceWaiting> {
   return request<EvidenceWaiting>('GET', '/api/me/evidence');
 }
@@ -2353,7 +2353,7 @@ export async function discardEvidence(attachmentId: string): Promise<void> {
   await request<void>('DELETE', `/api/evidence/${encodeURIComponent(attachmentId)}`);
 }
 
-/** Asks the scanner again about a waiting file it never answered for. NFR SEC 07, LMS 311. */
+/** Asks the scanner again about a waiting file it never answered for. NFR SEC 07. */
 export async function rescanEvidence(attachmentId: string): Promise<Attachment> {
   return request<Attachment>('POST', `/api/evidence/${encodeURIComponent(attachmentId)}/scan`);
 }
@@ -2377,7 +2377,7 @@ export async function rescanAttachment(
   return request<Attachment>('POST', `${attachmentPath(requestId, attachmentId)}/scan`);
 }
 
-/* ------------------------------------ fetching a certificate. NFR SEC 04, LMS 407 */
+/* ------------------------------------ fetching a certificate. NFR SEC 04 */
 
 /** An address the bytes may be fetched from, once, in the next two minutes. */
 export interface DownloadLink {
@@ -2392,7 +2392,7 @@ export interface DownloadLink {
 }
 
 /**
- * Asks for a way in. NFR SEC 04, LMS 407.
+ * Asks for a way in. NFR SEC 04.
  *
  * A POST because it writes: the server records who asked before it answers. Refused unless
  * the scan came back clean, and refused for anybody with no standing over the request.
@@ -2405,7 +2405,7 @@ export async function downloadLinkFor(
 }
 
 /**
- * The file, through a link. NFR SEC 04, LMS 407.
+ * The file, through a link. NFR SEC 04.
  *
  * Two calls, and there is no one-call version: the bytes have no standing address. What
  * comes back is held as a blob rather than navigated to, so that a refusal — a link somebody
@@ -2470,7 +2470,7 @@ function errorFrom(status: number, payload: unknown): ApiError {
   return new ApiError(
     status,
     typeof body.error === 'string' ? body.error : 'Unexpected',
-    /* LMS 410. Nothing upstream wrote this one, so it says the act as well as the fault. */
+    /* Nothing upstream wrote this one, so it says the act as well as the fault. */
     typeof body.message === 'string'
       ? body.message
       : 'Something went wrong and the server did not say what. Try again in a minute, and ' +

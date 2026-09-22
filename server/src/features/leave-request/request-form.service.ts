@@ -1,4 +1,4 @@
-/** The request form's rules, assembled. LMS 403, FR 13, FR 17, FR 32f, FR 05, FR 55, FR 56. */
+/** The request form's rules, assembled. FR 13, FR 17, FR 32f, FR 05, FR 55, FR 56. */
 
 import type { Actor } from '../../auth/actor.js';
 import { leaveRequestPolicy } from './policy.js';
@@ -44,7 +44,7 @@ export class RequestFormService {
   ) {}
 
   /**
-   * The kinds of leave this person may ask for, each with what it asks of them. LMS 403.
+   * The kinds of leave this person may ask for, each with what it asks of them.
    *
    * Reads nothing about their leave and writes nothing at all. The figures — what a period
    * costs, what the balance holds, what it would hold afterwards — are

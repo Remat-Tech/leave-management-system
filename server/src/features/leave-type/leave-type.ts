@@ -1,5 +1,5 @@
 /**
- * A leave type and the rules it carries. FR 21, FR 31, FR 32, §5.5., LMS 201, §7.3, FR 17, FR 18, FR 32a, LMS 204, FR 38a.
+ * A leave type and the rules it carries. FR 21, FR 31, FR 32, §5.5., §7.3, FR 17, FR 18, FR 32a, FR 38a.
  */
 
 import {
@@ -134,7 +134,7 @@ export class InvalidLeaveType extends Error {
 }
 
 export class DuplicateLeaveTypeCode extends Error {
-  /** NFR USA 03, LMS 501. The box a form puts the message beside. */
+  /** NFR USA 03. The box a form puts the message beside. */
   readonly field = 'code';
 
   constructor(code: string) {
@@ -147,7 +147,7 @@ export class DuplicateLeaveTypeCode extends Error {
 }
 
 export class DuplicateLeaveTypeName extends Error {
-  /** NFR USA 03, LMS 501. */
+  /** NFR USA 03. */
   readonly field = 'name';
 
   constructor(name: string) {
@@ -505,7 +505,7 @@ export function countsWorkingDays(type: LeaveType): boolean {
  * {@link countsWorkingDays} is. A type HR adds next year renders correctly the
  * moment the row exists.
  *
- * **It lived on the request quote until LMS 401**, because the quote of LMS 302
+ * **It used to live on the request quote**, because the quote
  * was the only thing that had to show it. The balance statement is the second
  * caller and is not about a request at all, so the sentence moved to the file it
  * is a fact about — the same move `deskInWords` made in ./approval-chain.ts when
@@ -538,7 +538,7 @@ export function countingBasisLabel(basis: CountingBasis): string {
 }
 
 /**
- * FR 32g. The entitlement basis, as a person reads it. LMS 501.
+ * FR 32g. The entitlement basis, as a person reads it.
  *
  * Here rather than on the configuration screen, for the reason {@link countingBasisLabel}
  * is: the file that defines the basis is the file that decides what it is called.
@@ -547,7 +547,7 @@ export function entitlementBasisLabel(basis: EntitlementBasis): string {
   return basis === 'QUOTA' ? 'Yearly allowance' : 'Granted when an occasion arises';
 }
 
-/** FR 24. How the allowance is said. LMS 501. */
+/** FR 24. How the allowance is said. */
 export function allowanceUnitLabel(unit: AllowanceUnit): string {
   switch (unit) {
     case 'WEEKS':
@@ -559,7 +559,7 @@ export function allowanceUnitLabel(unit: AllowanceUnit): string {
   }
 }
 
-/** FR 13. The documentation rule, as the form offers it. LMS 501. */
+/** FR 13. The documentation rule, as the form offers it. */
 export function documentationRuleLabel(rule: DocumentationRule): string {
   switch (rule) {
     case 'ALWAYS':
@@ -571,7 +571,7 @@ export function documentationRuleLabel(rule: DocumentationRule): string {
   }
 }
 
-/** FR 05. Who the type is open to, null being everybody. LMS 501. */
+/** FR 05. Who the type is open to, null being everybody. */
 export function genderRestrictionLabel(gender: Gender | null): string {
   if (gender === null) {
     return 'Anybody';
@@ -726,7 +726,7 @@ export function noticeShortfall(type: LeaveType, daysOfNotice: number): number {
  *
  * That HR exemption is not applied here, deliberately. It is a question about who
  * is asking rather than about the type, so it belongs to the request workflow —
- * `lateEntryFor` in ../leave-request/leave-request.ts, since LMS 308. This answers
+ * `lateEntryFor` in ../leave-request/leave-request.ts. This answers
  * only what the type permits. {@link TooLateToRecord} names the exemption in its
  * message, because the person who hits it cannot use it themselves and has to know
  * who can.
@@ -742,7 +742,7 @@ export function assertWithinBackdatingWindow(type: LeaveType, daysOfNotice: numb
 }
 
 /**
- * The same question, answered rather than thrown. FR 18. LMS 308.
+ * The same question, answered rather than thrown. FR 18.
  *
  * The pair {@link isEligible} and {@link assertEligible} make, and here for the reason
  * FR 18's own exemption gives: past the window the answer is not simply no, it is *not by
@@ -823,9 +823,9 @@ export function byDisplayOrder(left: LeaveType, right: LeaveType): number {
 /* ---------------------------------------------------------------- the fields */
 
 /**
- * What a type is unless the caller says otherwise. LMS 501.
+ * What a type is unless the caller says otherwise.
  *
- * Exported since LMS 501, because a create form has to draw its controls at something and
+ * Exported, because a create form has to draw its controls at something and
  * the alternative was a browser holding a second copy of this list. Only the optional
  * fields are here: `countingBasis` and `entitlementBasis` have no default and are refused
  * when missing, which is FR 21 and FR 32g refusing to be guessed at.

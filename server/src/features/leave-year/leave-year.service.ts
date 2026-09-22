@@ -1,5 +1,5 @@
 /**
- * Defining leave years and closing them. §5.4., LMS 205, LMS 203, LMS 210, LMS 211, FR 36, LMS 217.
+ * Defining leave years and closing them. §5.4., FR 36.
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -126,7 +126,7 @@ export class LeaveYearService {
   }
 }
 
-/** The boundary a closed year sets, as the function LMS 203 was written against. */
+/** The boundary a closed year sets, as the entitlement rules were written against. */
 export function earliestOpenDayFrom(years: LeaveYearRepository): EarliestOpenDay {
   return async () => earliestOpenDayOf(await years.list());
 }

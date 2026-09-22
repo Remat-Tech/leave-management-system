@@ -1,9 +1,9 @@
-/** The words each email is sent in, and HR's changes to them. FR 61, FR 59, LMS 512. */
+/** The words each email is sent in, and HR's changes to them. FR 61, FR 59. */
 
 import type { NoticeEvent } from './notification.js';
 
 /** How every message ends. The part a reader checks the email is genuine by. */
-export const SIGN_OFF = 'Remat Holdings Leave';
+export const SIGN_OFF = 'Rota';
 
 /** One email's words, with `{{placeholders}}` for what changes from request to request. */
 export interface Wording {
@@ -116,7 +116,7 @@ function body(...paragraphs: string[]): string {
 
 const TO_BOOK = 'You have {{daysLeftToBook}} to book.';
 
-/** The wording every email had before HR changed anything. FR 59, LMS 329. */
+/** The wording every email had before HR changed anything. FR 59. */
 export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
   SUBMITTED: {
     subject: 'Your {{typeName}} for {{period}} has been submitted',
@@ -148,7 +148,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     ),
   },
 
-  /* FR 44, LMS 318. Turned down, and not over. */
+  /* FR 44. Turned down, and not over. */
   STAGE_REFUSED: {
     subject: '{{DecidedBy}} turned down your {{typeName}} — it has gone to {{nowWith}}',
     body: body(
@@ -169,7 +169,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     ),
   },
 
-  /* FR 44, §7.2, LMS 318. To the manager who was overturned. */
+  /* FR 44, §7.2. To the manager who was overturned. */
   DECISION_OVERTURNED: {
     subject: '{{decidedBy}} overturned your decision on {{employeeNamePossessive}} {{typeName}}',
     body: body(
@@ -179,7 +179,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     ),
   },
 
-  /* FR 48b, §8.6a, LMS 320. */
+  /* FR 48b, §8.6a. */
   UNROUTABLE: {
     subject: 'Your {{typeName}} for {{period}} has nobody who can decide it',
     body: body(
@@ -200,7 +200,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     ),
   },
 
-  /* FR 07, §8.4, LMS 325. */
+  /* FR 07, §8.4. */
   REASSIGNED: {
     subject: '{{employeeNamePossessive}} {{typeName}} for {{period}} is now yours to decide',
     body: body(
@@ -211,7 +211,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     ),
   },
 
-  /* FR 47, LMS 324. HR's copy. */
+  /* FR 47. HR's copy. */
   WITHDRAWAL_ASKED: {
     subject:
       '{{employeeNamePossessive}} {{typeName}} for {{period}} — they have asked for it to be taken off the books',
@@ -272,7 +272,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     ),
   },
 
-  /* FR 50, FR 60, LMS 330. To the approver, about nothing having happened. */
+  /* FR 50, FR 60. To the approver, about nothing having happened. */
   STILL_WAITING: {
     subject: '{{employeeNamePossessive}} {{typeName}} for {{period}} is still waiting on you',
     body: body(
@@ -283,7 +283,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     ),
   },
 
-  /* FR 32c, §8.6c, LMS 507. */
+  /* FR 32c, §8.6c. */
   LEAVE_RECLASSIFIED: {
     subject:
       '{{daysBack}} of your {{typeName}} for {{period}} {{isOrAre}} now {{movedIntoTypeName}}',
@@ -295,7 +295,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     ),
   },
 
-  /* FR 25, §8.8, LMS 508. */
+  /* FR 25, §8.8. */
   LEAVE_RECALCULATED: {
     subject: '{{daysBack}} of your {{typeName}} for {{period}} {{hasOrHave}} been credited back',
     body: body(
@@ -386,7 +386,7 @@ export function fillIn(wording: Wording, values: PlaceholderValues): Wording {
   };
 }
 
-/** Checks and tidies HR's wording for one email. FR 61, LMS 512. */
+/** Checks and tidies HR's wording for one email. FR 61. */
 export function validateWording(
   name: EmailName,
   input: { subject?: unknown; body?: unknown },

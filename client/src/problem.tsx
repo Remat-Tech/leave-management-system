@@ -1,9 +1,9 @@
-/** A failure, as the person who met it needs it. NFR USA 03, LMS 410. */
+/** A failure, as the person who met it needs it. NFR USA 03. */
 
 import { ApiError, UNREACHABLE } from './api';
 import { Icon } from './Icon';
 
-/** NFR SEC 04, LMS 407. A download link spent, expired, or never issued. */
+/** NFR SEC 04. A download link spent, expired, or never issued. */
 const LINK_IS_GONE = 410;
 
 export interface Problem {

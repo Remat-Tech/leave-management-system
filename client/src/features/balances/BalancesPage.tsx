@@ -12,14 +12,14 @@ import { days, period } from '../../format';
 import { Icon, iconForLeaveType } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
-/** My balances. FR 53, LMS 401, FR 32g. */
+/** My balances. FR 53, FR 32g. */
 export function BalancesPage({
   onSignedOut,
   yearId,
   onYears,
 }: {
   onSignedOut: () => void;
-  /** LMS 409. The year the picker in the bar is showing. */
+  /** The year the picker in the bar is showing. */
   yearId: string | undefined;
   onYears: (years: Year[], showing: string) => void;
 }) {
@@ -43,7 +43,7 @@ export function BalancesPage({
             return;
           }
 
-          /** The server's own sentence, verbatim. NFR USA 03, LMS 410. */
+          /** The server's own sentence, verbatim. NFR USA 03. */
           setProblem(problemFrom(error));
         })
         .finally(() => {
@@ -63,7 +63,7 @@ export function BalancesPage({
         {loading ? (
           <Skeletons />
         ) : problem === undefined ? null : (
-          /* LMS 410. Nothing is on screen, so the way out has to be on the notice. */
+          /* Nothing is on screen, so the way out has to be on the notice. */
           <Notice
             problem={problem}
             retrying={loading}
@@ -84,7 +84,7 @@ export function BalancesPage({
           {statement.year.isClosed ? ' · this year has been closed' : ''}
         </p>
 
-        {/* FR 64, LMS 511. */}
+        {/* FR 64. */}
         <div className="controls">
           <ExportButtons
             path={myBalancesExportPath(statement.year.id)}
@@ -121,7 +121,7 @@ function BalanceCard({ line }: { line: BalanceLine }) {
   return (
     <li className={`card${awaitingAnOccasion || !line.stillOffered ? ' dormant' : ''}`}>
       <div className="card-head">
-        {/* LMS 409. The kind of leave, as a mark as well as a name. */}
+        {/* The kind of leave, as a mark as well as a name. */}
         <span className="chip">
           <Icon name={iconForLeaveType(line.name)} />
         </span>
@@ -153,7 +153,7 @@ function BalanceCard({ line }: { line: BalanceLine }) {
       <Meter line={line} />
 
       {/* "How this adds up" — entitled, carried over, adjustments, taken, pending — was taken
-          off in LMS 409. They are the workings of a figure already on the card, and six cards
+          off. They are the workings of a figure already on the card, and six cards
           each carrying a sixth disclosure made the screen read as a form. Every one of them is
           still on the wire, and still in the team screen's "balances in full" table, which is
           where somebody checking an allowance rather than reading one goes. */}
@@ -237,6 +237,6 @@ function Skeletons() {
   );
 }
 
-/* `days`, `signed` and `sentenceCase` moved to `client/src/format.ts` in LMS 402, when the
+/* `days`, `signed` and `sentenceCase` moved to `client/src/format.ts` when the
    history screen became their second caller. None of them is a rule about leave — they decide
    decimal places and capital letters — and the module note there says where that line is. */

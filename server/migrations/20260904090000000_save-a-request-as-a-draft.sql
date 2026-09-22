@@ -1,6 +1,6 @@
 -- Up Migration
 
--- Saving a request and finishing it later. FR 19, §6. LMS 302.
+-- Saving a request and finishing it later. FR 19, §6.
 --
 -- A draft is a table rather than a `DRAFT` status because every rule on `leave_request`
 -- is a rule about a request that has been made, and a draft is exempt from all of them:

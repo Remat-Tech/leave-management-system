@@ -1,9 +1,9 @@
 -- Up Migration
 
 -- A request whose usual approver cannot decide it goes to somebody who can. FR 48, FR 48b,
--- FR 04, §8.6a, §6, §8. LMS 320.
+-- FR 04, §8.6a, §6, §8.
 --
--- LMS 319 refused the requester at four altitudes and left the reciprocal open: such a
+-- The requester is refused at four altitudes, which left the reciprocal open: such a
 -- request waited at a desk nobody could fill. This is the routing.
 --
 --   | Stage | Cannot be filled when | Goes to |
@@ -380,7 +380,7 @@ GRANT SELECT, INSERT ON leave_request_routing TO lms_app;
 --
 -- **Requests that stopped go back to the first desk of their type's chain**, which is where
 -- a database that has forgotten how to route around an empty desk would have put them — and
--- is the "stuck and visible" LMS 319 settled for. No days move: the RESERVATION has held
+-- is the "stuck and visible" that was settled for. No days move: the RESERVATION has held
 -- them throughout. What is lost is the record of which stages were skipped and why.
 
 ALTER TABLE notification
@@ -401,7 +401,7 @@ DROP TRIGGER IF EXISTS leave_request_records_its_decision ON leave_request;
 DROP TRIGGER IF EXISTS leave_request_moves_as_the_table_says ON leave_request;
 
 /* Back to being decided, at the first desk their type's chain names — read off
-   `leave_type_approval_step` rather than written out, for the reason the LMS 314 migration
+   `leave_type_approval_step` rather than written out, for the reason the routing migration
    read it: which desk a type starts at is data. No ledger entry, because no days moved. */
 
 UPDATE leave_request request
@@ -449,7 +449,7 @@ ALTER TABLE leave_request
     ADD CONSTRAINT leave_request_status_known CHECK (
         status IN ('SUBMITTED', 'APPROVED', 'WITHDRAWN', 'CANCELLED', 'REFUSED'));
 
-/* And the three functions go back to the bodies LMS 314 and LMS 318 wrote. They go back
+/* And the three functions go back to their earlier bodies. They go back
    last, after every row they would have refused has moved. */
 
 CREATE OR REPLACE FUNCTION refuse_an_impossible_transition() RETURNS trigger

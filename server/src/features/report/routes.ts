@@ -1,4 +1,4 @@
-/** HR's reports, over HTTP, and as files. FR 63, LMS 510, FR 58, FR 64, LMS 511, NFR DAT 03. */
+/** HR's reports, over HTTP, and as files. FR 63, FR 58, FR 64, NFR DAT 03. */
 
 import { type Request, type Response, Router } from 'express';
 import type { Actor } from '../../auth/actor.js';

@@ -1,5 +1,5 @@
 /**
- * What I asked for, and what became of it. FR 54, §7.4., LMS 402, LMS 316, FR 41, NFR AUD 02, FR 11.
+ * What I asked for, and what became of it. FR 54, §7.4., FR 41, NFR AUD 02, FR 11.
  */
 
 import { type ApproverRole, deskInWords } from '../leave-type/approval-chain.js';
@@ -34,10 +34,10 @@ import type { CalendarDate } from '../../shared/time.js';
 export const TRAIL_STEPS = [
   'ASKED',
   'DECIDED',
-  /** A decision that reversed the manager's. FR 44, §7.2, LMS 318. */
+  /** A decision that reversed the manager's. FR 44, §7.2. */
   'OVERTURNED',
   'ENDED',
-  /** An ask for agreed leave to come off the books, or HR's answer. FR 47, LMS 324. */
+  /** An ask for agreed leave to come off the books, or HR's answer. FR 47. */
   'WITHDRAWAL',
   /** The Chief Executive reversed the settled outcome. */
   'REVERSED',
@@ -52,7 +52,7 @@ export interface TrailStep {
   /** FR 52. */
   desk: ApproverRole | null;
   /**
-   * Whether this step said yes, for the steps that said anything. LMS 409.
+   * Whether this step said yes, for the steps that said anything.
    *
    * Null on everything that is not a decision. It carries what `inWords` already says, as a
    * field rather than a sentence, so a screen can label a step "Approved" in a pill without
@@ -81,7 +81,7 @@ export interface RequestHistoryEntry {
   to: CalendarDate;
   /** What the person said when they asked, where the type asked. FR 10. */
   reason: string | null;
-  /** FR 18. Why HR entered it late, where they did. LMS 308. */
+  /** FR 18. Why HR entered it late, where they did. */
   lateEntryReason: string | null;
   /** FR 11. */
   countingBasis: CountingBasis;
@@ -130,9 +130,9 @@ export interface RequestHistoryFacts {
   decisions: readonly LeaveDecision[];
   /** FR 52. */
   deciders: readonly Employee[];
-  /** FR 48b. The stages those requests' routing skipped. LMS 320. */
+  /** FR 48b. The stages those requests' routing skipped. */
   skipped?: readonly RecordedSkip[];
-  /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
+  /** FR 47. The asks to take agreed leave off the books, and HR's answers. */
   withdrawals?: readonly Withdrawal[];
   reversals?: readonly Reversal[];
 }
@@ -161,7 +161,7 @@ export function statusInWords(status: RequestStatus): string {
     return 'waiting to be decided';
   }
 
-  /** FR 48b, LMS 320. Not decided, and not waiting on anybody either. */
+  /** FR 48b. Not decided, and not waiting on anybody either. */
   if (status === 'UNROUTABLE') {
     return 'stopped, no approver could decide it';
   }
@@ -178,7 +178,7 @@ export function whoDecided(decision: LeaveDecision, deciders: Deciders): string 
 }
 
 /**
- * One decision, in the words the person whose leave it is reads. FR 39, FR 44. LMS 318.
+ * One decision, in the words the person whose leave it is reads. FR 39, FR 44.
  *
  * An override says what it reversed, because that is the sentence FR 44 asks to keep: a
  * trail reading "Approved by HR" under "Turned down at your manager's stage" leaves the
@@ -210,7 +210,7 @@ export function trailFor(
   progress: ApprovalProgress,
   decisions: readonly LeaveDecision[],
   deciders: Deciders,
-  /** FR 47, LMS 324. */
+  /** FR 47. */
   withdrawals: readonly Withdrawal[] = [],
   reversal: Reversal | null = null,
 ): TrailStep[] {
@@ -229,7 +229,7 @@ export function trailFor(
   for (const decision of decisions) {
     steps.push({
       /* FR 44. An override is its own kind of step, so a screen can show it as what it is
-         rather than as an approval that happens to carry a comment. LMS 318. */
+         rather than as an approval that happens to carry a comment. */
       kind: isAnOverride(decision.action) ? 'OVERTURNED' : 'DECIDED',
       desk: decision.onBehalfOf,
       agreed: saysYes(decision.action),
@@ -240,7 +240,7 @@ export function trailFor(
     });
   }
 
-  /* FR 47, LMS 324. The conversation about agreed leave, each turn with its own time and
+  /* FR 47. The conversation about agreed leave, each turn with its own time and
      its own writer — which is what the two endings below have none of. */
   for (const withdrawal of withdrawals) {
     steps.push({
@@ -339,9 +339,9 @@ export function entryFor(input: {
   type: LeaveType | undefined;
   decisions: readonly LeaveDecision[];
   deciders: Deciders;
-  /** FR 48b. The stages this request's routing skipped. LMS 320. */
+  /** FR 48b. The stages this request's routing skipped. */
   skipped?: readonly SkippedStage[];
-  /** FR 47, LMS 324. */
+  /** FR 47. */
   withdrawals?: readonly Withdrawal[];
   reversal?: Reversal | null;
 }): RequestHistoryEntry {
@@ -351,9 +351,9 @@ export function entryFor(input: {
     request,
     chain: type?.approvalChain ?? [],
     approvedBy: desksThatApproved(decisions),
-    /** FR 44. A stage that said no has decided, and is not waiting on anybody. LMS 318. */
+    /** FR 44. A stage that said no has decided, and is not waiting on anybody. */
     refusedBy: desksThatRefused(decisions),
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     skipped: input.skipped,
   });
 
@@ -365,7 +365,7 @@ export function entryFor(input: {
     from: request.from,
     to: request.to,
     reason: request.reason,
-    /** FR 18, LMS 308. */
+    /** FR 18. */
     lateEntryReason: request.lateEntryReason,
     countingBasis: request.countingBasis,
     countingBasisLabel: countingBasisLabel(request.countingBasis),
@@ -411,9 +411,9 @@ export function historyFor(facts: RequestHistoryFacts): RequestHistory {
   );
 
   const decisionsByRequest = byRequest(facts.decisions);
-  /** FR 48b, LMS 320. */
+  /** FR 48b. */
   const skipsByRequest = byRequest(facts.skipped ?? []);
-  /** FR 47, LMS 324. */
+  /** FR 47. */
   const withdrawalsByRequest = byRequest(facts.withdrawals ?? []);
   const reversalsByRequest = byRequest(facts.reversals ?? []);
 

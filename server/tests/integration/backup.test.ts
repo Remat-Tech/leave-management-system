@@ -8,7 +8,7 @@ import { databaseForThisFile } from '../setup/test-database.js';
 import { backUp, compare, type Manifest, restore, RestoreRefused } from '../../src/db/backup.js';
 import { seed } from '../../seeds/seed.mjs';
 
-/** Backup and a verified restore. LMS 604, NFR AVL 02. Needs PG_BIN. */
+/** Backup and a verified restore. NFR AVL 02. Needs PG_BIN. */
 
 const sourceUrl = await databaseForThisFile();
 const adminUrl = inject('adminDatabaseUrl');

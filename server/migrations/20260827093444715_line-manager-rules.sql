@@ -62,7 +62,7 @@ CREATE UNIQUE INDEX employee_one_root ON employee ((true)) WHERE manager_id IS N
    "somebody forgot": with manager_id a foreign key to this same table and no
    NULL anywhere in it, every upward walk is infinite over a finite set, so it
    must revisit somebody. Zero roots on a non-empty table is a cycle. That is
-   FR 03 and LMS 104.
+   FR 03.
 
    A MANAGER WHO IS STILL HERE. Routing a request to somebody who left in July is
    the same black hole as routing it nowhere, so the service refuses to assign a
@@ -76,8 +76,8 @@ CREATE UNIQUE INDEX employee_one_root ON employee ((true)) WHERE manager_id IS N
    drifted.
 
    CYCLES. A -> B -> A with somebody else as the root satisfies everything here.
-   employee_not_own_manager catches only the loop of length one. FR 03 and
-   LMS 104, walked in the service layer, as the organisation migration says. */
+   employee_not_own_manager catches only the loop of length one. FR 03,
+   walked in the service layer, as the organisation migration says. */
 
 -- ---------------------------------------------------------------- privileges
 

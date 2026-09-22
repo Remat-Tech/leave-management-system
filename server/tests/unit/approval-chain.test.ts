@@ -25,7 +25,7 @@ import {
 } from '../../src/features/leave-type/leave-type.js';
 
 /**
- * Who approves a kind of leave, and in what order. FR 38a, §5.5. LMS 204.
+ * Who approves a kind of leave, and in what order. FR 38a, §5.5.
  *
  * The walk and the shaping are pure functions, so this is where the story is
  * proved. ../integration/approval-chain.test.ts shows that the seven types of
@@ -244,7 +244,7 @@ describe('the walk, which is what routing will read', () => {
 
   /**
    * Undefined is what "every stage has approved" looks like, and it is the one
-   * thing it can mean. FR 41. LMS 316.
+   * thing it can mean. FR 41.
    *
    * This used to read "undefined after the last desk… and it is the same
    * undefined a desk outside the chain produces — which is why isFinalApprover
@@ -260,8 +260,8 @@ describe('the walk, which is what routing will read', () => {
   });
 
   /**
-   * And a stage added in front of a request in flight is still asked. LMS 316's
-   * first criterion, and the case `approverAfter` got wrong.
+   * And a stage added in front of a request in flight is still asked, which is the
+   * case `approverAfter` got wrong.
    *
    * The manager has signed and HR is about to. Under the old walk, "the desk after
    * HR" in `[CEO, MANAGER, HR]` is nothing, so HR's yes approved the leave and the

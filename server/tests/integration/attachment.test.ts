@@ -49,7 +49,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Evidence attached to a request. FR 12, NFR SEC 04, NFR SEC 07. LMS 310.
+ * Evidence attached to a request. FR 12, NFR SEC 04, NFR SEC 07.
  *
  * ../unit/attachment.test.ts proves what is pure: what the bytes are, what a name may be,
  * and what satisfies a documentation rule. What needs a database and a store —
@@ -113,12 +113,12 @@ beforeAll(async () => {
     new LeaveDecisionRepository(db),
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -225,7 +225,7 @@ function asAnHrOfficer() {
 }
 
 /**
- * The two calls a fetch takes since LMS 407: mint a link, then spend it. NFR SEC 04.
+ * The two calls a fetch takes: mint a link, then spend it. NFR SEC 04.
  *
  * There is no third way to the bytes. ./attachment-link.test.ts is what proves the link's own
  * rules; this is here so the tests below can go on being about the file.
@@ -249,7 +249,7 @@ async function aRequest(leaveTypeId = annualId, evidence: string[] = []) {
     to: daysFromToday(25),
     reason: 'My sister is getting married',
     acknowledgesShortNotice: true,
-    /** FR 13, FR 32a, LMS 311. Five days of sick leave is past the allowance. */
+    /** FR 13, FR 32a. Five days of sick leave is past the allowance. */
     evidence,
   });
 
@@ -257,7 +257,7 @@ async function aRequest(leaveTypeId = annualId, evidence: string[] = []) {
 }
 
 /**
- * A sick request, which since LMS 311 cannot be made without a certificate on it.
+ * A sick request, which cannot be made without a certificate on it.
  *
  * Five working days against a three day allowance is FR 32a's threshold, so the file is
  * uploaded first and named at submission — which is the whole of the new path.
@@ -448,7 +448,7 @@ describe('the scan', () => {
     const attached = await unscanned.attach(asTheEmployee(), request.id, aFile());
 
     /* Refused at the link rather than at the fetch, which is earlier: there is no address
-       for an unscanned file to be at. NFR SEC 04, LMS 407. */
+       for an unscanned file to be at. NFR SEC 04. */
     await expect(attachments.linkTo(asTheEmployee(), request.id, attached.id)).rejects.toThrow(
       AttachmentNotScanned,
     );

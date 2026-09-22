@@ -1,4 +1,4 @@
-/** The leaver figure, over HTTP. FR 37a, §8.7, LMS 509, NFR DAT 03. */
+/** The leaver figure, over HTTP. FR 37a, §8.7, NFR DAT 03. */
 
 import { type Request, type Response, Router } from 'express';
 import type { Leaver, LeaverStatementService } from './leaver-statement.service.js';
@@ -62,7 +62,7 @@ function settlementAsJson(settlement: LeaverSettlement): unknown {
     exitDate: settlement.exitDate,
     year: yearAsJson(settlement.year),
     portion: { from: settlement.portion.from, to: settlement.portion.to },
-    /** LMS 013. The figure says which rule produced it. */
+    /** The figure says which rule produced it. */
     proRataRule: settlement.proRataRule,
     lines: settlement.lines.map(lineAsJson),
   };

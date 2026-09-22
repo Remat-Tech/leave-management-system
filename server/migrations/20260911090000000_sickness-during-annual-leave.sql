@@ -1,6 +1,6 @@
 -- Up Migration
 
--- Sickness during annual leave, moved to sick leave. FR 32c, §8.6c. LMS 507.
+-- Sickness during annual leave, moved to sick leave. FR 32c, §8.6c.
 --
 -- Two ledger entries under one reason and one correlation id: the annual days credited
 -- back, the same days charged to sick leave. The annual request keeps its dates and its

@@ -1,4 +1,4 @@
-/** What a leaver is owed on their last day, and the working behind it. FR 37a, §8.6d, §8.7, LMS 509. */
+/** What a leaver is owed on their last day, and the working behind it. FR 37a, §8.6d, §8.7. */
 
 import { available as availableOn, type LeaveBalance, noMovementsYet } from './balance.js';
 import type { Employee } from '../employee/employee.js';
@@ -109,7 +109,7 @@ export interface LeaverSettlement {
   year: LeaveYear;
   /** The part of that year they were employed for. */
   portion: EmployedPortion;
-  /** The rule the accrual was reached by, named on the figure it produced. LMS 013. */
+  /** The rule the accrual was reached by, named on the figure it produced. */
   proRataRule: { name: string; says: string };
   lines: LeaverSettlementLine[];
 }

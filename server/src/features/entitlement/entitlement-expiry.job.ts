@@ -1,4 +1,4 @@
-/** Lapsing event grants that were not used in time. FR 32e, LMS 218, FR 36a. */
+/** Lapsing event grants that were not used in time. FR 32e, FR 36a. */
 
 import type { Actor } from '../../auth/actor.js';
 import {
@@ -52,7 +52,7 @@ export interface EntitlementExpiryRun {
 
 export class EntitlementExpiry {
   constructor(
-    /** The one door that writes a movement. LMS 212. */
+    /** The one door that writes a movement. */
     private readonly balances: BalanceService,
     /** The events, and their deadlines. */
     private readonly events: LeaveEventRepository,

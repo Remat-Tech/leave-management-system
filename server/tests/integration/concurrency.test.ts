@@ -40,7 +40,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Concurrency suite. §8.1, §8.2, §12. LMS 601.
+ * Concurrency suite. §8.1, §8.2, §12.
  *
  * Races through the service doors, not the balance door. Every test ends on
  * `assertNoDoubleDeduction`.

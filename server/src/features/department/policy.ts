@@ -1,4 +1,4 @@
-/** Who may see and change a department. NFR SEC 02, §10., LMS 112, LMS 105. */
+/** Who may see and change a department. NFR SEC 02, §10.. */
 
 import { type Actor, holdsAny } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';

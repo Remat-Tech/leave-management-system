@@ -1,4 +1,4 @@
-/** Database access for delegated approvals. FR 49, §8.6a, LMS 327. */
+/** Database access for delegated approvals. FR 49, §8.6a. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { ApprovalDelegationTable } from '../../db/schema.js';

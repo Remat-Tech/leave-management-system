@@ -1,4 +1,4 @@
-/** What an audit entry is. NFR AUD 01, NFR AUD 02, LMS 113, LMS 513. */
+/** What an audit entry is. NFR AUD 01, NFR AUD 02. */
 
 import { type CalendarDate, isCalendarDate } from '../../shared/time.js';
 
@@ -19,31 +19,23 @@ export const AUDITED_ENTITIES = [
   'work_pattern_day',
   'app_user',
   'user_role',
-  /** LMS 201. */
   'leave_type',
-  /** LMS 203. */
   'leave_entitlement_rule',
-  /** LMS 204. */
   'leave_type_approval_step',
-  /** LMS 205. */
   'leave_year',
-  /** LMS 206. */
   'holiday',
-  /** LMS 218. */
   'leave_entitlement_event',
-  /** LMS 301. */
   'leave_request',
-  /** LMS 321. */
   'organisation_setting',
-  /** FR 49, LMS 327. */
+  /** FR 49. */
   'approval_delegation',
-  /** FR 61, LMS 512. */
+  /** FR 61. */
   'notification_template',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];
 
-/** Each kind of record, as the audit screen names it. LMS 513. */
+/** Each kind of record, as the audit screen names it. */
 export const AUDITED_ENTITY_LABELS: Readonly<Record<AuditedEntity, string>> = {
   employee: 'Employee',
   department: 'Department',
@@ -82,18 +74,18 @@ export interface AuditEntry {
   actorEmployeeId: string | null;
 }
 
-/** An entry with the writer's name, where the writer is an employee. LMS 513. */
+/** An entry with the writer's name, where the writer is an employee. */
 export interface NamedAuditEntry extends AuditEntry {
   actorName: string | null;
 }
 
-/** The most entries one search shows. LMS 513. */
+/** The most entries one search shows. */
 export const LONGEST_SEARCH = 200;
 
 /** Longer than any id a record has. */
 const LONGEST_ENTITY_ID = 64;
 
-/** What the audit log is searched by, each part optional. LMS 513. */
+/** What the audit log is searched by, each part optional. */
 export interface AuditSearch {
   entity?: AuditedEntity;
   entityId?: string;
@@ -112,7 +104,7 @@ export class InvalidAuditSearch extends Error {
   }
 }
 
-/** The search as it arrived, checked. LMS 513. */
+/** The search as it arrived, checked. */
 export function readAuditSearch(asked: Partial<Record<keyof AuditSearch, string>>): AuditSearch {
   const entity = filled(asked.entity);
   const entityId = filled(asked.entityId);

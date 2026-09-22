@@ -14,7 +14,7 @@ import {
 import { BY_CALENDAR_DAYS, type ProRataRule } from '../../src/features/entitlement/pro-rata.js';
 
 /**
- * The annual grant of entitlement. FR 30. LMS 214.
+ * The annual grant of entitlement. FR 30.
  *
  * The whole rule is a pure function, so this is where the story is proved. The
  * integration suite beside it — ../integration/annual-grant.test.ts — covers the two
@@ -72,7 +72,7 @@ describe('what somebody is granted for a year', () => {
   });
 
   /**
-   * And somebody who joined in July gets §8.6d's share, to the whole day. FR 29, LMS 013.
+   * And somebody who joined in July gets §8.6d's share, to the whole day. FR 29.
    *
    * 20 × 184/365 = 10.08, granted as 10: a balance of 10.08 reads as a mistake to the person
    * holding it. The entry says which rule produced it, which is what makes the figure
@@ -218,8 +218,8 @@ describe('what somebody is granted for a year', () => {
   });
 
   /* Whether a year has already been granted is deliberately not asked here: a pure
-     function would be asking it a moment before the write, which is the window LMS 212
-     built a lock to close. `daysToGrant` in features/balance/balance.ts asks it inside that lock. */
+     function would be asking it a moment before the write, which is the window the
+     lock was built to close. `daysToGrant` in features/balance/balance.ts asks it inside that lock. */
   it('and has no opinion about whether it has been granted before', () => {
     expect(Object.keys(FULL_YEAR)).not.toContain('alreadyGranted');
     expect(granted(FULL_YEAR)).toBe(20);

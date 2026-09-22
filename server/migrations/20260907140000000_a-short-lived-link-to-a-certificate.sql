@@ -1,9 +1,9 @@
 -- Up Migration
 
 -- A certificate is fetched through a link that expires, and every fetch is written down.
--- NFR SEC 04, NFR SEC 06. LMS 407.
+-- NFR SEC 04, NFR SEC 06.
 --
--- LMS 310 served the bytes from a permanent address behind the session. That address is the
+-- Attachments served the bytes from a permanent address behind the session. That address is the
 -- same one tomorrow, so it survives a copied URL, a bookmark, a shared screen and a browser
 -- history — which for a medical certificate is the whole of the story's "not casually
 -- available". Here the address is minted per fetch: bound to one person, good for two

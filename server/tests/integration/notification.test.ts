@@ -44,7 +44,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Being told what happened to your leave. FR 59, §7.1. LMS 329.
+ * Being told what happened to your leave. FR 59, §7.1.
  *
  * ../unit/notification.test.ts proves what a message says. What needs a server is everything
  * else the story is about:
@@ -95,7 +95,7 @@ const TO = '2026-03-10';
 
 const WHY_NOT = 'Two of the team are already away that week and the desk cannot be empty';
 
-/** FR 44. What HR writes when policy prevails over a local decision. LMS 318. */
+/** FR 44. What HR writes when policy prevails over a local decision. */
 const BECAUSE_POLICY = 'Her carry-over expires this month and cover is HR’s to arrange';
 
 /**
@@ -137,16 +137,16 @@ beforeAll(async () => {
     yearRepository,
     new LeaveRequestRepository(db),
     new LeaveDecisionRepository(db),
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     new LeaveRoutingRepository(db),
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -155,7 +155,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. The fixture days are months behind today, so annual leave's seven day
+  /* FR 18. The fixture days are months behind today, so annual leave's seven day
      backdating window would refuse almost every request in this file. Widened rather than
      dated forward: the window is a column HR sets, and the rule it states is
      ./leave-request.test.ts's to prove. */
@@ -252,7 +252,7 @@ function aRequest(overrides: Partial<NewLeaveRequest> = {}): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. The fixture week is behind today, so annual leave is short of notice. */
+    /** FR 17. The fixture week is behind today, so annual leave is short of notice. */
     acknowledgesShortNotice: true,
     ...overrides,
   };
@@ -323,7 +323,7 @@ describe('what happens to a request reaches the person who asked', () => {
   });
 
   /* FR 39. The reason reaches the person, in the words the approver wrote, which is the
-     whole of what LMS 315 recorded and this delivers. */
+     whole of what the decision recorded and this delivers. */
   it('a refusal carries the reason and says the days are back', async () => {
     const id = await submit();
     mailer.clear();
@@ -341,7 +341,7 @@ describe('what happens to a request reaches the person who asked', () => {
   });
 
   /**
-   * And a rejection that is not the end of it says so. FR 44, §7.2. LMS 318.
+   * And a rejection that is not the end of it says so. FR 44, §7.2.
    *
    * The counterpart of a stage approval, and it exists for the same reason: "turned down,
    * your days are back" would be wrong in both halves while HR still has to decide, and it
@@ -363,7 +363,7 @@ describe('what happens to a request reaches the person who asked', () => {
   });
 
   /**
-   * And the manager is told when HR overturns them. FR 44's fifth criterion. LMS 318.
+   * And the manager is told when HR overturns them. FR 44's fifth criterion.
    *
    * The one notice in this system addressed to somebody other than the person taking the
    * leave, and it quotes HR's justification whole — which is the whole of what the manager
@@ -401,7 +401,7 @@ describe('what happens to a request reaches the person who asked', () => {
     expect(notice.body).toContain('The 6 days are back in your balance.');
   });
 
-  /* FR 46 and LMS 323: a withdrawal works at every desk, and so does the notice about it. */
+  /* FR 46: a withdrawal works at every desk, and so does the notice about it. */
   it('including one taken back after an approver has already signed', async () => {
     const id = await submit();
     await requests.approve(asTheirManager(), id);
@@ -460,7 +460,7 @@ describe('a notice goes out after the transaction commits', () => {
     const id = await submit();
     statusesSeenWhileSending.length = 0;
 
-    /* FR 44, LMS 318. Two rejections, because the manager's carries the request on to HR —
+    /* FR 44. Two rejections, because the manager's carries the request on to HR —
        so the pair also shows the intermediate one being read as `SUBMITTED`, which is what
        committed at that moment. */
     await requests.refuse(asTheirManager(), id, WHY_NOT);
@@ -696,8 +696,8 @@ describe('the table itself', () => {
     ).rejects.toThrow(/never deleted/);
   });
 
-  /* A message is delivered once, so what somebody received and when stays answerable. LMS 331
-     lets the failure beside it be rewritten by a retry; the delivery itself never moves. */
+  /* A message is delivered once, so what somebody received and when stays answerable. The
+     failure beside it may be rewritten by a retry; the delivery itself never moves. */
   it('and refuses to record the delivery twice', async () => {
     await submit();
 
@@ -710,7 +710,7 @@ describe('the table itself', () => {
     ).rejects.toThrow(/already been delivered/);
   });
 
-  /* And once it is delivered there is no further attempt to record. LMS 331. */
+  /* And once it is delivered there is no further attempt to record. */
   it('and refuses to reopen a delivery that has finished', async () => {
     await submit();
 
@@ -723,7 +723,7 @@ describe('the table itself', () => {
     ).rejects.toThrow(/finished being delivered/);
   });
 
-  /* The backoff is measured from the count, so it is never wound back. LMS 331. */
+  /* The backoff is measured from the count, so it is never wound back. */
   it('and refuses to unmake an attempt', async () => {
     const id = await submit();
     mailer.failNext(new Error('SMTP is not answering.'));

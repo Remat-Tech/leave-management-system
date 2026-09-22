@@ -1,5 +1,5 @@
 /**
- * A denial log that keeps what it is given, for a test to read back. LMS 112.
+ * A denial log that keeps what it is given, for a test to read back.
  *
  * The counterpart of ./recording-mailer.ts, and here for the same reason: the
  * story's third criterion is that refused attempts are logged, and "logged" is

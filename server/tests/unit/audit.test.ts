@@ -12,7 +12,7 @@ import {
 } from '../../src/features/audit/audit.js';
 
 /**
- * The audit log, with no database. NFR AUD 01. LMS 113.
+ * The audit log, with no database. NFR AUD 01.
  *
  * Almost all of this story is in the database — the trigger that writes the
  * entries, the rules that refuse to let them change — so there is less to test
@@ -67,34 +67,34 @@ describe('the entities an entry can be about', () => {
       'user_role',
       'leave_type',
       'leave_entitlement_rule',
-      /* LMS 204. A step has no updated_at of its own, so these entries are the
+      /* A step has no updated_at of its own, so these entries are the
          whole of the history of who approves what. */
       'leave_type_approval_step',
-      /* LMS 205. Mostly one entry that matters per year — closing it — and after
+      /* Mostly one entry that matters per year — closing it — and after
          that nothing about the year can move, so the entry is the record of the
          one decision that made that true. */
       'leave_year',
-      /* LMS 206. The only record there is. A holiday added in March changes what a
+      /* The only record there is. A holiday added in March changes what a
          request approved in February cost, and the row says only what the calendar
          says today — so a removed day exists nowhere else at all. */
       'holiday',
-      /* LMS 218. The largest single figure this system puts into a balance — a
+      /* The largest single figure this system puts into a balance — a
          hundred and twenty days of maternity leave — goes there because one person
          said a thing had happened. "Who recorded this birth, and when" is the first
          question asked if it turns out not to have, and `created_at` answers only
          half of it. */
       'leave_entitlement_event',
-      /* LMS 301. The first table whose rows are written by the subject of the record
+      /* The first table whose rows are written by the subject of the record
          rather than about them. Almost everything on it is frozen the moment it is
          written; what can move is the status and the reason, and both are what a
          manager and an employee remembering a fortnight differently are arguing
          about. */
       'leave_request',
-      /* LMS 321. Who the Chief Executive is decides where every unpaid request goes,
+      /* Who the Chief Executive is decides where every unpaid request goes,
          and before FR 48c the answer lived in `employee.manager_id` — filed under a
          reporting-line edit that said nothing about leave. */
       'organisation_setting',
-      /* FR 49, LMS 327. Handing your approvals to a colleague is a grant of authority, so
+      /* FR 49. Handing your approvals to a colleague is a grant of authority, so
          the question `user_role` is audited for is asked of it too: who could decide what,
          and when they could. */
       'approval_delegation',
@@ -215,7 +215,7 @@ describe('an entry nobody claimed', () => {
   });
 });
 
-describe('searching the log. LMS 513', () => {
+describe('searching the log', () => {
   /** The field a search was refused on. */
   function refusedOn(asked: Parameters<typeof readAuditSearch>[0]): string {
     try {

@@ -1,4 +1,4 @@
-/** Creating, editing and deactivating departments. LMS 105, LMS 112, FR 03, FR 04. */
+/** Creating, editing and deactivating departments. FR 03, FR 04. */
 
 import type { Actor } from '../../auth/actor.js';
 import { departmentPolicy } from './policy.js';

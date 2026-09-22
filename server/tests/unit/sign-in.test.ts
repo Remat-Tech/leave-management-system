@@ -13,7 +13,7 @@ import {
 import type { Employee, EmploymentStatus } from '../../src/features/employee/employee.js';
 
 /**
- * NFR SEC 01, the rules half. LMS 109.
+ * NFR SEC 01, the rules half.
  *
  * Two properties are under test and they pull in opposite directions, which is
  * why they are worth pinning down together: the door has to close on everybody it

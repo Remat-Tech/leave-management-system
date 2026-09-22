@@ -50,7 +50,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { holidayRecalculationService } from '../support/holiday-recalculations.js';
 import { delegationService } from '../support/delegations.js';
 
-/** Security suite. §12. LMS 602. */
+/** Security suite. §12. */
 
 const testDatabaseUrl = await databaseForThisFile();
 

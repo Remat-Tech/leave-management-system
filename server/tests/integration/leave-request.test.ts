@@ -61,7 +61,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Asking for leave, against a real database. FR 10, FR 11, §8. LMS 301.
+ * Asking for leave, against a real database. FR 10, FR 11, §8.
  *
  * ../unit/leave-request.test.ts proves what a quote says and what a request has to
  * carry. What needs a server is everything the story is actually about:
@@ -89,7 +89,7 @@ const testDatabaseUrl = await databaseForThisFile();
 const system = theSystem('leave request integration fixtures');
 
 /**
- * The refusals this suite provokes, kept rather than printed. NFR SEC 03. LMS 319.
+ * The refusals this suite provokes, kept rather than printed. NFR SEC 03.
  *
  * A `new Guard()` writes to stderr, which is a global other files share and which nothing can
  * read back. The story's third criterion is that a self-decision is *logged* as well as
@@ -104,7 +104,7 @@ let requests: LeaveRequestService;
 let balances: BalanceService;
 let repository: LeaveRequestRepository;
 let decisions: LeaveDecisionRepository;
-/** FR 13, LMS 311. */
+/** FR 13. */
 let attachments: AttachmentRepository;
 let years: LeaveYearService;
 let people: Record<string, string>;
@@ -130,7 +130,7 @@ const FROM = '2026-03-02';
 const TO = '2026-03-10';
 
 /**
- * What a manager says when they turn leave down. FR 39. LMS 315.
+ * What a manager says when they turn leave down. FR 39.
  *
  * Written out once and used everywhere a refusal is made, because the story is that this
  * sentence exists and reaches the person: a test that passed `'no'` would satisfy the
@@ -138,7 +138,7 @@ const TO = '2026-03-10';
  */
 const WHY_NOT = 'Two of the team are already away that week and the desk cannot be empty';
 
-/** FR 44. What HR writes when policy prevails over a local decision. LMS 318. */
+/** FR 44. What HR writes when policy prevails over a local decision. */
 const BECAUSE_POLICY = 'Her carry-over expires this month and cover is HR’s to arrange';
 
 beforeAll(async () => {
@@ -166,20 +166,20 @@ beforeAll(async () => {
     yearRepository,
     repository,
     decisions,
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     new LeaveRoutingRepository(db),
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     attachments,
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
-    /* FR 59, LMS 329. Every verb in the service now tells the requester afterwards, and this
+    /* FR 59. Every verb in the service now tells the requester afterwards, and this
        file is about the verbs rather than about the telling — ./notification.test.ts is
        where what gets said is asserted. A real service over a recording mailer rather than a
        stub, so that a notice which cannot be written or composed fails these tests too: the
@@ -212,12 +212,12 @@ beforeEach(async () => {
     "UPDATE leave_type SET is_active = true, counting_basis = 'WORKING_DAYS' WHERE code = 'ANNUAL'",
   );
 
-  /* FR 18, LMS 308. {@link FROM} is months behind today, so the seven day backdating window
+  /* FR 18. {@link FROM} is months behind today, so the seven day backdating window
      would refuse almost every request in this file. Widened rather than dated forward — the
      window is a column HR sets — and put back to seven by the tests that are about it. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
 
-  /* And the approval chains, for the same reason and since LMS 314: several tests below
+  /* And the approval chains, for the same reason and: several tests below
      change annual leave's to show that routing reads the rows rather than anything in the
      code, and `leave_type_approval_step` is the migration's rather than the seed's. Put back
      through the owner's repair function, which is what an operator would use — it gives a
@@ -319,7 +319,7 @@ function asChiefExecutive() {
 }
 
 /**
- * A rejection that actually ends the request. FR 44, §7.2. LMS 318.
+ * A rejection that actually ends the request. FR 44, §7.2.
  *
  * A manager's no carries the request on to HR rather than ending it, so a test that
  * wants a `REFUSED` row has to walk the chain to the desk that decides it finally. Annual
@@ -337,7 +337,7 @@ async function refusedOutright(actor: Actor, id: string) {
 /**
  * A request for the fixture week, acknowledged.
  *
- * FR 17, LMS 307. {@link FROM} is a fixed day in the seeded 2026 year and is behind whatever
+ * FR 17. {@link FROM} is a fixed day in the seeded 2026 year and is behind whatever
  * today is, so every annual leave request in this file is short of the fourteen days annual
  * leave wants — and short notice is submitted rather than refused only once somebody has said
  * they know it is short. The acknowledgement is here rather than at each call so that the
@@ -351,14 +351,14 @@ function aRequest(overrides: Partial<NewLeaveRequest> = {}): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. */
+    /** FR 17. */
     acknowledgesShortNotice: true,
     ...overrides,
   };
 }
 
 /**
- * A certificate waiting to go on a request. FR 13, FR 32a. LMS 311.
+ * A certificate waiting to go on a request. FR 13, FR 32a.
  *
  * Written through the repository rather than through `AttachmentService`, because what these
  * tests need is a clean file in the pile and not a scanner, a store and a second policy —
@@ -386,7 +386,7 @@ async function aCertificateFor(employeeId: string): Promise<string> {
   return held.id;
 }
 
-/** A calendar date this many days either side of today, in UTC. FR 18, LMS 308. */
+/** A calendar date this many days either side of today, in UTC. FR 18. */
 function daysFromToday(offset: number): string {
   const day = new Date();
 
@@ -519,7 +519,7 @@ describe('submitting a request', () => {
    * And the days are held. FR 26, §8.2.
    *
    * The README has said since Phase 1 that submitting writes a RESERVATION immediately,
-   * and `BalanceService.reserve` was built for it in LMS 212 and left unused until now.
+   * and `BalanceService.reserve` was built for it and left unused until now.
    * This is the assertion that the sentence became true.
    */
   it('and holds the days it costs, as a RESERVATION naming it', async () => {
@@ -557,7 +557,7 @@ describe('submitting a request', () => {
    * against a balance with five days in it; a reservation with no request behind it is
    * days missing that nobody can explain.
    *
-   * Since LMS 305 this particular refusal is raised before the transaction is opened at
+   * This particular refusal is raised before the transaction is opened at
    * all, so what it proves is that nothing is written on the way to it rather than that
    * a rollback works. The rollback itself is proved where it now has to be: at the door,
    * in the last test of this file's balance section and in ./balance.test.ts.
@@ -607,10 +607,10 @@ describe('submitting a request', () => {
   });
 });
 
-/* ---------------------------------------------- short notice. FR 17, LMS 307 */
+/* ---------------------------------------------- short notice. FR 17 */
 
 /**
- * Warned, acknowledged, and never blocked. FR 17, LMS 307.
+ * Warned, acknowledged, and never blocked. FR 17.
  *
  * ../unit/leave-request.test.ts proves the rule and the sentences. What needs a server is the
  * part the story is actually about:
@@ -679,7 +679,7 @@ describe('short notice is acknowledged rather than refused', () => {
       aRequest({
         leaveTypeId: sickId,
         acknowledgesShortNotice: false,
-        /* FR 32a, LMS 311. Six days against a three day allowance, so the certificate is a
+        /* FR 32a. Six days against a three day allowance, so the certificate is a
            separate rule this one has to get past to reach the notice question. */
         evidence: [await aCertificateFor(people.officer)],
       }),
@@ -729,10 +729,10 @@ describe('short notice is acknowledged rather than refused', () => {
   });
 });
 
-/* ------------------------------------- recording it afterwards. FR 18, LMS 308 */
+/* ------------------------------------- recording it afterwards. FR 18 */
 
 /**
- * Leave put on the record after it was taken. FR 18, LMS 308.
+ * Leave put on the record after it was taken. FR 18.
  *
  * ../unit/leave-request.test.ts proves the rule and the sentences. What needs a server is the
  * three things the story is actually about:
@@ -892,7 +892,7 @@ describe('leave recorded after it was taken', () => {
 /* ------------------------------------------------------ days that are not there */
 
 /**
- * Told at once that the days are not there. FR 14, NFR USA 03. LMS 305.
+ * Told at once that the days are not there. FR 14, NFR USA 03.
  *
  * ../unit/leave-request.test.ts proves the sentence, which is most of the story. What
  * needs a server is the half a pure function cannot have:
@@ -989,7 +989,7 @@ describe('a request the balance does not hold', () => {
    * rather than a leak: FR 32a makes going past the allowance a request for a medical
    * certificate, and the leave is granted either way.
    *
-   * Since LMS 311 the certificate is the price of that rather than an expectation: the same
+   * The certificate is the price of that rather than an expectation: the same
    * submission without one meets `DocumentationNotAttached`, which is the test below.
    */
   it('and a type that may be exceeded is submitted instead, going below nought', async () => {
@@ -1009,7 +1009,7 @@ describe('a request the balance does not hold', () => {
   });
 
   /**
-   * FR 32a's other half, and the story's second criterion. LMS 311.
+   * FR 32a's other half, and the story's second criterion.
    *
    * "Sick leave requires a certificate beyond 3 days in a leave year" — the allowance is the
    * point at which evidence is demanded, and demanding it means refusing the request that
@@ -1060,9 +1060,9 @@ describe('a request the balance does not hold', () => {
           days: quote.days,
           calendarDays: quote.calendarDays,
           /* FR 38a. Annual leave's chain, which is what the service would have handed over.
-             This test goes round the service on purpose and so has to say it. LMS 314. */
+             This test goes round the service on purpose and so has to say it. */
           approvalChain: ['MANAGER', 'HR'],
-          /** FR 48b. And who staffs its desks, for the same reason. LMS 320. */
+          /** FR 48b. And who staffs its desks, for the same reason. */
           available: { MANAGER: 'CAN_DECIDE', HR: 'CAN_DECIDE', CEO: 'CAN_DECIDE' },
         }),
         reason: 'past the service check',
@@ -1083,7 +1083,7 @@ describe('a request the balance does not hold', () => {
   });
 
   /**
-   * And the person who loses that race is told the same thing as everybody else. LMS 410.
+   * And the person who loses that race is told the same thing as everybody else.
    *
    * The test above is the door being right; this is about who its sentence is addressed to.
    * `BalanceOverdrawn` names no leave type and nothing to do, so `submit` says it again as
@@ -1127,7 +1127,7 @@ describe('a request the balance does not hold', () => {
 /* --------------------------------------------------- no maximum request length */
 
 /**
- * There is no cap on how long a request may be. FR 20a. LMS 309.
+ * There is no cap on how long a request may be. FR 20a.
  *
  * The story is an employee taking their whole year's leave in one go, and the
  * requirement behind it is an absence rather than a behaviour — "the system does not
@@ -1430,7 +1430,7 @@ describe('what leave may be asked for', () => {
   });
 
   /**
-   * And the sentence names both years and the two dates to resubmit on. FR 16, LMS 303.
+   * And the sentence names both years and the two dates to resubmit on. FR 16.
    *
    * The message is asserted whole in ../unit/leave-request.test.ts. What needs a
    * database is that the years in it are the ones on the rows: this reads the seeded
@@ -1676,7 +1676,7 @@ describe('a reason is asked for where the type asks for one', () => {
 /* ------------------------------------------- leave over leave already booked */
 
 /**
- * FR 15, §5.6. LMS 304.
+ * FR 15, §5.6.
  *
  * The defect is a balance consumed twice for the same days, and it is worth being
  * precise about why it needs a story: nothing about it looks wrong while it happens.
@@ -1804,7 +1804,7 @@ describe('leave cannot be booked over leave already booked', () => {
    * The quote refuses it too, which is where somebody actually finds out.
    *
    * The story is that the system stops them booking over leave they already have, not
-   * that it prices it first and refuses afterwards — the same rule LMS 303 established
+   * that it prices it first and refuses afterwards — the same rule established
    * for the other refusals, held by `quote` and `submit` sharing `resolve()`.
    */
   it('and a quote for those days is refused rather than priced', async () => {
@@ -1904,10 +1904,10 @@ describe('leave cannot be booked over leave already booked', () => {
   }
 });
 
-/* ------------------------------------------------- the days come back, LMS 306 */
+/* ------------------------------------------------- the days come back */
 
 /**
- * A request ends, and its days come back. FR 26, §8.2. LMS 306.
+ * A request ends, and its days come back. FR 26, §8.2.
  *
  * ../unit/leave-request.test.ts proves which statuses end a request and what the movement
  * says. What needs a server is the whole of what the story actually promises:
@@ -1921,7 +1921,7 @@ describe('leave cannot be booked over leave already booked', () => {
  *   and the failure they prevent is a balance permanently short with nothing to explain
  *   it.
  *
- *   **The days can be booked again.** This is the one that ties the story to LMS 304: the
+ *   **The days can be booked again.** This is the one that ties it to the live statuses: the
  *   overlap constraint's `WHERE status IN ('SUBMITTED')` was a tautology until three
  *   statuses arrived that are not in it, and this is the test that shows it stopped being
  *   one.
@@ -1961,7 +1961,7 @@ describe('withdrawing, refusing and cancelling', () => {
   });
 
   /* Three desks, three endings, one movement. `ledgerPolicy.release` has described this
-     since LMS 212 and these are the methods that took it up. */
+     and these are the methods that took it up. */
   it.each([
     ['withdrawn by the person who asked', 'WITHDRAWN', () => asThemselves()],
     ['refused by their manager', 'REFUSED', () => asTheirManager()],
@@ -2012,7 +2012,7 @@ describe('withdrawing, refusing and cancelling', () => {
   });
 
   /**
-   * And the days are bookable again, which is the story's point and LMS 304's payoff.
+   * And the days are bookable again, which is the point and the live statuses' payoff.
    *
    * `leave_request_never_overlaps` carries `WHERE status IN ('SUBMITTED')`, a predicate
    * that excluded nothing until this story added three statuses that are not in it. The
@@ -2053,7 +2053,7 @@ describe('withdrawing, refusing and cancelling', () => {
    *
    * A manager who could withdraw a report's leave could empty their calendar without ever
    * refusing anything and without a decision appearing anywhere. Refusing writes a decision
-   * at their stage, and since LMS 318 it sends the request on to HR rather than ending it.
+   * at their stage, and it sends the request on to HR rather than ending it.
    */
   it('is refused by a manager, and never withdrawn by one', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
@@ -2133,7 +2133,7 @@ describe('withdrawing, refusing and cancelling', () => {
   });
 
   /**
-   * And the trigger permits exactly the endings the table does. §6. LMS 313.
+   * And the trigger permits exactly the endings the table does. §6.
    *
    * The state machine is stated twice — `TRANSITIONS` in the domain and
    * `refuse_an_impossible_transition()` in the schema — for the reason every rule in this
@@ -2157,7 +2157,7 @@ describe('withdrawing, refusing and cancelling', () => {
 
     const named = [...new Set([...rows[0].definition.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]))];
 
-    /* Every destination the table holds, and `UNROUTABLE` besides. FR 48b, LMS 320.
+    /* Every destination the table holds, and `UNROUTABLE` besides. FR 48b.
        That one is the single destination `TRANSITIONS` cannot state: the table is keyed by
        from-status and verb, and where a decision lands is the chain's answer rather than
        the verb's — an approval whose next stage has nobody to answer it lands here instead
@@ -2190,7 +2190,7 @@ describe('withdrawing, refusing and cancelling', () => {
 
   /* And a request that has ended does not move again, refused as it is attempted rather
      than at commit: a row leaving a state it already left is wrong immediately. The
-     constraint was called `leave_request_ends_once` until LMS 314 widened it to hold every
+     constraint was called `leave_request_ends_once` until it was widened to hold every
      move §6 permits, which is a name somebody reads in an error about approved leave. */
   it('and a request that has ended cannot be moved again, by anybody', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
@@ -2228,7 +2228,7 @@ describe('withdrawing, refusing and cancelling', () => {
   /* ------------------------------------------- and every move is on the record */
 
   /**
-   * Every transition writes an audit entry. §6, NFR AUD 01. LMS 313's third criterion.
+   * Every transition writes an audit entry. §6, NFR AUD 01.
    *
    * The story is a request nobody can explain, and this is the half that makes it
    * explicable *afterwards* rather than merely correct at the time: the state a request
@@ -2265,7 +2265,7 @@ describe('withdrawing, refusing and cancelling', () => {
       [request.id],
     );
 
-    /* FR 44, LMS 318. A rejection takes two moves rather than one — the manager's, which
+    /* FR 44. A rejection takes two moves rather than one — the manager's, which
        hands it on, and the last desk's, which ends it — so the log has an entry each. What
        matters is the one that reached the ending, and who made the first. */
     expect(rows.find((row) => row.after.status === status)).toBeDefined();
@@ -2326,7 +2326,7 @@ describe('withdrawing, refusing and cancelling', () => {
     switch (status) {
       case 'WITHDRAWN':
         return (actor: Actor, id: string) => requests.withdraw(actor, id);
-      /* FR 39, LMS 315. Refusing says why, so the helper supplies the sentence a manager
+      /* FR 39. Refusing says why, so the helper supplies the sentence a manager
          would have typed. The other two are not decisions at a desk and take none, which
          is why this cannot go on being three bound methods with one shape. */
       case 'REFUSED':
@@ -2346,7 +2346,6 @@ describe('withdrawing, refusing and cancelling', () => {
 
 /**
  * A request goes to the approvers its leave type names, in order. FR 38, FR 38a, FR 40.
- * LMS 314.
  *
  * ../unit/state-machine.test.ts proves the walk against chains written out by hand, which
  * is where the arithmetic of "next desk, or approved" belongs. What needs a database is
@@ -2460,7 +2459,7 @@ describe('routing a request to its approvers', () => {
   /**
    * And the last approval turns held days into taken days, leaving available where it was.
    *
-   * The movement `BalanceService.commit` has been built and unused for since LMS 212. A
+   * The movement `BalanceService.commit` has been built and unused for. A
    * `DEDUCTION` is the one entry type that moves two buckets — out of `pending`, into
    * `taken` — so a person whose leave is approved sees the same figure they saw when they
    * asked, which is correct: the days were spoken for either way.
@@ -2620,8 +2619,8 @@ describe('routing a request to its approvers', () => {
   /* --------------------------------------- what approval does to the rest */
 
   /**
-   * Approved leave still blocks the calendar, which is the one word LMS 304 wrote its
-   * predicate in advance for.
+   * Approved leave still blocks the calendar, which is the one word the exclusion
+   * predicate was written in advance for.
    *
    * `leave_request_never_overlaps` carried `WHERE status IN ('SUBMITTED')` while that was a
    * tautology, saying "the approval story edits this list". Leave that has been agreed is
@@ -2719,7 +2718,7 @@ describe('routing a request to its approvers', () => {
 
        Both are needed and neither is decoration. The same careless UPDATE now breaks three
        rules at once — a request approved with no DEDUCTION, one approved with nothing to say
-       who approved it (LMS 315), and one approved with a stage unasked (LMS 316) — and only
+       who approved it, and one approved with a stage unasked — and only
        one of them can be the message. The other two sort ahead of this one among the deferred
        constraints, which is correct and is not what this test is about. */
     await requests.approve(asTheirManager(), request.id);
@@ -2801,7 +2800,7 @@ describe('routing a request to its approvers', () => {
   /**
    * And the overlap constraint's predicate is exactly `LIVE_STATUSES`.
    *
-   * The check LMS 304 wrote for the afternoon this story added a status to one list and not
+   * The check written for the afternoon a status went into one list and not
    * the other. It failed nothing while `APPROVED` was absent from both; the moment it went
    * into the domain list and not into the predicate, somebody could have booked a fortnight
    * on top of leave their manager and HR had signed off.
@@ -2883,7 +2882,7 @@ describe('routing a request to its approvers', () => {
     switch (status) {
       case 'WITHDRAWN':
         return (actor: Actor, id: string) => requests.withdraw(actor, id);
-      /* FR 39, LMS 315. Refusing says why, so the helper supplies the sentence a manager
+      /* FR 39. Refusing says why, so the helper supplies the sentence a manager
          would have typed. The other two are not decisions at a desk and take none, which
          is why this cannot go on being three bound methods with one shape. */
       case 'REFUSED':
@@ -3002,7 +3001,7 @@ describe("one person's leave", () => {
 /* --------------------------------------- what the approver said, and who said it */
 
 /**
- * Approving or rejecting at a stage, with a comment. FR 39, FR 52. LMS 315.
+ * Approving or rejecting at a stage, with a comment. FR 39, FR 52.
  *
  * ../unit/leave-decision.test.ts proves the two rules about the comment — a refusal must
  * carry one, an approval need not — and it can prove nothing else, because the rest of the
@@ -3034,7 +3033,7 @@ describe('the decision at a stage', () => {
 
     const refused = await requests.refuse(asTheirManager(), request.id, WHY_NOT);
 
-    /* FR 44, LMS 318. The rejection is recorded at the manager's stage and the request goes
+    /* FR 44. The rejection is recorded at the manager's stage and the request goes
        on to HR — a decision at a desk rather than an ending. */
     expect(refused.request.status).toBe('SUBMITTED');
     expect(refused.request.awaitingApprovalFrom).toBe('HR');
@@ -3127,10 +3126,10 @@ describe('the decision at a stage', () => {
   /* ------------------------------------------------------ on whose behalf. FR 52 */
 
   /**
-   * And the desk is recorded apart from the person. FR 52, FR 44. LMS 315, LMS 318.
+   * And the desk is recorded apart from the person. FR 52, FR 44.
    *
-   * The one column here worth arguing about, and LMS 318 narrowed the case that made it
-   * necessary rather than removing it. `TRANSITIONS` used to admit HR to the `REFUSE` row
+   * The one column here worth arguing about, and the case that made it necessary was
+   * narrowed rather than removed. `TRANSITIONS` used to admit HR to the `REFUSE` row
    * whichever desk the request was sitting at; a rejection now advances the chain, so it
    * belongs to the desk and an HR Officer meets `NotAuthorised` at the manager's stage.
    *
@@ -3216,7 +3215,7 @@ describe('the decision at a stage', () => {
   /* ------------------------------------------ overturning a manager, FR 44 */
 
   /**
-   * HR overturns a rejection, the leave stands, and both sentences survive. FR 44, §7.2. LMS 318.
+   * HR overturns a rejection, the leave stands, and both sentences survive. FR 44, §7.2.
    *
    * The story end to end. The manager's no is on the record with their reason; HR's override
    * is on the record with theirs and a pointer to the decision it reversed; and the request
@@ -3279,7 +3278,7 @@ describe('the decision at a stage', () => {
   });
 
   /**
-   * And the whole of FR 44 can be switched off, which makes the manager's word final. LMS 505.
+   * And the whole of FR 44 can be switched off, which makes the manager's word final.
    *
    * Both doors refuse, not only the override one: the plain verb that contradicts the
    * manager is what somebody presses next, and pointing it at an override that is also
@@ -3617,7 +3616,7 @@ describe('the decision at a stage', () => {
 /* ---------------------------------------------- every stage must approve, FR 41 */
 
 /**
- * Leave is approved when every stage has approved it. FR 41, FR 42. LMS 316.
+ * Leave is approved when every stage has approved it. FR 41, FR 42.
  *
  * ../unit/state-machine.test.ts proves the walk asks the right desk, against chains written
  * out as lists. What needs a server is the thing the story is actually about: the chain
@@ -3633,7 +3632,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
    * The story in one test: a stage added in front of a request in flight is still asked.
    *
    * The manager has signed and the request is with HR. The chain becomes CEO, manager, HR.
-   * Under LMS 314's walk the desk after HR was nothing, so HR's approval would have agreed
+   * Under the old walk the desk after HR was nothing, so HR's approval would have agreed
    * the leave outright, with the Chief Executive — the stage the policy now names — never
    * seeing it, and the employee told it was theirs to take.
    */
@@ -3670,7 +3669,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
   });
 
   /* And a desk that has signed is never asked twice, whatever the chain is reordered to.
-     LMS 315 wrote its deferred check around the possibility that it could be, and
+     The deferred check was written around the possibility that it could be, and
      `leave_request_decision_once_per_desk` is what retires that. */
   it('and never asks a desk that has already approved', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
@@ -3750,7 +3749,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
 
     await requests.approve(asTheirManager(), request.id, 'Cover is arranged');
 
-    /* FR 44, LMS 318. HR turning down leave the manager agreed to overrules them, so it is
+    /* FR 44. HR turning down leave the manager agreed to overrules them, so it is
        recorded as what it is and asks for the reason in writing. The plain verb is refused
        rather than quietly doing the same thing under another name. */
     await expect(requests.refuse(asOfficer(), request.id, WHY_NOT)).rejects.toMatchObject({
@@ -3954,7 +3953,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
    * The rule this story declined to make, named rather than left to be discovered. The
    * converse of `leave_request_takes_its_days` — days committed belong to leave that was
    * approved — is truer and stronger, and it refuses every use of `BalanceService.commit`,
-   * the primitive LMS 314 kept on purpose beside the approval door. Taking a movement away
+   * the primitive kept on purpose beside the approval door. Taking a movement away
    * from the ledger is somebody's decision rather than a side effect of tightening the
    * workflow, so it stays permitted and this says so out loud.
    */
@@ -3974,7 +3973,7 @@ describe('leave that is agreed only once every stage has agreed', () => {
   });
 
   /* And one desk decides one request once, on every connection. The walk never asks twice
-     since LMS 316; this is what keeps that from being a promise the application makes to
+    ; this is what keeps that from being a promise the application makes to
      itself. */
   it('and one desk decides one request exactly once', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
@@ -4022,14 +4021,14 @@ describe('leave that is agreed only once every stage has agreed', () => {
 /* ------------------------------------------ days come back on rejection, FR 43 */
 
 /**
- * The days are back the moment a request is rejected, at whatever stage. FR 43. LMS 317.
+ * The days are back the moment a request is rejected, at whatever stage. FR 43.
  *
- * Most of this has held since LMS 306, which built the three endings as one movement and
- * writes the RELEASE and the status in one transaction. What this suite adds is the two
- * things that story could not say:
+ * Most of this already held: the three endings are one movement, and the RELEASE and the
+ * status are written in one transaction. What this suite adds is the two things that
+ * arrangement could not say on its own:
  *
- *   **At any stage.** LMS 306 refused requests that were still with their first approver,
- *   because that was the only place a request could be. A chain has stages now, and a
+ *   **At any stage.** Refusal used to be limited to requests still with their first
+ *   approver, because that was the only place a request could be. A chain has stages now, and a
  *   rejection in the middle of one has to give back exactly as much as a rejection at the
  *   start — the days were never partly spent, because only the last approval commits.
  *
@@ -4044,9 +4043,9 @@ describe('leave that is agreed only once every stage has agreed', () => {
 describe('the days a rejected request was holding', () => {
   /**
    * The whole hold, at once, with the balance reading exactly what it did before the request
-   * was made — and it comes back when the *last* desk says no. FR 43, FR 44. LMS 317, LMS 318.
+   * was made — and it comes back when the *last* desk says no. FR 43, FR 44.
    *
-   * The first desk's no used to be the end of it. Since LMS 318 a manager's rejection carries
+   * The first desk's no used to be the end of it. A manager's rejection carries
    * the request on to HR with the days still held, and this is that walk followed to the
    * point where it does end.
    */
@@ -4071,9 +4070,9 @@ describe('the days a rejected request was holding', () => {
   });
 
   /**
-   * And a rejection in the middle of a chain of three carries on rather than ending it. FR 44. LMS 318.
+   * And a rejection in the middle of a chain of three carries on rather than ending it. FR 44.
    *
-   * The case a chain of three makes possible, and the one LMS 318 changed. HR's no on a
+   * The case a chain of three makes possible, and the one that changed. HR's no on a
    * manager-HR-CEO chain is a decision at a stage with a stage after it, so the request goes
    * to the Chief Executive with its days still held — and the days come back only when they
    * say no too. Nothing has been taken at any point: a `DEDUCTION` is written by the last
@@ -4169,7 +4168,7 @@ describe('the days a rejected request was holding', () => {
   /**
    * A request that ended having given back part of what it held is refused at COMMIT.
    *
-   * The hole LMS 306 left, and the one this story is for. Its trigger asked whether a
+   * The hole the three endings left, and the one this suite is for. Its trigger asked whether a
    * RELEASE existed; one day out of six satisfied that and left five in `pending` that
    * nothing would ever return — a balance permanently short against a request that says it
    * ended, with a ledger that reconciles.
@@ -4233,7 +4232,7 @@ describe('the days a rejected request was holding', () => {
     await expect(admin.query('COMMIT')).rejects.toThrow(/holding 6 day\(s\) and gave back 1/);
   });
 
-  /* And releasing nothing is still refused, in the sentence LMS 306 wrote. Widening a rule
+  /* And releasing nothing is still refused, in the sentence already written. Widening a rule
      is only safe if it goes on refusing what it refused before. */
   it('and a request that ended releasing nothing is refused as it always was', async () => {
     const { request } = await requests.submit(asThemselves(), aRequest());
@@ -4301,7 +4300,7 @@ describe('the days a rejected request was holding', () => {
 /* ------------------------------------- nobody decides their own request, FR 48 */
 
 /**
- * Nobody approves their own leave, whatever their role. FR 48, §8.6a. LMS 319.
+ * Nobody approves their own leave, whatever their role. FR 48, §8.6a.
  *
  * ../unit/policy.test.ts enumerates every role against both deciding verbs, which is the real
  * coverage of the rule and is possible because a policy is a pure function. What needs a
@@ -4351,7 +4350,7 @@ describe('a request decided by the person who asked for it', () => {
     return request;
   }
 
-  /* The case LMS 314 closed, asserted here because it is the same rule now and would
+  /* The case the routing closed, asserted here because it is the same rule now and would
      otherwise be resting on a check that moved. */
   it('is not approved, even at a desk the requester staffs', async () => {
     const request = await herOwnRequestAtTheHrDesk();
@@ -4368,7 +4367,7 @@ describe('a request decided by the person who asked for it', () => {
    * And not refused either, which is the half this story added.
    *
    * `TRANSITIONS` admits `LEAVE_ADMINISTRATION` to the REFUSE row whichever desk the request
-   * is at, and Efua holds a code in it. Before LMS 319 this call succeeded: her own request,
+   * is at, and Efua holds a code in it. This call used to succeed: her own request,
    * turned down by her, with a `RELEASE`, a `REFUSED` status and a decision row naming her at
    * the HR desk — a record of a decision nobody else made.
    */
@@ -4432,9 +4431,9 @@ describe('a request decided by the person who asked for it', () => {
   });
 
   /**
-   * And not the Chief Executive at their own CEO desk. FR 48, FR 48b. LMS 319, LMS 320.
+   * And not the Chief Executive at their own CEO desk. FR 48, FR 48b.
    *
-   * The top of the company, which is the story's "even at the top". Since LMS 320 the
+   * The top of the company, which is the story's "even at the top". The
    * request does not sit at that desk at all: the stage is the requester's own, so it falls
    * to HR — and the refusal is what stops the Chief Executive following it there.
    */
@@ -4562,8 +4561,8 @@ describe('a request decided by the person who asked for it', () => {
   });
 
   /* And it lets a colleague's write through, which is what makes it a check on the requester
-     rather than on the table. One decision per desk — `leave_request_decision_once_per_desk`,
-     LMS 316 — is why this and the next are two requests rather than two rows on one. */
+     rather than on the table. One decision per desk — `leave_request_decision_once_per_desk`
+     — is why this and the next are two requests rather than two rows on one. */
   it('and lets a colleague’s decision through', async () => {
     const request = await herOwnRequestAtTheHrDesk();
 
@@ -4649,13 +4648,13 @@ describe('a request decided by the person who asked for it', () => {
 /* ------------------------------------ cancelling a request not yet approved, FR 46 */
 
 /**
- * Taking back a request nobody has approved yet, at any stage of any chain. FR 46. LMS 323.
+ * Taking back a request nobody has approved yet, at any stage of any chain. FR 46.
  *
  * The story is the employee's and it is two sentences: plans change, and a request that is
  * still being decided should cost them nothing and cost an approver nothing. **The act
- * already existed** — `withdraw()` is LMS 306's, and this file has proved since then that it
- * gives the days back — so what this suite is for is the half LMS 306 could not have proved:
- * it was written when a request could only ever be standing at its first desk.
+ * already existed** — `withdraw()` came with the three endings, and this file has proved since
+ * then that it gives the days back — so what this suite is for is the half that could not be
+ * proved then: it was written when a request could only ever be standing at its first desk.
  *
  * A chain has stages now, and every one of them is a way for this to stop being true without
  * anybody meaning it. So the assertions are about the *stage*:
@@ -4669,7 +4668,7 @@ describe('a request decided by the person who asked for it', () => {
  *
  *   **Out of the queue, in the same statement.** `leave_request_waits_at_a_desk` makes the
  *   desk and the status an equivalence, so a withdrawn request *cannot* be left sitting in
- *   somebody's queue. There is no queue to read yet — that is LMS 404 — and this is the
+ *   somebody's queue. There is no queue to read yet, and this is the
  *   property it will be built on.
  *
  *   **And what was said stays said.** The manager's approval is a thing that happened, and
@@ -4685,15 +4684,15 @@ describe('a request decided by the person who asked for it', () => {
  * ## The two boundaries
  *
  * Approved leave is **not** this. `LeaveCannotBeMoved` is what somebody reaching for withdraw
- * on it is told, and asking for agreed leave to be taken off the books is LMS 324. Being
- * *told* the request went away is LMS 329, which owns notification for every event in a
- * request's life; what this story guarantees is that there is something true to tell.
+ * on it is told, and asking for agreed leave to be taken off the books is a separate act.
+ * Being *told* the request went away belongs to notification, which owns every event in a
+ * request's life; what this guarantees is that there is something true to tell.
  */
 describe('taking back a request nobody has approved yet', () => {
   /** Manager, then HR, then the Chief Executive. A chain long enough to have a middle. */
   const THREE_DESKS = ['MANAGER', 'HR', 'CEO'] as const;
 
-  /* The first desk, which is where LMS 306 left it and where most requests are taken back
+  /* The first desk, which is where the three endings left it and where most requests are taken back
      from: nobody has looked at it, and the person has simply changed their mind. */
   it('is taken back before anybody has looked at it, and the days come straight back', async () => {
     const { request, balance: held } = await requests.submit(asThemselves(), aRequest());
@@ -4708,7 +4707,7 @@ describe('taking back a request nobody has approved yet', () => {
   });
 
   /**
-   * And from a stage in the middle of a chain, which is what LMS 306 could not say.
+   * And from a stage in the middle of a chain, which could not be said before.
    *
    * The manager has agreed and the request is sitting with HR. Nothing has been taken — a
    * `DEDUCTION` is written by the last approval and by nothing else — so the whole hold comes
@@ -4781,7 +4780,7 @@ describe('taking back a request nobody has approved yet', () => {
    *
    * The desk goes to null with the status, because `leave_request_waits_at_a_desk` is an
    * equivalence between the two: a request that has ended is waiting on nobody. So an
-   * approver's queue — LMS 404, which does not exist yet — cannot be built in a way that
+   * approver's queue — which does not exist yet — cannot be built in a way that
    * shows a withdrawn request, whatever it queries, because the row it would have to find is
    * one the database will not hold.
    */
@@ -4910,7 +4909,7 @@ describe('taking back a request nobody has approved yet', () => {
   /* ------------------------------------ and where this story stops */
 
   /**
-   * Leave that has been agreed is not this, and is told so in its own words. LMS 324.
+   * Leave that has been agreed is not this, and is told so in its own words.
    *
    * The boundary the story draws by saying "not yet had approved". By then the days are
    * `taken` rather than `pending`, so giving them back is a movement against the `DEDUCTION`

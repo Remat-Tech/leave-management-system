@@ -92,5 +92,5 @@ cannot express any of that.
 | [Authorisation and audit](docs/authorisation-and-audit.md) | Who may do what, and how changes are recorded |
 
 The specification documents — requirements, technical design, business overview,
-policy decisions, backlog — are tracked separately. Requirement IDs (`FR 32a`) and
-story IDs (`LMS 214`) appear throughout the code, branch names and commit messages.
+policy decisions, backlog — are tracked separately. Requirement IDs (`FR 32a`) appear
+throughout the code, branch names and commit messages.

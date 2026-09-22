@@ -31,7 +31,7 @@ import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 
 /**
- * Leave types against a real database. FR 21, FR 31, FR 32, §5.5. LMS 201.
+ * Leave types against a real database. FR 21, FR 31, FR 32, §5.5.
  *
  * The unit suite covers what a rule means and which pairs of fields may not
  * disagree; ../unit/leave-type.test.ts is where the story is proved. What needs a
@@ -118,7 +118,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  /* Left as the migrations left it, which matters since LMS 204 because this is
+  /* Left as the migrations left it, which matters because this is
      no longer the only file that snapshots this table in beforeAll. A type
      created here and not cleared would be part of ./approval-chain.test.ts's idea
      of the statutory set when it runs second — a failure that depends on the
@@ -143,7 +143,7 @@ async function restoreTheStatutorySet(): Promise<void> {
   const columns = Object.keys(statutory[0]).filter((column) => column !== 'updated_at');
   const placeholders = columns.map((_column, index) => `$${index + 1}`).join(', ');
 
-  /* Since LMS 203 the entitlement figures point at these rows, and the key has no
+  /* The entitlement figures point at these rows, and the key has no
      cascade — which is the guarantee that table gives leave_type, so they have to
      go first. TRUNCATE rather than DELETE, for the same reason the fixture seed
      truncates the audit log: a rule that has taken effect refuses to be deleted by
@@ -166,7 +166,7 @@ async function restoreTheStatutorySet(): Promise<void> {
 
   /* And the approval chains, which the DELETE above took with the types — the
      steps cascade, because a step is part of a type rather than a record about
-     one. LMS 204. Put back by the function that owns them for the same reason the
+     one. Put back by the function that owns them for the same reason the
      figures are: nothing in this file knows who approves unpaid leave, and
      nothing here should. Leaving them out would hand every other suite a database
      full of types nobody can approve leave against. */
@@ -220,7 +220,7 @@ describe('the seven types of FR 32', () => {
    * FR 32g. Annual, sick and unpaid are annual allowances that reset; everything else is
    * granted per qualifying occurrence.
    *
-   * Unpaid leave was on the other side of this line until LMS 401. FR 32g listed it with
+   * Unpaid leave used to be on the other side of this line. FR 32g listed it with
    * the event types on the reading that it is "agreed occasion by occasion rather than
    * accrued" — and the business settled it as ten working days *for the year*, which is an
    * allowance that resets whatever it is called. The classification moved with the figure,
@@ -363,7 +363,7 @@ describe('the seven types of FR 32', () => {
 
 /**
  * The set as something that can be put back, rather than something that was put
- * there once. LMS 202.
+ * there once.
  *
  * The insert in the leave-type-rules migration ran against a table created four
  * statements earlier and can never run again, so what it proves is that a
@@ -373,7 +373,7 @@ describe('the seven types of FR 32', () => {
  * edit HR has made exactly where it is, and it does not fall over on the one
  * database that has been used enough for somebody to have reworded a type.
  */
-describe('putting the statutory set back, LMS 202', () => {
+describe('putting the statutory set back', () => {
   /* Everything except the three columns that are about the row rather than about
      the rule. A repaired type is compared against the snapshot taken before any
      test ran — that is, against what the *other* copy of this reference data
@@ -392,7 +392,7 @@ describe('putting the statutory set back, LMS 202', () => {
     return rows[0].inserted;
   }
 
-  /* What losing a type looks like since LMS 203: the figures go first, because
+  /* What losing a type looks like: the figures go first, because
      leave_entitlement_rule points at the type and the key has no cascade — the FK
      now doing the job the withheld DELETE privilege was standing in for. They are
      truncated rather than deleted because a rule that has taken effect refuses to
@@ -859,7 +859,7 @@ describe('who a type is offered to, FR 05', () => {
   });
 });
 
-describe('who may change a type, LMS 112', () => {
+describe('who may change a type', () => {
   /* The matrix belongs to ../unit/policy.test.ts; what is asserted here is that
      the service asks before it reads or writes anything. */
   it('is refused to an ordinary employee', async () => {

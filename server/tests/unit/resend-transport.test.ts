@@ -16,7 +16,7 @@ let calls: { url: string; body: Record<string, unknown>; authorization: string }
 beforeEach(() => {
   calls = [];
 
-  process.env.MAIL_FROM_NAME = 'Remat Holdings Leave';
+  process.env.MAIL_FROM_NAME = 'Rota';
   process.env.MAIL_FROM_ADDRESS = 'leave@rematholdings.com';
   delete process.env.MAIL_OVERRIDE_RECIPIENT;
 
@@ -55,7 +55,7 @@ describe('sending over HTTPS', () => {
     expect(calls[0].authorization).toBe(`Bearer ${KEY}`);
     expect(calls[0].body.to).toEqual(['adwoa.frimpong@rematholdings.com']);
     expect(calls[0].body.subject).toBe('123456 is your code');
-    expect(calls[0].body.from).toBe('"Remat Holdings Leave" <leave@rematholdings.com>');
+    expect(calls[0].body.from).toBe('"Rota" <leave@rematholdings.com>');
     expect(sent).toEqual({
       messageId: 'a-message-id',
       deliveredTo: 'adwoa.frimpong@rematholdings.com',

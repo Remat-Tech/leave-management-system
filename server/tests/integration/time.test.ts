@@ -8,13 +8,13 @@ import { isCalendarDate } from '../../src/shared/time.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * Timestamps in UTC, leave dates without a time. NFR DAT 03. LMS 114.
+ * Timestamps in UTC, leave dates without a time. NFR DAT 03.
  *
  * The story is an employee whose leave never appears to shift by a day, and
  * almost all of it is in the database and the connection to it: which type a
  * column is, what the session does to a value on the way past, and what the
  * driver hands back. None of that can be proved without a real server, so this
- * suite carries the story the way integration/audit.test.ts carries LMS 113.
+ * suite carries them the way integration/audit.test.ts carries the audit log.
  * ../unit/time.test.ts covers the rules that are pure functions.
  *
  * Five properties, and each one is somebody believing a date while it is wrong:
@@ -144,27 +144,27 @@ describe('the columns', () => {
      add the start and end of a leave request; adding them here is the moment to
      check each is a `date`.
 
-     The two from LMS 203 are also the two that the naming rule above would not
+     The two on the entitlement rules are also the two that the naming rule above would not
      have caught: `effective_from` and `effective_to` are days without saying so in
      their names, and this list is what stands behind them. They are days rather
      than moments because an entitlement changes on a date — "twenty two days from
      1 January" — and a `timestamptz` would carry a zone that moved it to the
      second of January for anybody who set it from London.
 
-     The two from LMS 205 are the ends of a leave year, and they are the pair with
+     The two on the leave year are its ends, and they are the pair with
      the most riding on being days. A year that began at an instant would begin on
      the thirty first of December for anybody reading it from London, and the day
      a balance is drawn from is decided by which side of that line a request falls
      on. `closed_at` is deliberately not among them: when somebody closed a year is
      a moment, and it is a `timestamptz` a few lines above.
 
-     The one from LMS 206 is a public holiday, and it is the column where the off
+     The one on the holiday calendar is a public holiday, and it is the column where the off
      by one day bug would be most visible to the most people: a Christmas Day held
      as an instant is a Christmas Day that reads as the twenty fourth of December
      from anywhere west of Accra, and everybody in the company is charged a day of
      leave for it.
 
-     The two from LMS 218 are a qualifying event and the deadline it set. A birth is
+     The two on an entitlement event are the qualifying event and the deadline it set. A birth is
      a day, and the deadline is six months after that day rather than six months
      after an instant — held as a timestamp, a birth recorded from London would set a
      deadline one day early for the person it belongs to, and they would find out by
@@ -172,18 +172,18 @@ describe('the columns', () => {
      the only one of the nine that carries a real absence: most event types never run
      out at all.
 
-     The two from LMS 302 are the ends of a draft, and they are the first pair here that
+     The two on a draft are its ends, and they are the first pair here that
      are nullable because the *day is not settled yet* rather than because it may never
      arrive — FR 19's whole sentence. They are days for the reason the request's own two
      are: a draft becomes a request by handing these across unchanged, so a zone creeping
      in here would move the leave by a day at the moment somebody committed to it.
 
-     The two from LMS 507 are the days of a holiday a certificate moved to sick leave. They
+     The two on a reclassification are the days of a holiday a certificate moved to sick leave. They
      are days for the same reason and for one more: they are compared against the request's
      own two, and a zone between the two pairs would put a day outside the leave it is
      part of. FR 32c.
 
-     The one from LMS 508 is the gazetted day a credit was given for, kept beside the
+     The one on a recalculation is the gazetted day a credit was given for, kept beside the
      credit rather than read back through the holiday — a zone here would credit somebody
      for the day before the country stopped working. FR 25. */
   it('the eighteen dates there are today are the ones expected', async () => {
@@ -192,7 +192,7 @@ describe('the columns', () => {
       .map((column) => `${column.table_name}.${column.column_name}`);
 
     expect(dates).toEqual([
-      /** FR 49, LMS 327. The days a delegate answers for somebody. */
+      /** FR 49. The days a delegate answers for somebody. */
       'approval_delegation.ends_on',
       'approval_delegation.starts_on',
       'employee.exit_date',
@@ -204,12 +204,12 @@ describe('the columns', () => {
       'leave_entitlement_rule.effective_to',
       'leave_request.end_date',
       'leave_request.start_date',
-      /** FR 19, LMS 302. */
+      /** FR 19. */
       'leave_request_draft.end_date',
       'leave_request_draft.start_date',
-      /** FR 25, LMS 508. The gazetted day a credit was given for, frozen as it stood. */
+      /** FR 25. The gazetted day a credit was given for, frozen as it stood. */
       'leave_request_recalculation.holiday_date',
-      /** FR 32c, LMS 507. Which days of a holiday became sick leave. */
+      /** FR 32c. Which days of a holiday became sick leave. */
       'leave_request_reclassification.end_date',
       'leave_request_reclassification.start_date',
       'leave_year.end_date',

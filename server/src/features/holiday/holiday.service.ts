@@ -1,4 +1,4 @@
-/** Keeping the gazetted public holiday calendar. FR 22, §5.4., LMS 206, LMS 205, §7.3, FR 25, §8.. */
+/** Keeping the gazetted public holiday calendar. FR 22, §5.4., §7.3, FR 25, §8.. */
 
 import type { Actor } from '../../auth/actor.js';
 import { holidayPolicy } from './policy.js';
@@ -24,7 +24,7 @@ export class HolidayService {
     private readonly holidays: HolidayRepository,
     /** NFR SEC 02. */
     private readonly guard: Guard,
-    /** Where a closed leave year ends. LMS 205. */
+    /** Where a closed leave year ends. */
     private readonly earliestOpenDay: EarliestOpenDay,
     /** The leave years, for HolidayService.yearsAwaitingACalendar alone. */
     private readonly years: LeaveYearRepository,

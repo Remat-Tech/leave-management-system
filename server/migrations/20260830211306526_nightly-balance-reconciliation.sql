@@ -1,11 +1,11 @@
 -- Up Migration
 
--- Checking the cache against the record it is a cache of. §7.4. LMS 213.
+-- Checking the cache against the record it is a cache of. §7.4.
 --
 -- Design principle 1 has been an assertion for three stories: "the ledger is the
 -- truth; balances are a cache. If they ever disagree, the ledger wins and the balance
--- is rebuilt." LMS 211 made the cache a function of the ledger so that it should never
--- disagree. This is the story that stops "should never" being the whole of the answer.
+-- is rebuilt." The cache is a function of the ledger so that it should never
+-- disagree. This is what stops "should never" being the whole of the answer.
 --
 -- The failure it exists to catch is not one anybody can name in advance — a trigger
 -- disabled during a maintenance window, a restore from a backup taken between two
@@ -21,7 +21,7 @@
 -- given a name. `balances_that_disagree_with_the_ledger` is that beside the cache,
 -- with the rows that agree left out.
 --
--- The lifting is the reason this is a migration rather than a service. LMS 210
+-- The lifting is the reason this is a migration rather than a service. The ledger
 -- declined to write the projection twice — "a total computed in two places is the
 -- drift the cached balance exists to be checked against" — and a reconciliation that
 -- computed its own expected figures would be exactly that second copy, with the

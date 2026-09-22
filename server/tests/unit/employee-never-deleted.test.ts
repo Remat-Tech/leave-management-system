@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * There is no way to delete an employee. FR 06, LMS 102.
+ * There is no way to delete an employee. FR 06.
  *
  * The other two halves of this are elsewhere and are both stronger than this
  * file. lms_app holds no DELETE privilege on the table, and a trigger refuses the

@@ -1,4 +1,4 @@
-/** Checking the cache against the record it is a cache of. §7.4., LMS 213, §5.7, LMS 210. */
+/** Checking the cache against the record it is a cache of. §7.4., §5.7. */
 
 import type { BalanceBucket } from './balance.js';
 
@@ -87,7 +87,7 @@ export function reportOf(run: Reconciliation): string {
           ...run.couldNotTell.map((failure) => `  ${failure.to} — ${failure.because}`),
           '',
         ]),
-    'Remat Holdings Leave',
+    'Rota',
   ].join('\n');
 }
 

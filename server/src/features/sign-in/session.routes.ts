@@ -1,4 +1,4 @@
-/** Signing in, and finding out who you are. LMS 109, LMS 110, LMS 401. */
+/** Signing in, and finding out who you are. */
 
 import { type Request, type Response, Router } from 'express';
 import { SignInRefused } from './sign-in.js';
@@ -44,7 +44,7 @@ export function publicSessionRoutes({ signIn, secret }: SessionRoutes): Router {
       });
   });
 
-  /** The code step. LMS 110. */
+  /** The code step. */
   routes.post('/session/code', (request: Request, response: Response, next) => {
     const { email, code } = codeIn(request.body);
 

@@ -1,5 +1,5 @@
 /**
- * Attaching evidence to a request, and letting somebody who may read it fetch it. FR 12, FR 13, NFR SEC 04, NFR SEC 06, NFR SEC 07. LMS 310, LMS 407.
+ * Attaching evidence to a request, and letting somebody who may read it fetch it. FR 12, FR 13, NFR SEC 04, NFR SEC 06, NFR SEC 07.
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -57,7 +57,7 @@ export interface AttachmentsOnARequest {
   evidence: EvidenceOnARequest;
 }
 
-/** What one person has uploaded and not yet asked for leave with. FR 13, LMS 311. */
+/** What one person has uploaded and not yet asked for leave with. FR 13. */
 export interface AttachmentsWaiting {
   employeeId: string;
   attachments: LeaveRequestAttachment[];
@@ -75,7 +75,7 @@ export interface AttachmentContent {
   url?: string;
 }
 
-/** Where one person may fetch one file, for the next two minutes. NFR SEC 04, LMS 407. */
+/** Where one person may fetch one file, for the next two minutes. NFR SEC 04. */
 export interface IssuedDownloadLink {
   attachment: LeaveRequestAttachment;
   /** The only address the bytes have. It is spent by the first fetch. */
@@ -97,7 +97,7 @@ export class AttachmentService {
     /* NFR SEC 02. Required rather than defaulted; see ../../auth/policy.ts. */
     private readonly guard: Guard,
     private readonly attachments: AttachmentRepository,
-    /** NFR SEC 04, LMS 407. The links a file is fetched through, and who fetched it. */
+    /** NFR SEC 04. The links a file is fetched through, and who fetched it. */
     private readonly links: AttachmentLinkRepository,
     private readonly requests: LeaveRequestRepository,
     /** Whose leave it is, which a request id cannot say by itself. */
@@ -146,7 +146,7 @@ export class AttachmentService {
   }
 
   /**
-   * Takes evidence ahead of the request it will go on. FR 13, LMS 311.
+   * Takes evidence ahead of the request it will go on. FR 13.
    *
    * The half of the story that makes "block submission without an attachment" possible at
    * all: FR 13 is answered while the form is still open, which is before there is a request
@@ -261,7 +261,7 @@ export class AttachmentService {
     };
   }
 
-  /** What is waiting to go on a request, and how much of it counts. FR 13, LMS 311. */
+  /** What is waiting to go on a request, and how much of it counts. FR 13. */
   async waitingFor(actor: Actor, employeeId: string): Promise<AttachmentsWaiting> {
     const employee = await this.theEmployee(employeeId);
 
@@ -279,7 +279,7 @@ export class AttachmentService {
   }
 
   /**
-   * Throws away a file that never went on a request. FR 12, LMS 311.
+   * Throws away a file that never went on a request. FR 12.
    *
    * Addressed by its own id and by nothing else, because there is no request to address it
    * through. Whose it is, is the row's own answer — `held_for_employee_id` — and the policy
@@ -297,7 +297,7 @@ export class AttachmentService {
   }
 
   /**
-   * Asks the scanner again about a waiting file it never answered for. NFR SEC 07, LMS 311.
+   * Asks the scanner again about a waiting file it never answered for. NFR SEC 07.
    *
    * The counterpart of {@link AttachmentService.rescan}, and it matters more here: a
    * `PENDING` file satisfies no documentation rule, so somebody whose scanner was down when
@@ -310,7 +310,7 @@ export class AttachmentService {
   }
 
   /**
-   * An address the bytes can be fetched from, for the next two minutes. NFR SEC 04, LMS 407.
+   * An address the bytes can be fetched from, for the next two minutes. NFR SEC 04.
    *
    * The whole of "never publicly addressable": there is no standing URL for a certificate,
    * so nothing survives being copied out of a browser's history, a chat window or somebody's
@@ -328,7 +328,7 @@ export class AttachmentService {
     const { request } = await this.readable(actor, leaveRequestId);
     const attachment = await this.onThisRequest(request, attachmentId);
 
-    /** NFR SEC 06, LMS 514. */
+    /** NFR SEC 06. */
     if (attachment.fileDeletedAt !== null) {
       throw new AttachmentFileDeleted(attachment);
     }
@@ -357,7 +357,7 @@ export class AttachmentService {
   }
 
   /**
-   * The bytes, for a link that is still good. NFR SEC 04, NFR SEC 07, LMS 407.
+   * The bytes, for a link that is still good. NFR SEC 04, NFR SEC 07.
    *
    * A link is not standing on its own. It has to be unspent, unexpired and presented by the
    * person it was minted for — and the policy is asked **again**, here, because a manager
@@ -404,7 +404,7 @@ export class AttachmentService {
       throw error;
     }
 
-    /* Deleted under retention after the link was minted. LMS 514. */
+    /* Deleted under retention after the link was minted. */
     if (attachment.fileDeletedAt !== null) {
       await this.wroteDown(actor, link, 'REFUSED', 'the file was deleted under retention');
       throw new AttachmentFileDeleted(attachment);
@@ -427,7 +427,7 @@ export class AttachmentService {
     /* Straight from storage where the driver can mint an address, because relaying a file
        through here costs a second transfer of it. The access is written down either way: the
        link has been minted and spent by this point, and nothing beyond it is a second chance
-       to reach the file. NFR SEC 04, LMS 407. */
+       to reach the file. NFR SEC 04. */
     const url = await this.storage.linkTo(attachment.storageKey);
     const content = url === undefined ? await this.storage.get(attachment.storageKey) : undefined;
 
@@ -436,7 +436,7 @@ export class AttachmentService {
     return { attachment, content, url };
   }
 
-  /** Who reached for this file and what came of it. NFR SEC 04, LMS 407. */
+  /** Who reached for this file and what came of it. NFR SEC 04. */
   private async wroteDown(
     actor: Actor,
     link: DownloadLink,
@@ -457,7 +457,7 @@ export class AttachmentService {
    * The uploader's standing, and only while the request is still `SUBMITTED` — see
    * {@link assertAttachmentsAreOpen}. The row goes and the bytes go with it.
    *
-   * Since LMS 311 there is a second refusal: the last file standing as a required request's
+   * There is a second refusal: the last file standing as a required request's
    * documentation stays. `leave_request_attachment_is_what_it_was_allowed_on` holds the same
    * rule behind this one.
    */
@@ -470,7 +470,7 @@ export class AttachmentService {
 
     assertAttachmentsAreOpen(request, 'remove from');
 
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     assertItIsNotTheLastEvidence(
       request,
       attachment,
@@ -505,7 +505,7 @@ export class AttachmentService {
 
   /** One more look at a `PENDING` file, wherever it is sitting. NFR SEC 07. */
   private async scanAgain(attachment: LeaveRequestAttachment): Promise<LeaveRequestAttachment> {
-    /* A deleted file has no bytes to scan. LMS 514. */
+    /* A deleted file has no bytes to scan. */
     if (attachment.scanStatus !== 'PENDING' || attachment.fileDeletedAt !== null) {
       return attachment;
     }
@@ -545,7 +545,7 @@ export class AttachmentService {
   }
 
   /**
-   * A file that is waiting for a request, for somebody who may attach it. FR 13, LMS 311.
+   * A file that is waiting for a request, for somebody who may attach it. FR 13.
    *
    * Standing before existence, as everywhere else here: the row says whose it is, the policy
    * is asked about that person, and a refusal is silent. A file already on a request is *not
@@ -603,7 +603,7 @@ export class AttachmentService {
     return { request, employee };
   }
 
-  /** The request, for somebody who may see what is on it. FR 12, LMS 310. */
+  /** The request, for somebody who may see what is on it. FR 12. */
   private async readable(
     actor: Actor,
     leaveRequestId: string,
@@ -617,7 +617,7 @@ export class AttachmentService {
         ...ownerOf(employee),
         awaiting: request.awaitingApprovalFrom,
         chiefExecutiveId,
-        /** FR 49, LMS 327. */
+        /** FR 49. */
         standingIn: desksHandedTo(
           actor,
           chiefExecutiveId,
@@ -651,7 +651,7 @@ export class AttachmentService {
 }
 
 /**
- * What is waiting, as a person reads it. FR 13, NFR USA 03. LMS 311.
+ * What is waiting, as a person reads it. FR 13, NFR USA 03.
  *
  * The distinction it exists to make is `PENDING` against `CLEAN`: somebody with a file
  * uploaded and unscanned has *something* on the screen and nothing that will get their leave
@@ -679,7 +679,7 @@ function waitingInWords(attached: number, usable: number): string {
 }
 
 /**
- * The person a link is minted for. NFR SEC 04, LMS 407.
+ * The person a link is minted for. NFR SEC 04.
  *
  * A link is issued *to somebody*, so an actor with nobody behind it has nothing to issue one
  * to. `theSystem()` reads every record and is nobody, which is right for a job and wrong for

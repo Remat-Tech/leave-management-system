@@ -23,7 +23,7 @@ import type { LeaveRequestAttachment } from '../../src/features/leave-request/at
 import { type LeaveType, validateNewLeaveType } from '../../src/features/leave-type/leave-type.js';
 
 /**
- * Sickness during annual leave, moved to sick leave. FR 32c, §8.6c. LMS 507.
+ * Sickness during annual leave, moved to sick leave. FR 32c, §8.6c.
  *
  * Everything pure: which days are being moved, where they may go, what may stand as the
  * certificate, and the one sentence both ledger entries carry. That the days actually move

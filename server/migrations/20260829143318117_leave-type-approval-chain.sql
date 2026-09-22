@@ -1,12 +1,12 @@
 -- Up Migration
 
--- Who approves each kind of leave, and in what order. FR 38a, §5.5. LMS 204.
+-- Who approves each kind of leave, and in what order. FR 38a, §5.5.
 --
 -- The second of the two things design principle 5 of the Technical Design
 -- Document says vary by leave type: "Two things vary by leave type, and both used
 -- to be global... If either is written as an `if` on a type code, every future
 -- leave type becomes a code change." The first was the counting basis and is
--- LMS 201. This is the other one, and it is the one the README states in the
+-- the leave type rules. This is the other one, and it is the one the README states in the
 -- plainest terms: "Most types go manager then HR; unpaid leave goes HR then CEO.
 -- Both are configuration. If either appears as an `if` on a type code, that is a
 -- bug."
@@ -133,7 +133,7 @@ CREATE UNIQUE INDEX leave_type_approval_step_role_once
    COMMIT the only state there is is the one that will be stored.
 
    What it deliberately does not say is that every type has a chain. That reads
-   like the obvious companion rule and it would break the thing LMS 202 built:
+   like the obvious companion rule and it would break the statutory repair:
    `ensure_statutory_leave_types()` puts back a type that has gone missing, in one
    statement, and it cannot know about a table that did not exist when it was
    written. A rule refusing a chainless type would turn the documented repair for
@@ -230,7 +230,7 @@ GRANT DELETE ON leave_type_approval_step TO lms_app;
 -- ------------------------------------------- the chains of FR 38a and §5.5
 
 /* Reference data, and it has an owner from the first minute rather than acquiring
-   one a story later. That is the whole lesson of LMS 202: the insert that runs
+   one later. That is the whole lesson of the statutory set: the insert that runs
    inside the migration which creates the table proves a database *started out*
    right and can never run again, and the three places reference data actually
    goes missing — a restore from an older backup, a row deleted by somebody

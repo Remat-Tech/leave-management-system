@@ -1,5 +1,5 @@
 /**
- * Restores a backup into a new database on BACKUP_RESTORE_URL's server, then verifies it. LMS 604.
+ * Restores a backup into a new database on BACKUP_RESTORE_URL's server, then verifies it.
  *
  *   npm run restore -- <manifest> [database]
  */

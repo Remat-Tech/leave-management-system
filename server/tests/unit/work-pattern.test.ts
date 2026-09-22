@@ -15,7 +15,7 @@ import {
 } from '../../src/features/work-pattern/work-pattern.js';
 
 /**
- * The rules for a working pattern, checked without a database. FR 23, LMS 106.
+ * The rules for a working pattern, checked without a database. FR 23.
  *
  * The database holds the same rules as a CHECK, a unique index and two deferred
  * triggers, and refuses the same patterns; that is asserted in the integration

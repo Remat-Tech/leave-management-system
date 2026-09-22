@@ -1,5 +1,5 @@
 /**
- * Crediting back a public holiday declared inside leave people already had. FR 25, §8.8. LMS 508.
+ * Crediting back a public holiday declared inside leave people already had. FR 25, §8.8.
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -88,7 +88,7 @@ export class HolidayRecalculationService {
     private readonly notifications: NotificationService,
     /** NFR SEC 02. */
     private readonly guard: Guard,
-    /** Where a closed leave year ends. LMS 205. */
+    /** Where a closed leave year ends. */
     private readonly earliestOpenDay: EarliestOpenDay,
   ) {}
 
@@ -117,7 +117,7 @@ export class HolidayRecalculationService {
   }
 
   /**
-   * Credits the day back to everybody it was charged to. FR 25, §8.8, FR 59. LMS 508.
+   * Credits the day back to everybody it was charged to. FR 25, §8.8, FR 59.
    *
    * **One transaction per person, not one for the run.** A hundred and forty people's
    * balances are a hundred and forty independent corrections, and a single failure among

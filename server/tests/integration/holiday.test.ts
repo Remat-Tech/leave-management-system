@@ -24,7 +24,7 @@ import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 
 /**
- * The public holiday calendar against a real database. FR 22, §5.4. LMS 206.
+ * The public holiday calendar against a real database. FR 22, §5.4.
  *
  * The unit suite covers what a holiday is and how a stretch of days reads against
  * the calendar; ../unit/holiday.test.ts is where the pure half is proved. What
@@ -42,7 +42,7 @@ import { Guard, NotAuthorised } from '../../src/auth/policy.js';
  *   **A settled leave year keeps its days.** Not by the service alone, but by a
  *   trigger, so it holds for the owner at a psql prompt too — which matters
  *   because a holiday is exactly the kind of row somebody fixes by hand at six in
- *   the evening. That is the tie back to LMS 205 and the assertion this file exists
+ *   the evening. That is the tie back to the leave year and the assertion this file exists
  *   for.
  *
  * The three acceptance criteria — add, edit and remove, per year, mid year — are
@@ -128,7 +128,7 @@ afterAll(async () => {
  * The ids come back with the rows because the audit log files its entries under
  * them.
  *
- * CASCADE since LMS 210. A leave year is now the heading a run of ledger entries is
+ * CASCADE. A leave year is now the heading a run of ledger entries is
  * filed under, and Postgres will not truncate a referenced table without being told
  * what to do about the rows pointing at it. Nothing references `holiday`, so the
  * word is doing nothing on that call and is left in place rather than branched on.
@@ -389,7 +389,7 @@ describe('taking a day off the calendar, which is a real delete', () => {
   });
 });
 
-describe('a settled leave year keeps its days, LMS 205', () => {
+describe('a settled leave year keeps its days', () => {
   /**
    * The assertion this file exists for.
    *
@@ -527,7 +527,7 @@ describe('the rules are held by the database as well as by the domain', () => {
   });
 });
 
-describe('who may keep the calendar, LMS 112', () => {
+describe('who may keep the calendar', () => {
   /* The matrix belongs to ../unit/policy.test.ts; what is asserted here is that
      the service asks before it reads or writes anything — and that the answer is
      the one this table is different about. */

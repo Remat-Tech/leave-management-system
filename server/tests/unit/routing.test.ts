@@ -19,7 +19,7 @@ import {
 } from '../../src/features/leave-request/routing.js';
 
 /**
- * A request goes to somebody who can actually decide it. FR 48, FR 48b, §8.6a. LMS 320.
+ * A request goes to somebody who can actually decide it. FR 48, FR 48b, §8.6a.
  *
  * The walk is pure, so the whole of the story is provable here: which desk a request goes
  * to, which stages were skipped on the way, and — the one that matters most — that running
@@ -59,13 +59,13 @@ function route(
     decided: decided.map((desk) => ({ desk, by: officerAt(desk) })),
     skipped,
     available,
-    /* FR 48d. No names, which is what LMS 320's walk had: who is at a desk changes nothing
-       until somebody at it has decided. LMS 322. */
+    /* FR 48d. No names, which is what the walk had: who is at a desk changes nothing
+       until somebody at it has decided. */
     occupants: NO_OCCUPANTS_NAMED,
   });
 }
 
-/** The same walk with people at the desks, which is what FR 48d turns on. LMS 322. */
+/** The same walk with people at the desks, which is what FR 48d turns on. */
 function routeAmong(input: {
   chain: readonly ApproverRole[];
   occupants: DeskOccupants;
@@ -101,7 +101,7 @@ describe('a chain every desk can answer', () => {
     expect(route(ORDINARY, ANYBODY, ['MANAGER', 'HR'])).toEqual({
       kind: 'DECIDED',
       skips: [],
-      /** FR 48d. Two desks, two officers. LMS 322. */
+      /** FR 48d. Two desks, two officers. */
       singleApprover: false,
     });
   });
@@ -139,7 +139,7 @@ describe('a manager stage nobody can answer', () => {
     expect(route(ORDINARY, noManager, ['HR'], skips)).toEqual({
       kind: 'DECIDED',
       skips: [],
-      /** FR 48d. One signature settled both stages, so the request says so. LMS 322. */
+      /** FR 48d. One signature settled both stages, so the request says so. */
       singleApprover: true,
     });
   });
@@ -187,7 +187,7 @@ describe('an HR stage only the requester staffs', () => {
     expect(route(UNPAID, loneHr, ['CEO'], skips)).toEqual({
       kind: 'DECIDED',
       skips: [],
-      /** FR 48d, LMS 322. */
+      /** FR 48d. */
       singleApprover: true,
     });
   });
@@ -224,7 +224,7 @@ describe('a CEO stage the requester holds', () => {
           because: expect.stringContaining('nobody decides their own request') as string,
         },
       ],
-      /** FR 48d, LMS 322. */
+      /** FR 48d. */
       singleApprover: true,
     });
   });
@@ -291,10 +291,10 @@ describe('a stage with neither its desk nor its stand-in', () => {
 /* ------------------------------------------- two stages that resolve to one person */
 
 /**
- * The single approver exception. FR 48d, LMS 322.
+ * The single approver exception. FR 48d.
  *
  * Ama is Kofi's manager and holds an HR role, so his annual leave has two stages with
- * one person at both. LMS 320 asked her twice; this asks somebody else, and where the company
+ * one person at both. She used to be asked twice; this asks somebody else, and where the company
  * has nobody else it says on the record that one approver decided it.
  */
 describe('a stage its own people have already decided', () => {
@@ -403,7 +403,7 @@ describe('a stage its own people have already decided', () => {
 /* ------------------------------------------------ a recorded skip is never reconsidered */
 
 /**
- * The one thing carried rather than recomputed. FR 48b, LMS 316's discipline.
+ * The one thing carried rather than recomputed. FR 48b's discipline.
  *
  * A manager's stage skipped on Monday because the requester had no manager is a stage
  * that has had its turn. Somebody appointed on Wednesday does not send a request that is
@@ -516,7 +516,7 @@ describe('what would route it', () => {
     const said = whatWouldRouteIt('HR', nobody);
 
     expect(said).toContain('granting somebody an HR role');
-    /** FR 48c. A setting somebody writes, not a shape of the reporting lines. LMS 321. */
+    /** FR 48c. A setting somebody writes, not a shape of the reporting lines. */
     expect(said).toContain('naming a current employee as the Chief Executive');
   });
 
@@ -647,7 +647,7 @@ describe('over every state the three desks can be in', () => {
 /* ------------------------------------- the standing a desk has is not a role code */
 
 /* `DeskStanding` is a fact about this request, not a grant. Pinned so the two do not drift
-   into each other: LMS 319's rule is what makes `ONLY_THE_REQUESTER` different from
+   into each other: nobody deciding their own leave is what makes `ONLY_THE_REQUESTER` different from
    `CAN_DECIDE`, and it is about who asked rather than about who holds what. */
 it('is a fact about this request rather than about a role', () => {
   const standings: DeskStanding[] = [...DESK_STANDINGS];

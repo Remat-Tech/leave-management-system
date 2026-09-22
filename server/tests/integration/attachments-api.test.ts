@@ -49,7 +49,7 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Attachments over HTTP. FR 12, NFR SEC 04, NFR SEC 07. LMS 310.
+ * Attachments over HTTP. FR 12, NFR SEC 04, NFR SEC 07.
  *
  * ./attachment.test.ts proves the rules against a real database and store. This is for the
  * four things only a socket can show: that the body of an upload is the bytes, that the
@@ -102,12 +102,12 @@ beforeAll(async () => {
     decisions,
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     new AttachmentRepository(db),
     roles,
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -120,7 +120,7 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: new BalanceRepository(db),
-    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    /** FR 27, FR 37. The ledger the adjustment screen reads, and the door it writes through. */
     ledger: new LedgerRepository(db),
     adjustments: balances,
     employees,
@@ -134,11 +134,11 @@ beforeAll(async () => {
     routing: new LeaveRoutingRepository(db),
     withdrawals: new WithdrawalRepository(db),
     drafts: new LeaveRequestDraftRepository(db),
-    /** FR 12, LMS 310. */
+    /** FR 12. */
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
-    /** FR 25, §8.8, LMS 508. */
+    /** FR 25, §8.8. */
     holidayRecalculations: holidayRecalculationService(db, guard, balances),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
@@ -364,7 +364,7 @@ describe('reading it back over HTTP', () => {
     });
   });
 
-  /* NFR SEC 04, LMS 407. Two calls, and the second address did not exist before the first. */
+  /* NFR SEC 04. Two calls, and the second address did not exist before the first. */
   it('sends the bytes back through a link, as an attachment nothing renders inline', async () => {
     const requestId = await aRequest();
 
@@ -389,7 +389,7 @@ describe('reading it back over HTTP', () => {
     expect(Buffer.from(await response.arrayBuffer())).toEqual(A_PDF);
   });
 
-  /* The address the file used to have. Its absence is the story. NFR SEC 04, LMS 407. */
+  /* The address the file used to have. Its absence is the story. NFR SEC 04. */
   it('and there is no standing address the bytes can be fetched from', async () => {
     const requestId = await aRequest();
 

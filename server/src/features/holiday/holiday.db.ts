@@ -1,4 +1,4 @@
-/** Database access for public holidays. FR 22, §5.4., LMS 206. */
+/** Database access for public holidays. FR 22, §5.4.. */
 
 import type { Insertable, Kysely, Selectable, Updateable } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -31,7 +31,7 @@ const FOREIGN_KEY_VIOLATION = '23503';
 const ONE_PER_DAY = 'holiday_one_per_day';
 const SETTLED_YEARS = 'holiday_leaves_settled_years_alone';
 
-/** FR 25, LMS 508. The two ways a day that has credited somebody refuses to be changed. */
+/** FR 25. The two ways a day that has credited somebody refuses to be changed. */
 const ALREADY_CREDITED_MOVE = 'holiday_stays_where_it_was_credited';
 const ALREADY_CREDITED_CLEAR = 'leave_request_recalculation_holiday_id_fkey';
 
@@ -150,7 +150,7 @@ export class HolidayRepository {
   private async catchRefusals<T>(
     day: CalendarDate,
     write: () => Promise<T>,
-    /** The row being changed, where there is one. FR 25, LMS 508. */
+    /** The row being changed, where there is one. FR 25. */
     holiday?: Holiday,
   ): Promise<T> {
     try {
@@ -158,7 +158,7 @@ export class HolidayRepository {
     } catch (error) {
       const violation = violationOf(error);
 
-      /* FR 25, LMS 508. A day people have already been credited for, being moved or
+      /* FR 25. A day people have already been credited for, being moved or
          cleared. The foreign key answers the delete and the trigger answers the move. */
       if (
         holiday !== undefined &&

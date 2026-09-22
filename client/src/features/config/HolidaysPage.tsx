@@ -19,7 +19,7 @@ import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
- * The gazetted public holiday calendar. FR 22, LMS 504.
+ * The gazetted public holiday calendar. FR 22.
  *
  * The screen exists so a holiday declared this morning is on the calendar this morning,
  * rather than in the next deployment. Every day the office is closed is a day nobody is
@@ -292,7 +292,7 @@ function HolidayRow({
             )}
           </div>
 
-          {/* FR 25, §8.8, LMS 508. Leave that was already approved when this day was
+          {/* FR 25, §8.8. Leave that was already approved when this day was
               gazetted is still charged for it until somebody says so. */}
           <Recalculation holiday={holiday} onProblem={onProblem} />
         </>
@@ -309,7 +309,7 @@ function HolidayRow({
 }
 
 /**
- * Crediting a late-declared day back into leave people already had. FR 25, §8.8. LMS 508.
+ * Crediting a late-declared day back into leave people already had. FR 25, §8.8.
  *
  * The story's first criterion is that HR triggers this, so it is a button rather than
  * something the calendar does on save — a day declared for next March affects nobody yet,

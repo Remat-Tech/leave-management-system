@@ -21,7 +21,7 @@ export const SCENARIOS = ['base', 'lone-hr'];
 /**
  * Tables the seed owns.
  *
- * `role` is reference data and belongs to the migration. So, since LMS 106, is
+ * `role` is reference data and belongs to the migration. So is
  * the standard Monday to Friday working pattern: a production database is
  * migrated and never seeded, and no employee can be created without a default
  * pattern to stand in when nobody names one. work_pattern is therefore not
@@ -29,7 +29,7 @@ export const SCENARIOS = ['base', 'lone-hr'];
  * reloaded the fixtures — and the extra patterns this file does own are cleared
  * by name in insertWorkPatterns().
  *
- * `audit_log` is here since LMS 113, and it is the one entry in this list that
+ * `audit_log` is here, and it is the one entry in this list that
  * deserves an argument rather than a mention.
  *
  * Nothing may update or delete a row in it, on any connection — that is NFR AUD
@@ -45,7 +45,7 @@ export const SCENARIOS = ['base', 'lone-hr'];
  * A production database is migrated and never seeded, so nothing here can reach
  * a real audit log.
  *
- * `leave_entitlement_rule` is here since LMS 203 and is not owned by this file at
+ * `leave_entitlement_rule` is here and is not owned by this file at
  * all, which is why it is named rather than left to happen.
  *
  * A rule may name an employee, so the table has a foreign key to `employee` — and
@@ -63,9 +63,9 @@ const SEEDED_TABLES = [
   'employee',
   'department',
   'leave_entitlement_rule',
-  // FR 48c. Points at an employee, so the CASCADE empties it either way. LMS 321.
+  // FR 48c. Points at an employee, so the CASCADE empties it either way.
   'organisation_setting',
-  // FR 61, LMS 512. Back to the original wording.
+  // FR 61. Back to the original wording.
   'notification_template',
 ];
 
@@ -102,10 +102,10 @@ export async function seed(db, { scenario = 'base' } = {}) {
 }
 
 /**
- * Puts back the reference data the truncate above took with it. LMS 203, LMS 401.
+ * Puts back the reference data the truncate above took with it.
  *
  * Two calls, and deliberately not a list of figures. The seven leave types and the
- * figures they carry belong to the migrations — LMS 202, LMS 203 and LMS 401 — and
+ * figures they carry belong to the migrations, and
  * a copy of "annual leave is twenty days" in this file would be a second source for
  * a number that has to have exactly one. Both functions insert what is missing and
  * leave alone anything HR has since set, so calling them on a database where
@@ -135,10 +135,10 @@ async function restoreReferenceData(db) {
 }
 
 /**
- * Names the Chief Executive. FR 48c, LMS 321.
+ * Names the Chief Executive. FR 48c.
  *
  * Kwame has no line manager and is also the Chief Executive, which is the ordinary case and
- * exactly why it has to be written down: the two were one fact until LMS 321, and a fixture
+ * exactly why it has to be written down: the two used to be one fact, and a fixture
  * that left this empty would route unpaid leave nowhere.
  *
  * @param {import('pg').Client} db
@@ -462,7 +462,7 @@ async function insertEmployees(db, { departments, patterns, scenario }) {
 async function grantLogins(db, people, scenario) {
   // One login per employee, in one statement rather than one per person.
   //
-  // EMPLOYEE is not granted here and no longer needs to be. Since LMS 111 the
+  // EMPLOYEE is not granted here and no longer needs to be. The
   // app_user_holds_the_baseline_role trigger gives it to every login as it is
   // created, which is what makes it true of a production database as well —
   // production is migrated and never seeded, so a grant that lived only in this

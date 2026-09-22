@@ -96,7 +96,7 @@ describe('outbound mail in development', () => {
 
 describe('the sign in code', () => {
   /**
-   * NFR SEC 01, LMS 110, and the one acceptance criterion that is not really
+   * NFR SEC 01, and the one acceptance criterion that is not really
    * about the database: the code has to actually leave the application and reach
    * the company address.
    *

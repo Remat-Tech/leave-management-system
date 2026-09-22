@@ -38,7 +38,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Pending leave follows the reporting line. FR 07, §8.4. LMS 325.
+ * Pending leave follows the reporting line. FR 07, §8.4.
  *
  * ../unit/reassignment.test.ts proves which requests a moved line carries, which is pure.
  * What needs a server:
@@ -112,11 +112,11 @@ beforeAll(async () => {
     decisions,
     routing,
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -135,7 +135,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. The fixture days are months behind today, as every suite here widens
+  /* FR 18. The fixture days are months behind today, as every suite here widens
      the window for. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
 
@@ -203,7 +203,7 @@ function aRequest(employeeId: string): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. The fixture week is behind today. */
+    /** FR 17. The fixture week is behind today. */
     acknowledgesShortNotice: true,
   };
 }
@@ -393,12 +393,12 @@ describe('a request whose new manager has already decided it', () => {
    * A line moving decides nothing, which is the boundary this case is here to hold.
    *
    * Ama decided at the HR stage and is then made Adwoa's manager, so every stage of the
-   * chain has now been answered by one hand — the state LMS 322 calls a single approver, and
+   * chain has now been answered by one hand — a single approver, and
    * the state the walk reaches by *deciding* rather than by a record being edited. Reaching
    * it this way must not approve the leave: nobody said yes to the second stage.
    *
    * So the request stays exactly where it is, with its approval intact, and it is HR's to
-   * settle. FR 48d, LMS 322.
+   * settle. FR 48d.
    */
   it('is left where it is, because running out of people to ask never approves anything', async () => {
     const { request } = await requests.submit(asTheOfficer(), aRequest(people.officer));
@@ -423,7 +423,7 @@ describe('a request whose new manager has already decided it', () => {
   });
 });
 
-/* --------------------- a request the empty desk stranded. FR 48b, §8.6a, LMS 320 */
+/* --------------------- a request the empty desk stranded. FR 48b, §8.6a */
 
 describe('a request that stopped because nobody could decide it', () => {
   beforeEach(async () => {
@@ -447,7 +447,7 @@ describe('a request that stopped because nobody could decide it', () => {
   /**
    * The line moving is what unsticks it, and nobody had to ask. FR 48b.
    *
-   * LMS 320 gave HR a verb for this and left the request sitting until somebody remembered
+   * HR has a verb for this, and the request used to sit until somebody remembered
    * to use it. A manager leaving and their reports being moved is the ordinary way the desk
    * fills again, and this is that happening by itself.
    */

@@ -35,7 +35,7 @@ import { ChangePassword } from './features/session/ChangePassword';
 import { SignIn } from './features/session/SignIn';
 import { Icon } from './Icon';
 
-/** The application, and the places there are to go. LMS 401 to LMS 406, LMS 409. */
+/** The application, and the places there are to go. */
 
 /**
  * The rail: what somebody does with their own leave, in the order they do it.
@@ -47,14 +47,14 @@ import { Icon } from './Icon';
  * the page holds nothing it could decide from, and the screen refuses on its own account for
  * anybody who reaches its address anyway.
  *
- * **"My team" is not a tab any more.** LMS 409. It drew the same calendar as "Who is away"
+ * **"My team" is not a tab any more.** It drew the same calendar as "Who is away"
  * over different people. What was only on it, FR 55 and FR 56, is on "Who is away" now.
  */
 const MAIN_SCREENS = [
   { id: 'balances', label: 'My balances', icon: 'balances' },
   { id: 'ask', label: 'Ask for leave', icon: 'ask' },
   { id: 'requests', label: 'My requests', icon: 'requests' },
-  /** FR 55, FR 56, FR 57, LMS 406, LMS 409. Everybody's, scoped to a department. */
+  /** FR 55, FR 56, FR 57. Everybody's, scoped to a department. */
   { id: 'calendar', label: 'Who is away', icon: 'calendar' },
   { id: 'approvals', label: 'Waiting on me', icon: 'approvals' },
   /** Everybody's leave, for the Chief Executive. */
@@ -97,7 +97,7 @@ function isHrSection(screen: Screen): boolean {
 }
 
 /**
- * What somebody is told when the session ran out under them. NFR USA 03, LMS 410.
+ * What somebody is told when the session ran out under them. NFR USA 03.
  *
  * Every screen answers a 401 by dropping back here, and used to do it in silence — a half
  * filled form replaced by a sign in box with no account of why. It does not promise what was
@@ -113,13 +113,13 @@ const IDLE_CHECK_MS = 30 * 1000;
 export function App() {
   const [me, setMe] = useState<Me | undefined>(undefined);
   const [asked, setAsked] = useState(false);
-  /** LMS 410. Set only where the session ended on its own, never where somebody signed out. */
+  /** Set only where the session ended on its own, never where somebody signed out. */
   const [ended, setEnded] = useState<string | undefined>(undefined);
   /** The server's answer, not this page's. Empty until it has answered. */
   const [sections, setSections] = useState<string[]>([]);
 
   /**
-   * The leave year, held here rather than on each screen. LMS 409.
+   * The leave year, held here rather than on each screen.
    *
    * The years come *up* from whichever year-scoped screen loaded last rather than being
    * fetched here: there is no endpoint that answers "which years are mine" on its own, and
@@ -164,7 +164,7 @@ export function App() {
     setEnded(undefined);
   }, []);
 
-  /** LMS 410. What every screen calls on a 401. Not the same act as signing out. */
+  /** What every screen calls on a 401. Not the same act as signing out. */
   const ranOut = useCallback(() => {
     setMe(undefined);
     setSections([]);
@@ -194,7 +194,7 @@ export function App() {
   }, [signedIn, ranOut]);
 
   /**
-   * Bring the tab you are on into view. LMS 408.
+   * Bring the tab you are on into view.
    *
    * The tabs scroll sideways on a phone, so a link to "Waiting on me" would land on a strip
    * with nothing marked. Moves nothing where the strip is not scrolling. `block: 'nearest'`
@@ -230,12 +230,12 @@ export function App() {
 
   return (
     <div className="shell">
-      {/* LMS 409. The company rail: the wordmark, the screens, and the company line. */}
+      {/* The company rail: the wordmark, the screens, and the company line. */}
       <header className="sidebar">
         <a className="logo" href={`#/${DEFAULT_SCREEN}`}>
-          <img className="logo-mark" src="/interlude-logo.png" alt="" aria-hidden="true" />
+          <img className="logo-mark" src="/rota-logo.png" alt="" aria-hidden="true" />
           <span className="logo-word">
-            <b>Interlude</b>
+            <b>Rota</b>
           </span>
         </a>
 
@@ -276,7 +276,7 @@ export function App() {
 
             <h1>{LABELS.get(screen) ?? LABELS.get(DEFAULT_SCREEN)}</h1>
 
-            {/* LMS 409. Only on the screens it means something on: a picker over "Ask for
+            {/* Only on the screens it means something on: a picker over "Ask for
                 leave" would be a control that changes nothing. */}
             {YEAR_SCOPED.has(screen) && years.length > 0 ? (
               <label className="year">
@@ -319,7 +319,7 @@ export function App() {
           </div>
         </div>
 
-        {/* LMS 410. `ranOut` rather than `forget`: a screen reaches this on a 401, which is a
+        {/* `ranOut` rather than `forget`: a screen reaches this on a 401, which is a
             session ending under somebody rather than a person leaving. */}
         {screen === 'balances' ? (
           <BalancesPage onSignedOut={ranOut} yearId={yearId} onYears={yearsKnown} />
@@ -348,17 +348,17 @@ export function App() {
   );
 }
 
-/** The two letters in the circle. LMS 409. `aria-hidden`; the name is beside it. */
+/** The two letters in the circle. `aria-hidden`; the name is beside it. */
 function initialsOf(me: Me): string {
   return `${me.firstName.charAt(0)}${me.lastName.charAt(0)}`.toUpperCase();
 }
 
 /**
- * Which screen the address bar is asking for. LMS 403.
+ * Which screen the address bar is asking for.
  *
- * LMS 401 left the router out — "worth making when there is more than one place to go" — and
- * LMS 402 named the moment it would be needed: *the story that adds a third screen brings the
- * router*. This is that story, so here it is, and it is deliberately not a dependency.
+ * The router was left out — "worth making when there is more than one place to go" — and the
+ * moment it would be needed was named: *the screen that makes a third brings the router*.
+ * This is it, and it is deliberately not a dependency.
  *
  * What a router buys is **addresses**: a link somebody can send, a bookmark, and a back button
  * that moves between screens instead of leaving the application. Three static screens with no

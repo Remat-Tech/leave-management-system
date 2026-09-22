@@ -1,9 +1,9 @@
 -- Up Migration
 
--- Event based entitlement grants. FR 32g, FR 32e, §8.6aa. LMS 218.
+-- Event based entitlement grants. FR 32g, FR 32e, §8.6aa.
 --
 -- Every grant this system has posted so far arrives on the first of January.
--- `entitlement_basis` has said since LMS 201 that some types do not work that way —
+-- `entitlement_basis` has said that some types do not work that way —
 -- "EVENT is granted per qualifying occurrence, does not reset on 1 January and does
 -- not accumulate" — and until now that column has only ever been read to decide what
 -- to *skip*: the annual grant filters event types out, and so does the rollover.
@@ -95,7 +95,7 @@ ALTER TABLE leave_ledger_entry ADD CONSTRAINT leave_ledger_entry_sign_matches_th
 -- ------------------------------------------------ the projection, in its one place
 
 /* `what_the_ledger_says` is the only statement of which bucket each kind of movement
-   moves. LMS 213 lifted it out of `rebuild_one_balance_from_the_ledger()` for exactly
+   moves. It was lifted out of `rebuild_one_balance_from_the_ledger()` for exactly
    this moment: a ninth entry type is one view replaced rather than two copies of an
    aggregate that could disagree about it.
 
@@ -410,7 +410,7 @@ DROP TABLE IF EXISTS leave_entitlement_event;
 DROP FUNCTION IF EXISTS refuse_rewriting_an_entitlement_event();
 DROP FUNCTION IF EXISTS refuse_an_event_outside_its_leave_year();
 
-/* The projection as LMS 213 left it, without LAPSE. */
+/* The projection as the reconciliation left it, without LAPSE. */
 
 CREATE OR REPLACE VIEW what_the_ledger_says AS
 SELECT

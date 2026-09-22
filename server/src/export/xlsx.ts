@@ -1,4 +1,4 @@
-/** A table as a one-sheet workbook, written without a library. ECMA-376, FR 64, LMS 511. */
+/** A table as a one-sheet workbook, written without a library. ECMA-376, FR 64. */
 
 import { crc32, deflateRawSync } from 'node:zlib';
 import type { Cell, Table } from './table.js';

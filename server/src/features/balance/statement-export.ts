@@ -1,4 +1,4 @@
-/** My balances as a table to export. FR 64, LMS 511. */
+/** My balances as a table to export. FR 64. */
 
 import type { Table } from '../../export/table.js';
 import type { BalanceStatement } from './balance-statement.js';

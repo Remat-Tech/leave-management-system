@@ -1,4 +1,4 @@
-/** Database access for entitlement events. FR 32g, FR 32e, LMS 218. */
+/** Database access for entitlement events. FR 32g, FR 32e. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';

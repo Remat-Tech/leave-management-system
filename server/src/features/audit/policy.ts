@@ -1,4 +1,4 @@
-/** Who may read the account of what happened. NFR AUD 01, NFR SEC 02, §10., LMS 113, LMS 112. */
+/** Who may read the account of what happened. NFR AUD 01, NFR SEC 02, §10.. */
 
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';
@@ -75,7 +75,7 @@ export const auditPolicy = {
       : about.refuse(actor, 'browse', null, 'holds no role that reads everybody');
   },
 
-  /** Searching the audit log screen. LMS 513. */
+  /** Searching the audit log screen. */
   search(actor: Actor): Decision {
     return holdsAny(actor, ...SEARCHES_THE_AUDIT_LOG)
       ? about.allow(actor, 'search')
@@ -84,7 +84,7 @@ export const auditPolicy = {
           'search',
           null,
           'holds no role that searches the audit log',
-          'The audit log is searched by an HR Administrator or a System Administrator. LMS 513.',
+          'The audit log is searched by an HR Administrator or a System Administrator.',
         );
   },
 };

@@ -1,4 +1,4 @@
-/** The team calendar, assembled. FR 57, §7.4., LMS 406, LMS 409. */
+/** The team calendar, assembled. FR 57, §7.4.. */
 
 import { type Actor, holdsAny } from '../../auth/actor.js';
 import { leaveYearPolicy } from '../leave-year/policy.js';
@@ -24,11 +24,11 @@ import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
 export interface TeamCalendarOptions {
   /** The year to show, or nothing for the one theYearToOpenOn picks. */
   leaveYearId?: string;
-  /** LMS 409. Nothing is the reader's own; the empty string is every department, for HR. */
+  /** Nothing is the reader's own; the empty string is every department, for HR. */
   departmentId?: string;
 }
 
-/** LMS 409. What `departmentId: ''` asks for, and only HR may ask. */
+/** What `departmentId: ''` asks for, and only HR may ask. */
 const EVERY_DEPARTMENT = '';
 
 export class TeamCalendarService {
@@ -40,18 +40,18 @@ export class TeamCalendarService {
     /** FR 57. The department's live leave. */
     private readonly requests: LeaveRequestRepository,
     private readonly years: LeaveYearRepository,
-    /** LMS 409. The headings, and what HR may filter by. */
+    /** The headings, and what HR may filter by. */
     private readonly departments: DepartmentRepository,
   ) {}
 
   /**
-   * Who is away and when, for one employee, for one leave year. FR 57, LMS 406, LMS 409.
+   * Who is away and when, for one employee, for one leave year. FR 57.
    *
    * **No leave type repository here, and that is the privacy rule.** A type name cannot be
    * sent by a service that never reads the table — enforced by what is not wired up rather
    * than by a filter somebody could forget.
    *
-   * **The department is the scope.** LMS 409 replaced the manager with it: cover is
+   * **The department is the scope.** It replaced the manager: cover is
    * arranged inside a department. HR reads every record, so HR may pick any of them.
    */
   async forEmployee(
@@ -99,7 +99,7 @@ export class TeamCalendarService {
   }
 
   /**
-   * Which department the calendar is for. LMS 409.
+   * Which department the calendar is for.
    *
    * The reader's own unless they asked for another, which is HR's. The empty string is every
    * department at once, and the one case that comes back null.

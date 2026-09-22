@@ -10,7 +10,7 @@ behind it and the full matrix.
 ## Authorisation
 
 **Records are protected on the server, not hidden in the interface.** NFR SEC 02
-and NFR SEC 03, §10, LMS 112.
+and NFR SEC 03, §10.
 
 `employee.id` is a bigint from a sequence. The ids either side of yours are your
 colleagues', so "a colleague reaches them by guessing a web address" is not a
@@ -28,7 +28,7 @@ await employees.list(actor);           // and refuses before it reads anything
 ```
 
 **An `Actor` is who is asking.** An employee id, the roles they were granted, and
-whether anybody reports to them. It is `Authority` from LMS 111 with a name
+whether anybody reports to them. It is the earlier `Authority` with a name
 attached rather than a second shape beside it, and it is minted in exactly one
 place — `SignInService`, which has just proved who somebody is. `server/src/auth/actor.ts`.
 
@@ -89,7 +89,7 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Everything the company is waiting on, and chasing it. FR 50 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` — and the nightly job | the same, and a reminder decides nothing |
 | Sending again what the mail server refused. FR 59 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` — and the job that drains it | the same, and a retry sends only what was already written |
 | The wording of the emails. FR 61 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | `HR_OFFICER`, `HR_ADMIN` |
-| The audit log screen, searched by record and date. LMS 513 | `HR_ADMIN`, `SYS_ADMIN` | — nobody, administrators included |
+| The audit log screen, searched by record and date | `HR_ADMIN`, `SYS_ADMIN` | — nobody, administrators included |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: close, reopen | | `HR_ADMIN`, `SYS_ADMIN` |
@@ -105,8 +105,8 @@ put one desk on both sides of a conversation that exists to have two. The line
 manager is on neither row: the days have already left the balance, and putting
 them back is a correction rather than a decision at a desk.
 
-**A draft is the one row the manager and HR are both kept out of.** FR 19,
-LMS 302. Every other read in the table above widens from the person outwards —
+**A draft is the one row the manager and HR are both kept out of.** FR 19.
+Every other read in the table above widens from the person outwards —
 their manager, then a role that reads every record — because a request is a thing
 that happened and the people around it have standing towards it. A draft is not:
 it is leave nobody has asked for, so there is no request for a manager to be the
@@ -116,7 +116,7 @@ which is FR 18, and may not draft on their behalf — there is no "finish it lat
 in that act, and a draft HR left behind would be planning the person never did.
 
 **An attachment is the one row where reading is wider than the request it hangs
-on.** FR 12, LMS 310. Every other read here widens outwards from the person by
+on.** FR 12. Every other read here widens outwards from the person by
 relationship or by role, and neither reaches FR 04's seat: the Chief Executive is
 nobody's manager and holds no role, so `read` refuses them the unpaid leave
 §4.3.1 sends them to decide. That was tolerable while the desk only needed the
@@ -126,8 +126,8 @@ by `isAt` — the same question the queue asks, asked about one request. Writing
 stays exactly as wide as asking for the leave: an approver who wants a document
 asks the person for it rather than supplying one on their behalf.
 
-**A delegation is the one row where nominating is narrower than ending.** FR 49,
-LMS 327. Handing your approvals over is the approver's own act and nobody else's,
+**A delegation is the one row where nominating is narrower than ending.** FR 49.
+Handing your approvals over is the approver's own act and nobody else's,
 because HR handing out somebody else's authority to decide leave is a power nobody
 asked for. Ending one is theirs or HR's, because taking authority away is the safe
 direction to be wrong in when the approver cannot be reached — and being the
@@ -136,7 +136,7 @@ the delegator's own leave: that is FR 48 laundered through a colleague, and it i
 refused in the policy, in the routing and by
 `leave_request_never_decided_for_the_requester` on every connection.
 
-**Chasing the company is nobody's own queue.** FR 50, LMS 330. The daily reminder
+**Chasing the company is nobody's own queue.** FR 50. The daily reminder
 reads every team's pending leave at once to work out who owes each answer, so it is
 the roles that already read every record rather than the desks that answer them —
 `theSystem` holds those, and HR can run it by hand when somebody says nobody has
@@ -144,7 +144,7 @@ answered them. An approver's own waiting work is `queue`, decided by the desks t
 staff, and is untouched by this. Reading which chases have gone out is the same
 standing, because a reminder is a notice and a notice is one person's post.
 
-**And draining the undelivered post is the same standing again.** FR 59, LMS 331.
+**And draining the undelivered post is the same standing again.** FR 59.
 `resend` is every failed send across the company, so it is the roles that already
 read every record — `theSystem` runs it, and HR runs it by hand when the mail
 server comes back. The person a notice was written to cannot run it, which looks
@@ -152,7 +152,7 @@ strict for somebody asking for their own message to be sent again and is not: th
 retry re-sends what is already written and composes nothing, so there is nothing
 in it for them that reading their own notifications does not already give.
 
-**A leaver's figure adds no rule of its own.** FR 37a, LMS 509. It is that person's balance
+**A leaver's figure adds no rule of its own.** FR 37a. It is that person's balance
 settled rather than a new kind of record, so it is decided by `ledgerPolicy.read` — the same
 three standings the balance has — and the picker in front of it is `employeePolicy.list`, the
 same directory the adjustment screen asks for. The row has no write side: nothing is posted,
@@ -197,7 +197,7 @@ a day of annual leave for an afternoon nobody worked. `SYS_ADMIN` is deliberatel
 not on it either: keeping the calendar is HR's job, not a power that comes with
 being able to reach the database.
 
-**And crediting a late-declared day back is the same desk.** FR 25, LMS 508.
+**And crediting a late-declared day back is the same desk.** FR 25.
 `holidayPolicy.recalculate` holds the roles that keep the calendar, because it is the
 same act finished: a day on the calendar that nobody has been credited for is a day the
 office was closed and everybody was still charged leave for. It moves balances, so the
@@ -205,7 +205,7 @@ door asks `ledgerPolicy.giveBackTakenDays` as well — the same standing as answ
 withdrawal, and the two lists are the same two roles.
 
 **Granting a year is the same desk that writes the figures, and so is carrying one
-forward.** LMS 214 and LMS 217. A grant and an adjustment are the same act from the
+forward.** A grant and an adjustment are the same act from the
 balance's point of view — days arriving with no request behind them and no way to take
 them back — and what differs is that a rule written in advance chose the figure rather
 than somebody this morning. Writing that rule is `entitlementRulePolicy.create` and is
@@ -217,7 +217,7 @@ behind it. `ledgerPolicy.carryForward` is the same argument about
 "granted 2027" are two sentences somebody may need to find separately.
 
 **Recording a birth is the employee-record desk, and lapsing what it granted is not.**
-LMS 218, and it is the one grant in this system an HR Officer may post. The two above
+It is the one grant in this system an HR Officer may post. The two above
 apply a *policy* to everybody at once; recording an event is one fact about one person,
 told to whoever in HR answered the telephone, and the figure still comes from an
 entitlement rule only an Administrator may write. The practical half is the one the
@@ -240,7 +240,7 @@ Reading a balance follows the employee record's rule exactly: yours, your direct
 reports', or a role that reads everybody — a ledger is somebody's history, not a
 published calendar.
 
-**The three movements a leave request causes are three decisions, not one.** LMS 212.
+**The three movements a leave request causes are three decisions, not one.**
 Asking for leave is yours, and HR's on your behalf where FR 18 says somebody was off
 sick and could not ask; a manager is deliberately not on it, and it is the one
 place their standing over a report does not carry — a manager who could reserve a
@@ -255,7 +255,7 @@ the documentation, whether this is the approver FR 38a's chain is waiting on. Th
 belong to the request and approval stories and are asked first. What the balance asks
 of anybody moving it is the narrower question: have you any standing here at all.
 
-**A request is read by three people, asked for by two, and reworded by one.** LMS 301,
+**A request is read by three people, asked for by two, and reworded by one**,
 and the three widths are the decision. Reading follows the balance exactly — yours, your
 manager's, or a role that reads everybody — because a request is *why* a figure is
 what it is, and standing to see one without the other is standing to see half an
@@ -291,7 +291,7 @@ mistyped id a five second problem. Everybody else gets one sentence whatever the
 type.
 
 A leave request id is the same over HTTP: missing and refused are one 404. A move or an
-attach refused to somebody who cannot see the request is silent. LMS 602.
+attach refused to somebody who cannot see the request is silent.
 
 **A refusal aimed at somebody who can see the record but may not do that to it
 says what the rule is.** A manager who has just read their report's record
@@ -330,7 +330,7 @@ nothing above it changes.
 
 ### What is not built
 
-**The session is a signed cookie and nothing else.** Since LMS 401. It carries an
+**The session is a signed cookie and nothing else.** It carries an
 employee id, when it was issued, and an HMAC over both — and **no roles**, because
 `signIn` hands back an actor that is the *answer* to "who is this" and never the
 evidence for it. `http/identify.ts` derives its own on every request; an actor
@@ -346,8 +346,8 @@ used keeps working. The answer to that is a session table, and it is a story wit
 migration in it.
 
 **Roles are read fresh on every request, and are a snapshot only inside one.**
-This was the other way round until LMS 401, which said the price — "a round trip
-per decision" — was worth paying once at the route rather than at every policy
+This was the other way round until the route layer arrived, and the price — "a round trip
+per decision" — was judged worth paying once at the route rather than at every policy
 check. Revoke `HR_ADMIN` while somebody is working and it is gone on their next
 request.
 
@@ -370,7 +370,7 @@ short.
 ## The audit log
 
 **Every change to a record is written down, permanently, by the database.** NFR
-AUD 01 and NFR AUD 02, LMS 113.
+AUD 01 and NFR AUD 02.
 
 The story is a dispute two years from now: a balance is wrong, or is said to be,
 and nobody remembers how it got that way. What settles it is a row written at the
@@ -493,9 +493,9 @@ record could ask for its history instead and be handed several copies of it.
 | A login's and roles' history | yourself, `HR_ADMIN`, `SYS_ADMIN` |
 | A team's or a working pattern's history | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
 | The whole log | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
-| The audit log screen, `GET /api/audit`. LMS 513 | `HR_ADMIN`, `SYS_ADMIN` |
+| The audit log screen, `GET /api/audit` | `HR_ADMIN`, `SYS_ADMIN` |
 
-**The screen is narrower than the log.** LMS 513. Searching every record's history at once
+**The screen is narrower than the log.** Searching every record's history at once
 is an administrator's, and the route has no verb but `GET`. Days in a date search are the
 display zone's.
 
@@ -503,15 +503,15 @@ display zone's.
 account of a disputed balance that the person disputing it cannot see is not an
 account, it is a reassurance.
 
-`user_role.granted_by` was deliberately never added. LMS 111 left it out and said
-why — it wanted an authenticated actor and a place to put it — and this is that
+`user_role.granted_by` was deliberately never added. It was left out for a stated
+reason — it wanted an authenticated actor and a place to put it — and this is that
 place.
 
 ---
 
 ## Who opened a certificate is logged
 
-NFR SEC 04 and NFR SEC 06, LMS 407. The one read anywhere in this system that is
+NFR SEC 04 and NFR SEC 06. The one read anywhere in this system that is
 written down, and the one exception to
 [allowed attempts are not logged](#denied-attempts-are-logged).
 

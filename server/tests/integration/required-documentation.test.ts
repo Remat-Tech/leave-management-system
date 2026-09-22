@@ -44,7 +44,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Documentation that has to arrive with the request. FR 13, FR 32a, §8.6b. LMS 311.
+ * Documentation that has to arrive with the request. FR 13, FR 32a, §8.6b.
  *
  * ../unit/leave-request.test.ts proves which of the two thresholds bites and what the refusal
  * says; ../unit/attachment.test.ts proves what may be taken back off. What needs a database —
@@ -112,11 +112,11 @@ beforeAll(async () => {
     new LeaveDecisionRepository(db),
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     attachmentRepository,
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -268,7 +268,7 @@ async function requestCount(): Promise<number> {
 
 describe('evidence uploaded before there is a request to hang it on', () => {
   /**
-   * The half LMS 310 had no place for, and the reason this story needed a migration.
+   * The half attachments had no place for, and the reason this needed a migration.
    *
    * A file goes into storage, is scanned, and gets a row with no `leave_request_id` on it —
    * because FR 13 is answered while the form is still open, which is before the request that
@@ -556,7 +556,7 @@ describe('the file a request was allowed through on', () => {
     expect((await attachments.forRequest(asTheEmployee(), request.id)).attachments).toHaveLength(1);
   });
 
-  /* And a request nothing was asked of keeps LMS 310's rule unchanged. FR 12. */
+  /* And a request nothing was asked of keeps the attachment rule unchanged. FR 12. */
   it('and evidence nobody demanded still comes off freely', async () => {
     const { request } = await requests.submit(asTheEmployee(), askingNothing());
 

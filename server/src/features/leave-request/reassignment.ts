@@ -1,4 +1,4 @@
-/** Pending leave following a reporting line that moved. FR 07, §8.4, FR 48b, LMS 325. */
+/** Pending leave following a reporting line that moved. FR 07, §8.4, FR 48b. */
 
 import { type ApproverRole, deskInWordsAbout } from '../leave-type/approval-chain.js';
 import type { LeaveRequest } from './leave-request.js';

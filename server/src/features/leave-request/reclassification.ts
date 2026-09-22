@@ -1,5 +1,5 @@
 /**
- * Days of agreed leave that turned out to be sickness. FR 32c, §8.6c, FR 13, NFR SEC 07, LMS 507.
+ * Days of agreed leave that turned out to be sickness. FR 32c, §8.6c, FR 13, NFR SEC 07.
  */
 
 import { type LeavePeriod, validateLeavePeriod } from '../leave-calculator/leave-calculator.js';

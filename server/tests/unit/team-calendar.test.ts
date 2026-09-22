@@ -11,7 +11,7 @@ import {
   teamCalendarFor,
 } from '../../src/features/team/team-calendar.js';
 
-/** Who is away and when, as rules. FR 57, LMS 406, LMS 409. */
+/** Who is away and when, as rules. FR 57. */
 
 const YEAR_2026 = year('2026', '2026-01-01', '2026-12-31');
 
@@ -47,7 +47,7 @@ describe('who may look at a team calendar', () => {
     expect(decision.told).toContain('the people in your department');
   });
 
-  /* LMS 409. HR reads every record, so HR reads every department. */
+  /* HR reads every record, so HR reads every department. */
   it('and lets HR look past their own department', () => {
     expect(teamPolicy.everyDepartment(asEfua()).allowed).toBe(true);
   });
@@ -60,7 +60,7 @@ describe('who may look at a team calendar', () => {
   });
 });
 
-describe('who is on the calendar, FR 57, LMS 409', () => {
+describe('who is on the calendar, FR 57', () => {
   it('is everybody in the department, the reader included', () => {
     expect(calendarOf({}).colleagues.map((one) => one.name)).toEqual([
       'Kofi Boateng',
@@ -86,7 +86,7 @@ describe('who is on the calendar, FR 57, LMS 409', () => {
     expect(calendar.inWords).toContain('4 people in Operations, your department');
   });
 
-  /* LMS 409. HR reading every department at once, which is the one case with no department. */
+  /* HR reading every department at once, which is the one case with no department. */
   it('and says so where every department is being shown at once', () => {
     const calendar = calendarOf({
       team: [KOFI, ADWOA, ABENA, KOJO, EFE],
@@ -310,7 +310,7 @@ function asAdwoa(): Actor {
   return signedInAs(ADWOA.id, { roles: ['EMPLOYEE'], isManager: false });
 }
 
-/** Efua Owusu, the HR officer, who reads every record and so every department. LMS 409. */
+/** Efua Owusu, the HR officer, who reads every record and so every department. */
 function asEfua(): Actor {
   return signedInAs('efua', { roles: ['EMPLOYEE', 'HR_OFFICER'], isManager: false });
 }

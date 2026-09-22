@@ -1,5 +1,5 @@
 /**
- * Asking for leave, being told what it costs first, and taking it back. FR 10, FR 11, FR 14, FR 26, §8., LMS 301, LMS 305, LMS 306, FR 16, FR 05, FR 15, LMS 303, §8.2, LMS 314, FR 38a, LMS 212, FR 39, FR 52, LMS 315, FR 48, §8.6, LMS 319, FR 59, §7.1., LMS 329, FR 17, FR 13.
+ * Asking for leave, being told what it costs first, and taking it back. FR 10, FR 11, FR 14, FR 26, §8., FR 16, FR 05, FR 15, §8.2, FR 38a, FR 39, FR 52, FR 48, §8.6, FR 59, §7.1., FR 17, FR 13.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -130,7 +130,7 @@ import type { LeaveRequestListOptions, LeaveRequestRepository } from './leave-re
 import type { LeaveTypeRepository } from '../leave-type/leave-type.db.js';
 import type { LeaveYearRepository } from '../leave-year/leave-year.db.js';
 import type { OrganisationRepository } from '../organisation/organisation.db.js';
-/** FR 44, LMS 505. */
+/** FR 44. */
 import { OverridesAreSwitchedOff } from '../organisation/organisation.js';
 import { BalanceOverdrawn } from '../balance/balance.js';
 import { expiryFor, reasonForGrantOnApproval } from '../leave-event/leave-event.js';
@@ -156,20 +156,20 @@ export type QuotableLeave = Omit<
   'reason' | 'acknowledgesShortNotice' | 'lateEntryReason'
 >;
 
-/** One request a moved reporting line carried, and the handover recorded. FR 07, LMS 325. */
+/** One request a moved reporting line carried, and the handover recorded. FR 07. */
 export interface RequestThatFollowed {
   request: LeaveRequest;
   reassignment: RecordedReassignment | null;
 }
 
-/** One request a batch left where it was, and what refused it. FR 51, LMS 328. */
+/** One request a batch left where it was, and what refused it. FR 51. */
 export interface LeftUndecided {
   requestId: string;
   /** The refusal itself, so the boundary renders it as it renders every other. */
   because: unknown;
 }
 
-/** An ask to cancel agreed leave, as HR answers it. FR 47, LMS 324. */
+/** An ask to cancel agreed leave, as HR answers it. FR 47. */
 export interface WithdrawalToAnswer {
   requestId: string;
   employeeName: string;
@@ -184,7 +184,7 @@ export interface WithdrawalToAnswer {
   grantNeedsAReason: boolean;
 }
 
-/** What one press did. FR 51, LMS 328. */
+/** What one press did. FR 51. */
 export interface BulkDecided {
   action: BulkAction;
   decided: LeaveApproved[];
@@ -210,7 +210,7 @@ export class LeaveYearIsClosed extends Error {
 export class LeaveRequestService {
   constructor(
     /**
-     * The one door that writes a movement. LMS 212.
+     * The one door that writes a movement.
      *
      * A service rather than a repository, for the reason `LeaveEventService` gives: the
      * request row and its RESERVATION are written in one transaction, and the seam that
@@ -226,7 +226,7 @@ export class LeaveRequestService {
     /** For the reads; the writes go through {@link BalanceService}. */
     private readonly requests: LeaveRequestRepository,
     /**
-     * What each desk said, for the reads. FR 39, FR 52. LMS 315.
+     * What each desk said, for the reads. FR 39, FR 52.
      *
      * The same division `requests` above is held to, and for a stronger reason: a decision
      * has to land in the same transaction as the status it explains — the two are one act —
@@ -236,28 +236,28 @@ export class LeaveRequestService {
      */
     private readonly decisions: LeaveDecisionRepository,
     /**
-     * The stages a request's routing skipped, for the reads. FR 48b, LMS 320.
+     * The stages a request's routing skipped, for the reads. FR 48b.
      *
      * The same division `decisions` is held to, and for the same reason: a skip has to land
      * in the same transaction as the desk it explains, so the writing is `BalanceService`'s.
      */
     private readonly routing: LeaveRoutingRepository,
     /**
-     * The asks to take agreed leave off the books, and HR's answers, for the reads. FR 47, LMS 324.
+     * The asks to take agreed leave off the books, and HR's answers, for the reads. FR 47.
      *
      * The same division `decisions` is held to: an answer lands in the same transaction as
      * the days it moves, so the writing is `BalanceService`'s.
      */
     private readonly withdrawals: WithdrawalRepository,
     /**
-     * The days of agreed leave that became sick leave, for the reads. FR 32c, LMS 507.
+     * The days of agreed leave that became sick leave, for the reads. FR 32c.
      *
      * The same division `withdrawals` is held to: a move lands in the same transaction as the
      * two entries it explains, so the writing is `BalanceService`'s.
      */
     private readonly reclassifications: ReclassificationRepository,
     /**
-     * The evidence waiting to go on a request, for the reads. FR 13, LMS 311.
+     * The evidence waiting to go on a request, for the reads. FR 13.
      *
      * The same division `decisions` is held to: the files land in the same transaction as the
      * request they evidence, so the writing is `BalanceService`'s and this is the reading —
@@ -265,13 +265,13 @@ export class LeaveRequestService {
      */
     private readonly attachments: AttachmentRepository,
     /**
-     * Who holds an HR role, so that the HR desk's occupants are never a copy. FR 48b, LMS 320.
+     * Who holds an HR role, so that the HR desk's occupants are never a copy. FR 48b.
      *
      * The one question asked of it: is there anybody in HR who is not the person asking.
      */
     private readonly roles: RoleRepository,
     /**
-     * Who is covering for an approver who is away. FR 49, §8.6a, LMS 327.
+     * Who is covering for an approver who is away. FR 49, §8.6a.
      *
      * Beside `roles` for the same reason: a delegate is at a desk, so it is one more question
      * about who can be asked there. A service rather than the repository, because what a
@@ -279,10 +279,10 @@ export class LeaveRequestService {
      */
     private readonly delegations: ApprovalDelegationService,
     /**
-     * Who the `CEO` desk resolves to. FR 48c, LMS 321.
+     * Who the `CEO` desk resolves to. FR 48c.
      *
      * Beside `roles` because it is the same question about the other desk that is not a
-     * reporting line. It was `EmployeeRepository.findRoot` until LMS 321.
+     * reporting line. It used to be `EmployeeRepository.findRoot`.
      */
     private readonly organisation: OrganisationRepository,
     /**
@@ -295,7 +295,7 @@ export class LeaveRequestService {
      */
     private readonly calculator: LeaveCalculatorService,
     /**
-     * Who tells the employee what just happened. FR 59, §7.1. LMS 329.
+     * Who tells the employee what just happened. FR 59, §7.1.
      *
      * Required rather than defaulted, for the reason the guard is: a service that can be
      * built without one is a service somebody builds without one, and the failure is
@@ -343,14 +343,14 @@ export class LeaveRequestService {
    * the second answer is the one that is charged. That is the honest behaviour and the
    * reason the count is never passed in.
    *
-   * **The reason is not one of its inputs**, and the signature says so since LMS 403. What
+   * **The reason is not one of its inputs**, and the signature says so. What
    * a period costs is a question about a type, two dates and a working pattern; a form that
    * prices a fortnight on every keystroke would otherwise have to send whatever half-written
    * sentence was in the box, and a reader of this method would be entitled to wonder whether
    * it counted for something. `submit` takes the whole of {@link NewLeaveRequest}, which
    * still satisfies this.
    *
-   * Nor is the acknowledgement. FR 17, LMS 307: the warning is what a quote is for.
+   * Nor is the acknowledgement. FR 17: the warning is what a quote is for.
    */
   async quote(actor: Actor, input: QuotableLeave): Promise<LeaveRequestQuote> {
     const { employee, type, year, period } = await this.resolve(actor, input);
@@ -409,7 +409,7 @@ export class LeaveRequestService {
        on this path that need no read at all. Notice is measured once and both read it. */
     const daysOfNotice = noticeGiven(this.today(), period.from);
 
-    /* FR 17, LMS 307. Warned at the quote and answered here. */
+    /* FR 17. Warned at the quote and answered here. */
     assertShortNoticeIsAcknowledged(
       type,
       period,
@@ -417,7 +417,7 @@ export class LeaveRequestService {
       input.acknowledgesShortNotice === true,
     );
 
-    /* FR 18, LMS 308. Recording an absence on the way back in is ordinary and answers null;
+    /* FR 18. Recording an absence on the way back in is ordinary and answers null;
        past the window it is HR's to enter, with a reason. */
     const lateEntryReason = lateEntryFor({
       type,
@@ -435,7 +435,7 @@ export class LeaveRequestService {
        refused on and what they are asked for evidence for are the same figure. */
     const availableNow = await this.availableFor(actor, employee, type, year);
 
-    /* FR 14, LMS 305. The days, checked while the form is still open and against the
+    /* FR 14. The days, checked while the form is still open and against the
        same figure the quote showed. `daysToReserve` checks it again inside the lock and
        that is the answer that binds; this is the one that can name the leave type, the
        figure and what to ask for instead. */
@@ -447,7 +447,7 @@ export class LeaveRequestService {
       await this.perOccasionFor(employee, type, period.from),
     );
 
-    /* FR 13, FR 32a, LMS 311. The two documentation thresholds, and the evidence that has
+    /* FR 13, FR 32a. The two documentation thresholds, and the evidence that has
        been waiting under this person's name to answer them. Asked here — while the form is
        still open and the sentence can name what to upload — and held again by
        `leave_request_that_needed_evidence_has_it` as the transaction below commits. */
@@ -464,7 +464,7 @@ export class LeaveRequestService {
       waiting: evidence.length - countUsable(evidence),
     });
 
-    /** FR 48b, LMS 320. Who can be asked, before the first desk is chosen. */
+    /** FR 48b. Who can be asked, before the first desk is chosen. */
     const { available, occupants } = await this.whoCanDecide(employee);
 
     const request = validateNewLeaveRequest({
@@ -476,24 +476,24 @@ export class LeaveRequestService {
       reason: input.reason,
       /** FR 10. The type's rule, brought here as `countingBasis` is. */
       reasonRequired: type.reasonRequired,
-      /** FR 18, LMS 308. Decided above; null on everything inside the window. */
+      /** FR 18. Decided above; null on everything inside the window. */
       lateEntryReason,
-      /** FR 13, FR 32a, LMS 311. Decided above, and copied onto the row it was true of. */
+      /** FR 13, FR 32a. Decided above, and copied onto the row it was true of. */
       evidenceRequired: grounds.length > 0,
-      /* FR 32a, §8.6b, LMS 312. How many of the days the certificate is carrying, from the
+      /* FR 32a, §8.6b. How many of the days the certificate is carrying, from the
          same reading the ground was found in. */
       certifiedDays: certifiedDaysIn({ type, days: count.days, availableNow }),
       /* The story's third criterion, taken here and never read off the type again. */
       countingBasis: type.countingBasis,
       days: count.days,
       calendarDays: count.calendarDays,
-      /* FR 38a, LMS 314's first criterion. The chain is handed over and the *first* stage
+      /* FR 38a's first criterion. The chain is handed over and the *first* stage
          of it is written onto the row; `assertSomebodyApprovesIt` above has already refused
          an empty one with the type named. Annual leave starts with the manager and
          unpaid leave starts with HR because that is what their chains say, and nothing on
          this path knows which type is which. */
       approvalChain: type.approvalChain,
-      /* FR 48b, LMS 320's first criterion. A stage nobody can answer is skipped to its
+      /* FR 48b's first criterion. A stage nobody can answer is skipped to its
          stand-in, and a stage with no stand-in either leaves the request `UNROUTABLE`. */
       available,
     });
@@ -501,7 +501,7 @@ export class LeaveRequestService {
     const submitted = await this.reserve(actor, type, period, {
       request,
       reason: reasonForReservation(type.name, period, count.days),
-      /* FR 13, LMS 311. The files go onto the request in the same transaction as the row,
+      /* FR 13. The files go onto the request in the same transaction as the row,
          which is what "the evidence arrives with the request" means when it is written down:
          a request that needed documentation and a certificate that never reached it cannot
          be two halves of one commit. */
@@ -509,14 +509,14 @@ export class LeaveRequestService {
     });
 
     /* FR 48b. Nobody can decide it, so HR is told rather than the request being refused —
-       the leave is real and its days are held. LMS 320. */
+       the leave is real and its days are held. */
     if (submitted.request.status === 'UNROUTABLE') {
       await this.alertThatNobodyCanDecideIt(submitted, employee, type, { available, occupants });
 
       return submitted;
     }
 
-    /* FR 59, LMS 329. The first of the three call sites, and all three have the same shape:
+    /* FR 59. The first of the three call sites, and all three have the same shape:
        the door has returned, so the transaction has committed, and every fact the message is
        composed from is read off what came back rather than off what was sent in. See
        ./notification-service.ts for why it can neither throw nor be moved inside. */
@@ -535,7 +535,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Holds the days, and says the lock's refusal in the submission's words. FR 14, LMS 410.
+   * Holds the days, and says the lock's refusal in the submission's words. FR 14.
    *
    * `daysToReserve` is still the check that binds; nothing here weakens it. What changes is who
    * the refusal is addressed to. {@link BalanceOverdrawn} is composed inside the lock from days
@@ -561,8 +561,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Takes back leave that was asked for, and gives the days back. FR 26, FR 46. LMS 306,
-   * LMS 323.
+   * Takes back leave that was asked for, and gives the days back. FR 26, FR 46.
    *
    * The requester's own act, or HR's on their behalf. What it writes is a `RELEASE` and
    * a status, in one transaction — see {@link BalanceService.releaseForRequest} — and
@@ -571,7 +570,7 @@ export class LeaveRequestService {
    *
    * ## It is FR 46's cancellation, and it works at every stage of a chain
    *
-   * LMS 323, and the story's word for this is *cancel*: an employee taking back a request
+   * The requirement's word for this is *cancel*: an employee taking back a request
    * they have not had approved, so that plans that change cost them no days and cost an
    * approver no time. This method is that act. `LeaveRequestService.cancel` deliberately is
    * not — that is HR unwinding a row which should not be on the books, and the two are
@@ -585,7 +584,7 @@ export class LeaveRequestService {
    * being asked to release it: an intermediate approval writes no movement, so the whole hold
    * is still there.
    *
-   * That was untestable when LMS 306 wrote it, because a request could only ever be standing
+   * That was untestable when it was written, because a request could only ever be standing
    * at its first desk. `../../tests/unit/state-machine.test.ts` now pins it against the table
    * and `../../tests/integration/leave-request.test.ts` walks it at every desk there is.
    *
@@ -616,7 +615,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Ends every request nobody has decided, because the person has left. FR 46, §8.7. LMS 509.
+   * Ends every request nobody has decided, because the person has left. FR 46, §8.7.
    *
    * The port `EmployeeService` calls once the record saying they have gone is written. Each
    * one goes through {@link LeaveRequestService.settle}, so the days come back, the desk is
@@ -672,7 +671,7 @@ export class LeaveRequestService {
 
   /**
    * Says yes at the desk this request is waiting on, and sends it to the next one or agrees
-   * it. FR 38, FR 38a, FR 40. LMS 314.
+   * it. FR 38, FR 38a, FR 40.
    *
    * The whole of the story from the outside: one method, one verb, and which of the two
    * things it does is decided by the chain rather than by the caller. A manager approving
@@ -692,7 +691,7 @@ export class LeaveRequestService {
    * the state.** Who may approve depends on which desk the request is sitting on, so a
    * decision made before the state is known is no decision at all.
    *
-   *   **Is this your own request?** FR 48, §8.6a, LMS 319.
+   *   **Is this your own request?** FR 48, §8.6a.
    *   {@link leaveRequestPolicy.notTheirOwn}, asked before anything but the employee record
    *   that says whose leave this is — because nothing read after it could change the answer.
    *   It is not part of the ordering argument below at all: the other three are questions
@@ -728,7 +727,7 @@ export class LeaveRequestService {
    *
    *   **The Chief Executive.** FR 48c makes it a setting rather than a role or a reporting
    *   line, so the desk resolves to an id and the id comes from
-   *   `OrganisationRepository.chiefExecutiveId`. LMS 321.
+   *   `OrganisationRepository.chiefExecutiveId`.
    *
    * Throws {@link LeaveRequestNotFound} for an id that is nobody's, {@link NotAuthorised}
    * for somebody who may not see the request or is not the desk it is waiting on,
@@ -740,16 +739,16 @@ export class LeaveRequestService {
     actor: Actor,
     id: string,
     comment?: string,
-    /** NFR DAT 02, §8.1. The version the screen was drawn from, where it named one. LMS 326. */
+    /** NFR DAT 02, §8.1. The version the screen was drawn from, where it named one. */
     versionSeen?: string | null,
   ): Promise<LeaveApproved> {
     return this.decide(actor, id, 'APPROVE', readComment(comment), versionSeen);
   }
 
   /**
-   * Turns down leave at the desk it is sitting on. FR 26, FR 39, FR 42, FR 44. LMS 315, LMS 317, LMS 318.
+   * Turns down leave at the desk it is sitting on. FR 26, FR 39, FR 42, FR 44.
    *
-   * The same door as {@link LeaveRequestService.approve} since LMS 318: a rejection is a
+   * The same door as {@link LeaveRequestService.approve}: a rejection is a
    * decision at a stage, so it records the no and hands the request on to the next desk.
    * The days come back only when the last desk is the one saying it.
    */
@@ -757,14 +756,14 @@ export class LeaveRequestService {
     actor: Actor,
     id: string,
     comment: string,
-    /** NFR DAT 02, §8.1. LMS 326. */
+    /** NFR DAT 02, §8.1. */
     versionSeen?: string | null,
   ): Promise<LeaveApproved> {
     return this.decide(actor, id, 'REFUSE', requireAComment(comment), versionSeen);
   }
 
   /**
-   * Overturns the manager's decision, with the reason in writing. FR 44, §7.2. LMS 318.
+   * Overturns the manager's decision, with the reason in writing. FR 44, §7.2.
    *
    * An ordinary decision at the desk the request is sitting on, asking two things a plain
    * one does not: a justification, and a manager's decision to actually be reversing.
@@ -778,14 +777,14 @@ export class LeaveRequestService {
     id: string,
     action: OverridingAction,
     justification: string,
-    /** NFR DAT 02, §8.1. LMS 326. */
+    /** NFR DAT 02, §8.1. */
     versionSeen?: string | null,
   ): Promise<LeaveApproved> {
     return this.decide(actor, id, action, requireAJustification(justification), versionSeen);
   }
 
   /**
-   * Answers several requests at one press. FR 51, FR 39, FR 48, §8.6a. LMS 328.
+   * Answers several requests at one press. FR 51, FR 39, FR 48, §8.6a.
    *
    * Every item goes through {@link LeaveRequestService.decide}, so a batch is not a second way
    * of deciding: the self-approval refusal, the desk, the version and the lock are asked of
@@ -821,7 +820,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * The one path a desk decides by. FR 38, FR 38a, FR 40, FR 44, §6, §7.2. LMS 314, LMS 318.
+   * The one path a desk decides by. FR 38, FR 38a, FR 40, FR 44, §6, §7.2.
    *
    * Four verbs, one method, and which of the three things it does — hand the request on,
    * agree it, or turn it down — is the chain's answer rather than the caller's.
@@ -836,7 +835,7 @@ export class LeaveRequestService {
     id: string,
     action: DecidingAction,
     comment: string | null,
-    /** NFR DAT 02, §8.1. What the screen deciding this was drawn from. LMS 326. */
+    /** NFR DAT 02, §8.1. What the screen deciding this was drawn from. */
     versionSeen: string | null = null,
   ): Promise<LeaveApproved> {
     const request = await this.requests.findById(id);
@@ -848,15 +847,15 @@ export class LeaveRequestService {
     const employee = await this.employeeFor(request.employeeId);
     const owner = ownerOf(employee);
 
-    /** FR 48, §8.6a. LMS 319. */
+    /** FR 48, §8.6a. */
     this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, action));
 
     const type = await this.typeFor(request.leaveTypeId);
 
-    /** FR 04, FR 48b, FR 48d. Who staffs each desk, and who FR 04's seat is. LMS 320, LMS 322. */
+    /** FR 04, FR 48b, FR 48d. Who staffs each desk, and who FR 04's seat is. */
     const { available, occupants, chiefExecutiveId } = await this.whoCanDecide(employee);
 
-    /** FR 49, LMS 327. Whose approvals this actor answers today, if anybody's. */
+    /** FR 49. Whose approvals this actor answers today, if anybody's. */
     const standingIn = desksHandedTo(
       actor,
       chiefExecutiveId,
@@ -876,7 +875,7 @@ export class LeaveRequestService {
 
     const decisions = await this.decisions.forRequest(request.id);
 
-    /* NFR DAT 02, §8.1. Somebody answered this while it was being decided. LMS 326. Asked
+    /* NFR DAT 02, §8.1. Somebody answered this while it was being decided. Asked
        here for the sentence, before the walk below can call it an impossible move, and again
        inside the lock, where it binds. */
     assertNobodyGotThereFirst({
@@ -893,14 +892,14 @@ export class LeaveRequestService {
       action,
       chain: type.approvalChain,
       decidedAlready: whoDecidedWhere(decisions),
-      /** FR 48d, LMS 322. */
+      /** FR 48d. */
       decider: actor.employeeId,
       skipped: await this.routing.forRequest(request.id),
       available,
       occupants,
     });
 
-    /** FR 44, §7.2, LMS 505. */
+    /** FR 44, §7.2. */
     const overturns = this.whatThisReverses(
       request,
       action,
@@ -909,7 +908,7 @@ export class LeaveRequestService {
     );
 
     /* FR 48d. A standing question, so it is asked here with the others rather than before
-       them: somebody reaching for leave that has since been approved is told that. LMS 322.
+       them: somebody reaching for leave that has since been approved is told that.
        The answer that binds is the same question inside the lock. */
     this.guard.enforce(
       leaveRequestPolicy.eachStageADifferentPerson(
@@ -929,11 +928,11 @@ export class LeaveRequestService {
       chiefExecutiveId,
       available,
       occupants,
-      /** FR 49, LMS 327. Carried into the lock, where the desk it answers for is settled. */
+      /** FR 49. Carried into the lock, where the desk it answers for is settled. */
       standingIn,
       comment,
       overturns,
-      /** NFR DAT 02, §8.1. Carried into the lock, where the same question binds. LMS 326. */
+      /** NFR DAT 02, §8.1. Carried into the lock, where the same question binds. */
       versionSeen,
       reasonForTaking: reasonForApproval(type.name, request, request.days, outcome.by),
       reasonForGivingBack: reasonForRelease(type.name, request, request.days, 'REFUSED'),
@@ -943,7 +942,7 @@ export class LeaveRequestService {
 
     await this.tellThemAbout(decided, employee, type.name);
 
-    /* FR 48b. The decision was recorded and there is nowhere left to send it. LMS 320. */
+    /* FR 48b. The decision was recorded and there is nowhere left to send it. */
     if (decided.request.status === 'UNROUTABLE') {
       await this.alertThatNobodyCanDecideIt(decided, employee, type, { available, occupants });
     }
@@ -952,7 +951,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Asks for leave every desk has agreed to be taken off the books. FR 47, §8.2. LMS 324.
+   * Asks for leave every desk has agreed to be taken off the books. FR 47, §8.2.
    *
    * The person's own act, and only theirs. It writes one row and moves nothing; what changes
    * is that HR has something to answer, and they are told so.
@@ -1010,7 +1009,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Agrees to it, putting back the days that were not taken. FR 47, §8.2. LMS 324.
+   * Agrees to it, putting back the days that were not taken. FR 47, §8.2.
    *
    * One method for both of the story's grants, because which applies is the calendar's
    * answer rather than HR's — {@link grantingAction}. What comes back is counted rather than
@@ -1061,7 +1060,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Turns it down, and says why. FR 47, FR 39. LMS 324.
+   * Turns it down, and says why. FR 47, FR 39.
    *
    * Moves nothing and is written down anyway. Asking again once circumstances change is a
    * new ask; what is refused is two open at once.
@@ -1104,13 +1103,13 @@ export class LeaveRequestService {
   }
 
   /**
-   * The reads and the questions both answers share. FR 47, FR 48. LMS 324.
+   * The reads and the questions both answers share. FR 47, FR 48.
    *
    * Standing before state, the disclosure rule the settlement path keeps. {@link NothingToAnswer}
    * is asked here for the sentence and again inside the lock, where it binds.
    */
   /**
-   * Every open ask to cancel agreed leave that this person may answer. FR 47, LMS 324.
+   * Every open ask to cancel agreed leave that this person may answer. FR 47.
    *
    * No list rule of its own: each ask is kept only where the two checks that guard answering it
    * — {@link aWithdrawalToAnswer}'s — would let this person through. So HR sees them, nobody
@@ -1171,7 +1170,7 @@ export class LeaveRequestService {
     const employee = await this.employeeFor(request.employeeId);
     const owner = ownerOf(employee);
 
-    /** FR 48, §8.6a. Nobody answers their own ask. LMS 319. */
+    /** FR 48, §8.6a. Nobody answers their own ask. */
     this.guard.enforce(leaveRequestPolicy.notTheirOwn(actor, owner, 'WITHDRAW_APPROVED'));
     this.guard.enforce(leaveRequestPolicy.answerAWithdrawal(actor, 'WITHDRAW_APPROVED', owner));
 
@@ -1185,7 +1184,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * What is left of an approved period, in days. FR 11, FR 47. LMS 324.
+   * What is left of an approved period, in days. FR 11, FR 47.
    *
    * Counted rather than subtracted, on the basis the request was priced under.
    */
@@ -1202,7 +1201,7 @@ export class LeaveRequestService {
       throw new NothingLeftToGiveBack(request, typeName);
     }
 
-    /** FR 11, LMS 303. The request's basis, not the type's as it now stands. */
+    /** FR 11. The request's basis, not the type's as it now stands. */
     const count = await this.calculator.count(
       actor,
       employee,
@@ -1287,7 +1286,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Moves days of agreed leave to sick leave, on a certificate. FR 32c, §8.6c. LMS 507.
+   * Moves days of agreed leave to sick leave, on a certificate. FR 32c, §8.6c.
    *
    * The whole request, or whole days inside it — {@link periodToMove} — and the count is the
    * calendar's rather than the caller's, on the basis the request was priced under. Nothing
@@ -1341,7 +1340,7 @@ export class LeaveRequestService {
       await this.reclassifications.forRequest(request.id),
     );
 
-    /** FR 11, LMS 303. The request's basis, not the type's as it now stands. */
+    /** FR 11. The request's basis, not the type's as it now stands. */
     const count = await this.calculator.count(
       actor,
       employee,
@@ -1387,7 +1386,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Sends a request nobody could decide back into its chain. FR 48b, §8.6a. LMS 320.
+   * Sends a request nobody could decide back into its chain. FR 48b, §8.6a.
    *
    * What the alert asks HR for once the desk that came up empty has somebody at it. It
    * decides nothing and moves no days — the request goes back to `SUBMITTED` at whichever
@@ -1433,7 +1432,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Carries somebody's pending leave to their new manager. FR 07, §8.4, FR 59. LMS 325.
+   * Carries somebody's pending leave to their new manager. FR 07, §8.4, FR 59.
    *
    * What a reporting-line change does to the requests waiting on it. The `MANAGER` desk is
    * the line, so a request waiting there is the new manager's the moment the line moves and
@@ -1477,7 +1476,7 @@ export class LeaveRequestService {
     return followed;
   }
 
-  /** One request carried, or null where the walk had nowhere new to put it. FR 07, LMS 325. */
+  /** One request carried, or null where the walk had nowhere new to put it. FR 07. */
   private async carry(
     actor: Actor,
     employee: Employee,
@@ -1513,7 +1512,7 @@ export class LeaveRequestService {
     return { request: carried.request, reassignment: carried.reassignment };
   }
 
-  /** Who hears about a request the reporting line moved. FR 07, FR 59, §8.4. LMS 325. */
+  /** Who hears about a request the reporting line moved. FR 07, FR 59, §8.4. */
   private async tellThemItMoved(
     carried: LeaveRerouted,
     employee: Employee,
@@ -1522,7 +1521,7 @@ export class LeaveRequestService {
   ): Promise<void> {
     const { request } = carried;
 
-    /** FR 48b. The change emptied the desk under it, so it is the alert LMS 320 wrote. */
+    /** FR 48b. The change emptied the desk under it, so it is the unroutable alert. */
     if (request.status === 'UNROUTABLE') {
       await this.alertThatNobodyCanDecideIt(carried, employee, type, desks);
       return;
@@ -1563,7 +1562,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Tells the person and HR that nobody can decide a request. FR 48b, FR 59, §8.6a. LMS 320.
+   * Tells the person and HR that nobody can decide a request. FR 48b, FR 59, §8.6a.
    *
    * The last criterion's alert, and it goes to two kinds of reader: the person whose leave
    * has stopped, and whoever can change the organisation so that it has not. HR and the
@@ -1609,11 +1608,11 @@ export class LeaveRequestService {
     }
   }
 
-  /** The person whose leave it is, then everybody who could unstick it. FR 48b, LMS 320. */
+  /** The person whose leave it is, then everybody who could unstick it. FR 48b. */
   private async whoShouldHearAboutIt(employee: Employee): Promise<Employee[]> {
     const ids = new Set<string>(await this.employeesInHr());
 
-    /** FR 48c. The configured Chief Executive, not FR 04's root. LMS 321. */
+    /** FR 48c. The configured Chief Executive, not FR 04's root. */
     const chiefExecutiveId = await this.organisation.chiefExecutiveId();
 
     if (chiefExecutiveId !== null) {
@@ -1626,7 +1625,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * The manager's decision this verb reverses, or null where it reverses nothing. FR 44, §7.2. LMS 318.
+   * The manager's decision this verb reverses, or null where it reverses nothing. FR 44, §7.2.
    *
    * What makes the justification unavoidable: a plain verb that would contradict the line
    * manager is refused and pointed at the override, and an override that contradicts nobody
@@ -1636,7 +1635,7 @@ export class LeaveRequestService {
     request: LeaveRequest,
     action: DecidingAction,
     decisions: readonly LeaveDecision[],
-    /** FR 44, LMS 505. Off makes the manager's word final. */
+    /** FR 44. Off makes the manager's word final. */
     overridesAreAllowed: boolean,
   ): string | null {
     const managers = theManagersDecision(decisions);
@@ -1687,7 +1686,7 @@ export class LeaveRequestService {
    * — silently, as `read` refuses — for somebody with no standing to see the request.
    */
   /**
-   * Whether this leave is agreed, and who is still to agree it. FR 41, FR 42. LMS 316.
+   * Whether this leave is agreed, and who is still to agree it. FR 41, FR 42.
    *
    * The story's "so that", answered in one call: *I never take leave believing it was agreed
    * when it was not*. Every fact needed to be wrong about that is already readable — the
@@ -1725,13 +1724,13 @@ export class LeaveRequestService {
       approvedBy: desksThatApproved(decisions),
       /** FR 44. A stage that said no has had its say and is not waiting on anybody. */
       refusedBy: desksThatRefused(decisions),
-      /** FR 48b. A stage that was skipped is not still owed an answer. LMS 320. */
+      /** FR 48b. A stage that was skipped is not still owed an answer. */
       skipped: await this.routing.forRequest(request.id),
     });
   }
 
   /**
-   * Every request waiting at a desk, with who it is waiting on. FR 48, FR 49, FR 50, FR 60. LMS 330.
+   * Every request waiting at a desk, with who it is waiting on. FR 48, FR 49, FR 50, FR 60.
    *
    * The daily reminder's read, and the one place outside the approver queue that answers
    * "whose answer is this waiting for". `whoCanDecide` is the same resolution the decide door
@@ -1783,18 +1782,18 @@ export class LeaveRequestService {
   }
 
   /**
-   * Who can be asked at each of the three desks, and who the `CEO` desk resolves to. FR 04, FR 38a, FR 48, FR 48b, FR 48c, §8.6a. LMS 314, LMS 320, LMS 321.
+   * Who can be asked at each of the three desks, and who the `CEO` desk resolves to. FR 04, FR 38a, FR 48, FR 48b, FR 48c, §8.6a.
    *
    * Three lookups, one per desk, and the requester's own id is what turns "staffed" into
-   * "can decide this" — LMS 319's rule read as a fact about the desk rather than as a
-   * refusal at the door.
+   * "can decide this" — nobody deciding their own leave, read as a fact about the desk
+   * rather than as a refusal at the door.
    *
-   * **The Chief Executive is read for every chain**, where LMS 314 read them only for a chain
-   * naming `CEO`. Since LMS 320 they stand in for HR, so they can be the desk a request is
+   * **The Chief Executive is read for every chain**, where the old walk read them only for a chain
+   * naming `CEO`. They stand in for HR, so they can be the desk a request is
    * sitting on without the type's chain mentioning them at all — and a null here
    * would mean the one person who *can* decide it being refused at their own desk.
    *
-   * **Since LMS 321 they are a setting**, not FR 04's root. FR 48c.
+   * **They are a setting**, not FR 04's root. FR 48c.
    *
    * A terminated record staffs nothing: somebody who has left cannot sign in, and a desk
    * held only by a leaver is a desk a request would wait at for ever. Being *away* is FR 49
@@ -1823,9 +1822,9 @@ export class LeaveRequestService {
       CEO: stillHere(chiefExecutive),
     };
 
-    /* FR 49, LMS 327. Whoever is covering for the people at those desks is at them too, so
+    /* FR 49. Whoever is covering for the people at those desks is at them too, so
        the walk finds a desk answerable where its occupant is away. A delegation of the
-       requester's own carries nothing, which is LMS 319 read as a fact about the desk. */
+       requester's own carries nothing, which is that rule read as a fact about the desk. */
     const covering = delegationsThatBearOn(
       await this.delegations.delegatesAt([...new Set(Object.values(themselves).flat())]),
       employee.id,
@@ -1838,7 +1837,7 @@ export class LeaveRequestService {
 
     return {
       available: desksAvailable((desk) => standingOf(atTheDesk[desk], employee.id)),
-      /* FR 48d, LMS 322. The same read said as names rather than as a standing, because a
+      /* FR 48d. The same read said as names rather than as a standing, because a
          second officer is a person: `available` says whether a desk can be asked at all and
          this says who is there to ask. */
       occupants: deskOccupants((desk) => whoCouldDecide(atTheDesk[desk], employee.id)),
@@ -1864,7 +1863,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * The one path a request ends by. FR 26, §8.2. LMS 306.
+   * The one path a request ends by. FR 26, §8.2.
    *
    * The README's rule is that only the state machine moves a request, and this is it:
    * three public verbs, one transition. What each of them supplies is the decision — the
@@ -1926,8 +1925,8 @@ export class LeaveRequestService {
     /* Unreachable: `leave_request.leave_type_id` is NOT NULL with a foreign key behind it,
        and nothing deletes a leave type — retiring one clears `is_active`. Answered rather
        than asserted, for the reason the overlap refusal answers it: a ledger entry reading
-       "6 days of undefined given back" is worse than one that says less, and since LMS 329
-       the same string is the one an email says it to somebody about. */
+       "6 days of undefined given back" is worse than one that says less, and the same
+       string is the one an email says it to somebody about. */
     const typeName = type?.name ?? 'leave';
 
     const base = reasonForRelease(typeName, request, request.days, to);
@@ -1935,7 +1934,7 @@ export class LeaveRequestService {
 
     const settled = await this.balances.releaseForRequest(actor, { request, action, to, reason });
 
-    /* FR 59, LMS 329. Both endings tell the person, and they tell them different things —
+    /* FR 59. Both endings tell the person, and they tell them different things —
        days coming back look identical in a balance whether somebody changed their mind or
        HR unwound a row. */
     await this.notifications.tell({
@@ -1953,7 +1952,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Tells the people a decision concerns. FR 59, FR 44, §7.1. LMS 329, LMS 318.
+   * Tells the people a decision concerns. FR 59, FR 44, §7.1.
    *
    * The requester always, and the manager as well where their decision was the one
    * reversed — which is FR 44's last criterion. Both notices go out after the transaction
@@ -2101,7 +2100,7 @@ export class LeaveRequestService {
     actor: Actor,
     /* Without the reason, which nothing here reads and which `validateNewLeaveRequest`
        checks on the submission path where it is actually going to be stored — and without
-       the acknowledgement, which is `submit`'s alone. FR 17, LMS 307. */
+       the acknowledgement, which is `submit`'s alone. FR 17. */
     input: QuotableLeave,
   ): Promise<{ employee: Employee; type: LeaveType; year: LeaveYear; period: LeavePeriod }> {
     const employee = await this.employeeFor(input.employeeId);
@@ -2128,7 +2127,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * Refuses leave asked for over leave the person already has. FR 15, §5.6. LMS 304.
+   * Refuses leave asked for over leave the person already has. FR 15, §5.6.
    *
    * Last in {@link LeaveRequestService.resolve}, because it is the only check there that
    * costs a query the happy path would not otherwise run, and because everything above
@@ -2175,7 +2174,7 @@ export class LeaveRequestService {
   }
 
   /**
-   * The files this submission named, of the ones actually waiting for it. FR 13, LMS 311.
+   * The files this submission named, of the ones actually waiting for it. FR 13.
    *
    * Every id is looked up against *this person's* waiting pile rather than fetched by id and
    * checked afterwards, so an id belonging to somebody else is not found rather than refused
@@ -2390,8 +2389,8 @@ export class LeaveRequestService {
  * standings, and two structurally identical types would be an invitation for them to
  * stop being identical.
  */
-/** Who staffs each desk for one request, and who the `CEO` desk resolves to. FR 48b, FR 48c, LMS 320, LMS 321. */
-/** One request waiting at a desk, and who it is waiting on. FR 50, FR 60, LMS 330. */
+/** Who staffs each desk for one request, and who the `CEO` desk resolves to. FR 48b, FR 48c. */
+/** One request waiting at a desk, and who it is waiting on. FR 50, FR 60. */
 export interface AwaitingADecision {
   request: LeaveRequest;
   /** Whose leave it is, named in a message written to somebody else. */
@@ -2403,7 +2402,7 @@ export interface AwaitingADecision {
 
 interface WhoIsThere {
   available: DesksAvailable;
-  /** FR 48d, LMS 322. */
+  /** FR 48d. */
   occupants: DeskOccupants;
   /** FR 48c. */
   chiefExecutiveId: string | null;

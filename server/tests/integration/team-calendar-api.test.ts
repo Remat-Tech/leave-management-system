@@ -47,11 +47,11 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * The team calendar, over HTTP. FR 57, LMS 406, LMS 409.
+ * The team calendar, over HTTP. FR 57.
  *
  * Five claims:
  *
- *   **The calendar is the reader's department.** LMS 409 made the department the scope, so a
+ *   **The calendar is the reader's department.** The department is the scope, so a
  *   colleague two reporting lines away is on it and somebody in Finance is not.
  *
  *   **Looking past your own department is HR's.** Everybody else is refused, and refused
@@ -113,7 +113,7 @@ beforeAll(async () => {
     decisions,
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     new AttachmentRepository(db),
     new RoleRepository(db),
@@ -129,7 +129,7 @@ beforeAll(async () => {
       domains: ['rematholdings.com'],
     }),
     balances: cached,
-    /** FR 27, FR 37, LMS 506. The ledger the adjustment screen reads, and the door it writes through. */
+    /** FR 27, FR 37. The ledger the adjustment screen reads, and the door it writes through. */
     ledger: new LedgerRepository(db),
     adjustments: balances,
     employees,
@@ -146,7 +146,7 @@ beforeAll(async () => {
     attachments: new AttachmentRepository(db),
     attachmentLinks: new AttachmentLinkRepository(db),
     holidays: new HolidayRepository(db),
-    /** FR 25, §8.8, LMS 508. */
+    /** FR 25, §8.8. */
     holidayRecalculations: holidayRecalculationService(db, guard, balances),
     storage: new InMemoryStorage(),
     scanner: new SignatureScanner(),
@@ -199,14 +199,14 @@ afterAll(async () => {
   await admin?.end();
 });
 
-describe('who is on the calendar, FR 57, LMS 409', () => {
+describe('who is on the calendar, FR 57', () => {
   it('needs a session like everything else behind the line', async () => {
     expect((await fetch(`${origin}/api/me/calendar`)).status).toBe(401);
   });
 
   /**
    * Operations, whole. Yaw, Akosua, Kofi, Adwoa, Abena and Kojo, across four reporting
-   * levels — which is the point of LMS 409: cover is arranged inside a department rather
+   * levels — which is the point: cover is arranged inside a department rather
    * than inside a reporting line, so the calendar is drawn the way cover is arranged.
    */
   it('is everybody in the reader’s department, the reader included', async () => {
@@ -261,7 +261,7 @@ describe('who is on the calendar, FR 57, LMS 409', () => {
   });
 });
 
-describe('which department, LMS 409', () => {
+describe('which department', () => {
   /* Everybody else gets their own department and is told it is the only one they may name. */
   it('offers a colleague their own department and no choice about it', async () => {
     const calendar = await calendarFor(people.officer);
@@ -640,7 +640,7 @@ function grant(employeeId: string, leaveTypeId: string, days: number, leaveYearI
   });
 }
 
-/** LMS 409. The department the seed gave that name. */
+/** The department the seed gave that name. */
 async function departmentIdOf(name: string): Promise<string> {
   const { rows } = await admin.query<{ id: string }>('SELECT id FROM department WHERE name = $1', [
     name,

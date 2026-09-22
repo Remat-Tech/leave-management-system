@@ -15,7 +15,7 @@ import { type LeaveType, validateNewLeaveType } from '../../src/features/leave-t
 import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
 
 /**
- * The balance screen, as rules rather than as a screen. FR 53, §7.4. LMS 401.
+ * The balance screen, as rules rather than as a screen. FR 53, §7.4.
  *
  * Most of this story is arrangement — which rows, in which order, with which sentence
  * beside them — and every one of those is a pure function, so nearly all of it is here

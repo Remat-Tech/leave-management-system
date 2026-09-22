@@ -1,4 +1,4 @@
-/** Who is asking. NFR SEC 02, LMS 112, LMS 111. */
+/** Who is asking. NFR SEC 02. */
 
 import type { Authority, RoleCode } from '../features/role/roles.js';
 

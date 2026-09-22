@@ -26,7 +26,7 @@ import { Guard } from '../../src/auth/policy.js';
 
 /**
  * A walkthrough of the organisation chart, for a person rather than for a build.
- * FR 09 and LMS 107.
+ * FR 09.
  *
  * The story is an HR Officer spotting a wrong or missing manager before it
  * causes a stuck request, and it is a story about *looking*. Assertions can
@@ -269,7 +269,7 @@ describe('the organisation chart', () => {
   });
 
   it('6. is refused to somebody who may not read everybody', async () => {
-    rule('Who the chart is for. LMS 112');
+    rule('Who the chart is for');
 
     const adwoa = signedInAs(people.officer, { roles: ['EMPLOYEE'], isManager: false });
 

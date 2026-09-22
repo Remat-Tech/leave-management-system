@@ -1,4 +1,4 @@
-/** The reporting structure, as a chart. FR 09, LMS 107, FR 04, FR 03. */
+/** The reporting structure, as a chart. FR 09, FR 04, FR 03. */
 
 import type { Employee } from './employee.js';
 

@@ -1,4 +1,4 @@
-/** The year rollover. FR 36, FR 36a, §11., LMS 217, LMS 205, FR 30, §11. */
+/** The year rollover. FR 36, FR 36a, §11., FR 30, §11. */
 
 import type { Actor } from '../../auth/actor.js';
 import { AlreadyCarried } from '../balance/balance.js';
@@ -65,7 +65,7 @@ export class LeaveYearAheadIsClosed extends Error {
 export class YearRollover {
   constructor(
     /**
-     * The one door that writes a movement. LMS 212.
+     * The one door that writes a movement.
      *
      * A service rather than a repository, for the reason ./annual-grant.ts gives: the
      * check that a balance is carried into once lives inside the lock there, so a job
@@ -77,7 +77,7 @@ export class YearRollover {
     /** Whether each type carries at all, and FR 36a's cap. */
     private readonly entitlements: EntitlementRuleService,
     /**
-     * The third act, delegated whole. FR 30 and LMS 214.
+     * The third act, delegated whole. FR 30.
      *
      * The job rather than the pieces of it, deliberately. A rollover that resolved
      * entitlement rules and posted its own grants would be a second implementation of

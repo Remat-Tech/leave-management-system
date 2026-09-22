@@ -1,6 +1,6 @@
 # Backup and restore
 
-LMS 604. NFR AVL 02: recovery point 24 hours, recovery time 4 hours.
+NFR AVL 02: recovery point 24 hours, recovery time 4 hours.
 
 ---
 

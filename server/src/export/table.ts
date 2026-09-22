@@ -1,4 +1,4 @@
-/** Figures as one table, ready to be written to a file. FR 58, FR 64, LMS 511. */
+/** Figures as one table, ready to be written to a file. FR 58, FR 64. */
 
 export type Cell = string | number | null;
 

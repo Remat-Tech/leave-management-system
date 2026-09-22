@@ -18,7 +18,7 @@ import {
 import { organisationPolicy } from '../../src/features/organisation/policy.js';
 import { ROLE_CODES, type RoleCode } from '../../src/features/role/roles.js';
 
-/** Who the Chief Executive is, as rules. FR 48c, FR 04, §4.3.1, LMS 321. */
+/** Who the Chief Executive is, as rules. FR 48c, FR 04, §4.3.1. */
 
 describe('naming somebody', () => {
   it('takes an employee id', () => {
@@ -110,7 +110,7 @@ describe('who may see it', () => {
   });
 });
 
-/* ---------------------------------------- the rest of the policy settings. LMS 505 */
+/* ---------------------------------------- the rest of the policy settings */
 
 describe('the override rule', () => {
   it('is yes or no', () => {
@@ -167,7 +167,7 @@ describe('the retention window', () => {
     expect(retentionInWords(18)).toContain('18 months');
   });
 
-  /* NFR SEC 06, LMS 514. */
+  /* NFR SEC 06. */
   it('and says the file is deleted and its details stay', () => {
     expect(retentionInWords(24)).toContain('deleted');
     expect(retentionInWords(24)).toContain('details stay');

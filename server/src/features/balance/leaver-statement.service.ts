@@ -1,4 +1,4 @@
-/** The leaver figure, assembled. FR 37a, §8.6d, §8.7, LMS 509. */
+/** The leaver figure, assembled. FR 37a, §8.6d, §8.7. */
 
 import type { Actor } from '../../auth/actor.js';
 import type { Guard } from '../../auth/policy.js';

@@ -1,4 +1,4 @@
-/** Database access for HR's wording of the emails. FR 61, LMS 512. */
+/** Database access for HR's wording of the emails. FR 61. */
 
 import type { Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';

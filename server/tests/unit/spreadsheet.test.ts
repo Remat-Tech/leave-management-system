@@ -7,7 +7,7 @@ import {
 } from '../../src/features/staff-import/spreadsheet.js';
 
 /**
- * Turning a file into rows. FR 08, LMS 107.
+ * Turning a file into rows. FR 08.
  *
  * All of this is the awkward half of reading a spreadsheet rather than the easy
  * half, and deliberately so. A well formed comma separated file with no quotes

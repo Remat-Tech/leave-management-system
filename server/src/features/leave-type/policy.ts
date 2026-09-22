@@ -1,4 +1,4 @@
-/** Who may see and change a leave type. NFR SEC 02, §10., LMS 112, FR 21, LMS 201, FR 38a, LMS 204. */
+/** Who may see and change a leave type. NFR SEC 02, §10., FR 21, FR 38a. */
 
 import { type Actor, holdsAny } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';

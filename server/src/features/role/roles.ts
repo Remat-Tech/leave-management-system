@@ -1,4 +1,4 @@
-/** Roles, and what may be done with them. §5.3., LMS 111, LMS 112. */
+/** Roles, and what may be done with them. §5.3.. */
 
 /** Every role there is. */
 export const ROLE_CODES = ['EMPLOYEE', 'HR_OFFICER', 'HR_ADMIN', 'SYS_ADMIN'] as const;
@@ -13,31 +13,31 @@ export const ASSIGNABLE_ROLES: readonly RoleCode[] = ROLE_CODES.filter(
   (code) => code !== BASELINE_ROLE,
 );
 
-/** The roles that may read anybody's record. LMS 112. */
+/** The roles that may read anybody's record. */
 export const READS_EVERY_RECORD: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN', 'SYS_ADMIN'];
 
-/** The roles that create, change and terminate employee records. LMS 112. */
+/** The roles that create, change and terminate employee records. */
 export const MAINTAINS_EMPLOYEE_RECORDS: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN'];
 
-/** The role that changes what the system does to everybody. LMS 112. */
+/** The role that changes what the system does to everybody. */
 export const SETS_UP_THE_ORGANISATION: readonly RoleCode[] = ['HR_ADMIN'];
 
-/** The roles that keep the public holiday calendar. FR 22, LMS 206. */
+/** The roles that keep the public holiday calendar. FR 22. */
 export const MAINTAINS_THE_CALENDAR: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN'];
 
-/** The roles that staff the HR desk in a leave type's approval chain. FR 38a, LMS 314, FR 04. */
+/** The roles that staff the HR desk in a leave type's approval chain. FR 38a, FR 04. */
 export const APPROVES_AS_HR: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN'];
 
-/** The roles that word the emails sent in the company's name. FR 61, LMS 512. */
+/** The roles that word the emails sent in the company's name. FR 61. */
 export const WORDS_THE_COMPANY_EMAILS: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN'];
 
-/** The roles that set a joiner up with a login and reset a forgotten password. LMS 112. */
+/** The roles that set a joiner up with a login and reset a forgotten password. */
 export const PROVIDES_LOGINS: readonly RoleCode[] = ['HR_OFFICER', 'HR_ADMIN', 'SYS_ADMIN'];
 
-/** The roles that decide who may get in and what they may do. LMS 112. */
+/** The roles that decide who may get in and what they may do. */
 export const ADMINISTERS_ACCESS: readonly RoleCode[] = ['HR_ADMIN', 'SYS_ADMIN'];
 
-/** The roles that search the whole audit log. NFR AUD 01, LMS 513. */
+/** The roles that search the whole audit log. NFR AUD 01. */
 export const SEARCHES_THE_AUDIT_LOG: readonly RoleCode[] = ['HR_ADMIN', 'SYS_ADMIN'];
 
 /** What somebody is, for the purposes of deciding what they may do. */

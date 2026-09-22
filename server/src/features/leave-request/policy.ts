@@ -1,5 +1,5 @@
 /**
- * Who may ask for leave, who may see what somebody asked for, and who may end it. FR 10, FR 26, NFR SEC 02, §6, §10., LMS 301, LMS 306, LMS 313, FR 18, LMS 314, FR 38a, FR 04, FR 48, §8.6, LMS 319, FR 48b, FR 39, LMS 315, FR 19, LMS 302.
+ * Who may ask for leave, who may see what somebody asked for, and who may end it. FR 10, FR 26, NFR SEC 02, §6, §10., FR 18, FR 38a, FR 04, FR 48, §8.6, FR 48b, FR 39, FR 19.
  */
 
 import { type ApproverRole, APPROVER_ROLES } from '../leave-type/approval-chain.js';
@@ -26,17 +26,17 @@ import {
 
 const about = policyFor('leave request');
 
-/** FR 49, LMS 327. */
+/** FR 49. */
 const aboutDelegation = policyFor('approval delegation');
 
-/** Everything a decision about a request is made from, beyond who is asking. §6, §10., LMS 314. */
+/** Everything a decision about a request is made from, beyond who is asking. §6, §10.. */
 export interface RequestAtADesk extends BalanceOwner {
   /** FR 38a. */
   awaiting: ApproverRole | null;
   /** FR 48c. */
   chiefExecutiveId: string | null;
   /**
-   * FR 49. What colleagues have handed to whoever is asking, in force today. LMS 327.
+   * FR 49. What colleagues have handed to whoever is asking, in force today.
    *
    * The one field here that is about the asker rather than the request: which desks a
    * delegation reaches is a question about the delegator's roles and reporting line, and
@@ -45,11 +45,11 @@ export interface RequestAtADesk extends BalanceOwner {
   standingIn: readonly DelegatedDesks[];
 }
 
-/** The facts a standing may be decided from, whether or not the caller has all of them. LMS 313. */
+/** The facts a standing may be decided from, whether or not the caller has all of them. */
 type StandingFacts = BalanceOwner &
   Partial<Pick<RequestAtADesk, 'awaiting' | 'chiefExecutiveId' | 'standingIn'>>;
 
-/** Which roles satisfy each standing the transition table names. §6, §10., LMS 313. */
+/** Which roles satisfy each standing the transition table names. §6, §10.. */
 function hasStanding(actor: Actor, subject: StandingFacts, standing: Standing): boolean {
   switch (standing) {
     case 'THE_REQUESTER':
@@ -59,7 +59,7 @@ function hasStanding(actor: Actor, subject: StandingFacts, standing: Standing): 
     case 'LEAVE_ADMINISTRATION':
       return holdsAny(actor, ...MAINTAINS_EMPLOYEE_RECORDS);
     case 'THE_DESK_IT_IS_WITH':
-      /** The requester's exclusion used to be the other half of this line. LMS 319. */
+      /** The requester's exclusion used to be the other half of this line. */
       return isAt(actor, subject);
     case 'THE_CHIEF_EXECUTIVE':
       return isTheChiefExecutive(actor);
@@ -72,9 +72,9 @@ function isTheChiefExecutive(actor: Actor): boolean {
 }
 
 /**
- * Nobody decides their own request, whatever they hold. FR 48, §8.6, §10., LMS 319, LMS 324.
+ * Nobody decides their own request, whatever they hold. FR 48, §8.6, §10..
  *
- * Widened past the four deciding verbs by LMS 324: HR answering their own ask would be
+ * Widened past the four deciding verbs: HR answering their own ask would be
  * putting their own days back on their own say-so.
  */
 function notTheirOwn(actor: Actor, owner: BalanceOwner, action: RequestAction): Decision {
@@ -92,7 +92,7 @@ function notTheirOwn(actor: Actor, owner: BalanceOwner, action: RequestAction): 
 }
 
 /**
- * Two stages are answered by two people. FR 48d, §8.6a, LMS 322.
+ * Two stages are answered by two people. FR 48d, §8.6a.
  *
  * The half of FR 48d routing cannot do: a desk with a second officer is asked as usual, and
  * the officer who signed the earlier stage is refused there. An actor no decision names is
@@ -118,7 +118,7 @@ function eachStageADifferentPerson(
 }
 
 /**
- * Whether this actor answers at the desk the request is sitting on. FR 38a, FR 48, FR 48c, FR 49, LMS 314, LMS 321, LMS 327.
+ * Whether this actor answers at the desk the request is sitting on. FR 38a, FR 48, FR 48c, FR 49.
  *
  * In their own right, or for a colleague who handed their approvals over.
  */
@@ -126,7 +126,7 @@ function isAt(actor: Actor, subject: StandingFacts): boolean {
   return isThereThemselves(actor, subject) || whoTheyAnswerFor(subject) !== null;
 }
 
-/** The same, without the delegations: this actor is the desk. FR 38a, FR 48c, LMS 314, LMS 321. */
+/** The same, without the delegations: this actor is the desk. FR 38a, FR 48c. */
 function isThereThemselves(actor: Actor, subject: StandingFacts): boolean {
   switch (subject.awaiting) {
     case 'MANAGER':
@@ -141,7 +141,7 @@ function isThereThemselves(actor: Actor, subject: StandingFacts): boolean {
 }
 
 /**
- * The colleague whose approvals this desk is being answered for, or null. FR 49, FR 52, LMS 327.
+ * The colleague whose approvals this desk is being answered for, or null. FR 49, FR 52.
  *
  * `MANAGER` is narrowed to the requester's own line, because that desk is a relationship: a
  * delegate of one manager has no standing over another manager's reports. And a delegation
@@ -166,7 +166,7 @@ function whoTheyAnswerFor(subject: StandingFacts): string | null {
 }
 
 /**
- * Whose approvals a decision at this desk answers, or null where the decider's own. FR 49, FR 52, LMS 327.
+ * Whose approvals a decision at this desk answers, or null where the decider's own. FR 49, FR 52.
  *
  * What `leave_request_decision.delegated_for_employee_id` is written from. The desk is passed
  * rather than read off the request, because the one that binds is the desk the walk found
@@ -183,7 +183,7 @@ export function answeredOnBehalfOf(
 }
 
 /**
- * Which desks this person answers at, whosever request arrives. FR 38a, FR 40, FR 04, LMS 404.
+ * Which desks this person answers at, whosever request arrives. FR 38a, FR 40, FR 04.
  *
  * {@link isAt} asked the other way round: that one takes a request and answers *are you the
  * desk it is sitting on*, and a queue has no request in hand. Same three branches, so a desk
@@ -197,7 +197,7 @@ export function answeredOnBehalfOf(
 export function desksStaffedBy(
   actor: Actor,
   chiefExecutiveId: string | null,
-  /** FR 49. What colleagues have handed over to them, in force today. LMS 327. */
+  /** FR 49. What colleagues have handed over to them, in force today. */
   delegated: readonly DelegatedApprover[] = [],
 ): DesksStaffed {
   const own = desksOf(actor.employeeId, actor, chiefExecutiveId);
@@ -228,7 +228,7 @@ export function desksStaffedBy(
 }
 
 /**
- * Whether this actor answers any desk of this request for a colleague. FR 49, LMS 327.
+ * Whether this actor answers any desk of this request for a colleague. FR 49.
  *
  * What the ledger door is widened by. It is asked before the walk has settled which desk
  * binds, so it asks about every desk rather than one: standing to move this balance at all
@@ -240,7 +240,7 @@ export function standsInForAnApprover(subject: RequestAtADesk): boolean {
 }
 
 /**
- * The desks colleagues have handed to this actor, as {@link RequestAtADesk.standingIn}. FR 49, LMS 327.
+ * The desks colleagues have handed to this actor, as {@link RequestAtADesk.standingIn}. FR 49.
  *
  * {@link desksStaffedBy}'s delegated half, so the queue and the decide door work a delegate's
  * desks out the same way.
@@ -271,7 +271,7 @@ function desksOf(
   });
 }
 
-/** Whether a refusal may say why. Nobody else learns the request exists. LMS 602. */
+/** Whether a refusal may say why. Nobody else learns the request exists. */
 function canSee(actor: Actor, subject: StandingFacts): boolean {
   const desk = subject.awaiting;
 
@@ -287,7 +287,7 @@ function canSee(actor: Actor, subject: StandingFacts): boolean {
   );
 }
 
-/** Whether this actor may make this move, decided against the table. §6., LMS 313. */
+/** Whether this actor may make this move, decided against the table. §6.. */
 function mayMove(
   actor: Actor,
   subject: StandingFacts,
@@ -296,7 +296,7 @@ function mayMove(
 ): Decision {
   const said = action.toLowerCase();
 
-  /** FR 48, §8.6a, FR 47. And an answer to a withdrawal is a decision too, since LMS 324. */
+  /** FR 48, §8.6a, FR 47. And an answer to a withdrawal is a decision too. */
   if (isADecision(action) || isAnAnswer(action) || isAReversal(action)) {
     const theirs = notTheirOwn(actor, subject, action);
 
@@ -318,20 +318,20 @@ const ASKING_IS_YOURS =
   'somebody was away and could not ask. A manager approves leave rather than ' +
   'requesting it. FR 18.';
 
-/** Said openly, and to the only person it can ever be said to. FR 48, §8.6, LMS 319. */
+/** Said openly, and to the only person it can ever be said to. FR 48, §8.6. */
 const DECIDING_IS_SOMEBODY_ELSE =
   'Leave is decided by somebody other than the person taking it, whatever roles they hold ' +
   'and wherever the request is sitting. If you no longer want this leave, withdraw it; if ' +
   'it should not be on the books at all, HR cancels it. FR 48.';
 
-/** Said openly, and only to somebody who is an approver of this request. FR 48d, LMS 322. */
+/** Said openly, and only to somebody who is an approver of this request. FR 48d. */
 const A_SECOND_STAGE_IS_SOMEBODY_ELSE =
   'A request that two stages decide is decided by two people. You answered an earlier stage ' +
   'of this one, so this stage is a colleague’s to answer, and where the company has nobody ' +
   'else to ask, the request goes through stamped as decided by a single approver rather ' +
   'than carrying your name twice. FR 48d.';
 
-/** The same rule at the other end of a request's life. FR 47, FR 48, LMS 324. */
+/** The same rule at the other end of a request's life. FR 47, FR 48. */
 const ANSWERING_IS_SOMEBODY_ELSE =
   'An ask to take agreed leave off the books is answered by somebody other than the person ' +
   'whose leave it is, whatever roles they hold. Your own ask is on the record and another ' +
@@ -341,10 +341,10 @@ const ANSWERING_IS_SOMEBODY_ELSE =
 export const leaveRequestPolicy = {
   resource: about.resource,
 
-  /** Nobody decides their own request. FR 48, §8.6, LMS 319. */
+  /** Nobody decides their own request. FR 48, §8.6. */
   notTheirOwn,
 
-  /** And nobody decides two stages of one. FR 48d, §8.6a, LMS 322. */
+  /** And nobody decides two stages of one. FR 48d, §8.6a. */
   eachStageADifferentPerson,
 
   /** Asking for leave. FR 10. */
@@ -363,7 +363,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Entering leave further back than its type's window allows. FR 18, LMS 308.
+   * Entering leave further back than its type's window allows. FR 18.
    *
    * Asked rather than enforced — `Guard.permits`, not `Guard.enforce` — because the person it
    * says no to is not being refused anything: their request is refused by `TooLateToRecord`,
@@ -406,7 +406,7 @@ export const leaveRequestPolicy = {
     );
   },
 
-  /** Taking back leave you asked for. FR 26, FR 46, LMS 306, LMS 323, FR 18. */
+  /** Taking back leave you asked for. FR 26, FR 46, FR 18. */
   withdraw(actor: Actor, owner: BalanceOwner): Decision {
     return mayMove(actor, owner, 'WITHDRAW', {
       because: 'not their own leave, and holds no role that maintains leave for somebody else',
@@ -415,7 +415,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Turning down leave at the desk it is sitting on. FR 26, FR 38a, FR 44, LMS 306, LMS 314, §4.3.1, LMS 319, LMS 318.
+   * Turning down leave at the desk it is sitting on. FR 26, FR 38a, FR 44, §4.3.1.
    */
   refuse(actor: Actor, subject: RequestAtADesk): Decision {
     return mayMove(actor, subject, 'REFUSE', {
@@ -428,7 +428,7 @@ export const leaveRequestPolicy = {
     });
   },
 
-  /** Unwinding a request that should not stand. FR 26, FR 37, LMS 306. */
+  /** Unwinding a request that should not stand. FR 26, FR 37. */
   cancel(actor: Actor, owner: BalanceOwner): Decision {
     return mayMove(actor, owner, 'CANCEL', {
       because: 'holds no role that maintains leave for the company',
@@ -440,7 +440,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Saying yes at the desk the chain has this request sitting on. FR 38, FR 38a, FR 40, LMS 314, §4.3.1, LMS 319, FR 48b.
+   * Saying yes at the desk the chain has this request sitting on. FR 38, FR 38a, FR 40, §4.3.1, FR 48b.
    */
   approve(actor: Actor, subject: RequestAtADesk): Decision {
     return mayMove(actor, subject, 'APPROVE', {
@@ -453,7 +453,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Overturning a manager's decision, which is a decision at this desk like any other. FR 44, §7.2, LMS 318.
+   * Overturning a manager's decision, which is a decision at this desk like any other. FR 44, §7.2.
    */
   override(actor: Actor, action: OverridingAction, subject: RequestAtADesk): Decision {
     return mayMove(actor, subject, action, {
@@ -487,7 +487,7 @@ export const leaveRequestPolicy = {
     });
   },
 
-  /** Whichever of the four this is. FR 38a, FR 44, LMS 314, LMS 318. */
+  /** Whichever of the four this is. FR 38a, FR 44. */
   decide(actor: Actor, action: DecidingAction, subject: RequestAtADesk): Decision {
     switch (action) {
       case 'APPROVE':
@@ -500,7 +500,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Looking at everything waiting on you. FR 20, FR 40, FR 38a, LMS 404.
+   * Looking at everything waiting on you. FR 20, FR 40, FR 38a.
    *
    * The one decision here that names no subject: a queue is about which desks the asker staffs,
    * which {@link desksStaffedBy} answers from the actor alone.
@@ -530,7 +530,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Reading everything the company is waiting on, and who owes each answer. FR 50, FR 60, LMS 330.
+   * Reading everything the company is waiting on, and who owes each answer. FR 50, FR 60.
    *
    * Nobody's own queue: it crosses every team, so it is the daily reminder's `theSystem` and
    * the roles that already read every record. An approver's own is {@link queue}.
@@ -547,7 +547,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Sending a request nobody could decide back into its chain. FR 48b, §8.6a, LMS 320.
+   * Sending a request nobody could decide back into its chain. FR 48b, §8.6a.
    *
    * HR's, and deliberately not the requester's: what the alert asks for is a change to the
    * organisation, and somebody who could re-route their own stuck request would be deciding
@@ -563,7 +563,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Asking for leave every desk has agreed to be taken off the books. FR 47, §6, LMS 324.
+   * Asking for leave every desk has agreed to be taken off the books. FR 47, §6.
    *
    * `THE_REQUESTER` alone — the one place a withdrawal is narrower than the `WITHDRAW` above
    * rather than wider, because HR asking and then answering would be one desk on both sides.
@@ -580,7 +580,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Answering one of those asks, whichever way it goes. FR 47, §6, §10, LMS 324.
+   * Answering one of those asks, whichever way it goes. FR 47, §6, §10.
    *
    * One rule for all three, because which of them applies is `grantingAction`'s answer rather
    * than the desk's. HR's, and never the manager's.
@@ -596,7 +596,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Moving days of agreed leave to sick leave. FR 32c, §6, §10, LMS 507.
+   * Moving days of agreed leave to sick leave. FR 32c, §6, §10.
    *
    * HR's, like the answer to a withdrawal and for the same reason: the days are spent rather
    * than held, so moving them between two balances is a correction to both. The certificate
@@ -615,7 +615,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Reading, editing, discarding or submitting a draft. FR 19, §10., LMS 302.
+   * Reading, editing, discarding or submitting a draft. FR 19, §10..
    *
    * The narrowest rule in this file: the person planning the leave and nobody else. Not
    * their manager and not a role that reads every record, which `read` above admits —
@@ -637,7 +637,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Attaching evidence to a request, or taking it back off. FR 12, LMS 310.
+   * Attaching evidence to a request, or taking it back off. FR 12.
    *
    * The standings `submit` carries: the person whose leave it is, or HR entering the
    * record for somebody who could not. Not the manager — an approver asks for a
@@ -668,7 +668,7 @@ export const leaveRequestPolicy = {
   },
 
   /**
-   * Reading what is attached, and downloading it. FR 12, NFR SEC 04, LMS 310.
+   * Reading what is attached, and downloading it. FR 12, NFR SEC 04.
    *
    * {@link read} widened by the desk the request is sitting on, which is the seam
    * {@link queue} already argues: FR 32h sends unpaid leave to the Chief Executive, who
@@ -696,7 +696,7 @@ export const leaveRequestPolicy = {
   },
 };
 
-/** Handing your approvals to a colleague, and taking them back. FR 49, §8.6a, §10., LMS 327. */
+/** Handing your approvals to a colleague, and taking them back. FR 49, §8.6a, §10.. */
 export const approvalDelegationPolicy = {
   resource: aboutDelegation.resource,
 

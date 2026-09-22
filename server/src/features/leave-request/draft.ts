@@ -1,5 +1,5 @@
 /**
- * A leave request started and not finished. FR 19, FR 10, §6., LMS 302.
+ * A leave request started and not finished. FR 19, FR 10, §6..
  */
 
 import { type CalendarDate, formatDay, isCalendarDate } from '../../shared/time.js';
@@ -82,7 +82,7 @@ export class LeaveRequestDraftNotFound extends Error {
 }
 
 /**
- * A draft submitted with something still to fill in. FR 19, NFR USA 03. LMS 302.
+ * A draft submitted with something still to fill in. FR 19, NFR USA 03.
  *
  * The one refusal that is about a draft rather than about the leave. Everything a
  * submission refuses — the days, the year, the overlap — is refused afterwards by the path

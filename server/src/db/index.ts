@@ -9,12 +9,12 @@ export type { Database } from './schema.js';
 /** `date`. */
 const DATE_OID = 1082;
 
-/** Calendar dates come back as the string the database holds. NFR DAT 03, LMS 114. */
+/** Calendar dates come back as the string the database holds. NFR DAT 03. */
 function keepDatesAsDates(): void {
   pg.types.setTypeParser(DATE_OID, (value: string) => value);
 }
 
-/** Every connection this application opens speaks UTC and ISO dates. NFR DAT 03, LMS 114. */
+/** Every connection this application opens speaks UTC and ISO dates. NFR DAT 03. */
 function inUtc(pool: pg.Pool): pg.Pool {
   pool.on('connect', (client) => {
     client.query("SET TIME ZONE 'UTC'; SET DateStyle = 'ISO, YMD'").catch((error: unknown) => {

@@ -15,32 +15,32 @@ These are the load bearing decisions. The reasoning is in the Technical Design D
 
 **The ledger is the truth, balances are a cache.** Every day added to or removed from a balance is an immutable row in `leave_ledger_entry`. The `leave_balance` table is a running total kept alongside it for fast reads. If they ever disagree, the ledger wins and the balance is rebuilt. **Never update a balance directly.**
 
-Since LMS 211 that last sentence is not advice. `lms_app` holds SELECT on
+That last sentence is not advice. `lms_app` holds SELECT on
 `leave_balance` and no INSERT, every column is `never` for insert and update in
 `db/schema.ts` so a write does not compile, and a trigger refuses one from the owner
 connection as well. The figures are recomputed from the ledger, in the transaction
 of the entry that moved them, by the one function that knows the projection. See
 [The cached balance](#the-cached-balance).
 
-**And there is one place that moves days.** `BalanceService`, since LMS 212 — reserve,
+**And there is one place that moves days.** `BalanceService` — reserve,
 commit, release, adjust and correct, each of them locking the balance while it decides.
 Nothing else in the tree posts a ledger entry, and a unit test reads the source to
 keep that true. A story that needs a movement it does not offer adds a method there
 rather than a second way in. See [One place a balance
 changes](#one-place-a-balance-changes).
 
-**And the two are compared every night.** Since LMS 213 a job recomputes every balance
+**And the two are compared every night.** A job recomputes every balance
 from the ledger and alerts HR about anything that disagrees — deliberately without
 correcting it, because the discrepancy is the only evidence of how it arose. See
 [Checking the cache against the
 record](#checking-the-cache-against-the-record).
 
-**Days first arrive from a rule.** LMS 214 grants a year's entitlement as a `GRANT`
+**Days first arrive from a rule.** The annual grant posts a year's entitlement as a `GRANT`
 entry, once per balance per year, from the figure in force on the first day of that
 year. See [The annual grant](#the-annual-grant).
 
-Since LMS 210 the first half of that exists. `leave_ledger_entry` attaches to what
-LMS 113 already built, exactly as that story predicted it would: `refuse_update()`
+The first half of that exists. `leave_ledger_entry` attaches to what the audit log
+already built, exactly as predicted: `refuse_update()`
 and `refuse_delete()` are named for the job rather than for the table, so an
 append-only ledger was two triggers and no new machinery. See
 [The audit log](#the-audit-log) and [The balance ledger](#the-balance-ledger).
@@ -57,10 +57,10 @@ of signed days is not that figure.
 
 **Counting basis and approval chain vary by leave type.** Annual, sick and compassionate count working days; maternity and paternity count calendar days. Most types go manager then HR; unpaid leave goes HR then CEO. Both are configuration. If either appears as an `if` on a type code, that is a bug.
 
-Since LMS 201 the first half of that is a table, `leave_type`, and since LMS 204
-the second is `leave_type_approval_step` beside it. Both are set out further down.
+The first half of that is a table, `leave_type`, and the second is
+`leave_type_approval_step` beside it. Both are set out further down.
 
-Since LMS 207 the first half is also *read* that way. `countLeaveDays()` is one
+The first half is also *read* that way. `countLeaveDays()` is one
 walk over the days of a period with one branch inside it, and the branch asks
 `countsWorkingDays()` — never `type.code`, which the file does not import and which
 `unit/leave-calculator.test.ts` checks it does not mention. A leave type HR adds
@@ -69,12 +69,12 @@ FR 31 was achieved rather than merely described. See [The day
 calculator](#the-day-calculator).
 
 FR 48 — which person a chain's desk resolves to, and what happens when the request
-reaches them — is [LMS 314](#routing-a-request-to-its-approvers) and
-[LMS 319](#nobody-approves-their-own-request). FR 48b is the reciprocal and is
-[LMS 320](#routing-round-an-approver-who-cannot-decide): a stage its own desk cannot
+reaches them — is [Routing a request to its approvers](#routing-a-request-to-its-approvers) and
+[Nobody approves their own request](#nobody-approves-their-own-request). FR 48b is the reciprocal and is
+[Routing round an approver who cannot decide](#routing-round-an-approver-who-cannot-decide): a stage its own desk cannot
 answer is skipped to the one desk that stands in for it, and where neither can be
 filled the request is `UNROUTABLE` with an alert rather than approved by nobody. FR
-48d is [LMS 322](#a-request-one-person-decided): two stages that come back to one
+48d is [A request one person decided](#a-request-one-person-decided): two stages that come back to one
 person are answered by two officers where the company has two, and where it has one
 the request is stamped rather than signed twice.
 
@@ -82,7 +82,7 @@ the request is stamped rather than signed twice.
 employee and their manager, come off no balance, and are not in this system at all.
 There is no fraction anywhere: not in a column, not in a field, not in an argument.
 
-Since LMS 209 that is a rule rather than a habit, and it is held up in three places
+That is a rule rather than a habit, and it is held up in three places
 because it can be broken in three ways.
 
 | | Holds | Checked by |
@@ -115,26 +115,26 @@ that FR 24 "governs how leave is requested, not how entitlement is held".
 3 or 120 — but `leave_ledger_entry.days` does, because the fraction appears when the
 grant is calculated and the ledger is where a grant is recorded.
 
-Since LMS 215 that calculation exists: `features/entitlement/pro-rata.ts`, and it is the one place in
+That calculation exists: `features/entitlement/pro-rata.ts`, and it is the one place in
 this system where rounding a number of days is right rather than refused. It rounds to
 the hundredth, which is the ledger column's own precision and the precision §8.6d quotes
 its example to. See [Pro rating a part year](#pro-rating-a-part-year).
 
-LMS 209 wrote the rule down before there was anything to except from it, and said
+The rule was written down before there was anything to except from it, and it said
 what the answer would have to be: allow that column by name and leave every other
-one integral. LMS 210 is that answer, and it comes with a condition the ledger
+one integral. The ledger is that answer, and it comes with a condition it
 enforces inside the column — the four entry types that follow a leave request are
 held to whole days by a constraint of their own. So the exception buys a fractional
 *entitlement*, never fractional *leave*, and the day somebody makes a request's day
 count a `NUMERIC` for symmetry it still fails.
 
-**And LMS 211 pays the same price in a different currency.** `leave_balance` is
+**And the cached balance pays the same price in a different currency.** `leave_balance` is
 where those movements are added up, so three of its five columns inherit the
 fraction — `entitled` is a pro rated grant, `carried_over` is a proportion of one
 that survived a year end, `adjustment` is HR putting either right. The other two are
 `INTEGER`, where §5.7 asks for `NUMERIC(6,2)` on all five: `taken` and `pending` are
 sums of the four request-shaped entry types alone, which cannot be fractional. The
-line LMS 210 drew inside one column is drawn again between two columns, where the
+line the ledger draws inside one column is drawn again between two columns, where the
 schema shows it rather than a constraint enforcing it out of sight.
 
 **Dates are dates.** Leave dates are calendar dates with no time and no timezone. Everything else is UTC. Mixing these up is the most common source of off by one day bugs in leave systems.
@@ -207,14 +207,14 @@ Three things enforce that, and it is worth knowing which covers what:
 | `server/tests/unit/employee-never-deleted.test.ts` | the delete being *written* — a repository call, raw SQL, a `DELETE /employees/:id` route | anything that reaches the database by a route it does not recognise |
 
 The trigger calls `refuse_delete()`, which like `set_updated_at()` is named for
-the job rather than the table and reads `TG_TABLE_NAME` for its message. LMS 113
-took it at its word: `audit_log` attaches to the same function rather than
-declaring its own `RAISE`, and gained a sibling, `refuse_update()`. LMS 210's
+the job rather than the table and reads `TG_TABLE_NAME` for its message. The audit
+log took it at its word: `audit_log` attaches to the same function rather than
+declaring its own `RAISE`, and gained a sibling, `refuse_update()`. The
 ledger attaches to both. Both raise `restrict_violation` (SQLSTATE `23001`), so a
 caller can tell a refused write from a genuine fault without reading the message
 text.
 
-**The hint is the caller's, since LMS 210.** `refuse_delete()` used to hard code the
+**The hint is the caller's.** `refuse_delete()` used to hard code the
 employee sentence — "deactivate the record instead" — which was right while
 `employee` was the only table refusing a delete and was quietly wrong on `audit_log`
 from the day it attached. It now takes `TG_ARGV[0]` with that sentence as the
@@ -409,7 +409,7 @@ the symmetry.
 is `NOT NULL`, because a day count has to know which days somebody works. Abena
 Sarpong works Monday, Tuesday, Thursday and Friday: a week off costs her four
 days rather than five, and a public holiday on a Wednesday costs her nothing.
-FR 23. Which Wednesdays those are is a table too, since LMS 206 — see [The public
+FR 23. Which Wednesdays those are is a table too — see [The public
 holiday calendar](#the-public-holiday-calendar).
 
 A pattern is stored as **seven `work_pattern_day` rows**, one per ISO weekday
@@ -498,7 +498,7 @@ windows at once — fourteen days of notice and seven of backdating — so any r
 holding them to be mutually exclusive would make the one type everybody uses
 unconfigurable.
 
-Since LMS 307 the "acknowledged" in that sentence is enforced rather than described,
+The "acknowledged" in that sentence is enforced rather than described,
 and it is not the exception to this rule that it looks like.
 `ShortNoticeNotAcknowledged` refuses a *submission that has not answered the
 warning* — never the leave, and never the dates, which do not move. The same request
@@ -506,7 +506,7 @@ goes through unchanged the moment somebody ticks the box, where the backdating w
 sends them to HR. See [warned when notice is
 short](#warned-when-notice-is-short).
 
-Since LMS 308 the backdating half is enforced too, and "only HR" is a policy rather
+The backdating half is enforced too, and "only HR" is a policy rather
 than a sentence in a message. Past the window the question stops being about the type
 and becomes about who is entering it — the employee meets `TooLateToRecord`, HR meets
 `LateEntryNeedsAReason` until they have written one, and what they write is a column
@@ -534,7 +534,7 @@ leave types is one where nobody can request anything at all. It is not the
 opposite of "never waits on a developer" — it is what makes it safe, because
 every column of every row is editable from the first minute.
 
-**Since LMS 202 the set has an owner as well as an origin.** The insert in the
+**The set has an owner as well as an origin.** The insert in the
 leave-type-rules migration ran against a table created four statements earlier
 and can never run again, so what it establishes is that a database migrated in
 order *started out* right. `ensure_statutory_leave_types()`, from the
@@ -581,13 +581,12 @@ annual leave, a hundred and twenty of maternity, three of sick — are
 `leave_entitlement_rule` and are set out below. FR 31 requires them versioned with
 an effective date and forbids them altering closed leave years, and a column has
 no date on it. The approval chain is FR 38a and is not a column either: it is an
-ordered list, so it is `leave_type_approval_step`, which arrived with LMS 204 and
-is set out two sections below.
+ordered list, so it is `leave_type_approval_step`, set out two sections below.
 
 ### What a leave type is worth, and from when
 
 **Every figure carries two dates, and that is the whole of the difference between
-`leave_entitlement_rule` and `leave_type`.** FR 31, LMS 203. The type says what
+`leave_entitlement_rule` and `leave_type`.** FR 31. The type says what
 *kind* of arithmetic applies; the rule says what number goes into it, and from
 which day. The failure the dates prevent is silent: raise annual leave from twenty
 to twenty two next January without them and every balance ever calculated is now
@@ -644,7 +643,7 @@ and today has already been counted against this figure.
 on that table can decide, because a closed leave year is a row in another one. It
 is held one level up as `assertDoesNotReachIntoAClosedYear`, which takes the
 boundary as an argument the way `worksOn` takes a weekday — the domain knows the
-rule, the caller brings the fact. Since LMS 205 the fact comes from `leave_year`,
+rule, the caller brings the fact. The fact comes from `leave_year`,
 through `earliestOpenDayFrom()`; see [The leave year, and closing
 one](#the-leave-year-and-closing-one). On go live nothing is closed, the whole of
 2026 is open, and entering the current policy from 1 January is exactly what HR has
@@ -692,14 +691,14 @@ rule may name an employee, so the table has a foreign key to `employee`, and
 `TRUNCATE ... CASCADE` empties every referencing table wholesale rather than the
 rows that point at what was cleared — so the statutory figures would vanish on
 every fixture reload whether or not `seed.mjs` mentioned them. It names the table
-and calls `ensure_statutory_entitlement_rules()`, the same arrangement LMS 202
-made for the types. Nothing in that file knows what annual leave is worth, and
+and calls `ensure_statutory_entitlement_rules()`, the same arrangement made for
+the types. Nothing in that file knows what annual leave is worth, and
 nothing there should.
 
 ### Who approves each kind of leave
 
 **The chain is an ordered list of rows, and it is the second half of design
-principle 5.** FR 38a, LMS 204. Most types go manager then HR; unpaid leave and
+principle 5.** FR 38a. Most types go manager then HR; unpaid leave and
 the unpaid maternity extension go HR then CEO, with no manager stage at all —
 §4.3.1 says of both that they are "Decided by HR and the Chief Executive", which
 is an arrangement with the company rather than a request a manager signs off.
@@ -721,7 +720,7 @@ found is three different questions with three different answers.
 |---|---|---|
 | `MANAGER` | a relationship | `employee.manager_id`. Never a grant — "Holding it as a role too would create two sources of truth that drift the moment somebody changes team" |
 | `HR` | a granted role, and in fact two of them | `HR_OFFICER` or `HR_ADMIN`. The chain names the desk, because which of the two is on duty is not something HR should have to encode |
-| `CEO` | a setting | `organisation_setting.ceo_employee_id`, named by an HR Administrator. FR 48c, and [LMS 321](#identifying-the-chief-executive) is why it is neither a job title nor FR 04's root |
+| `CEO` | a setting | `organisation_setting.ceo_employee_id`, named by an HR Administrator. FR 48c, and [Identifying the Chief Executive](#identifying-the-chief-executive) is why it is neither a job title nor FR 04's root |
 
 Turning them into a `role_id` would have made the chain joinable to `role` and
 then silently wrong, because two of the three have no row there to join to. The
@@ -758,7 +757,7 @@ waits.
 asking.** `ensure_statutory_leave_types()` puts back a lost leave type in one
 statement and cannot know about a table written after it, so a type restored on
 its own comes back unapprovable. A constraint forbidding that would have turned
-LMS 202's documented repair into a failure, so instead there are two answers:
+that documented repair into a failure, so instead there are two answers:
 `ensure_statutory_approval_chains()` is the call beside it, and
 `assertSomebodyApprovesIt()` refuses a request against such a type with a message
 saying whose job it is to fix. That is told apart from `NotEligibleForLeaveType`
@@ -766,17 +765,17 @@ deliberately — one is somebody's mistake and the other is a fact about the per
 asking, and telling somebody they are ineligible for a type nobody finished
 configuring sends them away with the wrong problem.
 
-**Which person a desk resolves to is [LMS 314](#routing-a-request-to-its-approvers)**,
+**Which person a desk resolves to is [Routing a request to its approvers](#routing-a-request-to-its-approvers)**,
 which took `approverAfter()` up on its offer: the walk was already a pure function,
 so the workflow had nothing left to decide about ordering and only had to say which
 person each desk is.
 
-**And a stage no person fills is [LMS 320](#routing-round-an-approver-who-cannot-decide)**,
+**And a stage no person fills is [Routing round an approver who cannot decide](#routing-round-an-approver-who-cannot-decide)**,
 which is FR 48b and is about a reporting line and a pair of granted roles rather
 than about a leave type — so the chain table knows nothing of it, and the skip is
 recorded against the *request* instead.
 
-**Who the `CEO` desk is, is [LMS 321](#identifying-the-chief-executive)**, which
+**Who the `CEO` desk is, is [Identifying the Chief Executive](#identifying-the-chief-executive)**, which
 is FR 48c: a setting an HR Administrator writes, rather than a job title or a
 shape of the reporting lines.
 
@@ -788,7 +787,7 @@ share a number.
 ### The leave year, and closing one
 
 **Every balance is per person, per leave type, per leave year, and `leave_year` is
-the third of those.** §5.4, LMS 205. 2026 and 2027 are seeded by the migration,
+the third of those.** §5.4. 2026 and 2027 are seeded by the migration,
 running the calendar year, inclusive at both ends. 2026 is not an arbitrary
 starting point: the statutory entitlement figures were already dated from the
 first of January 2026, and `integration/leave-year.test.ts` asserts the two
@@ -848,12 +847,12 @@ the absence is the feature.
 **`closed_at` is stamped by the trigger, not by a writer.** The same arrangement
 `updated_at` has, and it matters more here because the stamp is the record of the
 decision rather than of a housekeeping detail — a year closed from a psql prompt
-carries it too. Who closed it is the audit log, by the argument LMS 111 made when
-it left `user_role.granted_by` out.
+carries it too. Who closed it is the audit log, by the same argument that left
+`user_role.granted_by` out.
 
 **Closing a year moves the boundary the entitlement rules are judged against, and
-that is the seam LMS 203 left.** That story wrote `EarliestOpenDay` as a function
-and passed it `NOTHING_IS_CLOSED_YET`, saying the real implementation would be "the
+that is the seam the entitlement rules left.** `EarliestOpenDay` was written as a
+function and passed `NOTHING_IS_CLOSED_YET`, saying the real implementation would be "the
 day after the last closed year ends". It now is: `earliestOpenDayFrom()` in
 `/features/leave-year/leave-year.service.ts`, one line over `earliestOpenDayOf()` in the
 domain. `NOTHING_IS_CLOSED_YET` survives rather than being deleted — it is still
@@ -861,7 +860,7 @@ what a fresh database answers, and still what a caller with no leave years to re
 passes.
 
 It is read fresh on every write, which is why the type is a function rather than a
-date: the rollover of LMS 217 closes a year while the process is running, and a
+date: the year rollover closes a year while the process is running, and a
 service holding a boundary read at start up would go on accepting figures into a
 year that had since been settled. `integration/entitlement-rule.test.ts` asserts
 exactly that — the same service accepts a figure, a year is closed underneath it,
@@ -873,15 +872,15 @@ would be odd; reading the latest closed end means the boundary is the safe one
 either way, because a settled year cannot be reached back into through a hole left
 in front of it.
 
-**What closing does since LMS 210.** `leave_ledger_entry` carries a `leave_year_id`
+**What closing does.** `leave_ledger_entry` carries a `leave_year_id`
 and refuses a write against a closed year, which is where "its balances cannot
 drift" stops being about one row and becomes a rule about a year of them — with one
 exception, an `ADJUSTMENT`, which §8.9 names as the only way to put a settled figure
 right. See [The balance ledger](#the-balance-ledger). `leave_balance` follows the
-same rule since LMS 211, because it follows the ledger: an adjustment into a settled
+same rule, because it follows the ledger: an adjustment into a settled
 year moves the cached figure like any other entry, and nothing else can.
 
-**Closing still does not perform the rollover, and since LMS 217 there is a rollover
+**Closing still does not perform the rollover, and there is a rollover
 for it not to perform.** "This year is settled" and "these days move" are two
 decisions, and a close that silently did both would be a close nobody could audit.
 What changed is the direction of the dependency: `YearRollover` calls `close()` as its
@@ -891,7 +890,7 @@ over](#rolling-a-year-over).
 ### The public holiday calendar
 
 **`holiday` is the one configuration table that holds somebody else's decisions.**
-FR 22, §5.4, LMS 206. Every other table in §5.5 holds what Remat Holdings decided:
+FR 22, §5.4. Every other table in §5.5 holds what Remat Holdings decided:
 what annual leave is worth, who approves unpaid leave, when the year ends. This one
 holds what the Republic decided — the Public Holidays Act 2001 (Act 601) as amended
 by Act 1071 of 2019, and whatever the Minister for the Interior gazettes during the
@@ -974,7 +973,7 @@ does not skip a holiday at all.
 
 It does not recalculate *on save* either, and that is a decision rather than a gap. FR
 25 gives a day back on an already approved request when a holiday is declared inside
-it, "only to working day leave types" — and since LMS 508 that is a button HR presses,
+it, "only to working day leave types" — and that is a button HR presses,
 beside the day, once the row exists. See [A public holiday declared too
 late](#a-public-holiday-declared-too-late). What this story left for it is the audit
 entries: a recalculation nobody can explain is a recalculation nobody accepts, and for
@@ -983,7 +982,7 @@ a removed day the log is the only record the day was ever there.
 ### The day calculator
 
 **Three tables were built for one function to read, and `countLeaveDays()` is
-where they meet.** FR 21, FR 22, §7.3, LMS 207. The working pattern of FR 23, the
+where they meet.** FR 21, FR 22, §7.3. The working pattern of FR 23, the
 public holiday calendar of FR 22, and the `counting_basis` of the leave type. It is
 pure — no database, no clock, no environment — and the pattern and the calendar
 arrive as arguments, exactly as `worksOn()` takes a weekday.
@@ -1008,7 +1007,7 @@ work gives back nothing.
 
 **Nothing at all is counted, and nought is returned.** A Saturday to Sunday request
 against a Monday to Friday pattern costs zero days of annual leave, and zero is what
-comes back. That used to be a refusal thrown from here; LMS 303 moved it to
+comes back. That used to be a refusal thrown from here; it moved to
 `assertItCostsSomething()` in `/features/leave-request/leave-request.ts`, raised by the submission
 validator on the answer this function gave. **The difference is between a fact and a
 judgement.** That a period costs nothing is arithmetic, and it is arithmetic FR 25 has
@@ -1145,7 +1144,7 @@ anything the repositories guard against, not less.
 ### The balance ledger
 
 **Every movement in a balance is a row, and no row ever changes.** FR 27, §5.7,
-design principle 1, LMS 210. `leave_ledger_entry` is what makes "why do I have
+design principle 1. `leave_ledger_entry` is what makes "why do I have
 twelve days rather than fifteen" answerable with a list rather than an assertion:
 a date, an amount, a reason, and a name against each line.
 
@@ -1166,7 +1165,7 @@ entry per side of days moving between two leave types, under one reason and one
 [a public holiday declared too late](#a-public-holiday-declared-too-late), FR 25.
 
 **`EXPIRY` and `LAPSE` are two clocks with similar names, and they are two entry
-types because they put their days back in different places.** LMS 218, and
+types because they put their days back in different places.**
 `features/leave-type/leave-type.ts` named the collision before either clock existed. `EXPIRY` is
 FR 36a: carried days running out in the month HR named, so it takes days back out of
 `carried_over` where the carry put them. `LAPSE` is FR 32e: paternity's fourteen days
@@ -1184,7 +1183,7 @@ once, not ten: the second moves them from held to taken. Available is five figur
 kind moves is `BUCKETS` in `features/balance/ledger.ts`. `runningTotal()` exists and is named
 `after` rather than `balance` for exactly this reason: it answers "what did these
 rows do", which is what a history screen shows, and not "what may this person
-book", which is `leave_balance` and LMS 211 — see [The cached
+book", which is `leave_balance` — see [The cached
 balance](#the-cached-balance).
 
 **A correction is a new entry, always an `ADJUSTMENT`, and exactly the opposite of
@@ -1245,7 +1244,7 @@ be a way to reach all six without passing any of those checks.
 ### The cached balance
 
 **`leave_balance` is the sum, kept, so that opening the system is a glance rather
-than a wait.** §5.7, design principle 1, LMS 211. One row per employee, per leave
+than a wait.** §5.7, design principle 1. One row per employee, per leave
 type, per leave year — `leave_balance_one_per_year` makes that literal — holding the
 five figures a balance is made of. The ledger can answer "what have I got left" and
 is the only thing that can answer it *correctly*; answering it there means adding up
@@ -1315,9 +1314,9 @@ that entry is already the account — a trigger here would write a second copy o
 that could disagree.
 
 **What is not here.** The reconciliation job of §7.4, which is the recompute above
-plus a schedule, a walk over every balance and somebody to tell — LMS 213. The
-writers that fill two of the five columns: `GRANT` is LMS 214's annual run and
-`CARRY_FORWARD` is LMS 217's rollover, and both arrived. And the
+plus a schedule, a walk over every balance and somebody to tell. The
+writers that fill two of the five columns: `GRANT` is the annual run and
+`CARRY_FORWARD` is the year rollover, and both arrived. And the
 list of leave types a balance screen should show — `BalanceService` returns the
 balances that exist, and which types apply to a person is `entitlement_basis` and FR
 05's `gender_restriction`, which is a decision with policy in it and belongs to the
@@ -1327,12 +1326,13 @@ story that builds the screen.
 
 ### One place a balance changes
 
-**`BalanceService` is the only writer of balance movements.** FR 26, §8.2, LMS 212.
+**`BalanceService` is the only writer of balance movements.** FR 26, §8.2.
 Nine methods, and nothing else in the tree posts a ledger entry — `LedgerService`
 reads the account and writes nothing, which is why `adjust` and `correct` moved out
 of it. Every story since has taken the arrangement up on its offer rather than
-opening a second door: LMS 214 added `grantTheYear`, LMS 217 added `carryForward`,
-LMS 218 added `grantForAnEvent` and `lapse`, and every one of them went where the lock,
+opening a second door: the annual grant added `grantTheYear`, the rollover added
+`carryForward`, event-based grants added `grantForAnEvent` and `lapse`, and every one
+of them went where the lock,
 the rule and the policy already are.
 
 | | Posts | Checks | Locked? |
@@ -1394,8 +1394,8 @@ everything.
 ### Checking the cache against the record
 
 **Every balance is compared with the ledger, and anything that disagrees is reported
-rather than repaired.** §7.4, LMS 213. Three stories have taken design principle 1 on
-trust — the ledger is the truth, the balance is a cache, and since LMS 211 there is no
+rather than repaired.** §7.4. Three stories have taken design principle 1 on
+trust — the ledger is the truth, the balance is a cache, and there is no
 way for an application to move one any other way. This is where "if they ever
 disagree" stops being a hypothetical.
 
@@ -1422,7 +1422,7 @@ of the most serious possible fault.
 **There is no second copy of the arithmetic.** `what_the_ledger_says` is §5.7's
 projection lifted out of `rebuild_one_balance_from_the_ledger()` and given a name, so
 the writer and the checker read one definition. A reconciliation that computed its own
-expected figures would be the second copy LMS 210 declined to write, with the special
+expected figures would be the second copy the ledger declined to write, with the special
 property of being able to agree only with itself — invisible in exactly the case where
 the writer's arithmetic was the thing that was wrong. `integration/reconciliation.test.ts`
 pins that down by rebuilding every balance the check complains about and asserting the
@@ -1460,8 +1460,8 @@ quiet is monitoring, and monitoring is Phase 6.
 
 ### The annual grant
 
-**A year's entitlement arrives as a `GRANT` ledger entry, once per balance.** FR 30,
-LMS 214. Everything before this could record days moving and add them up; nothing had
+**A year's entitlement arrives as a `GRANT` ledger entry, once per balance.** FR 30.
+Everything before this could record days moving and add them up; nothing had
 put any there. This is where a balance stops being nought and somebody can plan a year.
 
 The figure is the entitlement rule in force **on the first day of the leave year**,
@@ -1470,7 +1470,7 @@ grant a figure that was not in force when the year began, which is why that ques
 has always taken a date. Nothing about the figure is decided in the job.
 
 **It needed a movement `BalanceService` did not have, so it added one there.** That is
-LMS 212's arrangement being taken up on its offer rather than worked around:
+the one-writer arrangement being taken up on its offer rather than worked around:
 `grantTheYear` sits where the lock, the rule and the policy already are, and
 `unit/one-writer.test.ts` still passes because there is still one door.
 
@@ -1500,7 +1500,7 @@ telling them apart is most of what makes a support call two minutes rather than 
 afternoon. "The grant ran and Ama has nothing" needs to be a sentence somebody can read
 the reason for.
 
-**A part year is granted a part figure**, since LMS 215 — see [Pro rating a part
+**A part year is granted a part figure** — see [Pro rating a part
 year](#pro-rating-a-part-year). Somebody who started *on* the first day of the year is
 not a joiner, and gets the whole figure with no rule named on the entry: the comparison
 is strictly after, and an off by one there would quietly deprive everybody who started
@@ -1522,12 +1522,12 @@ a joiner is granted on their first morning rather than next January.
 ### Pro rating a part year
 
 **Somebody who was here for part of the year is granted part of the figure.** FR 29, FR
-29a, §8.6d, LMS 215. A joiner on 1 July gets 20 × 184/365 = 10.08 days, posted as an
+29a, §8.6d. A joiner on 1 July gets 20 × 184/365 = 10.08 days, posted as an
 ordinary `GRANT` — so their balance is right on their first day rather than right after
 somebody notices.
 
 **The formula is behind a name, because the formula is not settled.** The story is
-marked blocked until LMS 013 delivers it. §8.6d gives the worked example above and it is
+marked blocked until that is settled. §8.6d gives the worked example above and it is
 the only formula this build has been given in writing, so `BY_CALENDAR_DAYS` implements
 it and `THE_RULE_IN_FORCE` points at it. **That is a default, not a decision.**
 
@@ -1538,7 +1538,7 @@ The indirection buys three things and each is worth more than it costs:
 * **Every figure says which rule produced it.** The rule's name goes into the ledger
   entry's reason — `pro rated for 2026-07-01 to 2026-12-31 by the calendar-days rule` —
   so grants made under today's answer stay findable when a different one arrives. That
-  matters *because* this is blocked: the figures granted before LMS 013 lands are
+  matters *because* this is blocked: the figures granted before it is settled are
   exactly the ones somebody will have to go back to, and finding them should be a query
   rather than an investigation.
 * **A second rule proves the seam is real.** `BY_COMPLETED_TWELFTHS` is not in force and
@@ -1577,7 +1577,7 @@ nothing is reported rather than posted, because a ledger entry of no days is not
 movement.
 
 **The final settlement when somebody leaves is [the leaver figure](#the-leaver-figure)**,
-FR 37a and LMS 509, and it is this formula called with the exit date. It compares what they
+FR 37a, and it is this formula called with the exit date. It compares what they
 were granted with what the part year they actually worked is worth. What it does with the
 difference is *show* it: paid, clawed back or forgiven is payroll's decision, and the figure
 exists so that it can be made against something checkable.
@@ -1587,7 +1587,7 @@ exists so that it can be made against something checkable.
 ### Moving a balance by hand
 
 **HR corrects a wrong figure by posting a new entry, never by editing an old one.** FR
-37, §8.9, LMS 216. `BalanceService.adjust()` writes an `ADJUSTMENT` with a signed figure
+37, §8.9. `BalanceService.adjust()` writes an `ADJUSTMENT` with a signed figure
 and a written reason; `BalanceService.correct()` writes the exact opposite of one named
 entry. Between them they are the whole of "a mistake is a new row", which is what FR 27
 asks for and the reason nothing anywhere in this system updates a ledger entry.
@@ -1630,7 +1630,7 @@ refusal costs nothing.
 service. It is the only way to put a settled figure right, and taking it away would
 leave a psql prompt as the alternative.
 
-**Since LMS 506 it is a screen**, **Adjustments**, beside the other configuration tabs, and
+**It is a screen**, **Adjustments**, beside the other configuration tabs, and
 the ledger is on it rather than behind a second click. That is the story's second criterion
 rather than a layout choice: the movement cannot be removed afterwards, only compensated, so
 the figures being corrected and the correction are read in one place. The screen states the
@@ -1639,7 +1639,7 @@ because a single signed box is one keystroke away from adding the days that were
 off. Nothing on it is totalled in the browser: what the balance became is the write's own
 answer, which is why `POST /api/balance-adjustments` sends the balance back beside the entry.
 
-**The story says HR Officer and the code says HR Administrator.** LMS 216 is written "as
+**The requirement says HR Officer and the code says HR Administrator.** It is written "as
 an HR Officer"; §10's authorisation matrix has an ✗ against that column and every other
 one. The matrix is what `ledgerPolicy.adjust` follows, for the reason argued under [Who
 may do what](#who-may-do-what): an adjustment moves days by fiat and can never be
@@ -1655,7 +1655,7 @@ to know where to take it rather than only that they may not.
 ### Rolling a year over
 
 **Leave somebody did not get round to taking is not lost on the first of January.**
-FR 36, FR 36a, §11, LMS 217. `features/leave-year/year-rollover.job.ts` closes the year that ended, carries
+FR 36, FR 36a, §11. `features/leave-year/year-rollover.job.ts` closes the year that ended, carries
 what is left of it into the next one as a `CARRY_FORWARD`, and grants the new year.
 It is the last piece of Phase 2 and the point at which a balance stops being a thing that
 happens once and starts being a thing that continues.
@@ -1755,10 +1755,10 @@ the line to call is `new YearRollover(...).run(theSystem('the year rollover'), c
 
 ### Entitlement that arrives with an event
 
-**A child is born, and the days are there.** FR 32g, FR 32e, §8.6aa, LMS 218.
+**A child is born, and the days are there.** FR 32g, FR 32e, §8.6aa.
 `LeaveEventService.record()` writes a `leave_entitlement_event` row and the `GRANT` it
 causes, in one transaction, and `EntitlementExpiry` lapses whatever is left of it when
-its time is up. `entitlement_basis` has said since LMS 201 that some types work this
+its time is up. `entitlement_basis` has said that some types work this
 way — "granted per qualifying occurrence, does not reset on 1 January" — and until this
 story that column was only ever read to decide what the annual grant and the rollover
 should *skip*.
@@ -1842,7 +1842,7 @@ about any of them, which is also the only way a test watches six months pass.
 
 ### Asking for leave
 
-**Quoted before it is charged, and the same number twice.** FR 10, FR 11, §8, LMS 301.
+**Quoted before it is charged, and the same number twice.** FR 10, FR 11, §8.
 `LeaveRequestService.quote()` says what a period would cost and writes nothing;
 `submit()` asks the same question again, inside the transaction that holds the days,
 and stores what it counted. Counting twice looks like waste and is the point — the
@@ -1882,7 +1882,7 @@ rather than decides, exactly as an entitlement event's `note` does.
 **Submitting holds the days.** The README has said since Phase 1 that "pending days are
 reserved: submitting a request writes a `RESERVATION` entry immediately, and this is what
 stops somebody with five days left having three separate five day requests in flight."
-`BalanceService.reserve` was built for that in LMS 212 and left unused until now; it is
+`BalanceService.reserve` was built for that and left unused until now; it is
 `reserveForRequest` today, and the request row and its `RESERVATION` are one act.
 
 The two rows are written in the opposite order to a birth and its grant, and which way
@@ -1917,23 +1917,23 @@ filed under a fortnight in March, which looks entirely reasonable.
 balance and a balance belongs to one leave year, so the twenty-eighth of December to the
 fifth of January is two balances; reserving all ten days against either would be a figure
 that reconciles and is wrong. `leave_type.may_be_split` and `assertMayBeSplit()` have
-been in the domain since LMS 201 and are what a story offering the split would use — it
+been in the domain and are what a story offering the split would use — it
 is two requests with one approval between them, which is a decision rather than an
 arithmetic. What the refusal says is [below](#dates-that-are-obviously-wrong).
 
-**Notice warns; documentation refused to, and since LMS 311 does.** FR 17 is advisory by
+**Notice warns; documentation refused to, and does.** FR 17 is advisory by
 design — leave is sometimes needed at short notice, and a system that refused it is a system
 people work around — so a short-notice request is submitted and the quote says by how much.
-The two were paired here until LMS 310 gave FR 13's documentation somewhere to be put and
-LMS 311 made it a condition of submitting; they are no longer the same kind of rule, and
-this is where that was got wrong for three stories. See [documentation that has to arrive
+The two were paired here until FR 13's documentation was given somewhere to be put and
+made a condition of submitting; they are no longer the same kind of rule, and
+this is where that was got wrong for a long time. See [documentation that has to arrive
 with the request](#documentation-that-has-to-arrive-with-the-request).
 
-Since LMS 307 the warning is also *answered*. It still refuses no leave and moves no
+The warning is also *answered*. It still refuses no leave and moves no
 dates; what it refuses is submitting through the warning without saying it was read. See
 [warned when notice is short](#warned-when-notice-is-short).
 
-**Backdating does refuse, and since LMS 308 it does so here.** The submission path judges
+**Backdating does refuse, and it does so here.** The submission path judges
 both windows before it counts anything, in that order: the acknowledgement first, then how
 far back the leave started. Past the window the request is HR's to enter, with a reason on
 a column of its own. See [recorded after it was taken](#recorded-after-it-was-taken).
@@ -1978,19 +1978,20 @@ than rediscovered:
   209's rule applied honestly rather than an oversight papered over: a CHECK listing six
   states of which one is reachable is a promise the schema cannot keep. Each story that
   needs a status brings it, with the transition that reaches it and the migration that
-  lets the database hold it — exactly as LMS 218 extended `leave_ledger_entry_type_known`
-  to admit `LAPSE`. LMS 306 was the first to collect, adding [the three
-  endings](#the-days-come-back); the approval story adds `APPROVED`.
+  lets the database hold it — exactly as event-based grants extended
+  `leave_ledger_entry_type_known` to admit `LAPSE`. The first to collect were [the three
+  endings](#the-days-come-back); approval adds `APPROVED`.
 * **No approval, withdrawal or cancellation.** All three move `status` and two of them
   release days. `ledgerPolicy.release` is already written and waiting for them. *(The two
-  that release arrived in LMS 306, along with refusal, which is the third.)*
+  that release arrived with [the three endings](#the-days-come-back), along with refusal,
+  which is the third.)*
 
 ---
 
 ### Dates that are obviously wrong
 
 **A mistake in the dates is answered while the form is still open, never by an approver
-two days later.** FR 16, FR 16a, §8.3, LMS 303. Three shapes of obviously wrong, and
+two days later.** FR 16, FR 16a, §8.3. Three shapes of obviously wrong, and
 each is refused at the first moment its answer is knowable — which is what "at once"
 means in practice, because a person waiting on four queries to be told their end date is
 before their start date has been made to wait.
@@ -2006,8 +2007,8 @@ before their start date has been made to wait.
 precisely the surprise this part of the system exists to prevent, arriving late.
 
 **The refusals are the request's, and the day calculator stays out of it.**
-`countLeaveDays()` used to throw for a period that cost nothing; LMS 303 moved that
-judgement into `/features/leave-request/leave-request.ts` and left the calculator
+`countLeaveDays()` used to throw for a period that cost nothing; that
+judgement moved into `/features/leave-request/leave-request.ts`, leaving the calculator
 [pure and total](#the-day-calculator). A Saturday of annual leave costing nought is
 arithmetic about a calendar, and FR 25's recalculation has to be able to ask for it and
 get a number. Whether a person may submit a request for it is a rule about requests, and
@@ -2050,7 +2051,7 @@ is [below](#leave-over-leave-already-booked).
 
 ### Leave over leave already booked
 
-**One person is in one place on one day.** FR 15, §5.6, LMS 304. The defect is a balance
+**One person is in one place on one day.** FR 15, §5.6. The defect is a balance
 consumed twice for the same days, and what makes it worth a story of its own is that
 nothing about it looks wrong while it happens. Somebody books the second to the tenth of
 March, forgets, and books the fifth to the twelfth. Both reserve. Both ledger entries
@@ -2113,7 +2114,7 @@ written anyway for the same reason; the integration suite reads it back out of
 
 ### Days that are not there
 
-**Told at once, and told the figure.** FR 14, NFR USA 03, LMS 305. The story is somebody
+**Told at once, and told the figure.** FR 14, NFR USA 03. The story is somebody
 finding out at the form that they do not have the days, rather than waiting days in an
 approver's queue to be turned down for a reason the system knew before they clicked. The
 check itself is a comparison; everything interesting about the story is in what the
@@ -2160,18 +2161,18 @@ unrelated problems. Both messages open with the same clause, from
 **Sick leave is not refused for want of days.** FR 32a and §8.6b: `exceedable_with_document`
 makes the allowance the point at which a medical certificate is asked for rather than a cap,
 so the balance goes below nought and the leave is granted. Read off the column by
-`balanceMayBeExceededWithDocument()` — which has sat in `/features/leave-type/leave-type.ts` since LMS
-201 saying the check "belongs to the submission path, which is the only thing that knows
+`balanceMayBeExceededWithDocument()` — which has long sat in `/features/leave-type/leave-type.ts`
+saying the check "belongs to the submission path, which is the only thing that knows
 what the balance is", and this is that path. No leave type code is compared to anything;
 design principle 5.
 
-Since LMS 311 it *is* refused for want of the certificate, and the two are not the same
+It *is* refused for want of the certificate, and the two are not the same
 refusal: `NOT_ENOUGH_DAYS` never fires for these types and `DOCUMENTATION_REQUIRED` does.
 The allowance stayed a threshold; what changed is that the threshold now has to be answered
 before the leave is asked for rather than afterwards. See [documentation that has to arrive
 with the request](#documentation-that-has-to-arrive-with-the-request).
 
-Since LMS 312 the days that went past are counted rather than merely allowed:
+The days that went past are counted rather than merely allowed:
 `certified_days` on the request and on the movement it caused. See [sick leave beyond the
 third day](#sick-leave-beyond-the-third-day).
 
@@ -2179,15 +2180,15 @@ third day](#sick-leave-beyond-the-third-day).
 
 ### No maximum request length
 
-**Somebody may ask for their whole year's leave in one request.** FR 20a, LMS 309. The
+**Somebody may ask for their whole year's leave in one request.** FR 20a. The
 requirement is an absence — "the system does not impose a limit the company has not set"
 — and an absence is a thing that has to be *kept*, because the way it ends is nobody
 deciding to end it. Somebody tightens a validation bound on a quiet afternoon, and a
 system that never had a cap has one.
 
-**Nothing in the path holds a maximum, and that was already true.** LMS 309 added no
-behaviour; what it added is the proof, and the reasons written where the next person will
-be tempted. The floor and the ceiling are worth seeing side by side:
+**Nothing in the path holds a maximum, and that was already true.** No
+behaviour was added; what was added is the proof, and the reasons written where the next
+person will be tempted. The floor and the ceiling are worth seeing side by side:
 
 | | Bound | |
 |---|---|---|
@@ -2228,7 +2229,7 @@ be most durable and least visible.
 ### The days come back
 
 **A request ends, and what it was holding goes back into what the person may book.** FR
-26, §8.2, LMS 306. The story is "the balance I see is what I can actually still book",
+26, §8.2. The story is "the balance I see is what I can actually still book",
 and its first two halves were built with [the request
 itself](#asking-for-leave): submitting writes a `RESERVATION` in the same transaction, and
 available drops the moment it does. This is the third half, and it is the one that keeps
@@ -2237,9 +2238,9 @@ goes down, and after a month of ordinary refusals and changes of mind it stops b
 figure anybody trusts.
 
 **Three endings, one movement.** Days that were held stop being held, whoever decided it
-and for whatever reason. `ledgerPolicy.release` has said exactly that since LMS 212 —
+and for whatever reason. `ledgerPolicy.release` has said exactly that all along —
 "yours to withdraw, your manager's to refuse, HR's to cancel… they share a rule here
-because they are one movement" — and this is the story that took it up.
+because they are one movement" — and this is where it was taken up.
 
 They are nonetheless **three decisions** in `leaveRequestPolicy`, because they are three
 different acts:
@@ -2258,7 +2259,7 @@ ledger**, because five days coming back look identical in a balance whether the 
 changed their mind, a manager turned it down or HR unwound it, and those are three
 different conversations.
 
-**`APPROVED` is deliberately not here**, and [LMS 314](#routing-a-request-to-its-approvers)
+**`APPROVED` is deliberately not here**, and [Routing a request to its approvers](#routing-a-request-to-its-approvers)
 is why: approval *commits* days — the hold becomes days taken and available does not move at
 all — so it is a different movement with a different entry type, and which desk in FR 38a's
 chain may agree needs the chain, the type and how far the request has got.
@@ -2289,9 +2290,9 @@ balance, so `holdStill()` serialises them and the second re-reads a request the 
 already settled. Two submissions are two different requests and no lock can make one see
 the other, which is why that one needs a constraint as a real path and this one does not.
 
-**And this is where `LIVE_STATUSES` stopped being a formality.** LMS 304 wrote the list
-separately from `REQUEST_STATUSES` when the two held the same single value, and said at
-the time that was "the whole point of it existing this early". Three statuses arrived,
+**And this is where `LIVE_STATUSES` stopped being a formality.** The list was written
+separately from `REQUEST_STATUSES` when the two held the same single value, and that was
+said at the time to be "the whole point of it existing this early". Three statuses arrived,
 none of them joined it, and every query written against it — the overlap probe, the
 exclusion constraint's `WHERE`, `blocksTheCalendar()` — started excluding rows without a
 line of them changing. Somebody whose leave was refused in January can book those days
@@ -2302,7 +2303,7 @@ again, which is the ordinary thing to do after a refusal.
 ### Warned when notice is short
 
 **Fourteen calendar days for annual leave, nothing for anything else, and both figures are
-a column.** FR 17, LMS 307. `leave_type.min_notice_calendar_days` is 14 on the annual row
+a column.** FR 17. `leave_type.min_notice_calendar_days` is 14 on the annual row
 and 0 on the other six, and the seven-leave-types migration says why: annual leave is the
 only type anybody can be expected to plan. Sick leave cannot be given notice at all, and
 the event-based types arrive with an occasion nobody chose the date of. Nothing above the
@@ -2348,12 +2349,12 @@ four-fields validation, so somebody who has neither ticked the box nor written a
 told about the box first. Both are things a form catches before the request is sent, and
 the ordering buys a refusal that never consults a table to say no.
 
-**A draft is finished with the acknowledgement, never saved with one.** FR 19, LMS 302's
+**A draft is finished with the acknowledgement, never saved with one.** FR 19's
 drafts hold four fields and this is not a fifth: how short the notice is depends on the day
 the draft is *submitted*, so a tick saved a fortnight ago answers a question this afternoon
 asks differently. `LeaveRequestDraftService.submit` takes it as an argument beside the id.
 
-**What was deliberately not here, and is since LMS 308.** FR 18's backdating window
+**What was deliberately not here, and is.** FR 18's backdating window
 refused nothing when this story shipped: `assertWithinBackdatingWindow` and
 `TooLateToRecord` were written and unused, and this section named the story that would call
 them as the one that also gives HR the way in the message names. That story is [recorded
@@ -2366,7 +2367,7 @@ warns; backdating refuses](#things-that-will-bite-you-if-you-do-not-know-them).
 
 ### Recorded after it was taken
 
-**Seven calendar days, on every type, and it is a column.** FR 18, LMS 308.
+**Seven calendar days, on every type, and it is a column.** FR 18.
 `leave_type.max_backdate_calendar_days` is 7 on all seven rows — the one window the seven
 agree about, where [notice](#warned-when-notice-is-short) divides them 14-and-nothing-else.
 Nothing above the database reads a type code to reach it, so HR closing the window on one
@@ -2422,16 +2423,16 @@ rewritten afterwards is not one, and the same argument makes `leave_request_deci
 `leave_request_withdrawal` append-only.
 
 **The approver sees which of the two it was.** FR 18's second criterion is that backdating is
-flagged visibly, and [the approver queue](#the-approver-queue) has raised `BACKDATED` since
-LMS 404 on any request whose leave had begun before it was asked for. Since this story the
+flagged visibly, and [the approver queue](#the-approver-queue) has long raised `BACKDATED`
+on any request whose leave had begun before it was asked for. The
 flag carries the difference: inside the window it says recording after the fact is allowed,
 and past it that HR entered it as an exception, quoting what they wrote. Those are not the
 same news — the second is a judgement somebody made, and whether it was a good one is what
 the approver is being shown.
 
 **`POST /requests` is the door this story needed**, and it is the only route in the file that
-names an employee. `leaveRequestPolicy.submit` has admitted HR on somebody's behalf since LMS
-301 and nothing could reach it: `/me/requests` takes its id off the cookie, so there was no
+names an employee. `leaveRequestPolicy.submit` had long admitted HR on somebody's behalf
+and nothing could reach it: `/me/requests` takes its id off the cookie, so there was no
 way to say whose leave it is. It is not a second submission path — the same call with the id
 supplied, and every refusal `/me/requests` can meet it can meet.
 
@@ -2455,7 +2456,7 @@ after it is typed.
 
 ### The state machine
 
-**A request moves through defined states and no others.** §6, LMS 313. The story is a
+**A request moves through defined states and no others.** §6. The story is a
 request in a condition nobody can explain or resolve, and what prevents it is not one
 mechanism but three: the moves are a table, one place writes the column, and every move
 is on the record.
@@ -2471,7 +2472,7 @@ the standings that may make it:
 | `SUBMITTED` | `CANCEL` | `CANCELLED` | HR |
 | `SUBMITTED` | `APPROVE` | `APPROVED` | the desk the chain has it with |
 
-LMS 306 built all three of those and they were all correct — spread over three places.
+All three of those were built and were all correct — spread over three places.
 The from-state lived in `assertMayBeSettled()`, the destination was named at each call
 site (`settle(actor, id, 'WITHDRAWN', …)`), and the actor was whichever policy decision
 the method happened to call. **Nothing could answer "what can happen to a submitted
@@ -2482,7 +2483,7 @@ request"**, which is exactly the question somebody has when a request is stuck.
 column — not a flag on the status, not a separate rule. `refuse_an_impossible_transition()`
 says the same where no service can reach, and the integration suite reads it back out of
 `pg_get_functiondef` and holds it to the table, the same way the overlap constraint is
-held to `LIVE_STATUSES`. Since LMS 314 the trigger is called
+held to `LIVE_STATUSES`. The trigger is called
 `leave_request_moves_as_the_table_says`, because "ends once" is a puzzling thing to read in
 an error about leave that has just been agreed.
 
@@ -2542,8 +2543,8 @@ action — and both were rewritten to say what is true now rather than relaxed.
 
 ### Routing a request to its approvers
 
-**A request goes to the approvers its leave type names, in order.** FR 38, FR 38a, FR 40,
-LMS 314. The chain has been configuration [since LMS 204](#who-approves-each-kind-of-leave) and
+**A request goes to the approvers its leave type names, in order.** FR 38, FR 38a, FR 40.
+The chain has been [configuration](#who-approves-each-kind-of-leave) and
 nothing read it; the leave-type-approval-chain migration said the routing itself "is FR 48 and
 Phase 3… needs the request table to exist". This is the story that reads it.
 
@@ -2582,7 +2583,7 @@ is the point of routing rather than a restriction bolted on top of it.
 
 **The last approval commits the days**, and only the last one. A `DEDUCTION` moves the same
 days out of `pending` and into `taken`, leaving available exactly where it was — the
-movement `BalanceService.commit` had been built and unused for since LMS 212. An
+movement `BalanceService.commit` had been built and unused for. An
 intermediate approval writes no ledger entry at all, because no figure in any balance
 moved, and inventing one would be a line in somebody's history recording that nothing
 happened.
@@ -2599,7 +2600,7 @@ are:
 **`APPROVED` joined `LIVE_STATUSES` and stayed out of the endings**, which is the payoff of
 [writing both lists out](#the-days-come-back) rather than deriving either. Leave that has
 been agreed is the most live leave there is — the person will be away — so it blocks the
-calendar, and LMS 304's exclusion predicate gained the one word it was written in advance
+calendar, and the exclusion predicate gained the one word it was written in advance
 for. It is not an ending, so it does not release days. A subtraction would have got the
 second one wrong and released the days of every approved request in the system.
 
@@ -2612,14 +2613,14 @@ That last one is asked again inside the balance lock, and it is not decoration: 
 a manager clicking twice on a two-stage chain would find the request at the HR desk on the
 second pass and approve the leave outright.
 
-[LMS 319](#nobody-approves-their-own-request) put a fourth in front of all three, and it is
+[Nobody approves their own request](#nobody-approves-their-own-request) put a fourth in front of all three, and it is
 outside the ordering argument rather than part of it: *is this your own request*, asked as
 soon as whose leave it is has been established, because nothing read afterwards could change
 the answer.
 
 **What is deliberately not here.** FR 48b — the manager who raised their own request, the
 Chief Executive who has nobody above them — is a rule about a reporting line rather than
-about a leave type, and is [LMS 320](#routing-round-an-approver-who-cannot-decide): the
+about a leave type, and is [Routing round an approver who cannot decide](#routing-round-an-approver-who-cannot-decide): the
 stage is skipped to the desk that stands in for it, and the skip is recorded. Taking agreed
 leave off the books afterwards is FR 26 and is not any of the three endings: the days are
 `taken` by then, so it is a movement against the `DEDUCTION`, and `LeaveCannotBeMoved` is
@@ -2628,14 +2629,14 @@ was **not** narrowed to the chain, so a manager may still refuse unpaid leave th
 could not approve — a one-line change to the `REFUSE` row that takes a power away from
 managers, which is somebody's decision to make rather than a side effect of building the
 routing. What that row did gain, in
-[LMS 319](#nobody-approves-their-own-request), is the requester's exclusion this story wrote
+[Nobody approves their own request](#nobody-approves-their-own-request), is the requester's exclusion this story wrote
 onto `THE_DESK_IT_IS_WITH` and therefore onto `APPROVE` alone.
 
 ---
 
 ### Approving or rejecting at a stage
 
-**A decision says why, and who made it, and on whose behalf.** FR 39, FR 52, LMS 315. The
+**A decision says why, and who made it, and on whose behalf.** FR 39, FR 52. The
 routing gets a request to the right desk; this is what happens when somebody at that desk
 answers. The story is one sentence — the person knows why, and the reason is on the record
 rather than in a corridor conversation — and everything below follows from taking it
@@ -2663,12 +2664,12 @@ nothing, which is the half of "required" usually missed and is what
 worth arguing about, because for most rows the two say the same thing twice: only the person a
 desk resolves to may *approve* at it. A refusal is different — `TRANSITIONS` admits a line
 manager and HR to the `REFUSE` row whichever desk the request is sitting at, which is the
-narrowing [LMS 314 deliberately did not make](#routing-a-request-to-its-approvers). So an HR
+narrowing [the routing deliberately did not make](#routing-a-request-to-its-approvers). So an HR
 Officer turning down leave still with a manager is recorded as their act, at the manager's
 stage, and the manager reading it can see it was not their decision. One field could not say
 that, in exactly the case somebody asks. The one pairing neither column may ever hold is the
 requester's own id, whichever desk it names —
-[LMS 319](#nobody-approves-their-own-request) refuses that row on every connection.
+[Nobody approves their own request](#nobody-approves-their-own-request) refuses that row on every connection.
 
 **Who and when are the database's.** `decided_by`, `decided_by_employee_id` and `decided_at`
 are stamped by `stamp_the_decider_on_a_decision()` from the transaction-local setting the
@@ -2688,7 +2689,7 @@ is a union rather than an optional field, so the door cannot be handed a comment
 withdrawal at all.
 
 **And the decision lands with the move, or neither does**, which is the fourth of a family
-whose shape LMS 314 settled:
+whose shape the routing settled:
 
 | | Covers | Does not cover |
 |---|---|---|
@@ -2698,7 +2699,7 @@ whose shape LMS 314 settled:
 
 It reads the *latest* decision rather than merely checking that one exists, and that is not
 belt and braces: it is the check that a decision explains *this* move rather than some
-earlier one. LMS 315 also declined a unique index on `(request, desk)` on the grounds that a
+earlier one. A unique index on `(request, desk)` was also declined, on the grounds that a
 chain reordered under a live request could ask the same desk twice — true of the walk it was
 written against, and [no longer true](#every-stage-must-approve): `nextUnapproved()` never
 returns a desk that has signed, and `leave_request_decision_once_per_desk` now holds that in
@@ -2732,18 +2733,18 @@ to tell them.
 
 ### Every stage must approve
 
-**Leave is agreed when every stage has agreed it, and not before.** FR 41, FR 42, LMS 316.
+**Leave is agreed when every stage has agreed it, and not before.** FR 41, FR 42.
 The routing gets a request to the right desks and the decisions record what each said; this
 is the story that makes "approved" mean what the employee thinks it means.
 
-Since [LMS 318](#hr-overturns-a-line-managers-decision) the *routing* half of this asks which
+Since [HR overturns a manager's decision](#hr-overturns-a-line-managers-decision) the *routing* half of this asks which
 stage has **decided** rather than which has approved, so a rejection carries the request on to
 the next desk instead of ending it. What is unchanged is the sentence above: a request is
 `APPROVED` only where the last stage to decide said yes, and a stage nobody asked has neither
 an approval nor a rejection on record.
 
 **The walk asks which stage has not signed, not which desk comes next.** That is the whole
-change, and it is one line. LMS 314 walked with `approverAfter(chain, theDeskItWasAt)` — a
+change, and it is one line. The old walk used `approverAfter(chain, theDeskItWasAt)` — a
 question about a *position* in a list — against a cursor on the request. It is right while
 the chain stands still, and FR 31 says it need not stand still.
 
@@ -2764,7 +2765,7 @@ no answer in this system — there was a cursor saying where a request had got t
 saying who had actually signed. The two agree until somebody edits a chain.
 
 **And nobody is asked twice.** A desk that has signed is skipped, so a chain reordered
-mid-flight cannot send a request back to a desk it came from. That is what retired LMS 315's
+mid-flight cannot send a request back to a desk it came from. That is what retired that
 caveat and let `leave_request_decision_once_per_desk` be added.
 
 **The cursor stays.** `awaiting_approval_from` is what an approver's queue reads (FR 40) and
@@ -2802,10 +2803,10 @@ and no `DEDUCTION` was ever written.
 **What this story declined to do.** The tempting second trigger is the exact converse of
 `leave_request_takes_its_days` — days committed belong to leave that was approved — which
 would make a `DEDUCTION` and an `APPROVED` status exist only together. It is truer and
-stronger, and it refuses every use of `BalanceService.commit`, the primitive LMS 314 kept on
+stronger, and it refuses every use of `BalanceService.commit`, the primitive kept on
 purpose beside the approval door ("a story that commits days for a reason other than a chain
 running out will want it"). Taking a movement away from the ledger is somebody's decision to
-make rather than a side effect of tightening the workflow — the same judgement LMS 314 made
+make rather than a side effect of tightening the workflow — the same judgement made
 about not narrowing `leaveRequestPolicy.refuse` to the chain. So the trigger is about
 endings, and the converse is one line for the story that removes the primitive.
 
@@ -2830,10 +2831,10 @@ appeal, and it reads these rows rather than adding any.
 ### Days come back on rejection
 
 **Rejection at any stage gives back everything the request was holding, at the moment of the
-rejection.** FR 43, LMS 317. The employee asks for the same fortnight again in the next
+rejection.** FR 43. The employee asks for the same fortnight again in the next
 breath, and nothing and nobody has to release anything first.
 
-**Most of this has held since [LMS 306](#the-days-come-back)**, and it is worth saying so
+**Most of this has held since [The days come back](#the-days-come-back)**, and it is worth saying so
 rather than restating it as new. That story built the three endings as one movement: refusing
 writes the `RELEASE` and the status in one transaction, so the days are back before the
 approver's screen has finished reloading, and `REFUSED` is not in
@@ -2842,7 +2843,8 @@ Neither waits on HR, a job, or a nightly anything. What the chain added is that 
 can now happen at a *later* stage, and the answer is the same: only the last approval commits,
 so a request refused after two approvals was still holding all six days as `pending`.
 
-**What LMS 306 did not say is how many days come back.** `leave_request_gives_its_days_back`
+**What [the three endings](#the-days-come-back) did not say is how many days come back.**
+`leave_request_gives_its_days_back`
 asked whether a `RELEASE` existed, which is the right question asked short. A request that
 ends having given back one day of the six it held satisfies it perfectly and leaves five in
 `pending` that nothing will ever return — a balance permanently short, against a request that
@@ -2855,7 +2857,7 @@ its days back"; it is now "gave *its days* back", which is the same sentence rea
 rather than a second one beside it. A separate trigger would be two rules about one act firing
 on the same `WHEN`, of which the older is implied by the newer, and `LeaveRequestRepository`
 would have to learn a second constraint name to say the same thing about. The same widening
-LMS 314 made to `refuse_an_impossible_transition()`.
+made to `refuse_an_impossible_transition()`.
 
 **It is judged against the request's own `days`**, frozen since submission by
 `refuse_rewriting_what_a_request_cost()`, so the figure that has to come back is the figure
@@ -2872,7 +2874,7 @@ which button was pressed rather than about what a request was holding.
 Nothing that goes through the door can produce a partial release: `daysToRelease()` refuses to
 give back more than is held and is handed the request's own frozen count, so a release is for
 the whole hold or it raises `NotEnoughHeld` and nothing is written at all. What the widened
-trigger catches is the second writer LMS 306 named and only half-covered — "a data fix in psql
+trigger catches is the second writer named there and only half-covered — "a data fix in psql
 marking a batch REFUSED, a migration correcting somebody's leave" — each of which can as
 easily release the wrong figure as none.
 
@@ -2884,7 +2886,7 @@ Closing that is one standing on the `REFUSE` row of `TRANSITIONS`, "which hands 
 desk that does not have it today — somebody's decision to make rather than a side effect of
 giving days back faster".
 
-[LMS 318](#hr-overturns-a-line-managers-decision) is the story that made it, and it went the
+[HR overturns a manager's decision](#hr-overturns-a-line-managers-decision) is the story that made it, and it went the
 other way round: the row now admits `THE_DESK_IT_IS_WITH` and nobody else. A rejection
 advances the chain there, so it has to be the desk's — and the Chief Executive gained the
 power in the same line that took it from a manager whose stage the request had already
@@ -2900,14 +2902,14 @@ changed is that nothing waits on HR, a job or a nightly anything once the reques
 
 ### Nobody approves their own request
 
-**The person who asked for the leave never decides it, whatever they hold.** FR 48, §8.6a,
-LMS 319. Not an ordinary employee, not the HR Officer whose own request lands in the queue she
+**The person who asked for the leave never decides it, whatever they hold.** FR 48, §8.6a.
+Not an ordinary employee, not the HR Officer whose own request lands in the queue she
 staffs, not the Head of HR, not the Chief Executive. An approval somebody can give themselves
-is a field on a form rather than a decision, and the story is about what the other approvals
+is a field on a form rather than a decision, and this is about what the other approvals
 in this system are worth.
 
 **Half of it was already true, and the half that was not is the interesting half.**
-[LMS 314](#routing-a-request-to-its-approvers) excluded the requester from
+[Routing a request to its approvers](#routing-a-request-to-its-approvers) excluded the requester from
 `THE_DESK_IT_IS_WITH`, so nobody has been able to *approve* their own leave since — written
 for an ordinary case rather than an adversarial one, because unpaid leave goes to the HR desk
 first and an HR Officer asking for unpaid leave holds a code that staffs the desk her own
@@ -2967,12 +2969,12 @@ sentence about self-approval.
 **403 and the log are `Guard.enforce`'s**, as every refusal in this system is: a
 `NotAuthorised` carrying the vague message or the open one, with the attempt written to the
 denial log first — who, what they held, which verb, whose leave. Turning that into a status
-code arrived with [LMS 401](#my-balances) and is `http/problems.ts`: an open refusal is
+code arrived with [My balances](#my-balances) and is `http/problems.ts`: an open refusal is
 403 with its own sentence, a silent one is **404 with the words a missing record produces**,
 because a 403 would state the very fact the message declines to. What this story settles is
 the half that has to be right on the server whatever the interface does.
 
-**The reciprocal is [LMS 320](#routing-round-an-approver-who-cannot-decide).** This story left
+**The reciprocal is [Routing round an approver who cannot decide](#routing-round-an-approver-who-cannot-decide).** This story left
 such a request waiting at a desk only its own requester staffs — "stuck and visible is the
 side to be wrong on" — and FR 48b is where it goes instead.
 
@@ -2981,8 +2983,8 @@ side to be wrong on" — and FR 48b is where it goes instead.
 ### Routing round an approver who cannot decide
 
 **A stage its own desk cannot answer is skipped to one that can, and nothing is approved by
-running out of people to ask.** FR 48, FR 48b, §8.6a, LMS 320. The reciprocal LMS 319 left:
-that story refused the requester at four altitudes and the request stopped where it stood.
+running out of people to ask.** FR 48, FR 48b, §8.6a. The reciprocal of the rule above:
+the requester is refused at four altitudes and the request stopped where it stood.
 
 **A desk is empty in three different ways, because the three resolve to a person by three
 different mechanisms.** `features/leave-request/routing.ts` holds the whole of it, and it is
@@ -3018,7 +3020,7 @@ and nobody could read off a screen. Where the one stand-in is empty too, the req
 
 **A skipped stage is recorded, and a recorded skip is never reconsidered.**
 `leave_request_routing` is append only and holds one row per stage per request: the stage, the
-desk that took it, and why in words. It is the same rule LMS 316 gives a decision — a stage
+desk that took it, and why in words. It is the same rule a decision is given — a stage
 skipped on Monday has had its turn, and a manager appointed on Wednesday does not send a
 request that is already with HR back down. `refuse_an_approval_a_stage_never_gave()` reads it,
 which is what lets the one request FR 48b exists to move actually be approved: without that,
@@ -3048,7 +3050,7 @@ whose leave stopped — *nobody has approved or turned it down, and your days ar
 and everybody who could change the organisation so that it has not, which is HR and the Chief
 Executive. It is written to say what to fix rather than only that something is wrong.
 
-**Deduplication was by desk, never by person, and [LMS 322](#a-request-one-person-decided)
+**Deduplication was by desk, never by person, and [A request one person decided](#a-request-one-person-decided)
 changed that.** A chain whose stages collapse onto one desk still asks that person once. What
 this story said next — that two *different* desks resolving to the same human are still two
 stages and are asked twice — is what FR 48d overturned: the same signature twice is two
@@ -3065,8 +3067,8 @@ is the whole of the overlap.
 ### A request one person decided
 
 **Two stages are answered by two people, and where the company has nobody else the request
-says on its face that one approver decided it.** FR 48d, §8.6a, LMS 322. The half
-[LMS 320](#routing-round-an-approver-who-cannot-decide) left open: it deduplicated by desk and
+says on its face that one approver decided it.** FR 48d, §8.6a. The half
+[Routing round an approver who cannot decide](#routing-round-an-approver-who-cannot-decide) left open: it deduplicated by desk and
 argued that a walk over a list of offices should not know which people fill them. It should,
 and this is where.
 
@@ -3114,7 +3116,7 @@ its approvals halved — it gets them recorded honestly.
 ### Cancelling a request nobody has approved
 
 **A request that is still being decided is taken back by the person who asked for it, at any
-stage, and the whole hold comes straight back.** FR 46, LMS 323. Plans change; a request in
+stage, and the whole hold comes straight back.** FR 46. Plans change; a request in
 somebody's queue that the employee no longer wants should cost them no days and cost the
 approver no time.
 
@@ -3131,7 +3133,7 @@ records which of the three happened: five days coming back look identical in a b
 somebody changed their mind or HR corrected a mistake, and those are different conversations.
 Renaming either to match the backlog would lose that distinction to a synonym.
 
-**The act itself has existed since [LMS 306](#the-days-come-back).** What this story
+**The act itself has existed since [The days come back](#the-days-come-back).** What this story
 establishes is the half that could not be proved then, because a request could only ever be
 standing at its first desk: **the stage plays no part in it.** `TRANSITIONS` keys a `WITHDRAW`
 by the from-status alone, and `SUBMITTED` is the whole of "not yet approved" — a chain of
@@ -3166,17 +3168,17 @@ tell.
 
 **And there is no draft *status*.** The backlog's "while draft or pending" describes two
 things and only one of them is a state of a request: a request exists because somebody
-submitted it, and `REQUEST_STATUSES` holds no `DRAFT` because [LMS 209's
-rule](#the-state-machine) is that a status arrives in the same story as the transition that
-reaches it. [LMS 302](#a-request-saved-and-finished-later) is the story that brought drafts,
-and it kept that rule rather than breaking it: a draft is a row in another table, and the
+submitted it, and `REQUEST_STATUSES` holds no `DRAFT` because [the state
+machine's rule](#the-state-machine) is that a status arrives alongside the transition that
+reaches it. [A request saved and finished later](#a-request-saved-and-finished-later) brought drafts,
+and kept that rule rather than breaking it: a draft is a row in another table, and the
 transition it brings is into `SUBMITTED` from outside `leave_request` altogether.
 
 ---
 
 ### A request saved and finished later
 
-**Saved without entering the workflow, and editable while in draft only.** FR 19, LMS 302.
+**Saved without entering the workflow, and editable while in draft only.** FR 19.
 The story is somebody planning leave before the dates are settled — a fortnight that depends
 on a wedding nobody has fixed, a week off once a project lands.
 
@@ -3243,8 +3245,8 @@ another person's page with no policy asked.
 
 ### Evidence attached to a request
 
-**A certificate goes on the request it evidences, once.** FR 12, NFR SEC 07, LMS 310. FR 13
-has been a rule the form explains and a document nobody could upload since LMS 201:
+**A certificate goes on the request it evidences, once.** FR 12, NFR SEC 07. FR 13
+has been a rule the form explains and a document nobody could upload:
 `storage/` existed and nothing on the request path wrote to it. This is the table the bytes
 hang off, `leave_request_attachment`.
 
@@ -3303,9 +3305,9 @@ filename of every medical certificate somewhere nobody asked to put it. NFR AUD 
 ### Documentation that has to arrive with the request
 
 **Where policy asks for evidence, the request is refused without it.** FR 13, FR 32a, §8.6b,
-LMS 311. LMS 310 gave a certificate somewhere to hang and nothing that insisted on one, so
-FR 13 was a sentence on a form and an attachment somebody might get round to. The story's
-"so that" is the whole of what changed: *the evidence arrives with the request rather than
+Attachments gave a certificate somewhere to hang and nothing that insisted on one, so
+FR 13 was a sentence on a form and an attachment somebody might get round to. The whole of
+what changed is this: *the evidence arrives with the request rather than
 being chased afterwards*.
 
 **Two thresholds, constantly mistaken for one.** This is why `documentationGroundsFor`
@@ -3356,7 +3358,7 @@ leave was allowed on, so the answer is copied onto the row and
 different from "arrived once". `leave_request_attachment_is_what_it_was_allowed_on` refuses
 the *last* usable file rather than any of them, so attaching a better scan first frees the
 old one — which is what `DocumentationCannotBeRemoved`'s message tells somebody to do. A
-request nobody asked evidence of keeps LMS 310's rule unchanged and its files come off
+request nobody asked evidence of keeps the attachment rule unchanged and its files come off
 freely.
 
 **Naming a file that is not yours reaches nothing rather than being refused.** NFR SEC 04.
@@ -3379,8 +3381,8 @@ both with one branch. What the quote now says is "attach it before you ask" rath
 ### Sick leave beyond the third day
 
 **The days past the allowance are recorded as certified, and they never touch annual
-leave.** FR 32a, FR 32b, FR 33, §8.6b, LMS 312. LMS 311 made the allowance answerable — past
-it a request is refused for want of a certificate rather than for want of days. What it did
+leave.** FR 32a, FR 32b, FR 33, §8.6b. The allowance was already answerable — past
+it a request is refused for want of a certificate rather than for want of days. What that did
 not do is record *which* days stood on that certificate, and a sick balance of −2 says
 somebody is two days over while saying nothing about whether anybody ever produced evidence
 for them. The story's "so that" is the whole of what changed: *genuine illness is recorded
@@ -3415,7 +3417,7 @@ copy it off the row rather than working it out again.
 book without a certificate — so the third is certified. Telling them otherwise would be
 telling them to ask for half a day, which `requireWholeDays()` refuses.
 
-**Certified days come back first.** FR 47, LMS 324. `certifiedDaysGivenBack` is
+**Certified days come back first.** FR 47. `certifiedDaysGivenBack` is
 `min(certified, given back)`, and it is arithmetic rather than a policy: five days with two
 certified, one given back, leaves four days against an allowance of three — one still past
 it. The days that are *kept* are the ones the allowance re-absorbs first, so the ones that
@@ -3439,7 +3441,7 @@ eating somebody's holiday — and an absence, like FR 20a's, is a thing that has
 ### My balances
 
 **Every leave type, with what was granted, carried over, taken and spoken for, and what is
-left — for a leave year the person picks.** FR 53, §7.4, LMS 401. The first story of Phase 4
+left — for a leave year the person picks.** FR 53, §7.4. The first story of Phase 4
 and the first one anybody outside this repository can see, because it is also the story that
 brought the route layer and the client.
 
@@ -3493,8 +3495,8 @@ other.
 #### And the route layer, which had to exist first
 
 There were no endpoints before this story. Three phases of services were built and tested
-without one deliberately — "LMS 112 put authorisation in the service layer, which is the half
-that has to be right whatever the interface does" — so what arrived here is the interface, and
+without one deliberately — authorisation sits in the service layer, which is the half
+that has to be right whatever the interface does — so what arrived here is the interface, and
 it adds no rule.
 
 **`GET /api/me/balances`, and `me` is not a convenience.** The employee id handed to the service
@@ -3502,7 +3504,7 @@ is `actor.employeeId`, off the verified session cookie, so there is **no way to 
 at anybody else** whatever is sent. `ledgerPolicy.read` would refuse somebody else's balances
 anyway and a `/employees/:id/balances` guarded by it would be correct — but it would be correct
 *because the guard is asked*, and a route that cannot name anybody else needs no such argument.
-FR 55 and FR 56 are LMS 405, and they are a different route with a rule of their own about who
+FR 55 and FR 56 are a different route, with a rule of their own about who
 the subject may be.
 
 **The session cookie carries an employee id and no roles.** `SignedIn.actor` is explicit that an
@@ -3536,7 +3538,7 @@ the screen untouched, and `client/src/api.ts` never hands one to `new Date()`. N
 leave year runs to a day rather than to an instant, and converting one in a browser is how the
 last day of the year becomes the second to last for anybody west of Greenwich.
 
-**The client wears the company's colours**, as of LMS 409. The five in the brand guidelines are
+**The client wears the company's colours.** The five in the brand guidelines are
 `--brand-*` in `styles.css` and appear nowhere else in it: every rule reaches for a semantic
 token — `--accent`, `--ink`, `--line` — that the brand block assigns, so a repaint is an edit to
 the top of one file. Sora carries headings and figures and Montserrat the running text, which is
@@ -3547,7 +3549,7 @@ than inventing them.
 ### My request history
 
 **Every request somebody has made, with where it has got to and the account of how it got
-there.** FR 54, §7.4, LMS 402. The story's "so that" is the whole design brief: *I can check
+there.** FR 54, §7.4. The story's "so that" is the whole design brief: *I can check
 what happened without relying on memory or email*. Memory is wrong about whether the second
 approver ever answered, and an email is a record of what was sent rather than of what is true
 now — the message saying a manager approved a request is still in the inbox after HR turned it
@@ -3557,8 +3559,9 @@ down.
 misleading screen.** `leave_request.status` says whether a request is being decided,
 `awaiting_approval_from` says who is deciding it, `leave_request_decision` says what each desk
 said and why, and `leave_type_approval_step` says how many desks there were meant to be. The
-pairing that actually misleads people is the one LMS 316 was written about: **the newest
-approval, shown on its own, reads as agreement.**
+pairing that actually misleads people is the one [every stage must
+approve](#every-stage-must-approve) was written about: **the newest approval, shown on its
+own, reads as agreement.**
 
 `progressOf` in `features/leave-request/leave-request.ts` already put those four together for FR 41 and this
 story restates none of it — every entry carries that function's answer whole. What
@@ -3610,7 +3613,7 @@ year id that names nothing is still a 404.
 
 `GET /api/me/requests`, and `me` means the same thing it means for balances: the id handed to
 the service is `actor.employeeId` off the verified cookie, so the route cannot be pointed at
-anybody. FR 55 and FR 56 remain LMS 405's.
+anybody. FR 55 and FR 56 remain the direct reports route's.
 
 `LeaveRequestService` already reads requests, decisions and progress, and the shortest version
 of this story is a fourth method calling all three in a loop. `RequestHistoryService` exists
@@ -3632,20 +3635,19 @@ everything written in one transaction and an account sorted by time could reorde
 two reads.
 
 **And the client got a second screen**, which is where `App.tsx` had to decide about a router
-and deliberately still has not. LMS 401 said the decision was "worth making when there is more
+and deliberately still has not. The decision was said to be "worth making when there is more
 than one place to go"; two places is not where the argument turns, because what a router buys is
 *addresses* — a link, a bookmark, the back button — and a URL scheme chosen before the request
 form and the team calendar have said what they need to link to is a scheme chosen too early. The
 cost is named rather than hidden: **neither screen can be linked to, and the back button leaves
-the application.** The story that adds a third screen brings the router. (LMS 403 is that story,
-and it did — see below.)
+the application.** The third screen brings the router — see below.
 
 ---
 
 ### The request form
 
 **The rules arrive while somebody is filling it in, not after they have submitted.** FR 11,
-FR 32f, §7.4, LMS 403. The story's "so that" is the whole design brief: *I find out about
+FR 32f, §7.4. The story's "so that" is the whole design brief: *I find out about
 documentation or notice before submitting, not after*. The failure it is written against is
 concrete and it is a person's afternoon: a fortnight submitted, then a message saying it needed
 a certificate nobody mentioned, or that compassionate leave was never anybody's to promise.
@@ -3658,8 +3660,8 @@ shape of the story and it is why there are two calls rather than one:
 | The screen opens | What each kind of leave asks of you | `GET /api/me/request-form` |
 | Two dates exist | What this period costs | `GET /api/me/requests/quote` |
 
-`quoteFor` in `features/leave-request/leave-request.ts` already answers the second, and has since
-LMS 301 — the day count, the days inside the period that were free and why, what the balance
+`quoteFor` in `features/leave-request/leave-request.ts` already answers the second, and long
+has — the day count, the days inside the period that were free and why, what the balance
 holds and would hold, and the warnings. **It cannot answer the other two, because a quote needs
 a period.** A form built on the quote alone would tell somebody maternity leave needs
 documentation on the keystroke after they had settled the dates, and would tell somebody
@@ -3709,12 +3711,12 @@ question about a type, two dates and a working pattern. A form pricing a fortnig
 keystroke would otherwise put a half-written explanation into a query string and from there into
 an access log.
 
-Since LMS 307 that type omits a second field for a related reason.
+That type omits a second field for a related reason.
 `acknowledgesShortNotice` answers the `SHORT_NOTICE` warning a quote produces, so a quote
 that took one would be asking to be told the answer to the question it is about to ask. See
 [warned when notice is short](#warned-when-notice-is-short).
 
-Since LMS 308 it omits a third, `lateEntryReason`, on the same argument and one narrower
+It omits a third, `lateEntryReason`, on the same argument and one narrower
 still: it is an answer only HR can give, to a question about a period nobody has committed
 to yet. What the form does with the window instead is set the earliest date its picker will
 accept, off `maxBackdateCalendarDays` — which is why that column is carried beside the
@@ -3743,7 +3745,7 @@ type, a settled year. Nothing retyped fixes the second kind.
 
 #### And the third screen brought the router
 
-LMS 402 named the moment: "The story that adds a third screen brings the router." This is it.
+The moment was named above: the screen that makes a third brings the router. This is it.
 
 It is not a dependency. Three static screens with no parameters and no nesting need the
 *address* — a link, a bookmark, a back button that moves between screens instead of leaving the
@@ -3758,13 +3760,13 @@ fallback, this becomes the History API and nothing else changes.
 
 #### Still not here
 
-**FR 18 is stated and not enforced.** `assertWithinBackdatingWindow` has existed since LMS 201,
+**FR 18 is stated and not enforced.** `assertWithinBackdatingWindow` has existed,
 is tested, and is called from nowhere on the request path — so the form says leave can be
 entered up to seven days after the fact and the server would accept it from a month back. The
-gap predates this story and closing it changes what `submit` accepts, which is LMS 301's rule
-rather than this screen's. What this story does is stop the window being invisible.
+gap predates this screen and closing it changes what `submit` accepts, which is the submission
+rule rather than this screen's. What the screen does is stop the window being invisible.
 
-**No attachment on the form itself.** LMS 310 added the upload and it hangs off a request
+**No attachment on the form itself.** The upload hangs off a request
 rather than off a quote — there is nothing to attach a certificate to until the leave has
 been asked for. So this screen still says "have it ready — whoever approves this will ask
 for it", and the file goes on afterwards. See
@@ -3775,7 +3777,7 @@ for it", and the file goes on afterwards. See
 ### The approver queue
 
 **One place holding everything waiting on this person, so nothing sits unnoticed.** FR 20,
-FR 40, §8.6a, LMS 404. The failure it is written against is a manager going through email to
+FR 40, §8.6a. The failure it is written against is a manager going through email to
 find out what they owe an answer on, and a request nobody happens to look at.
 
 **The desks are the query, and the query is the disclosure gate.** `desksStaffedBy` in
@@ -3805,7 +3807,7 @@ The story says *never actionable*, and the shape that rules out is a queue that 
 one `filter`, and the wrong side to be wrong on. The case is ordinary rather than adversarial:
 unpaid leave goes to HR first, so an HR Officer asking for unpaid leave has a request standing
 at the desk she staffs. Since
-[LMS 320](#routing-round-an-approver-who-cannot-decide) it stands there only while a colleague
+[Routing round an approver who cannot decide](#routing-round-an-approver-who-cannot-decide) it stands there only while a colleague
 in HR can answer it — the stage falls to the Chief Executive once she is the whole of HR — and
 her own request is still on her queue, marked, because the desk is genuinely hers.
 Filtering it out would make the one request nobody can move the one request nobody can see.
@@ -3851,22 +3853,22 @@ wrong. `SHORT_NOTICE` is worded close to `quoteFor`'s warning of the same name d
 the requester was told "whoever approves it will see that it was short", and this is that
 person seeing it.
 
-Since LMS 307 that is a stronger claim than a matching sentence. A short notice request
+That is a stronger claim than a matching sentence. A short notice request
 reaching this queue is one the requester *acknowledged* — it could not have been submitted
 otherwise — so the flag is not news the approver is breaking to somebody. See [warned when
 notice is short](#warned-when-notice-is-short).
 
-Since LMS 308 `BACKDATED` carries a difference it could not carry before, because before that
-story there was only one kind of backdated request. Inside the window it is the ordinary way an
+`BACKDATED` now carries a difference it could not carry before, because there used to be
+only one kind of backdated request. Inside the window it is the ordinary way an
 absence gets recorded and the sentence says so; past it, HR entered it as an exception, and the
 flag quotes what they wrote — `lateEntryReason` is beside it on the item so a screen can label
 the two differently, and the approvals page does. Whether the exception was a good one is the
 judgement the approver is being handed, exactly as short notice is. See [recorded after it was
 taken](#recorded-after-it-was-taken).
 
-**`DOCUMENTATION_REQUIRED` is the obvious third and is not here.** LMS 404 asks for two. The
-condition is `documentationRequired` and `quoteFor` has already written the sentence, so the
-story that wants it adds a member to `QUEUE_FLAGS` and a branch to `flagsFor`.
+**`DOCUMENTATION_REQUIRED` is the obvious third and is not here.** The queue asks for two. The
+condition is `documentationRequired` and `quoteFor` has already written the sentence, so
+whatever wants it adds a member to `QUEUE_FLAGS` and a branch to `flagsFor`.
 
 #### Still not here
 
@@ -3876,18 +3878,18 @@ sentence saying what an approver is. There is deliberately no `canApprove` on `/
 roles would start deciding what to draw from them, and the day the two disagree the server is
 right and the page has been lying".
 
-The routes that decide arrived with [LMS 318](#hr-overturns-a-line-managers-decision).
+The routes that decide arrived with [HR overturns a manager's decision](#hr-overturns-a-line-managers-decision).
 
 ---
 
 ### HR overturns a manager's decision
 
 **Both stages decide before leave is finally confirmed or rejected, and HR's is the last
-word.** FR 44, §7.2, LMS 318. A manager turning leave down is a decision at their stage,
+word.** FR 44, §7.2. A manager turning leave down is a decision at their stage,
 not the end of the request.
 
-**This is the story that made a rejection stop being an ending**, and that is the whole of it.
-Until LMS 318 only approval needed every stage — [LMS 316](#every-stage-must-approve) — while a
+**This is where a rejection stopped being an ending**, and that is the whole of it.
+Until then only approval needed every stage — [Every stage must approve](#every-stage-must-approve) — while a
 refusal at *any* desk ended the request and released its days. So a manager's no was final and
 HR, the desk FR 38a sends the request to next, never saw it. Now both verbs route: the walk
 asks which stage has **decided** rather than which has approved, and the last stage to decide
@@ -3976,7 +3978,7 @@ override — a notice nobody can be sent is not a reason to reverse a decision t
 #### What this cost elsewhere
 
 **Refusing narrowed to the desk.** `TRANSITIONS` had the `REFUSE` row admitting the line
-manager and `LEAVE_ADMINISTRATION` alike, which LMS 314 deliberately left wide. A refusal now
+manager and `LEAVE_ADMINISTRATION` alike, which the routing deliberately left wide. A refusal now
 advances the chain, so one made away from the desk would mark a stage decided by somebody who
 was never asked. HR unwinding a request that should not be on the books is still `CANCEL`.
 
@@ -3985,8 +3987,9 @@ desk. `REFUSE` moved to the door that decides, which writes the `RELEASE` only w
 rejection turns out to be the last word and no movement at all when it does not.
 
 **`leave_request_is_approved_by_every_stage` asks whether each stage has decided.** Weaker
-than the rule LMS 316 wrote, and the correct weakening: a stage that has not been asked has
-neither an approval nor a rejection on record, so the failure that story was written against —
+than the rule [every stage must approve](#every-stage-must-approve) wrote, and the correct
+weakening: a stage that has not been asked has neither an approval nor a rejection on record,
+so the failure it was written against —
 somebody booking a flight on leave a stage the policy names had not seen — is caught exactly
 as before.
 
@@ -3996,12 +3999,12 @@ untouched. An override is a decision at a live desk.
 
 ### Identifying the Chief Executive
 
-**Who the `CEO` desk resolves to is a setting somebody wrote down.** FR 48c, §4.3.1, LMS 321.
+**Who the `CEO` desk resolves to is a setting somebody wrote down.** FR 48c, §4.3.1.
 `organisation_setting.ceo_employee_id`, a foreign key to an employee, named by an HR
 Administrator.
 
-**It is not a job title, and it is no longer FR 04's root either.** The story asks for the
-first and the second came with it. Until LMS 321 the desk resolved to the one employee with no
+**It is not a job title, and it is no longer FR 04's root either.** The requirement asks for
+the first and the second came with it. The desk used to resolve to the one employee with no
 manager, which is a *shape of the reporting lines* standing in for a fact nobody had
 written down. That fails the way a job title fails — quietly, from a screen with nothing to do
 with leave:
@@ -4066,7 +4069,7 @@ about balances.
 
 ### Withdrawing leave that has been approved
 
-**Agreed leave comes off the books because the person asks and HR answers.** FR 47, LMS 324.
+**Agreed leave comes off the books because the person asks and HR answers.** FR 47.
 Two acts, not one, and neither half alone is enough: by then the days are `taken` rather than
 `pending`, the dates are on a team calendar, and somebody has been told the leave is theirs.
 
@@ -4079,8 +4082,8 @@ open, and a `withdrawal_requested_at` column would lose HR's answer.
 [`withdraw()`](#cancelling-a-request-nobody-has-approved) rather than wider: HR may take back a
 request nobody has approved on somebody's behalf, and may not ask on their behalf here. One
 desk on both sides of the conversation is what the answer exists to prevent. And nobody
-answers their own ask, which is [FR 48](#nobody-approves-their-own-request) reaching the door
-LMS 319 had not yet got to.
+answers their own ask, which is [FR 48](#nobody-approves-their-own-request) reaching a door
+it had not yet got to.
 
 **What HR's answer does is the calendar's decision, not theirs.**
 
@@ -4098,7 +4101,7 @@ halfway through it the balance would be two working weeks better off than the ab
 
 **The days come back as a `RECALCULATION`** — the entry type
 [immutable-leave-ledger](#the-balance-ledger) listed with no writer, whose sign adds and whose
-bucket is `taken`. It is the movement LMS 314 said this story would need: against the
+bucket is `taken`. It is the movement the routing said would be needed: against the
 `DEDUCTION` rather than against the `RESERVATION`, because approval already spent the hold.
 `daysToRelease` would find nothing there.
 
@@ -4139,7 +4142,7 @@ rule that neither may give back more than was taken.
 
 ### Sickness during annual leave
 
-**A holiday somebody spent unwell is not a holiday they spent.** FR 32c, §8.6c, LMS 507. The
+**A holiday somebody spent unwell is not a holiday they spent.** FR 32c, §8.6c. The
 days go back into the balance they came out of and the same days are charged to sick leave, on
 a medical certificate. Nothing about the leave itself changes.
 
@@ -4201,7 +4204,7 @@ cannot afterwards be withdrawn: there is nothing left in that balance to give ba
 ### A public holiday declared too late
 
 **A day the country was not working is not a day anybody is charged leave for, even when the
-gazette says so after the leave was approved.** FR 25, §8.8, LMS 508. The day goes back into
+gazette says so after the leave was approved.** FR 25, §8.8. The day goes back into
 the balance the leave was charged to, and nothing about the leave itself changes.
 
 **HR triggers it, and that is the story's first criterion rather than a convenience.** A day
@@ -4279,7 +4282,7 @@ nobody's name against it, which is [exactly what the ledger is for](#the-balance
 ### Leave that follows the reporting line
 
 **A pending request goes with the person when their manager changes, and does not sit in the
-queue of somebody who no longer manages them.** FR 07, §8.4, LMS 325.
+queue of somebody who no longer manages them.** FR 07, §8.4.
 
 **Most of it was already true, and that is the point rather than an anticlimax.** The
 `MANAGER` desk [is a relationship](#routing-a-request-to-its-approvers), resolved through
@@ -4370,7 +4373,7 @@ may turn the outcome the other way. Nobody else may, and never on their own leav
 ### Two approvers deciding at once
 
 **Two people at one desk pressing the button on one request decide it once, and the second is
-told what happened rather than deducting the days again.** NFR DAT 02, §8.1, LMS 326.
+told what happened rather than deducting the days again.** NFR DAT 02, §8.1.
 
 **The HR desk is staffed by more than one person, which is what makes this real.** A line
 manager desk resolves to one human, so the only race there is somebody's own second click. HR
@@ -4417,8 +4420,8 @@ that the second approver never gets that far, and is told why.
 ### Approvals handed to a colleague
 
 **An approver nominates somebody to answer for them over a date range, and every decision
-made under it says whose absence it covered.** FR 49, §8.6a, LMS 327.
-[LMS 320](#routing-round-an-approver-who-cannot-decide) routed round a desk that is *empty*
+made under it says whose absence it covered.** FR 49, §8.6a.
+[Routing round an approver who cannot decide](#routing-round-an-approver-who-cannot-decide) routed round a desk that is *empty*
 and said in as many words that cover while an approver is themselves away "is a different
 question". This is that question: the desk is staffed, its occupant is on a beach, and the
 team waits.
@@ -4444,7 +4447,7 @@ manager covered for — and the queue's `WHERE` is built from the list. Without 
 would quietly widen into every team in the company.
 
 **A delegation carries no say over the delegator's own leave.** FR 48, and it is the one path
-[LMS 319](#nobody-approves-their-own-request) could have been walked round: the lone HR
+[Nobody approves their own request](#nobody-approves-their-own-request) could have been walked round: the lone HR
 officer's own unpaid leave stands at the desk she staffs, and a delegate of hers answering it
 would be her own request decided by a standing she granted this morning. Refused three times
 — in `delegationsThatBearOn` before the desk's occupants are worked out, in the policy where
@@ -4503,7 +4506,7 @@ a chain: a delegation changes who is at a desk, never how many desks there are.
 ### Clearing a queue in one press
 
 **A manager answers several requests at once, and every rule that guards one guards each
-of them.** FR 51, LMS 328. The story is a week away and a queue on the way back, and what
+of them.** FR 51. The story is a week away and a queue on the way back, and what
 it asks for is a press rather than an afternoon.
 
 **A batch is not a second way of deciding.** `decideMany` validates the press and then calls
@@ -4541,7 +4544,7 @@ whole length, and a failure at the tenth would unsay nine decisions that were co
 | at most fifty | a queue this long is cleared in two goes | each row is a transaction of its own, and one press should not hold a connection for minutes |
 | the same request twice is one decision | a selection is a set of rows | the second mention would have lost to the first anyway, at `leave_request_decision_once_per_desk` |
 
-**The versions are per row**, which is what keeps LMS 326 working through a press. Each item
+**The versions are per row**, which is what keeps the queue working through a press. Each item
 carries the version its queue row handed out, so a row somebody answered while the queue was
 open is refused as that row rather than as the batch — the loser is still told by name who got
 there first.
@@ -4563,7 +4566,7 @@ carry that reason.
 ### Reminding an approver every day
 
 **Every request sitting at a desk chases whoever it is sitting on, once a day, until somebody
-decides it.** FR 50, FR 60, §7.1, LMS 330. The story is written from the requester's side — "so
+decides it.** FR 50, FR 60, §7.1. The story is written from the requester's side — "so
 that my request does not sit for a fortnight because somebody forgot" — and the message goes to
 the person who forgot, which makes it the first notice this system sends about **nothing having
 happened**.
@@ -4582,7 +4585,7 @@ missing, which is how it would otherwise have arrived in somebody's mailbox as a
 reads every request whose `awaiting_approval_from` is set and resolves each through
 `whoCanDecide` — the same walk `approve` makes inside the balance lock. Three things fall out of
 that rather than being written again here: the requester is never chased about their own leave,
-because LMS 319 is read as a fact about the desk; both officers at a shared HR desk are chased,
+because nobody approving their own request is read as a fact about the desk; both officers at a shared HR desk are chased,
 because FR 48d says a desk is people rather than a seat; and a delegate covering for an approver
 is chased alongside them, because FR 49 puts them at the desk for as long as the nomination
 runs. A reminder that named somebody who could not decide the request would be worse than no
@@ -4591,7 +4594,7 @@ reminder at all.
 **A request nobody can decide is not chased.** `awaiting_approval_from` is null exactly when the
 status is not `SUBMITTED`, so an `UNROUTABLE` request is not in the read at all. That is
 deliberate and it is the one pending thing this story leaves alone: it is waiting on nobody, so
-there is nobody to remind, and [LMS 320](#routing-round-an-approver-who-cannot-decide) already
+there is nobody to remind, and [Routing round an approver who cannot decide](#routing-round-an-approver-who-cannot-decide) already
 alerts HR and FR 04's seat at the moment it strands. The run counts them and says so in its
 summary rather than silently sending nothing. Chasing HR daily about a stuck request is a story
 with a different recipient rule and it is not this one.
@@ -4634,9 +4637,9 @@ thing that stops a reminder is deciding the request, which is the entire point.
 ### Retrying a notification that did not send
 
 **A send the mail server refused is tried again, further apart each time, until it arrives or
-until there is no point.** FR 59, §7.1, LMS 331. The story is the employee's — "so that a mail
+until there is no point.** FR 59, §7.1. The story is the employee's — "so that a mail
 server hiccup does not mean I am never told my leave was approved" — and the thing it fixes is
-one line in [LMS 329](#telling-somebody-what-happened-to-their-leave), which recorded the failure
+one line in [Telling somebody what happened to their leave](#telling-somebody-what-happened-to-their-leave), which recorded the failure
 and stopped: *"a process that dies between the COMMIT and the notice loses the notice. That is
 the right side to be wrong on."* It still is. What was never right was losing the ones that did
 get written.
@@ -4702,7 +4705,7 @@ a fact about what the job is wired to rather than a rule it obeys. `UndeliveredN
 `NotificationService` and nothing else — no balance, no ledger, no transition — so there is no
 path by which a refused email undoes an approval. The seam that keeps it that way is the
 source-reading test in `notification.test.ts`, which now names `delivery.job.ts` among the files
-allowed to send at all, and it is the same seam LMS 329 put there: the send is *after* the
+allowed to send at all, and it is the same seam the notices put there: the send is *after* the
 commit, so there is no transaction left for it to fail.
 
 **What is deliberately not here.** `main.ts` drains what is due every minute. Nothing is retried
@@ -4716,12 +4719,12 @@ record is the thing they were told.
 ### My team
 
 **A manager sees their direct reports' balances, their booked leave, and the days more than one
-of them is off.** FR 55, FR 56, LMS 405. The story's "so that" is the whole design brief: *I can
+of them is off.** FR 55, FR 56. The story's "so that" is the whole design brief: *I can
 decide a request knowing who else is already away*. [The approver queue](#the-approver-queue)
 answers that one request at a time and only while a request is waiting; this is the standing
 view, and it is the screen somebody opens before the request arrives.
 
-**It is no longer a screen of its own.** LMS 409. `/api/me/team` is unchanged and everything
+**It is no longer a screen of its own.** `/api/me/team` is unchanged and everything
 below still holds; what changed is where a person reads it — inside their report's card on
 [Who is away](#who-is-away), because two screens drawing the same calendar over different
 people is a screen somebody learns not to trust.
@@ -4772,7 +4775,7 @@ their booked leave is still in the team calendar for the days before they went, 
 person while showing the absence would be the worse half of both answers.
 
 **And the screen is a tab like the others.** There is no flag on `/api/me` saying whether
-somebody manages anybody, for the reason [LMS 404](#the-approver-queue) gives about `canApprove`:
+somebody manages anybody, for the reason [The approver queue](#the-approver-queue) gives about `canApprove`:
 a client that decided what to draw from its own standing is a second answer to a question the
 server owns. Somebody who manages nobody gets the server's sentence.
 
@@ -4781,8 +4784,8 @@ server owns. Somebody who manages nobody gets the server's sentence.
 ### Who is away
 
 **Everybody can see who is off and when, and nobody can see what kind of leave it is or
-why.** FR 57, LMS 406, LMS 409. [My team](#my-team) was a second screen drawing the same
-calendar over a different set of people; LMS 409 folded it into this one. A colleague reads
+why.** FR 57. [My team](#my-team) was a second screen drawing the same
+calendar over a different set of people, and was folded into this one. A colleague reads
 dates and names, and the manager of the person being read gets the balances and booked leave
 FR 55 and FR 56 put on the old screen — out of `/api/me/team`, which is still the only call
 that may name a leave type.
@@ -4805,8 +4808,8 @@ that was typed into the fixture.
 | and nobody else's department | `/me/calendar` names the reader | `actor.employeeId`, off the verified cookie |
 | unless they are HR | asking for another is guarded, not filtered | `teamPolicy.everyDepartment` |
 
-**The calendar is your department.** LMS 409 replaced "whoever shares my manager" with
-it, because cover is arranged inside a department rather than inside a reporting line: Adwoa
+**The calendar is your department.** That replaced "whoever shares my manager",
+because cover is arranged inside a department rather than inside a reporting line: Adwoa
 plans a week around the six people in Operations, across four reporting levels, and not around
 the three who happen to share her team lead. `EmployeeRepository.findInDepartment` is the read,
 so somebody in Finance is never fetched rather than filtered out.
@@ -4834,16 +4837,16 @@ than one that will — and saying so discloses nothing about why the days were w
 and withdrawn leave is not on it at all: `liveOverlapping` is the read, as everywhere else.
 
 **And the screen is a tab like the others**, offered to everybody, for the reason
-[LMS 404](#the-approver-queue) gives. It is now the only calendar: "My team" is not a tab, and
+[The approver queue](#the-approver-queue) gives. It is now the only calendar: "My team" is not a tab, and
 what was only on it is drawn inside the card of anybody who reports to the reader.
 
 ---
 
 ### The leaver figure
 
-**What somebody is owed on their last day, with the sum written out.** FR 37a, §8.6d, §8.7,
-LMS 509. `GET /api/leavers/:employeeId` answers it and the **Leavers** screen draws it. The
-story's "so that" is the whole design brief: *the final payment can be checked rather than
+**What somebody is owed on their last day, with the sum written out.** FR 37a, §8.6d, §8.7.
+`GET /api/leavers/:employeeId` answers it and the **Leavers** screen draws it. The
+whole design brief is this: *the final payment can be checked rather than
 taken on trust*, and a single number nobody can take apart is exactly what that is not.
 
 **The figure is `accrued + carried over + adjustments − taken`.** The accrual is
@@ -4945,7 +4948,7 @@ number clamped at nought would hide the case FR 37a exists to surface.
 
 ### HR reports
 
-**Five reports on leave across the company, on the Reports screen.** FR 63, LMS 510. All
+**Five reports on leave across the company, on the Reports screen.** FR 63. All
 read only, all `HR_OFFICER`, `HR_ADMIN` and `SYS_ADMIN`, served from `/api/reports/*`.
 
 | Report | What it counts |
@@ -4967,7 +4970,7 @@ another figure from the screen. It is not a stored policy setting yet.
 ### Filters and export
 
 **Every report narrows by department and leave type, and saves as CSV or XLSX.** FR 58,
-FR 64, LMS 511. `departmentId` and `leaveTypeId` on any `/api/reports/*`; an id that does
+FR 64. `departmentId` and `leaveTypeId` on any `/api/reports/*`; an id that does
 not exist is a 404. Each response carries `choices`, the departments and types to pick from.
 
 | Report | Its date range |
@@ -4988,7 +4991,7 @@ an inline string. Files are sent `Cache-Control: no-store`.
 
 ### Email wording
 
-**HR rewords any email the system sends, without a deployment.** FR 61, LMS 512. Each email
+**HR rewords any email the system sends, without a deployment.** FR 61. Each email
 is a subject line and a message with `{{placeholders}}`, served from `/api/email-wording`.
 Reading is `HR_OFFICER`, `HR_ADMIN` and `SYS_ADMIN`; changing it is `HR_OFFICER` and `HR_ADMIN`.
 
@@ -5006,8 +5009,8 @@ Reading is `HR_OFFICER`, `HR_ADMIN` and `SYS_ADMIN`; changing it is `HR_OFFICER`
 
 ### Deleting certificates after retention
 
-**A stored certificate is deleted once the retention period has passed.** NFR SEC 06,
-LMS 514. `AttachmentPurge` deletes the file on the day `fileDeletedOn` gives: the period
+**A stored certificate is deleted once the retention period has passed.** NFR SEC 06.
+`AttachmentPurge` deletes the file on the day `fileDeletedOn` gives: the period
 after the leave ends.
 
 | Rule | Why |

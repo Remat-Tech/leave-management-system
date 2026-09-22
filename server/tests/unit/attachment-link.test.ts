@@ -13,7 +13,7 @@ import {
 } from '../../src/features/leave-request/attachment-link.js';
 
 /**
- * The short-lived link a certificate is fetched through. NFR SEC 04, NFR SEC 06. LMS 407.
+ * The short-lived link a certificate is fetched through. NFR SEC 04, NFR SEC 06.
  *
  * Everything pure: what a token is, what is kept of it, and the four reasons a link opens
  * nothing. That the row is written, the link spent once and the policy asked again at the

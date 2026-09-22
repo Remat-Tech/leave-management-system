@@ -1,4 +1,4 @@
-/** The marks in the rail, on the cards and in the buttons. LMS 409. */
+/** The marks in the rail, on the cards and in the buttons. */
 
 /**
  * One glyph per name, inline rather than an icon package.
@@ -36,11 +36,8 @@ export type IconName =
   | 'pencil'
   | 'up'
   | 'down'
-  /* LMS 510. */
   | 'report'
-  /* LMS 511. */
   | 'download'
-  /* LMS 513. */
   | 'history'
   /* Showing and hiding a password as it is typed. */
   | 'eye'
@@ -60,9 +57,9 @@ const PATHS: Record<IconName, string> = {
     'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2 20a7 7 0 0 1 14 0M17 4.5a3.5 3.5 0 0 1 0 7M18 20a6.5 6.5 0 0 0-2-4.7',
   /** Waiting on you: a clock, because what it is about is how long it has been sitting there. */
   approvals: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.5V12l3 2',
-  /** LMS 501. Setting the rules up: sliders, because each one is a value being set. */
+  /** Setting the rules up: sliders, because each one is a value being set. */
   settings: 'M4 7h10M18 7h2M4 17h2M10 17h10M16 4.5v5M8 14.5v5',
-  /** LMS 504. The calendar of `balances`, with one day ringed on it. */
+  /** The calendar of `balances`, with one day ringed on it. */
   holiday:
     'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4M12 17.25a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5z',
 
@@ -87,22 +84,22 @@ const PATHS: Record<IconName, string> = {
   send: 'M21 3 10.5 13.5M21 3l-6.5 18-4-8-8-4z',
   clip: 'M20 11.5 12 19.5a5 5 0 0 1-7-7l8.5-8.5a3.4 3.4 0 0 1 5 5L10 17.5a1.8 1.8 0 0 1-2.5-2.5l8-8',
   upload: 'M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
-  /** LMS 410. Trying the same thing again. */
+  /** Trying the same thing again. */
   again: 'M20 12a8 8 0 1 1-2.6-5.9M20 3.5V8h-4.5',
-  /** LMS 501. Adding one. */
+  /** Adding one. */
   plus: 'M12 5v14M5 12h14',
-  /** LMS 503. Changing one: a pencil over the line it is writing on. */
+  /** Changing one: a pencil over the line it is writing on. */
   pencil: 'M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16zM14 6l4 4',
-  /** LMS 503. A step moving up or down an approval chain. */
+  /** A step moving up or down an approval chain. */
   up: 'M6 15l6-6 6 6',
   /** Back: `up` turned to face left. */
   back: 'M15 18l-6-6 6-6',
   down: 'M6 9l6 6 6-6',
-  /** LMS 510. HR's reports: a bar chart. */
+  /** HR's reports: a bar chart. */
   report: 'M4 20h16M7 16v-5M12 16V6M17 16v-8',
-  /** LMS 511. Saving a file: `upload` the other way. */
+  /** Saving a file: `upload` the other way. */
   download: 'M12 4v12m0 0-4-4m4 4 4-4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
-  /** LMS 513. The audit log: a clock turning back. */
+  /** The audit log: a clock turning back. */
   history: 'M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 3.5V8H8M12 7.5V12l3 2',
   /** The password is hidden; pressing shows it. */
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',

@@ -1,4 +1,4 @@
-/** Naming who is writing, so the audit trigger can record it. NFR AUD 01, LMS 113. */
+/** Naming who is writing, so the audit trigger can record it. NFR AUD 01. */
 
 import { type Kysely, sql } from 'kysely';
 import type { Database } from './index.js';

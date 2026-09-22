@@ -1,4 +1,4 @@
-/** Dates, instants, and the line between them. NFR DAT 03, LMS 114, LMS 207. */
+/** Dates, instants, and the line between them. NFR DAT 03. */
 
 /** A calendar date, `YYYY-MM-DD`, with no time and no timezone. */
 export type CalendarDate = string;
@@ -18,7 +18,7 @@ export function isCalendarDate(value: unknown): value is CalendarDate {
 }
 
 /**
- * The day after this one. LMS 205.
+ * The day after this one.
  *
  * The only arithmetic this file does on a calendar date, and it is here rather
  * than beside the one rule that wants it — `earliestOpenDayOf` in
@@ -47,7 +47,7 @@ export function dayAfter(day: CalendarDate): CalendarDate {
 }
 
 /**
- * The day before this one. LMS 205.
+ * The day before this one.
  *
  * The counterpart of {@link dayAfter}, and it exists because naming a gap needs
  * both ends: the days between one leave year and the next run from the day after
@@ -58,7 +58,7 @@ export function dayBefore(day: CalendarDate): CalendarDate {
 }
 
 /**
- * The same day, so many months later. FR 32e, LMS 218.
+ * The same day, so many months later. FR 32e.
  *
  * "Usable within six months" is a sentence about months rather than about a hundred
  * and eighty-something days, so this counts in months: six months after the fourth of
@@ -124,7 +124,6 @@ function shift(day: CalendarDate, days: number): CalendarDate {
 
 /**
  * Which day of the week that day is, numbered as this system numbers them.
- * LMS 207.
  *
  * ISO: 1 is Monday and 7 is Sunday, which is what `work_pattern_day.day_of_week`
  * holds and what {@link worksOn} takes. JavaScript numbers them from 0 for Sunday,
@@ -157,7 +156,7 @@ export function isoWeekdayOf(day: CalendarDate): number {
 }
 
 /**
- * Every day from one to another, inclusive at both ends. LMS 207.
+ * Every day from one to another, inclusive at both ends.
  *
  * What the leave calculator walks. Inclusive because that is how a person writes a
  * period of leave — the first day off and the last day off, both of them days they
@@ -184,7 +183,7 @@ export function* eachDay(from: CalendarDate, to: CalendarDate): Generator<Calend
 }
 
 /**
- * How many days there are from one to another, inclusive at both ends. LMS 207.
+ * How many days there are from one to another, inclusive at both ends.
  *
  * `2026-12-25` to `2026-12-26` is two days, not one, for the same reason
  * {@link eachDay} is inclusive. Zero where the period runs backwards, which is the
@@ -370,7 +369,7 @@ export function formatInstant(instant: Date, zone: string): string {
 }
 
 /**
- * A calendar date, said the way a person says it. `31 December 2026`. LMS 303.
+ * A calendar date, said the way a person says it. `31 December 2026`.
  *
  * The counterpart of {@link formatInstant} for the other half of this file's rule, and
  * it exists for the third of that function's four reasons: **the month is a word**.

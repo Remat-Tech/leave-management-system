@@ -1,5 +1,5 @@
 /**
- * What somebody has left, for every kind of leave, on one screen. FR 53, §7.4., LMS 401, FR 05, FR 37, FR 22, FR 32g, FR 36, LMS 211.
+ * What somebody has left, for every kind of leave, on one screen. FR 53, §7.4., FR 05, FR 37, FR 22, FR 32g, FR 36.
  */
 
 import {

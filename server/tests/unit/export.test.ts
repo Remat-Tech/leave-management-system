@@ -9,7 +9,7 @@ import {
 } from '../../src/export/table.js';
 import { columnName, tableAsXlsx } from '../../src/export/xlsx.js';
 
-/** Exporting a table. FR 64, LMS 511. */
+/** Exporting a table. FR 64. */
 
 const TABLE: Table = {
   name: 'Leave liability 2026',

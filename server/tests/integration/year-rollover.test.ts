@@ -34,7 +34,7 @@ import {
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * The year rollover, against a real database. FR 36, FR 36a, §11. LMS 217.
+ * The year rollover, against a real database. FR 36, FR 36a, §11.
  *
  * ../unit/year-rollover.test.ts proves what carries and what does not, which is a pure
  * function. What needs a server is the half a pure function cannot have, and for this
@@ -249,7 +249,7 @@ async function asksFor(days: number): Promise<void> {
 }
 
 /**
- * Days taken, the way they are actually taken since LMS 301.
+ * Days taken, the way they are actually taken.
  *
  * A RESERVATION has to name a request and a request has to hold days, so "five days
  * gone" is no longer one call — it is a request that holds them and an approval that
@@ -290,7 +290,7 @@ async function holdDays(movement: {
       from: rows[0].start_date,
       to: rows[0].end_date,
       reason: movement.reason,
-      /** FR 18, LMS 308. */
+      /** FR 18. */
       lateEntryReason: null,
       evidenceRequired: false,
       certifiedDays: 0,
@@ -299,9 +299,9 @@ async function holdDays(movement: {
       calendarDays: movement.days,
       status: 'SUBMITTED' as const,
       /* FR 38a. Where a request starts, which `LeaveRequestService` reads off the leave
-         type's chain. This fixture goes straight to the door, so it says it. LMS 314. */
+         type's chain. This fixture goes straight to the door, so it says it. */
       awaitingApprovalFrom: 'MANAGER' as const,
-      /** FR 48b. Nothing to skip: every desk can be asked. LMS 320. */
+      /** FR 48b. Nothing to skip: every desk can be asked. */
       skips: [],
     },
     reason: movement.reason,
@@ -530,7 +530,7 @@ describe('what carries and what does not, on a migrated database', () => {
     expect(rows[0].n).toBe(0);
     expect(run.carried.every((carry) => carry.leaveTypeId === annualId)).toBe(true);
 
-    /* Every type the run considered at all is a quota type, which since LMS 401 is three
+    /* Every type the run considered at all is a quota type, which is three
        of them rather than two: unpaid leave became a yearly allowance, so it reaches the
        decision and is reported as carrying nothing. The claim is unchanged — no event
        based type carries anything — and the list it is asserted against had to grow with
@@ -878,7 +878,7 @@ describe('who may roll a year over', () => {
   });
 
   /* It stops at the close, which is `leaveYearPolicy.close` and an HR Administrator's
-     since LMS 205. Nothing is written on the way to the refusal. */
+    . Nothing is written on the way to the refusal. */
   it('and not an HR Officer, who cannot close a year', async () => {
     await expect(job.run(asOfficer(), y2025.id)).rejects.toBeInstanceOf(NotAuthorised);
 

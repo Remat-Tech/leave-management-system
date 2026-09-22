@@ -1,5 +1,5 @@
 /**
- * Chasing whoever a request is waiting on, every day until they decide it. FR 50, FR 60, §7.1., LMS 330.
+ * Chasing whoever a request is waiting on, every day until they decide it. FR 50, FR 60, §7.1..
  */
 
 import { type LeaveRequest, noticeGiven } from '../leave-request/leave-request.js';

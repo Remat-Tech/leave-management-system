@@ -44,7 +44,7 @@ import { recordingMailer } from '../support/recording-mailer.js';
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * An approver hands their approvals to a colleague while away. FR 49, §8.6a. LMS 327.
+ * An approver hands their approvals to a colleague while away. FR 49, §8.6a.
  *
  * ../unit/delegation.test.ts proves what a nomination is, which days it covers and which
  * desks it reaches — all pure. What needs a server:
@@ -130,7 +130,7 @@ beforeAll(async () => {
     decisions,
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     new AttachmentRepository(db),
     roles,
@@ -154,7 +154,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /** FR 18, LMS 308. The fixture days are months behind today. */
+  /** FR 18. The fixture days are months behind today. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
 
   await clear();
@@ -504,7 +504,7 @@ describe('a decision a delegate made', () => {
     await twentyDaysFor(people.officer);
 
     /* The head of HR covers for the team lead, so the manager's stage and the HR stage both
-       resolve to her. LMS 322 sends the second one to the desk she signed at. */
+       resolve to her. The second one goes to the desk she signed at. */
     await delegations.nominate(asTheTeamLead(), {
       approverId: people.teamLead,
       delegateId: people.headOfHr,
@@ -534,7 +534,7 @@ describe('a decision a delegate made', () => {
 /* ------------------------------------------------- and never over the delegator's own leave */
 
 /**
- * FR 48, LMS 319, reaching the one path that could have gone round it.
+ * FR 48, reaching the one path that could have gone round it.
  *
  * The lone HR officer's own unpaid leave stands at the desk she staffs. Handing her
  * approvals to a colleague must not turn that into a request her nominee can grant.
@@ -561,7 +561,7 @@ describe('a delegation over the delegator’s own leave', () => {
    * And the queue says the same thing the door does.
    *
    * The row is genuinely at a desk the delegate covers, so it is on their queue — the shape
-   * LMS 404 rules out is a queue that hides what nobody can move. It is marked instead.
+   * the queue rules out is one that hides what nobody can move. It is marked instead.
    */
   it('and the delegate’s queue marks it rather than hiding it', async () => {
     await annualLeaveGoesTo('HR');
@@ -701,7 +701,7 @@ function aRequest(employeeId: string): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. The fixture week is behind today. */
+    /** FR 17. The fixture week is behind today. */
     acknowledgesShortNotice: true,
   };
 }

@@ -1,4 +1,4 @@
-/** The team screen, over HTTP. FR 55, FR 56, LMS 405, NFR DAT 03. */
+/** The team screen, over HTTP. FR 55, FR 56, NFR DAT 03. */
 
 import { type Request, type Response, Router } from 'express';
 import type { BalanceStatementLine } from '../balance/balance-statement.js';

@@ -1,5 +1,5 @@
 /**
- * Saving a request and finishing it later. FR 19, FR 10, §6., LMS 302.
+ * Saving a request and finishing it later. FR 19, FR 10, §6..
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -29,7 +29,7 @@ export class LeaveRequestDraftService {
     /** Whose draft it is, which no id can say by itself. */
     private readonly employees: EmployeeRepository,
     /**
-     * The one door that prices and writes a request. LMS 301.
+     * The one door that prices and writes a request.
      *
      * Held rather than reimplemented: finishing a draft is an ordinary submission, and a
      * second path into `leave_request` would be a second answer to what a fortnight costs
@@ -118,7 +118,7 @@ export class LeaveRequestDraftService {
    * {@link LeaveOverlapsAnother}, which names the request that is already there.
    *
    * Neither the acknowledgement nor the late entry reason is one of the draft's fields.
-   * FR 17, FR 18, LMS 307, LMS 308: both depend on the day it is submitted rather than on
+   * FR 17, FR 18: both depend on the day it is submitted rather than on
    * anything planned, so they arrive with the finishing.
    *
    * Throws {@link DraftIsNotFinished} for one with a field still to fill in,
@@ -137,11 +137,11 @@ export class LeaveRequestDraftService {
     const submitted = await this.requests.submit(actor, {
       employeeId: draft.employeeId,
       ...readyToSubmit(draft),
-      /** FR 17, LMS 307. */
+      /** FR 17. */
       acknowledgesShortNotice,
-      /** FR 18, LMS 308. */
+      /** FR 18. */
       lateEntryReason,
-      /** FR 13, FR 32a, LMS 311. Named when the draft is finished; a draft holds no files. */
+      /** FR 13, FR 32a. Named when the draft is finished; a draft holds no files. */
       evidence,
     });
 

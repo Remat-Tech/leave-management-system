@@ -1,5 +1,5 @@
 /**
- * Who approves a kind of leave, and in what order. FR 38a, §5.5., LMS 204, FR 04, FR 48, LMS 316, LMS 314, FR 31.
+ * Who approves a kind of leave, and in what order. FR 38a, §5.5., FR 04, FR 48, FR 31.
  */
 
 /** The desks a stage of a chain can name. FR 38a. */
@@ -136,7 +136,7 @@ export function firstApprover(chain: readonly ApproverRole[]): ApproverRole | un
 
 /**
  * The first desk in this chain that has not approved yet, or undefined when
- * every one of them has. FR 41, FR 42. LMS 316.
+ * every one of them has. FR 41, FR 42.
  *
  * The whole of the walk, and it is here rather than in the request workflow of
  * Phase 3 for the reason {@link worksOn} is here rather than in the leave
@@ -147,7 +147,7 @@ export function firstApprover(chain: readonly ApproverRole[]): ApproverRole | un
  *
  * ## It replaced `approverAfter`, and the difference is the story
  *
- * LMS 314 walked the chain with `approverAfter(chain, theDeskItWasAt)` — "the
+ * The old walk used `approverAfter(chain, theDeskItWasAt)` — "the
  * one after the one that just signed" — and kept a cursor on the request saying
  * where it had got to. That is right whenever the chain stands still, and the
  * chain does not have to: FR 31 gives it to an HR Administrator, who may edit it
@@ -158,8 +158,8 @@ export function firstApprover(chain: readonly ApproverRole[]): ApproverRole | un
  * manager has signed, and the administrator changes the chain to CEO, manager,
  * HR. The cursor says HR; the desk after HR is nothing; so HR's yes approves the
  * leave and the Chief Executive — a stage the policy now names — never sees it.
- * The employee is told their leave is agreed, which is the sentence LMS 316
- * exists to make true.
+ * The employee is told their leave is agreed, which is the sentence the every-stage
+ * rule exists to make true.
  *
  * Asking instead which desk has *not* signed cannot make that mistake, because
  * it is a question about the whole chain rather than about one position in it.
@@ -215,7 +215,7 @@ export function stagesNotApproved(
   return chain.filter((desk) => !approved.includes(desk));
 }
 
-/** Every stage that has not decided at all, in chain order. FR 44, §7.2, LMS 318. */
+/** Every stage that has not decided at all, in chain order. FR 44, §7.2. */
 export function stagesYetToDecide(
   chain: readonly ApproverRole[],
   decided: readonly ApproverRole[],
@@ -258,7 +258,7 @@ export function chainInWords(chain: readonly ApproverRole[]): string {
 }
 
 /**
- * One desk, as a configuration screen names it. FR 38a, LMS 503.
+ * One desk, as a configuration screen names it. FR 38a.
  *
  * The other half of {@link deskInWords}, and a separate function rather than a case in it,
  * because they are two different voices for two different readers. A person asking for
@@ -293,7 +293,7 @@ export function chainLabel(chain: readonly ApproverRole[]): string {
 /**
  * One desk, as a person says it rather than as the column holds it.
  *
- * Exported since LMS 329, and for the reason {@link chainInWords} gives about itself: the
+ * Exported, and for the reason {@link chainInWords} gives about itself: the
  * same words are wanted in an email, in an error and on a screen. A notification saying
  * "your leave is now with HR" is naming one desk rather than a chain, and
  * `chainInWords([desk])` said it correctly while reading as a list of one — which is the
@@ -311,7 +311,7 @@ export function deskInWords(role: ApproverRole): string {
 }
 
 /**
- * The same desk, said to somebody who is not the person taking the leave. LMS 404.
+ * The same desk, said to somebody who is not the person taking the leave.
  *
  * {@link deskInWords} is second person — every caller it had was talking to the requester — and
  * an approver queue is the first screen here that describes somebody else's request. Only
@@ -326,7 +326,7 @@ export function deskInWordsAbout(role: ApproverRole, whose: string): string {
   return role === 'MANAGER' ? `${whose} manager` : deskInWords(role);
 }
 
-/** A chain said about somebody else, as {@link chainInWords} says it to them. LMS 404. */
+/** A chain said about somebody else, as {@link chainInWords} says it to them. */
 export function chainInWordsAbout(chain: readonly ApproverRole[], whose: string): string {
   if (chain.length === 0) {
     return 'nobody';

@@ -1,4 +1,4 @@
-/** Sends a table as a file to save. FR 64, LMS 511. */
+/** Sends a table as a file to save. FR 64. */
 
 import type { Response } from 'express';
 import { tableAsCsv } from '../export/csv.js';

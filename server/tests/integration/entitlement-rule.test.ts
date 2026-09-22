@@ -31,7 +31,7 @@ import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 
 /**
- * Entitlement rules against a real database. FR 31, §5.5. LMS 203.
+ * Entitlement rules against a real database. FR 31, §5.5.
  *
  * ../unit/entitlement-rule.test.ts is where the resolution rule is proved, because
  * it is a pure function and a database would only slow the proof down. What needs
@@ -112,7 +112,7 @@ afterAll(async () => {
  * The boundary is a constructor argument rather than a table read, which is what
  * lets the rule itself be proved with a fixed answer and lets the real reader be
  * proved separately — see "the boundary read from the leave years themselves"
- * below, where LMS 205 hands it {@link earliestOpenDayFrom} and an administrator
+ * below, where the leave year hands it {@link earliestOpenDayFrom} and an administrator
  * closes an actual year.
  */
 function ruleServiceWith(earliestOpenDay: EarliestOpenDay): EntitlementRuleService {
@@ -160,7 +160,7 @@ describe('the figures of the FR 32 table', () => {
   });
 
   /**
-   * The two figures LMS 203 left for HR, and LMS 401 settled.
+   * The two figures left for HR, and since settled.
    *
    * This test used to assert their **absence** — "no rule at all is the honest answer for
    * both, and it is a different answer from zero" — because FR 32h was read as agreed
@@ -554,7 +554,7 @@ describe('the rules the database holds as well as the domain', () => {
   });
 });
 
-describe('a closed leave year, LMS 205', () => {
+describe('a closed leave year', () => {
   /* The boundary is the one rule no constraint on this table can hold, because a
      closed year is a row in another one. A service built with a fixed answer is
      how the rule itself is proved; that the answer now comes from `leave_year` is
@@ -597,10 +597,10 @@ describe('a closed leave year, LMS 205', () => {
 });
 
 /**
- * The seam this story left, joined from the side that reads it. LMS 205.
+ * The seam this story left, joined from the side that reads it.
  *
  * This file used to say that swapping {@link NOTHING_IS_CLOSED_YET} for the real
- * reader was all LMS 205 had to do here, and this is that swap being taken at its
+ * reader was all the leave year had to do here, and this is that swap being taken at its
  * word: a service built with {@link earliestOpenDayFrom} rather than with a fixed
  * answer, refusing a figure dated into a year an administrator actually closed.
  *
@@ -626,7 +626,7 @@ describe('the boundary read from the leave years themselves', () => {
     await admin.query(`UPDATE leave_year SET is_closed = TRUE WHERE label = '2025'`);
   }
 
-  /* CASCADE since LMS 210: a leave year is now the heading a run of ledger entries
+  /* CASCADE: a leave year is now the heading a run of ledger entries
      is filed under, and Postgres will not truncate a referenced table without being
      told what to do about the rows pointing at it. */
   afterEach(async () => {
@@ -650,7 +650,7 @@ describe('the boundary read from the leave years themselves', () => {
     ).resolves.toMatchObject({ effectiveFrom: '2025-06-01' });
   });
 
-  /* The whole story of LMS 205 in one assertion: an administrator closes 2025,
+  /* The whole of the leave year rule in one assertion: an administrator closes 2025,
      and a figure dated into it is refused — by a rule that read a row rather
      than an argument somebody passed in. */
   it('refuses a figure dated into a year somebody has closed', async () => {
@@ -711,7 +711,7 @@ describe('the boundary read from the leave years themselves', () => {
   });
 });
 
-describe('who may see and set a figure, LMS 112', () => {
+describe('who may see and set a figure', () => {
   const asEmployee = (id: string) => signedInAs(id, { roles: ['EMPLOYEE'], isManager: false });
 
   it('is set by an HR Administrator', async () => {

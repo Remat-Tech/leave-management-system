@@ -21,7 +21,7 @@ import type { LeaveYearRepository } from './leave-year.db.js';
 
 export class CarryoverExpiry {
   constructor(
-    /** The one door that writes a movement. LMS 212. */
+    /** The one door that writes a movement. */
     private readonly balances: BalanceService,
     /** Every balance in a year, to find the ones with carried days. */
     private readonly balanceRows: BalanceRepository,

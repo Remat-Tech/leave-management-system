@@ -12,7 +12,7 @@ import {
 } from '../../src/features/sign-in/session-cookie.routes.js';
 
 /**
- * The session cookie. LMS 401.
+ * The session cookie.
  *
  * The first credential this system issues, and the only part of the route layer that is
  * pure enough to test without a socket. ../integration/balances-api.test.ts proves it

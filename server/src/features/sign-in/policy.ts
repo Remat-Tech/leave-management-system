@@ -1,5 +1,5 @@
 /**
- * Who may give somebody a login, take one away, and see one. NFR SEC 01, NFR SEC 02, §10., LMS 112, LMS 109, LMS 110.
+ * Who may give somebody a login, take one away, and see one. NFR SEC 01, NFR SEC 02, §10..
  */
 
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
@@ -47,7 +47,7 @@ function lock(actor: Actor, action: string, employeeId: string): Decision {
 export const signInPolicy = {
   resource: about.resource,
 
-  /** Giving somebody a login. LMS 109. */
+  /** Giving somebody a login. */
   provision(actor: Actor, employeeId: string): Decision {
     return settingUp(actor, 'provision', employeeId);
   },
@@ -102,7 +102,7 @@ export const signInPolicy = {
       : about.refuse(actor, 'search', null, 'holds no role that provides logins');
   },
 
-  /** Turning the one time code on or off for somebody. LMS 110. */
+  /** Turning the one time code on or off for somebody. */
   changeCodeSetting(actor: Actor, employeeId: string): Decision {
     if (isSelf(actor, employeeId)) {
       return about.allow(actor, 'changeCodeSetting', employeeId);

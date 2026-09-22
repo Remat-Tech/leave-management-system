@@ -1,4 +1,4 @@
-/** An approver's approvals, answered by a colleague while they are away. FR 49, FR 52, §8.6a, LMS 327. */
+/** An approver's approvals, answered by a colleague while they are away. FR 49, FR 52, §8.6a. */
 
 import type { ApproverRole } from '../leave-type/approval-chain.js';
 import type { Authority, RoleCode } from '../role/roles.js';
@@ -46,7 +46,7 @@ export interface ApprovalDelegation extends ValidatedDelegation {
 }
 
 /**
- * One colleague's approvals and what they amount to, for {@link desksStaffedBy}. FR 49, LMS 327.
+ * One colleague's approvals and what they amount to, for {@link desksStaffedBy}. FR 49.
  *
  * A delegation is of a person, so which desks it reaches is a question about the delegator's
  * roles and reporting line rather than about the row.
@@ -56,12 +56,12 @@ export interface DelegatedDesks {
   desks: readonly ApproverRole[];
 }
 
-/** One delegation, with what the delegator holds today. FR 49, LMS 327. */
+/** One delegation, with what the delegator holds today. FR 49. */
 export interface DelegatedApprover extends Authority {
   approverId: string;
 }
 
-/** What each delegation amounts to, from what its approver holds. FR 49, LMS 327. */
+/** What each delegation amounts to, from what its approver holds. FR 49. */
 export function delegatedAuthorityFrom(
   delegations: readonly ApprovalDelegation[],
   rolesHeld: ReadonlyMap<string, readonly RoleCode[]>,
@@ -180,7 +180,7 @@ export function validateNewDelegation(input: NewDelegation): ValidatedDelegation
    with it — the same argument `balanceFrom(entries)` loses in ../balance/balance.ts. */
 
 /**
- * The delegations that carry standing over this request. FR 48, FR 49, §8.6a, LMS 319, LMS 327.
+ * The delegations that carry standing over this request. FR 48, FR 49, §8.6a.
  *
  * A delegation hands over the approvals somebody owes other people, never a say over their
  * own leave — otherwise the lone HR officer whose own request stands at her desk could grant

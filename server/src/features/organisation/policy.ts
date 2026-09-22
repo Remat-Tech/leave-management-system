@@ -1,4 +1,4 @@
-/** Who may see how the organisation is set up, and who may change it. FR 48c, NFR SEC 02, §10., LMS 112, LMS 321. */
+/** Who may see how the organisation is set up, and who may change it. FR 48c, NFR SEC 02, §10.. */
 
 import { type Actor, holdsAny } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';
@@ -11,7 +11,7 @@ const SETUP_IS_THE_ADMINISTRATORS =
   'Who the Chief Executive is decides where unpaid leave goes for everybody, so it is set ' +
   'by an HR Administrator rather than by anybody who can see it. Ask one. FR 48c.';
 
-/** The same, for the settings that are not a person. LMS 505. */
+/** The same, for the settings that are not a person. */
 const POLICY_IS_THE_ADMINISTRATORS =
   'The policy settings decide how every request in the company is decided and how long ' +
   'certificates are kept, so they are set by an HR Administrator. Ask one. FR 44, NFR SEC 06.';
@@ -48,7 +48,7 @@ export const organisationPolicy = {
   },
 
   /**
-   * Changing the override rule and the retention window. FR 44, NFR SEC 06, LMS 505.
+   * Changing the override rule and the retention window. FR 44, NFR SEC 06.
    *
    * The same standing as naming the Chief Executive: both change what the system does to
    * everybody, and neither is an HR Officer's.

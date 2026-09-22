@@ -1,4 +1,4 @@
-/** The daily chase: every pending request, every approver, until somebody decides. FR 50, FR 60, LMS 330. */
+/** The daily chase: every pending request, every approver, until somebody decides. FR 50, FR 60. */
 
 import type { Actor } from '../../auth/actor.js';
 import { alreadyReminded, daysWaiting } from './reminder.js';
@@ -69,7 +69,7 @@ export class DailyApproverReminders {
     const notReminded: NotReminded[] = [];
 
     for (const item of waiting) {
-      /* FR 48b. Nobody is at the desk, so this is LMS 320's alert rather than a chase, and a
+      /* FR 48b. Nobody is at the desk, so this is the unroutable alert rather than a chase, and a
          reminder addressed to nobody is not written. */
       if (item.approvers.length === 0) {
         notReminded.push({

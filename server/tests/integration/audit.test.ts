@@ -31,7 +31,7 @@ import { recordingMailer, type RecordingMailer } from '../support/recording-mail
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * The audit log, against a real database. NFR AUD 01 and NFR AUD 02. LMS 113.
+ * The audit log, against a real database. NFR AUD 01 and NFR AUD 02.
  *
  * Almost the whole of this story is in the database: the entries are written by
  * triggers, the refusals are enforced by triggers, and the privileges are what
@@ -137,7 +137,7 @@ async function historyOf(employeeId: string) {
  * Signs somebody in and hands back the actor, which is the only way to get one.
  *
  * Answers the one time code where one is asked for. The HR roles are exactly the
- * roles LMS 110 makes a code mandatory for, and they are exactly the roles that
+ * roles a code is mandatory for, and they are exactly the roles that
  * do the interesting writing here.
  */
 async function signIn(email: string): Promise<Actor> {
@@ -279,7 +279,7 @@ describe('every change writes an entry', () => {
     expect(days.filter((entry) => entry.action === 'DELETE')).toHaveLength(7);
   });
 
-  it('records a role being granted, which is what LMS 111 left for this story', async () => {
+  it('records a role being granted, which the role rules left to this layer', async () => {
     /* user_role.granted_by was deliberately never added: the date was on the row
        and the name waited for an authenticated actor and a place to put it. */
     const ama = await signIn('ama.mensah@rematholdings.com').catch(() => null);
@@ -578,7 +578,7 @@ describe('reading the account of what happened', () => {
   });
 
   it('refuses a colleague the history, exactly as it refuses them the record', async () => {
-    /* Without this the whole of LMS 112 comes undone: somebody refused a record
+    /* Without this the whole of the authorisation layer comes undone: somebody refused a record
        could ask for its history and be handed several copies of it. */
     const adwoa = await signIn(OFFICER_EMAIL);
 

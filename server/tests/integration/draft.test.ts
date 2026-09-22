@@ -43,7 +43,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Saving a request and finishing it later. FR 19, §6. LMS 302.
+ * Saving a request and finishing it later. FR 19, §6.
  *
  * ../unit/draft.test.ts proves what is pure: what a draft may hold and what it is still
  * missing. What needs a server is everything a draft is defined by *not* doing —
@@ -104,12 +104,12 @@ beforeAll(async () => {
     decisions,
     routing,
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
-    /** FR 13, LMS 311. */
+    /** FR 13. */
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     organisation,
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -288,7 +288,7 @@ describe('saving a draft', () => {
       leaveTypeId: annualId,
       ...period,
       reason: 'The same week, asked for properly',
-      /** FR 17, LMS 307. {@link nextWeek} is seven days out and annual leave wants fourteen. */
+      /** FR 17. {@link nextWeek} is seven days out and annual leave wants fourteen. */
       acknowledgesShortNotice: true,
     });
 
@@ -454,7 +454,7 @@ describe('submitting a draft', () => {
   });
 
   /**
-   * FR 17, LMS 307. The acknowledgement is asked for when the draft is finished.
+   * FR 17. The acknowledgement is asked for when the draft is finished.
    *
    * It is not one of the draft's four fields and deliberately cannot be: how short the notice
    * is depends on the day it is submitted, so a tick saved a fortnight ago would answer a
@@ -530,7 +530,7 @@ describe('submitting a draft', () => {
       leaveTypeId: annualId,
       ...period,
       reason: 'Already asked for',
-      /** FR 17, LMS 307. */
+      /** FR 17. */
       acknowledgesShortNotice: true,
     });
 

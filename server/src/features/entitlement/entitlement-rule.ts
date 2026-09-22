@@ -1,5 +1,5 @@
 /**
- * What a leave type is worth, and from when. FR 31, §5.5., LMS 203, LMS 205, LMS 013, LMS 215, LMS 210, LMS 211.
+ * What a leave type is worth, and from when. FR 31, §5.5..
  */
 
 import { type CalendarDate, isCalendarDate } from '../../shared/time.js';
@@ -73,10 +73,10 @@ export interface AsAt {
   on: CalendarDate;
 }
 
-/** The first day still open to change, or null where nothing has been closed. LMS 217, LMS 205. */
+/** The first day still open to change, or null where nothing has been closed. */
 export type EarliestOpenDay = () => Promise<CalendarDate | null>;
 
-/** No year has been closed. LMS 205. */
+/** No year has been closed. */
 export const NOTHING_IS_CLOSED_YET: EarliestOpenDay = async () => null;
 
 /** A rule that was refused, and the field that caused it. NFR USA 03. */

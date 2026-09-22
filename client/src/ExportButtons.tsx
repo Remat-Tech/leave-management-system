@@ -3,7 +3,7 @@ import { type ExportFormat, isNotSignedIn, saveExport } from './api';
 import { Icon } from './Icon';
 import { type Problem, problemFrom } from './problem';
 
-/** Saves what is on screen as CSV or XLSX. FR 64, LMS 511. */
+/** Saves what is on screen as CSV or XLSX. FR 64. */
 export function ExportButtons({
   path,
   onSignedOut,

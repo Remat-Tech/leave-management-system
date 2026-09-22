@@ -1,4 +1,4 @@
-/** Database access for leave years. §5.4., LMS 205. */
+/** Database access for leave years. §5.4.. */
 
 import type { Insertable, Kysely, Selectable, Updateable } from 'kysely';
 import type { Database } from '../../db/index.js';

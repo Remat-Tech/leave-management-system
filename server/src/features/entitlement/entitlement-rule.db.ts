@@ -1,4 +1,4 @@
-/** Database access for entitlement rules. FR 31, §5.5., LMS 203. */
+/** Database access for entitlement rules. FR 31, §5.5.. */
 
 import type { Insertable, Kysely, Selectable, Updateable } from 'kysely';
 import type { Database } from '../../db/index.js';

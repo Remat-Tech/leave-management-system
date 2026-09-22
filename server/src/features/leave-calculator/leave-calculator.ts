@@ -1,5 +1,5 @@
 /**
- * How many days a period of leave costs. FR 21, FR 22, §7.3., LMS 207, FR 23, FR 31, LMS 303, FR 25, LMS 210, LMS 211, §8.6, FR 24, §8..
+ * How many days a period of leave costs. FR 21, FR 22, §7.3., FR 23, FR 31, FR 25, §8.6, FR 24, §8..
  */
 
 import { type Holiday, holidayOn } from '../holiday/holiday.js';
@@ -34,7 +34,7 @@ export interface FreeDay {
 }
 
 /**
- * One free day, said to a person rather than to a database. NFR USA 03. LMS 403.
+ * One free day, said to a person rather than to a database. NFR USA 03.
  *
  * The line that turns a day count into an explanation. "Nine days off cost you seven" is an
  * assertion; "6 March is Independence Day" is the reason, and `LeaveRequestQuote` is explicit
@@ -140,10 +140,10 @@ function freeDayFor(
   return null;
 }
 
-/** The longest period this will count, in calendar days. FR 20a, LMS 309, FR 16, FR 26. */
+/** The longest period this will count, in calendar days. FR 20a, FR 16, FR 26. */
 const LONGEST_PERIOD_DAYS = 731;
 
-/** Two dates that make a period, or a refusal naming the one that does not. FR 20a, LMS 309. */
+/** Two dates that make a period, or a refusal naming the one that does not. FR 20a. */
 export function validateLeavePeriod(period: LeavePeriod): LeavePeriod {
   const from = requireDay('from', period.from);
   const to = requireDay('to', period.to);

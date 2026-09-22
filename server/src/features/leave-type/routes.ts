@@ -1,4 +1,4 @@
-/** The leave type configuration screen, over HTTP. FR 31, FR 32, LMS 501. */
+/** The leave type configuration screen, over HTTP. FR 31, FR 32. */
 
 import { type Request, type Response, Router } from 'express';
 import {
@@ -174,7 +174,7 @@ function changesIn(request: Request): LeaveTypeChanges {
   return changes as LeaveTypeChanges;
 }
 
-/** Every closed set a form draws a control from, named as a person reads them. LMS 501. */
+/** Every closed set a form draws a control from, named as a person reads them. */
 const CHOICES = {
   countingBases: COUNTING_BASES.map((value) => ({
     value,
@@ -248,7 +248,7 @@ function typeAsJson(type: LeaveType): unknown {
     /** FR 38a. */
     approvalChain: type.approvalChain,
     approvedBy: approvalChainInWords(type),
-    /** FR 38a, LMS 503. The same chain in the voice a configuration screen reads in. */
+    /** FR 38a. The same chain in the voice a configuration screen reads in. */
     approvedByLabel: chainLabel(type.approvalChain),
 
     displayOrder: type.displayOrder,

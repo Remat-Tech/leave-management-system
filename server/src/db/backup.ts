@@ -1,4 +1,4 @@
-/** Backups and a verified restore. NFR AVL 02. LMS 604. */
+/** Backups and a verified restore. NFR AVL 02. */
 
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';

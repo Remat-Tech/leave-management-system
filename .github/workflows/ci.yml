@@ -58,7 +58,7 @@ jobs:
       SMTP_HOST: localhost
       SMTP_PORT: '1025'
       SMTP_SECURE: 'false'
-      MAIL_FROM_NAME: Remat Holdings Leave
+      MAIL_FROM_NAME: Rota
       MAIL_FROM_ADDRESS: leave@rematholdings.com
 
       # Git hooks are for a developer's machine. CI runs the checks directly.

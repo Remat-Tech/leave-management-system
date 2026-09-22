@@ -1,5 +1,5 @@
 /**
- * Creating, maintaining and deactivating employee records, recording who each of them reports to, which team they are in and which week they work. FR 01, FR 06, FR 23, LMS 101, LMS 106, LMS 112, LMS 109.
+ * Creating, maintaining and deactivating employee records, recording who each of them reports to, which team they are in and which week they work. FR 01, FR 06, FR 23.
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -46,7 +46,7 @@ export class EmployeeService {
     /** NFR SEC 02. */
     private readonly guard: Guard,
     /**
-     * What follows a reporting line that moves. FR 07, §8.4, LMS 325.
+     * What follows a reporting line that moves. FR 07, §8.4.
      *
      * Required rather than defaulted, for the reason `LeaveRequestService`'s notifier is:
      * a service that can be built without one is a service somebody builds without one, and
@@ -119,7 +119,7 @@ export class EmployeeService {
     }
 
     /**
-     * The reporting line is the one field whose rules cannot be settled from this record alone: whether a manager exists, whether they are still here, an… LMS 104.
+     * The reporting line is the one field whose rules cannot be settled from this record alone: whether a manager exists, whether they are still here, an…
      */
     if ('managerId' in changes) {
       await this.checkManager(changes.managerId ?? null, current);
@@ -139,7 +139,7 @@ export class EmployeeService {
     }
 
     /* FR 07, §8.4. The pending leave goes with the line, after the record it follows has
-       been written. LMS 325. */
+       been written. */
     if (updated.managerId !== current.managerId) {
       await this.leave.followTheReportingLine(actor, {
         employeeId: updated.id,
@@ -150,7 +150,7 @@ export class EmployeeService {
 
     /* FR 46, §8.7. Leave nobody has decided ends with the employment, after the record
        saying so is written. Asked of the record rather than of the verb, so an exit
-       entered as an ordinary correction cancels as terminate() does. LMS 509. */
+       entered as an ordinary correction cancels as terminate() does. */
     if (
       current.employmentStatus !== 'TERMINATED' &&
       updated.employmentStatus === 'TERMINATED' &&
@@ -165,7 +165,7 @@ export class EmployeeService {
     return updated;
   }
 
-  /** The rules about a department that need the department itself to answer. LMS 105. */
+  /** The rules about a department that need the department itself to answer. */
   private async checkDepartment(departmentId: string, employed: boolean): Promise<void> {
     const department = await this.departments.findById(departmentId);
 
@@ -177,7 +177,7 @@ export class EmployeeService {
     }
   }
 
-  /** The week a new record works, resolved to an id. FR 23, LMS 106. */
+  /** The week a new record works, resolved to an id. FR 23. */
   private async resolveWorkPattern(workPatternId: string | null): Promise<string> {
     if (workPatternId !== null) {
       await this.checkWorkPattern(workPatternId);
@@ -247,7 +247,7 @@ export class EmployeeService {
     return employee;
   }
 
-  /** By employee number. LMS 112. */
+  /** By employee number. */
   async byNumber(actor: Actor, employeeNumber: string): Promise<Employee | undefined> {
     this.guard.enforce(employeePolicy.search(actor));
 
@@ -267,7 +267,7 @@ export class EmployeeService {
     return this.employees.list(options);
   }
 
-  /** The reporting structure, as a chart. FR 09, LMS 107. */
+  /** The reporting structure, as a chart. FR 09. */
   async orgChart(actor: Actor): Promise<OrgChart> {
     this.guard.enforce(employeePolicy.chart(actor));
 

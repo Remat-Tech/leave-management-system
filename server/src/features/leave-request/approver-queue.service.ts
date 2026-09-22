@@ -1,4 +1,4 @@
-/** The approver queue, assembled. FR 20, FR 40, FR 38a, FR 48, FR 48c, §8.6a, LMS 404, LMS 321. */
+/** The approver queue, assembled. FR 20, FR 40, FR 38a, FR 48, FR 48c, §8.6a. */
 
 import type { Actor } from '../../auth/actor.js';
 import { desksStaffedBy, leaveRequestPolicy } from './policy.js';
@@ -31,7 +31,7 @@ export class ApproverQueueService {
     private readonly guard: Guard,
     /** The askers and their teammates. */
     private readonly employees: EmployeeRepository,
-    /** FR 48c. Who the `CEO` desk resolves to. LMS 321. */
+    /** FR 48c. Who the `CEO` desk resolves to. */
     private readonly organisation: OrganisationRepository,
     /**
      * The balance context, read through the repository rather than `BalanceService`. §8.6.
@@ -46,12 +46,12 @@ export class ApproverQueueService {
     private readonly types: LeaveTypeRepository,
     /** The year label the balance sentence names. */
     private readonly years: LeaveYearRepository,
-    /** FR 49. Whose approvals this person is covering today. LMS 327. */
+    /** FR 49. Whose approvals this person is covering today. */
     private readonly delegations: ApprovalDelegationService,
   ) {}
 
   /**
-   * The requests a manager turned down that are now waiting on this person. FR 44, §7.2. LMS 318.
+   * The requests a manager turned down that are now waiting on this person. FR 44, §7.2.
    *
    * The same queue, narrowed. Since a rejection routes rather than ends, these arrive at
    * HR's desk on their own and each carries what the manager said and why.
@@ -60,13 +60,13 @@ export class ApproverQueueService {
     return rejectionsToReview(await this.forApprover(actor));
   }
 
-  /** Everything waiting on this person, soonest to start first. LMS 404. */
+  /** Everything waiting on this person, soonest to start first. */
   async forApprover(actor: Actor): Promise<ApproverQueue> {
     /* FR 48c. The same read `LeaveRequestService.whoCanDecide` makes, so the queue and the
-       approve door cannot disagree about who holds that seat. LMS 321. */
+       approve door cannot disagree about who holds that seat. */
     const chiefExecutiveId = await this.organisation.chiefExecutiveId();
 
-    /* FR 49, LMS 327. A delegate staffs whatever their delegator staffs, for as long as the
+    /* FR 49. A delegate staffs whatever their delegator staffs, for as long as the
        nomination runs — read now, so a delegation that ended this morning reaches nothing. */
     const staffed = desksStaffedBy(
       actor,
@@ -93,7 +93,7 @@ export class ApproverQueueService {
       staffed,
       requests,
       people,
-      /** FR 49, LMS 327. The colleagues being covered for, so a row can name them. */
+      /** FR 49. The colleagues being covered for, so a row can name them. */
       covering: await this.employees.findAllById(
         staffed.delegated.map((one) => one.approverId).concat(managersOf(askers)),
       ),
@@ -124,7 +124,7 @@ export class ApproverQueueService {
        * Both questions the approve door asks, in its order, so the queue and the door cannot
        * disagree about who may decide what. The second one is the delegate's case: a row can
        * be at a desk somebody covers and still not be theirs to answer, because a delegation
-       * carries no say over the delegator's own leave. LMS 327.
+       * carries no say over the delegator's own leave.
        */
       whyNotDecidable: (request: LeaveRequest) => {
         const asker = askers.find((one) => one.id === request.employeeId);

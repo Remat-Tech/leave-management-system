@@ -20,7 +20,7 @@
 --
 -- The MFA columns are left exactly as they are. Their pairing rule — a code hash
 -- and its expiry are present together or not at all — is a decision belonging to
--- the story that writes them, LMS 110, and guessing it here would be a
+-- whatever writes them, and guessing it here would be a
 -- constraint written by somebody who had not yet met the problem.
 
 -- ----------------------------------------------------------- the identifier
@@ -72,7 +72,7 @@ ALTER TABLE app_user
 /* The table had no timestamps at all, which was tolerable while nothing wrote to
    it. It is not tolerable for the login table. "When was this account created"
    and "when did it last change" are the first two questions asked of an account
-   that has access somebody cannot account for, and an audit log — LMS 113 — that
+   that has access somebody cannot account for, and an audit log that
    starts later cannot answer them about the rows that were already there.
 
    last_login_at was there from the start and is a different fact: when the
@@ -143,7 +143,7 @@ BEGIN
     /* Folded on both sides, so a change of capitals alone writes nothing. The
        login already points at the same mailbox, every comparison in this schema
        and in the sign in path is folded, and an UPDATE that changes no fact is
-       still an UPDATE: it moves updated_at and, once LMS 113 lands, writes an
+       still an UPDATE: it moves updated_at and, once the audit log lands, writes an
        audit entry saying that an address changed when none did. */
     UPDATE app_user
        SET company_email = NEW.work_email
@@ -204,7 +204,7 @@ CREATE CONSTRAINT TRIGGER app_user_email_is_the_work_email
 
    It still holds no DELETE on app_user, and that is worth being as explicit about
    as the employee table's absent DELETE. A login is deactivated, never deleted,
-   for the same reason and one more: user_role rows point at it, LMS 113's audit
+   for the same reason and one more: user_role rows point at it, audit
    entries will name it, and an account that was removed rather than closed leaves
    an audit trail referring to a user nobody can identify. Ending somebody's
    access is is_active, which is a fact with a date beside it in updated_at.

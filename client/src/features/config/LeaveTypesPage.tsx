@@ -22,7 +22,7 @@ import { Modal } from '../../Modal';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
- * Setting up the kinds of leave. FR 31, FR 32, LMS 501.
+ * Setting up the kinds of leave. FR 31, FR 32.
  *
  * Reading is open to anybody, so this screen draws for everybody; every button on it is
  * refused for anybody but an HR Administrator, with the server's own sentence. There is
@@ -776,7 +776,7 @@ function TypeForm({
       </fieldset>
 
       {/* FR 38a. Set here only while the type does not exist yet — one nobody approves cannot
-          be asked for at all. Changing it afterwards is LMS 503's screen. */}
+          be asked for at all. Changing it afterwards is the chain editor's. */}
       <fieldset className="fields">
         <legend>Who approves it</legend>
 

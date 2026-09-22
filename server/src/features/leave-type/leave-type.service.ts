@@ -1,5 +1,5 @@
 /**
- * Creating, changing and retiring leave types. FR 21, FR 31, FR 32, §5.5., LMS 201, LMS 204, FR 48, FR 06.
+ * Creating, changing and retiring leave types. FR 21, FR 31, FR 32, §5.5., FR 48, FR 06.
  */
 
 import type { Actor } from '../../auth/actor.js';

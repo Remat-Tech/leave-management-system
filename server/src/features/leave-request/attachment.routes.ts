@@ -1,4 +1,4 @@
-/** Attachments on a request, over HTTP. FR 12, NFR SEC 04, NFR SEC 06, NFR SEC 07. LMS 310, LMS 407. */
+/** Attachments on a request, over HTTP. FR 12, NFR SEC 04, NFR SEC 06, NFR SEC 07. */
 
 import express, { type Request, type Response, Router } from 'express';
 import { actorOf } from '../../http/identify.js';
@@ -23,9 +23,9 @@ export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
   const routes = Router();
 
   /**
-   * Uploads evidence ahead of the request it will go on. FR 13, LMS 311.
+   * Uploads evidence ahead of the request it will go on. FR 13.
    *
-   * The route the story needs and LMS 310 had no place for: FR 13 is answered at submission,
+   * The route attachments had no place for: FR 13 is answered at submission,
    * so the certificate has to exist before the request does. Same body, same header, same
    * caps as the one below — what differs is only that it names nothing to hang off.
    */
@@ -43,9 +43,9 @@ export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
   );
 
   /**
-   * The same, for HR putting somebody else's leave on the record. FR 13, FR 18, LMS 311.
+   * The same, for HR putting somebody else's leave on the record. FR 13, FR 18.
    *
-   * `leaveRequestPolicy.attach` has admitted HR on somebody's behalf since LMS 310; `/me`
+   * `leaveRequestPolicy.attach` has admitted HR on somebody's behalf; `/me`
    * has no way to say whose evidence it is, exactly as `/me/requests` has none to say whose
    * leave it is.
    */
@@ -62,7 +62,7 @@ export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
     },
   );
 
-  /** What is waiting to go on a request, and how much of it counts. FR 13, LMS 311. */
+  /** What is waiting to go on a request, and how much of it counts. FR 13. */
   routes.get('/me/evidence', (_request: Request, response: Response, next) => {
     void attachments
       .waitingFor(actorOf(response), employeeIdOf(response))
@@ -82,7 +82,7 @@ export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
   });
 
   /**
-   * Throws away a file that never went on a request. FR 13, LMS 311.
+   * Throws away a file that never went on a request. FR 13.
    *
    * Addressed by its own id, because there is no request to address it through. Whose it is
    * is the row's own answer, and the policy is asked about that person.
@@ -96,7 +96,7 @@ export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
       .catch(next);
   });
 
-  /** Asks the scanner again about a waiting file it never answered for. NFR SEC 07, LMS 311. */
+  /** Asks the scanner again about a waiting file it never answered for. NFR SEC 07. */
   routes.post('/evidence/:id/scan', (request: Request, response: Response, next) => {
     void attachments
       .rescanWaiting(actorOf(response), asString(request.params.id))
@@ -142,7 +142,7 @@ export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
   });
 
   /**
-   * Where the file may be fetched from for the next two minutes. NFR SEC 04, LMS 407.
+   * Where the file may be fetched from for the next two minutes. NFR SEC 04.
    *
    * A POST, because it writes: a link is a row, and asking for one is itself an access
    * that goes in the log. There is no GET here that hands back the bytes, and that absence
@@ -166,7 +166,7 @@ export function attachmentRoutes({ attachments }: AttachmentRoutes): Router {
   );
 
   /**
-   * The file itself, through a link and nothing else. NFR SEC 04, NFR SEC 07, LMS 407.
+   * The file itself, through a link and nothing else. NFR SEC 04, NFR SEC 07.
    *
    * Behind `identify()` like everything else, so the token is never a credential on its own:
    * it is spent once, lasts two minutes, and is refused for anybody but the person it was
@@ -302,7 +302,7 @@ function employeeIdOf(response: Response): string {
 function attachmentAsJson(attachment: LeaveRequestAttachment): unknown {
   return {
     attachmentId: attachment.id,
-    /** FR 13. Null while it waits for the request it will evidence. LMS 311. */
+    /** FR 13. Null while it waits for the request it will evidence. */
     leaveRequestId: attachment.leaveRequestId,
     heldForEmployeeId: attachment.heldForEmployeeId,
     slot: attachment.slot,
@@ -319,14 +319,14 @@ function attachmentAsJson(attachment: LeaveRequestAttachment): unknown {
     downloadable: attachment.scanStatus === 'CLEAN' && attachment.fileDeletedAt === null,
     uploadedBy: attachment.uploadedByEmployeeId,
     uploadedAt: attachment.uploadedAt.toISOString(),
-    /** NFR SEC 06, LMS 514. */
+    /** NFR SEC 06. */
     fileDeletedAt:
       attachment.fileDeletedAt === null ? null : attachment.fileDeletedAt.toISOString(),
   };
 }
 
 /**
- * A link, as JSON. NFR SEC 04, LMS 407.
+ * A link, as JSON. NFR SEC 04.
  *
  * `url` is a path rather than an absolute address, so nothing here decides what host this
  * application answers on — and a link that named one would be a link that survives being
@@ -344,7 +344,7 @@ function linkAsJson(issued: IssuedDownloadLink): unknown {
   };
 }
 
-/** FR 13, LMS 311. What is waiting to go on a request, and how much of it counts. */
+/** FR 13. What is waiting to go on a request, and how much of it counts. */
 function waitingAsJson(waiting: AttachmentsWaiting): unknown {
   return {
     employeeId: waiting.employeeId,

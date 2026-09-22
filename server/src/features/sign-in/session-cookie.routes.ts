@@ -1,5 +1,5 @@
 /**
- * The one thing a browser is trusted to hand back: which employee it is. LMS 401, LMS 109, LMS 004.
+ * The one thing a browser is trusted to hand back: which employee it is.
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';

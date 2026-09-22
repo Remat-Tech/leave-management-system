@@ -20,7 +20,7 @@ import {
 import type { RoleCode } from '../../src/features/role/roles.js';
 
 /**
- * An approver hands their approvals to a colleague. FR 49, §8.6a, LMS 327.
+ * An approver hands their approvals to a colleague. FR 49, §8.6a.
  *
  * The pure half: what a nomination has to be, which days it covers, which desks it reaches
  * and whose name a decision made under it carries. Whether the rows are actually there is
@@ -125,7 +125,7 @@ describe('nominating a delegate', () => {
 /* ---------------------------------------------------------- and whose leave it never reaches */
 
 /**
- * FR 48, LMS 319 read as a fact about the desk.
+ * FR 48 read as a fact about the desk.
  *
  * The case is the lone HR officer's: her own unpaid leave stands at the desk she staffs, and
  * a delegate of hers answering it would be her own request decided by a standing she granted

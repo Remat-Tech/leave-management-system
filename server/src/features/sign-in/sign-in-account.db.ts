@@ -1,4 +1,4 @@
-/** Database access for the sign in account. NFR SEC 01, LMS 109. */
+/** Database access for the sign in account. NFR SEC 01. */
 
 import type { Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -43,7 +43,7 @@ export interface NewSignInAccount {
   mustChangePassword?: boolean;
 }
 
-/** A one time code challenge as it stands on the row. LMS 110. */
+/** A one time code challenge as it stands on the row. */
 export interface CodeChallenge {
   hash: string | null;
   expiresAt: Date | null;
@@ -117,7 +117,7 @@ export class SignInAccountRepository {
     return row === undefined ? undefined : toCredentials(row);
   }
 
-  /** Starts a one time code challenge, replacing whatever was there. LMS 110. */
+  /** Starts a one time code challenge, replacing whatever was there. */
   async startChallenge(id: string, hash: string, expiresAt: Date): Promise<void> {
     await this.db
       .updateTable('app_user')
@@ -175,9 +175,9 @@ export class SignInAccountRepository {
     return row?.mfa_code_attempts ?? 0;
   }
 
-  /** A note on which methods here carry an Attribution and which do not. LMS 113. */
+  /** A note on which methods here carry an Attribution and which do not. */
 
-  /** Turns the code requirement on or off for somebody who may choose. LMS 110. */
+  /** Turns the code requirement on or off for somebody who may choose. */
   async setMfaEnabled(
     by: Attribution,
     id: string,

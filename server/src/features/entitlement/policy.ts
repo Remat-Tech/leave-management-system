@@ -1,4 +1,4 @@
-/** Who may see and change what a leave type is worth. NFR SEC 02, §10., LMS 112, FR 31, LMS 203. */
+/** Who may see and change what a leave type is worth. NFR SEC 02, §10., FR 31. */
 
 import { type Actor, holdsAny, isSelf } from '../../auth/actor.js';
 import { type Decision, policyFor } from '../../auth/policy.js';

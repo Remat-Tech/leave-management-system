@@ -1,4 +1,4 @@
-/** The policy settings screen, over HTTP. FR 44, FR 48c, NFR SEC 06, LMS 505. */
+/** The policy settings screen, over HTTP. FR 44, FR 48c, NFR SEC 06. */
 
 import { type Request, type Response, Router } from 'express';
 import type { LeaveTypeService } from '../leave-type/leave-type.service.js';

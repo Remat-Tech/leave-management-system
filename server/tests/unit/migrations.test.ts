@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
  * otherwise enforces: migrations sort in the order they were written, and every
  * one of them can be rolled back.
  *
- * Since LMS 114 it guards a third, which is how a column is declared: an instant
+ * It also guards a third, which is how a column is declared: an instant
  * is `TIMESTAMPTZ` and a day is `DATE`, and neither is ever the other. NFR DAT
  * 03. That check reads the SQL rather than a database, so it fails on the
  * afternoon somebody writes the column instead of the evening the integration
@@ -49,7 +49,7 @@ describe('migrations', () => {
 });
 
 /**
- * How a column that holds a moment or a day is declared. NFR DAT 03. LMS 114.
+ * How a column that holds a moment or a day is declared. NFR DAT 03.
  *
  * Three rules, and each is the off by one day bug arriving from a different
  * direction:
@@ -121,7 +121,7 @@ describe('columns that hold a time', () => {
 });
 
 /**
- * How a column that counts something is declared. FR 24. LMS 209.
+ * How a column that counts something is declared. FR 24.
  *
  * The sibling of the check above, and the same argument: a rule about how columns
  * are written can be read out of the SQL, so it fails on the afternoon somebody
@@ -141,13 +141,13 @@ describe('columns that hold a time', () => {
  * which columns are allowed to be `NUMERIC`, and leaves the exception somewhere it
  * has to be argued for.
  *
- * **The story that argued with it, as this one predicted it would.** LMS 209 wrote
- * the rule flat: nothing holds a fraction. It also wrote down what the answer would
+ * **The exception that argued with it, as predicted.** The rule was written
+ * flat: nothing holds a fraction. It also wrote down what the answer would
  * have to be when the ledger arrived, because §8.6d pro rates a mid year joiner to
  * 10.08 days and says plainly that "FR 24 governs how leave is requested, not how
  * entitlement is held".
  *
- * LMS 210 is that arrival, and the answer is {@link ACCRUED} below: one column,
+ * The ledger is that arrival, and the answer is {@link ACCRUED} below: one column,
  * named by file, permitted a scale, with every other column in the schema still
  * integral. So the day somebody makes a leave request's `day_count` a `NUMERIC` for
  * symmetry, this still fails — which was the whole point of writing the rule down
@@ -191,7 +191,7 @@ describe('columns that count', () => {
    * The story above said what the answer would have to be when this test first
    * failed: "name the one or two columns that hold an accrued figure, allow those,
    * and leave every other column integral — so that the day somebody makes
-   * `day_count` a `NUMERIC` for symmetry, it still fails". LMS 210 is that day, and
+   * `day_count` a `NUMERIC` for symmetry, it still fails". The ledger is that day, and
    * this list is that answer.
    *
    * `leave_ledger_entry.days` holds what somebody has accrued as well as what they
@@ -201,14 +201,14 @@ describe('columns that count', () => {
    * that follow a leave request are held to whole days inside the column, so the
    * exception buys a fractional *entitlement* and not fractional *leave*.
    *
-   * **And LMS 211 pays the same price in a different currency.** `leave_balance` is
+   * **And the cached balance pays the same price in a different currency.** `leave_balance` is
    * where those movements are added up, so three of its five columns inherit the
    * fraction: `entitled` is a pro rated grant, `carried_over` is a proportion of one
    * that survived a year end, and `adjustment` is HR putting either of them right.
    * The Technical Design Document specifies `NUMERIC(6,2)` for all five, and the
    * other two are `INTEGER` here instead — `taken` and `pending` are sums of the
    * four request-shaped entry types alone, which cannot be fractional, so the line
-   * LMS 210 drew inside one column is drawn between two columns where a reader can
+   * the ledger draws inside one column is drawn between two columns where a reader can
    * see it.
    *
    * That is the shape this exception is supposed to have. It is not "the balance
@@ -268,7 +268,7 @@ describe('columns that count', () => {
 
   /* The two columns of leave_balance that are deliberately not in it. They count
      days out of a request, FR 24 says a request is whole days, and this is the half
-     of LMS 209's rule that the balance table is where it becomes visible. */
+     of the whole-days rule that the balance table is where it becomes visible. */
   it('and the columns beside them that count taken and pending days are whole', () => {
     const counts = declarations.filter(
       (declaration) =>
@@ -323,7 +323,7 @@ describe('columns that count', () => {
 });
 
 /**
- * Which side of the line reference data sits on. LMS 202, and LMS 106 before it.
+ * Which side of the line reference data sits on.
  *
  * A production database is migrated and never seeded, so anything the system
  * cannot run without belongs to a migration: the roles, the standard Monday to
@@ -371,7 +371,7 @@ describe('the seven leave types are reference data', () => {
     expect(owner).not.toMatch(/ON\s+CONFLICT/i);
   });
 
-  /* The fixture seed may name these tables — since LMS 203 it has to, because it
+  /* The fixture seed may name these tables — it has to, because it
      truncates one of them and calls the migration's function to put the reference
      data back — but it may never carry the data itself. A type or a figure written
      out in that file is a second source for something that has to have exactly
@@ -386,7 +386,7 @@ describe('the seven leave types are reference data', () => {
 });
 
 /**
- * Where the approval chains live. FR 38a, LMS 204.
+ * Where the approval chains live. FR 38a.
  *
  * The same side of the same line as the seven types and the figures they carry:
  * a production database is migrated and never seeded, and a leave system where
@@ -462,7 +462,7 @@ describe('the approval chains of FR 38a are reference data', () => {
 });
 
 /**
- * Where the first leave years live. §5.4, LMS 205.
+ * Where the first leave years live. §5.4.
  *
  * The same side of the same line as the seven types, their figures and their
  * approval chains: a production database is migrated and never seeded, and a
@@ -513,7 +513,7 @@ describe('the first two leave years are reference data', () => {
 });
 
 /**
- * Where Ghana's public holidays live. FR 22, §5.4, LMS 206.
+ * Where Ghana's public holidays live. FR 22, §5.4.
  *
  * The same side of the same line as the seven leave types, their figures, their
  * approval chains and the first two leave years: a production database is migrated

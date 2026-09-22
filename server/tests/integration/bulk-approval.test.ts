@@ -39,7 +39,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Clearing a queue in one press. FR 51. LMS 328.
+ * Clearing a queue in one press. FR 51.
  *
  * A manager back from a week away has a queue rather than a request, and this is the door that
  * answers all of it at once. What this suite holds:
@@ -104,11 +104,11 @@ beforeAll(async () => {
     decisions,
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -117,7 +117,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /** FR 18, LMS 308. The fixture days are months behind today. */
+  /** FR 18. The fixture days are months behind today. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
 
   await clear();
@@ -167,7 +167,7 @@ async function aRequestFrom(
     from: period.from,
     to: period.to,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. The fixture weeks are behind today. */
+    /** FR 17. The fixture weeks are behind today. */
     acknowledgesShortNotice: true,
   });
 
@@ -183,7 +183,7 @@ async function aQueueOfThree(): Promise<LeaveRequest[]> {
   ];
 }
 
-/** The rows as a queue screen would hand them back. NFR DAT 02, LMS 326. */
+/** The rows as a queue screen would hand them back. NFR DAT 02. */
 function asSelected(...found: LeaveRequest[]): { requestId: string; version: string }[] {
   return found.map((one) => ({ requestId: one.id, version: versionOf(one) }));
 }
@@ -314,7 +314,7 @@ describe('a queue cleared in one press', () => {
 
       expect(said[0]).toMatchObject({ action: 'REFUSE', onBehalfOf: 'MANAGER', comment: WHY_NOT });
 
-      /* FR 44, LMS 318. A rejection at a stage that is not the last sends it on, with the
+      /* FR 44. A rejection at a stage that is not the last sends it on, with the
          days still held — which a batch does not change. */
       expect((await statusOf(request.id)).awaitingApprovalFrom).toBe('HR');
     }
@@ -325,7 +325,7 @@ describe('a queue cleared in one press', () => {
 
 describe('the self-approval check', () => {
   /**
-   * The story's second criterion. FR 48, §8.6a, LMS 319.
+   * The story's second criterion. FR 48, §8.6a.
    *
    * Kofi is an approver and an employee, so his own request is a row an id list can name.
    * It is refused on its own and the two beside it go through — the check is asked of every
@@ -384,7 +384,7 @@ describe('the self-approval check', () => {
 });
 
 describe('a row that cannot be decided', () => {
-  /** NFR DAT 02, §8.1, LMS 326. Somebody answered it while the queue was open. */
+  /** NFR DAT 02, §8.1. Somebody answered it while the queue was open. */
   it('is reported and skipped, and the rest of the press goes through', async () => {
     const [adwoa, abena, second] = await aQueueOfThree();
 
@@ -409,7 +409,7 @@ describe('a row that cannot be decided', () => {
     expect(await decisions.forRequest(adwoa.id)).toHaveLength(1);
   });
 
-  /** FR 44, LMS 318. A plain approval of what the manager turned down is still refused. */
+  /** FR 44. A plain approval of what the manager turned down is still refused. */
   it('and an item needing an override is refused on its own, naming the verb', async () => {
     const [adwoa, abena] = await aQueueOfThree();
 

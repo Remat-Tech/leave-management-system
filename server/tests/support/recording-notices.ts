@@ -1,5 +1,5 @@
 /**
- * A notice log that keeps what it is given, for a test to read back. FR 59. LMS 329.
+ * A notice log that keeps what it is given, for a test to read back. FR 59.
  *
  * The counterpart of ./recording-denials.ts and ./recording-mailer.ts, and here for the
  * same reason both of those exist: `NotificationService.tell` cannot throw — by the time it

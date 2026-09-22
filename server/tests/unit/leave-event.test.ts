@@ -28,7 +28,7 @@ import {
 import { monthsAfter } from '../../src/shared/time.js';
 
 /**
- * Entitlement that arrives with an event. FR 32g, FR 32e, §8.6aa. LMS 218.
+ * Entitlement that arrives with an event. FR 32g, FR 32e, §8.6aa.
  *
  * Two of the story's three criteria are pure functions and are proved here: the
  * deadline six months out, and what is left when it passes. The first criterion —

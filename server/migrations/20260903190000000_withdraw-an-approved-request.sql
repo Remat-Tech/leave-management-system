@@ -1,9 +1,8 @@
 -- Up Migration
 
 -- Asking for approved leave to be taken off the books, and HR answering. FR 47, §6, §8.2.
--- LMS 324.
 --
--- `APPROVED` has had no row out of it since LMS 306, which said why: the days are taken
+-- `APPROVED` has had no row out of it, and the reason was: the days are taken
 -- rather than held, so "taking agreed leave off the books is HR putting the days back as a
 -- correction". The correction is a `RECALCULATION` — the entry type immutable-leave-ledger
 -- listed with no writer — so nothing new arrives in `leave_ledger_entry_type_known`.
@@ -343,7 +342,7 @@ AS $$
 DECLARE
     /* The entry type that gives the days back, which the ending's starting point decides. */
     wanted TEXT := CASE WHEN OLD.status = 'APPROVED' THEN 'RECALCULATION' ELSE 'RELEASE' END;
-    /* Typed as the column it sums, for the reason LMS 317 gives at the same line. */
+    /* Typed as the column it sums, for the reason given at the same line there. */
     given leave_ledger_entry.days%TYPE;
 BEGIN
     /* The row may be gone by COMMIT — it cannot, but a constraint trigger fires anyway. */
@@ -367,7 +366,7 @@ BEGIN
                          'FR 26, FR 47.';
     END IF;
 
-    /* LMS 317's rule, and it holds for both entry types: a request that *ends* gives back
+    /* The release rule, and it holds for both entry types: a request that *ends* gives back
        everything. An amendment is legitimately partial and never reaches here, because it
        leaves the request APPROVED and this fires only on an ending. */
     IF given <> NEW.days THEN
@@ -390,7 +389,7 @@ $$;
 -- ------------------- and agreed leave comes off the books because somebody asked
 
 /* The story's first criterion, held where no service can forget it, and the fifth of the
-   family whose shape LMS 314 settled. Deferred for the reason all of them are: the answer
+   family whose shape the routing settled. Deferred for the reason all of them are: the answer
    names the request, so the request has to have moved first.
 
    `WHEN` keeps it to the one move it is about. A withdrawal out of `SUBMITTED` or
@@ -485,7 +484,7 @@ CREATE CONSTRAINT TRIGGER leave_request_gives_back_no_more_than_it_took
 
 -- ------------------------------------------------ what somebody is told about
 
-/* FR 59's list gains the four events LMS 324 makes reachable. `WITHDRAWAL_ASKED` goes to
+/* FR 59's list gains the four events this makes reachable. `WITHDRAWAL_ASKED` goes to
    HR, who has to answer it. `WITHDRAWAL_GRANTED` is not `WITHDRAWN`, whose message says
    "nobody has to approve anything for that to take effect". */
 
@@ -535,7 +534,7 @@ DROP FUNCTION IF EXISTS refuse_giving_back_more_than_was_taken();
 DROP TRIGGER IF EXISTS leave_request_withdrawn_from_approved_was_asked_for ON leave_request;
 DROP FUNCTION IF EXISTS refuse_agreed_leave_nobody_asked_to_withdraw();
 
-/* The two rules that were widened go back to the bodies LMS 306 and LMS 320 wrote. */
+/* The two rules that were widened go back to their original bodies. */
 
 CREATE OR REPLACE FUNCTION refuse_a_request_that_kept_its_days() RETURNS trigger
 LANGUAGE plpgsql

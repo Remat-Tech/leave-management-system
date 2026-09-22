@@ -10,7 +10,7 @@ import {
 import { RefusalNeedsAComment } from '../../src/features/leave-request/leave-decision.js';
 
 /**
- * What a batch is checked for before anything is decided. FR 51, FR 39. LMS 328.
+ * What a batch is checked for before anything is decided. FR 51, FR 39.
  *
  * ../integration/bulk-approval.test.ts walks the decisions themselves. This is the door: which
  * verbs a queue may be cleared with, the reason a batch of refusals owes, and what the list of
@@ -99,7 +99,7 @@ describe('the rows a batch names', () => {
     expect(batch.requests).toEqual([A_ROW]);
   });
 
-  /* NFR DAT 02, LMS 326. A caller with no screen behind it is answered by the locks alone. */
+  /* NFR DAT 02. A caller with no screen behind it is answered by the locks alone. */
   it('and takes a bare id as a row with no version', () => {
     const batch = validateBulkDecision({ action: 'APPROVE', comment: null, requests: [' r-1 '] });
 

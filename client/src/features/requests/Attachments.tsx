@@ -18,7 +18,7 @@ import { Modal } from '../../Modal';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
- * Uploading a certificate, and reading one back. FR 12, FR 13, NFR SEC 04, NFR SEC 07. LMS 407.
+ * Uploading a certificate, and reading one back. FR 12, FR 13, NFR SEC 04, NFR SEC 07.
  *
  * Two components, and they are the two halves of the story:
  *
@@ -117,7 +117,7 @@ export function AttachedFiles({
   );
 }
 
-/** One file on a request, with the two calls it takes to open it. NFR SEC 04, LMS 407. */
+/** One file on a request, with the two calls it takes to open it. NFR SEC 04. */
 function FileOnARequest({
   requestId,
   attachment,
@@ -132,7 +132,7 @@ function FileOnARequest({
   const [preview, setPreview] = useState<string | undefined>(undefined);
 
   /**
-   * The file, fetched once. NFR SEC 04, LMS 407.
+   * The file, fetched once. NFR SEC 04.
    *
    * Fetched as this row appears — which is when somebody expanded the attachments on this
    * request, not when the queue loaded — so that pressing View shows the certificate rather
@@ -241,7 +241,7 @@ function FileOnARequest({
           </button>
         </>
       ) : attachment.fileDeletedAt !== null ? (
-        /* NFR SEC 06, LMS 514. The name stays; the file is gone. */
+        /* NFR SEC 06. The name stays; the file is gone. */
         <span className="tag">File deleted after the retention period</span>
       ) : (
         /* NFR SEC 07. Greyed off `downloadable`, which the server decides. A screen that
@@ -250,7 +250,7 @@ function FileOnARequest({
         <span className="tag flag">Being checked for viruses</span>
       )}
 
-      {/* NFR SEC 04, LMS 407. A link is meant to stop working, so the retry is the whole
+      {/* NFR SEC 04. A link is meant to stop working, so the retry is the whole
           answer here: asking again mints a new one. */}
       {refusal === undefined ? null : (
         <Notice problem={refusal} retrying={opening} onRetry={canPreview ? view : download} />
@@ -286,7 +286,7 @@ const PREVIEWABLE = ['application/pdf', 'image/jpeg', 'image/png'];
 /* ------------------------------------------------ uploading before there is a request */
 
 /**
- * Certificates uploaded ahead of the request they will go on. FR 13, LMS 311, LMS 407.
+ * Certificates uploaded ahead of the request they will go on. FR 13.
  *
  * The ids of the files that count are handed up as they change, and the form sends them with
  * the request. Nothing here decides whether one is *needed* — `DOCUMENTATION_REQUIRED` on
@@ -323,7 +323,7 @@ export function Evidence({
         return;
       }
 
-      /** The server's own sentence, verbatim — it names the fix. NFR USA 03, LMS 410. */
+      /** The server's own sentence, verbatim — it names the fix. NFR USA 03. */
       setProblem(problemFrom(error));
     },
     [onSignedOut],
@@ -370,7 +370,7 @@ export function Evidence({
 
   return (
     <div className="evidence">
-      {/* LMS 409. A drop zone rather than a bare button, and the input is the zone rather than
+      {/* A drop zone rather than a bare button, and the input is the zone rather than
           something beside it: a file input already accepts a dropped file, so stretching one
           over the box buys real drag and drop without a drag handler to keep correct. */}
       <label className="dropzone">
@@ -407,7 +407,7 @@ export function Evidence({
         </span>
       </label>
 
-      {/* LMS 410. Offered only while nothing has been read at all — after a failed upload the
+      {/* Offered only while nothing has been read at all — after a failed upload the
           fix is the dropzone above, and a button re-reading a list would point at the wrong act. */}
       {problem === undefined ? null : (
         <Notice

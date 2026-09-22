@@ -29,7 +29,7 @@ import { BalanceStatementService } from '../../src/features/balance/balance-stat
 import { seed } from '../../seeds/seed.mjs';
 
 /**
- * The balance screen against a real database. FR 53, §7.4. LMS 401.
+ * The balance screen against a real database. FR 53, §7.4.
  *
  * ../unit/balance-statement.test.ts proves the arrangement — which rows, in which order,
  * with which sentence — because all of that is pure. What is here is the half it cannot
@@ -123,7 +123,7 @@ describe('every leave type is on the statement', () => {
   it('lists every type this person is eligible for, in display order', async () => {
     const statement = await statements.forEmployee(asThemselves(), people.officer);
 
-    /* §7.4's `display_order`, as the migrations leave it — including LMS 401's, which put
+    /* §7.4's `display_order`, as the migrations leave it — including the one that put
        unpaid leave third. The order is a decision somebody made rather than an
        alphabetical accident, so it is asserted as one. */
     expect(statement.lines.map((line) => line.code)).toEqual([
@@ -453,7 +453,7 @@ function adjust(employeeId: string, leaveTypeId: string, days: number, leaveYear
 }
 
 /**
- * Days asked for, through the door LMS 301 put in front of them.
+ * Days asked for, through the door submission puts in front of them.
  *
  * The same shape ./balance.test.ts uses: a RESERVATION has to name a request and a request
  * has to hold days, so there is no way to write one without the other. Each period starts
@@ -480,7 +480,7 @@ async function askFor(employeeId: string, leaveTypeId: string, days: number) {
       from: rows[0].start_date,
       to: rows[0].end_date,
       reason: 'Some days off',
-      /** FR 18, LMS 308. */
+      /** FR 18. */
       lateEntryReason: null,
       evidenceRequired: false,
       certifiedDays: 0,
@@ -489,7 +489,7 @@ async function askFor(employeeId: string, leaveTypeId: string, days: number) {
       calendarDays: days,
       status: 'SUBMITTED' as const,
       awaitingApprovalFrom: 'MANAGER' as const,
-      /** FR 48b. Nothing to skip: every desk can be asked. LMS 320. */
+      /** FR 48b. Nothing to skip: every desk can be asked. */
       skips: [],
     },
     reason: `${String(days)} days held while it is decided`,
@@ -509,7 +509,7 @@ async function askFor(employeeId: string, leaveTypeId: string, days: number) {
  *
  * So the fixture is a real manager-then-HR approval, which is `DEFAULT_APPROVAL_CHAIN` and
  * is what every type here is configured with. The first call moves the request on a stage
- * and posts nothing — LMS 314 — and the second is the last word and posts the `DEDUCTION`.
+ * and posts nothing, and the second is the last word and posts the `DEDUCTION`.
  * What these tests are about is the figure that lands on the screen;
  * ./approval-chain.test.ts is where the walk itself is proved.
  *
@@ -529,21 +529,21 @@ function yes(request: LeaveRequest) {
     action: 'APPROVE' as const,
     chain: [...DEFAULT_APPROVAL_CHAIN],
     chiefExecutiveId: null,
-    /** FR 48b. Every desk staffed by somebody who is not the requester. LMS 320. */
+    /** FR 48b. Every desk staffed by somebody who is not the requester. */
     available: {
       MANAGER: 'CAN_DECIDE',
       HR: 'CAN_DECIDE',
       CEO: 'CAN_DECIDE',
     } as DesksAvailable,
-    /** FR 48d. The manager and the administrator, who are two people. LMS 322. */
+    /** FR 48d. The manager and the administrator, who are two people. */
     occupants: NO_OCCUPANTS_NAMED,
-    /** FR 49, LMS 327. Nobody is covering for anybody here. */
+    /** FR 49. Nobody is covering for anybody here. */
     standingIn: [],
     reasonForTaking: `${String(request.days)} days taken`,
     reasonForGivingBack: `${String(request.days)} days given back`,
     comment: null,
     overturns: null,
-    /** NFR DAT 02, §8.1. No screen behind this one, so there is no version to check. LMS 326. */
+    /** NFR DAT 02, §8.1. No screen behind this one, so there is no version to check. */
     versionSeen: null,
   };
 }

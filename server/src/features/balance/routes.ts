@@ -1,4 +1,4 @@
-/** The balance screen, over HTTP. FR 53, LMS 401, FR 55, FR 56, LMS 405, LMS 402, NFR DAT 03. */
+/** The balance screen, over HTTP. FR 53, FR 55, FR 56, NFR DAT 03. */
 
 import { type Request, type Response, Router } from 'express';
 import type { BalanceStatement, BalanceStatementLine } from './balance-statement.js';
@@ -33,7 +33,7 @@ export function balanceRoutes({ statements }: BalanceRoutes): Router {
       .catch(next);
   });
 
-  /** My balances for one leave year, as a file. FR 64, LMS 511. */
+  /** My balances for one leave year, as a file. FR 64. */
   routes.get('/me/balances/export', (request: Request, response: Response, next) => {
     void Promise.resolve()
       .then(async () => {

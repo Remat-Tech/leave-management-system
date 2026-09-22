@@ -1,4 +1,4 @@
-/** Passwords, hashed. NFR SEC 01, LMS 110. */
+/** Passwords, hashed. NFR SEC 01. */
 
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';

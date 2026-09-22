@@ -42,7 +42,7 @@ import { seed } from '../../seeds/seed.mjs';
 import { delegationService } from '../support/delegations.js';
 
 /**
- * Two approvers deciding one request at once. NFR DAT 02, §8.1. LMS 326.
+ * Two approvers deciding one request at once. NFR DAT 02, §8.1.
  *
  * The HR desk has two officers on it, so two people can be looking at the same request and
  * both be entitled to answer it. What this suite holds is that one of them does:
@@ -104,11 +104,11 @@ beforeAll(async () => {
     decisions,
     new LeaveRoutingRepository(db),
     new WithdrawalRepository(db),
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     new ReclassificationRepository(db),
     new AttachmentRepository(db),
     new RoleRepository(db),
-    /** FR 49, LMS 327. */
+    /** FR 49. */
     delegationService(db, guard),
     new OrganisationRepository(db),
     new LeaveCalculatorService(new WorkPatternRepository(db), new HolidayRepository(db), guard),
@@ -117,7 +117,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /** FR 18, LMS 308. The fixture days are months behind today. */
+  /** FR 18. The fixture days are months behind today. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
 
   await clear();
@@ -161,7 +161,7 @@ function aRequest(): NewLeaveRequest {
     from: FROM,
     to: TO,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. */
+    /** FR 17. */
     acknowledgesShortNotice: true,
   };
 }
@@ -397,7 +397,7 @@ describe('the version a decision is sent with', () => {
 /* ------------------------------------------------- and the schema says it too. §8.1 */
 
 /**
- * One decision to a desk, on every connection. NFR DAT 02, LMS 326.
+ * One decision to a desk, on every connection. NFR DAT 02.
  *
  * `leave_request_decision_once_per_desk` has held this since every-stage-must-approve. What
  * this story added is the sentence it comes back as, so a second decision that got past the

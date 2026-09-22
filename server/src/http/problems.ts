@@ -1,4 +1,4 @@
-/** What a refusal looks like over HTTP. NFR USA 03, NFR SEC 03, LMS 401. */
+/** What a refusal looks like over HTTP. NFR USA 03, NFR SEC 03. */
 
 import type { NextFunction, Request, Response } from 'express';
 import { NOT_AUTHORISED_MESSAGE, NotAuthorised } from '../auth/policy.js';
@@ -61,7 +61,7 @@ export function problemFor(error: unknown): { status: number; body: Problem } {
      number belongs to anybody — the pair of this and a silent refusal has to be one
      answer. Every other `NotFound` is about configuration, which anybody signed in may
      read anyway, so it keeps its own sentence. */
-  /* A request id too, or a colleague could walk the sequence. LMS 602. */
+  /* A request id too, or a colleague could walk the sequence. */
   if (error.name === 'EmployeeNotFound' || error.name === 'LeaveRequestNotFound') {
     return { status: 404, body: { error: 'NotFound', message: NOT_AUTHORISED_MESSAGE } };
   }
@@ -90,9 +90,9 @@ export function problemFor(error: unknown): { status: number; body: Problem } {
     error.name === 'NoLeaveYearToShow' ||
     error.name === 'NoLeaveYearForTheTeam' ||
     error.name === 'NoLeaveYearForTheCalendar' ||
-    /** FR 37a, LMS 509. The same gap, met at the exit date. */
+    /** FR 37a. The same gap, met at the exit date. */
     error.name === 'NoLeaveYearCoversTheExitDate' ||
-    /** FR 63, LMS 510. */
+    /** FR 63. */
     error.name === 'NoLeaveYearForTheReport'
   ) {
     return { status: 409, body: { error: error.name, message: error.message } };
@@ -126,7 +126,7 @@ export function problemFor(error: unknown): { status: number; body: Problem } {
 }
 
 /**
- * One item's refusal inside a batch, with a fault among them written down. FR 51, LMS 328.
+ * One item's refusal inside a batch, with a fault among them written down. FR 51.
  *
  * A batch answers each row on its own, so a refusal is that row's body rather than the whole
  * reply's status. The log is what {@link answerProblems} would have done: a five hundred that
@@ -147,11 +147,11 @@ export function problemInABatch(
 }
 
 /**
- * The refusals a leave request can meet, and the status each is answered with. LMS 403.
+ * The refusals a leave request can meet, and the status each is answered with.
  *
  * Every one of these is a well formed request that a rule says no to. Without this table they
  * fall through to {@link unexpected} and reach the browser as "Something went wrong at our
- * end" — which is the exact failure LMS 403 is written against, because each of them
+ * end" — which is the exact failure this is written against, because each of them
  * already carries the sentence that tells somebody what to do instead. `LeaveCrossesAYearEnd`
  * names the two dates to submit; `NotEnoughDays` names how many days could be asked for;
  * `TooLateToRecord` names who can still enter it. Throwing that away and logging a stack
@@ -186,12 +186,12 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   LeaveCountsNoDays: 400,
   /** FR 16. Two requests instead of one; the message names both dates. */
   LeaveCrossesAYearEnd: 400,
-  /** FR 39. The comment box is the fix. LMS 315. */
+  /** FR 39. The comment box is the fix. */
   RefusalNeedsAComment: 400,
-  /** FR 44. The justification box is the fix. LMS 318. */
+  /** FR 44. The justification box is the fix. */
   OverrideNeedsAJustification: 400,
   /**
-   * FR 44. The other button is the fix, and the message names it. LMS 318.
+   * FR 44. The other button is the fix, and the message names it.
    *
    * A 400 rather than a 409 because what has to change is what was sent — the verb — rather
    * than the state of the world. The request is in a state this desk may decide; it is the
@@ -199,22 +199,22 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
    */
   OverrulingNeedsAnOverride: 400,
   /**
-   * FR 19. The empty fields are the fix, and the message names them. LMS 302.
+   * FR 19. The empty fields are the fix, and the message names them.
    *
    * A 400 rather than a 409: nothing about the world refuses this, and the draft is
    * exactly where it was. What is missing is what was sent.
    */
   DraftIsNotFinished: 400,
-  /** FR 17. The tick is the fix and the dates are fine. LMS 307. */
+  /** FR 17. The tick is the fix and the dates are fine. */
   ShortNoticeNotAcknowledged: 400,
-  /** FR 18. The reason box is the fix, and only HR ever sees this one. LMS 308. */
+  /** FR 18. The reason box is the fix, and only HR ever sees this one. */
   LateEntryNeedsAReason: 400,
-  /** FR 12. A different file is the fix, and renaming this one is not. LMS 310. */
+  /** FR 12. A different file is the fix, and renaming this one is not. */
   AttachmentTypeNotAccepted: 400,
-  /** FR 12. A smaller file is the fix. LMS 310. */
+  /** FR 12. A smaller file is the fix. */
   AttachmentTooLarge: 400,
   /**
-   * FR 13, FR 32a. The upload is the fix, and the message names why one is wanted. LMS 311.
+   * FR 13, FR 32a. The upload is the fix, and the message names why one is wanted.
    *
    * A 400 rather than a 409 for the reason `ShortNoticeNotAcknowledged` is one: the dates are
    * fine and the balance is what it is — what is missing is something that was sent with the
@@ -222,7 +222,7 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
    */
   DocumentationNotAttached: 400,
   /**
-   * FR 32c, LMS 507. The dates are the fix, and the message names the leave they have to be inside.
+   * FR 32c. The dates are the fix, and the message names the leave they have to be inside.
    */
   DaysOutsideTheLeave: 400,
   /** FR 32c, §8.6b. The type is the fix: days move into one whose allowance may be exceeded. */
@@ -231,7 +231,7 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   /** NFR SEC 01. A longer one is the fix, and the message says how long. */
   WeakPassword: 400,
   /**
-   * LMS 110, NFR SEC 01. A wrong, expired or spent one time code — signing in, or resetting.
+   * NFR SEC 01. A wrong, expired or spent one time code — signing in, or resetting.
    *
    * A 400 rather than a 401: the code is what was wrong, and the message says which of the
    * four it was without saying whose account it belongs to.
@@ -252,14 +252,14 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
    */
   PasswordMustChange: 403,
 
-  /** FR 51. The other verb is the fix; an override is decided one request at a time. LMS 328. */
+  /** FR 51. The other verb is the fix; an override is decided one request at a time. */
   NotABulkAction: 400,
-  /** FR 51. Nothing was selected, and the selection is the fix. LMS 328. */
+  /** FR 51. Nothing was selected, and the selection is the fix. */
   NothingToDecide: 400,
-  /** FR 51. Fewer rows is the fix, and the message names how many. LMS 328. */
+  /** FR 51. Fewer rows is the fix, and the message names how many. */
   TooManyToDecideAtOnce: 400,
 
-  /** FR 44. There is nothing on this request to reverse. LMS 318. */
+  /** FR 44. There is nothing on this request to reverse. */
   NothingToOverturn: 409,
 
   /** The Chief Executive's reversal of a settled request. */
@@ -270,15 +270,15 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   ReversalNeedsAReason: 400,
 
   /**
-   * NFR DAT 02, §8.1. Two approvers deciding at once, and this is the loser. LMS 326.
+   * NFR DAT 02, §8.1. Two approvers deciding at once, and this is the loser.
    *
    * The two below are the same race met at another door — leave withdrawn or approved out
    * from under the decider — and both were reaching the browser as a five hundred.
    */
   LeaveAlreadyDecided: 409,
-  /** FR 26, §8.2. Ended once, by whoever got there first. LMS 306. */
+  /** FR 26, §8.2. Ended once, by whoever got there first. */
   LeaveAlreadySettled: 409,
-  /** §6. The request has moved somewhere this act does not follow from. LMS 314. */
+  /** §6. The request has moved somewhere this act does not follow from. */
   LeaveCannotBeMoved: 409,
 
   /** FR 15, §5.6. Leave over leave already booked. */
@@ -296,25 +296,25 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   /** FR 18. Only HR can enter it now, which the message says. */
   TooLateToRecord: 409,
 
-  /** FR 12. Five is five; removing one is the fix. LMS 310. */
+  /** FR 12. Five is five; removing one is the fix. */
   TooManyAttachments: 409,
-  /** NFR SEC 07. The file is real and was refused by the scanner. LMS 310. */
+  /** NFR SEC 07. The file is real and was refused by the scanner. */
   AttachmentIsInfected: 409,
-  /** NFR SEC 07. Nothing about the file changes this; the scan has to run. LMS 310. */
+  /** NFR SEC 07. Nothing about the file changes this; the scan has to run. */
   AttachmentNotScanned: 409,
-  /** NFR SEC 06. Deleted under retention, for good. LMS 514. */
+  /** NFR SEC 06. Deleted under retention, for good. */
   AttachmentFileDeleted: 410,
-  /** FR 12. The request has moved past the point evidence goes on or comes off. LMS 310. */
+  /** FR 12. The request has moved past the point evidence goes on or comes off. */
   AttachmentsAreClosed: 409,
   /**
-   * FR 32c, NFR SEC 07, LMS 507. Nothing about the request refuses this: the certificate is
+   * FR 32c, NFR SEC 07. Nothing about the request refuses this: the certificate is
    * missing, somebody else's, or still being scanned.
    */
   CertificateNotUsable: 409,
-  /** FR 32c. Those days have moved once already, and the message names when. LMS 507. */
+  /** FR 32c. Those days have moved once already, and the message names when. */
   DaysAlreadyMoved: 409,
   /**
-   * NFR SEC 04. Spent, expired, somebody else's, or never issued at all. LMS 407.
+   * NFR SEC 04. Spent, expired, somebody else's, or never issued at all.
    *
    * 410 rather than the two statuses the note above argues for, and the same 410 for all
    * four: a link is a thing that is supposed to stop working, so a person who followed one
@@ -323,12 +323,12 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
    * through addresses which of their guesses had once been real.
    */
   DownloadLinkNotUsable: 410,
-  /** FR 13. The leave was allowed through on this file; a replacement is the fix. LMS 311. */
+  /** FR 13. The leave was allowed through on this file; a replacement is the fix. */
   DocumentationCannotBeRemoved: 409,
   /** §8.9. */
   LeaveYearIsClosed: 409,
 
-  /** FR 32g, LMS 218. Recording an event. */
+  /** FR 32g. Recording an event. */
   NotAnEventBasedType: 409,
   NotEligibleForTheType: 409,
   NoEntitlementForTheEvent: 409,
@@ -337,7 +337,7 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   MoreThanAnOccasionGrants: 409,
 
   /**
-   * FR 31, LMS 501. A code or a name already on another type.
+   * FR 31. A code or a name already on another type.
    *
    * 409 rather than 400: what was typed is fine, and what refuses it is a row that already
    * exists. Both sentences name the type it clashes with, which is what the form puts beside
@@ -348,7 +348,7 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   DuplicateLeaveTypeName: 409,
 
   /**
-   * FR 31, LMS 502. The three an entitlement rule meets, and none of them a fault.
+   * FR 31. The three an entitlement rule meets, and none of them a fault.
    *
    * 409 for all three: what was typed is fine, and what refuses it is the state of the
    * record — a rule already in force, a year already closed, a rule already starting on
@@ -359,7 +359,7 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   DuplicateEntitlementRule: 409,
 
   /**
-   * FR 22, LMS 504. The two the holiday calendar meets, and neither a fault.
+   * FR 22. The two the holiday calendar meets, and neither a fault.
    *
    * 409 for both, as the three above are: the date is well formed and what refuses it is a
    * row that already exists or a year already closed. Each sentence names what to do instead
@@ -368,11 +368,11 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   DuplicateHoliday: 409,
   HolidayInASettledYear: 409,
 
-  /** FR 48c, LMS 505. The picker is the fix: an empty box names nobody. */
+  /** FR 48c. The picker is the fix: an empty box names nobody. */
   ChiefExecutiveCannotBeCleared: 400,
 
   /**
-   * FR 37a, LMS 509. A figure asked for about somebody who has not left.
+   * FR 37a. A figure asked for about somebody who has not left.
    *
    * 409: the id is right and the person is real, and what refuses it is the record — there
    * is no exit date for an accrual to stop at. Recording the leaving is the fix, which the
@@ -381,7 +381,7 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   StillEmployed: 409,
 
   /**
-   * FR 44, FR 48c, LMS 505. The three the policy settings screen meets that are not a typo.
+   * FR 44, FR 48c. The three the policy settings screen meets that are not a typo.
    *
    * 409: what was sent is fine, and what refuses it is the state of the world. The rule is
    * switched off, the person named has left, or nobody has been named at all.
@@ -420,7 +420,7 @@ export function answerProblems(log: FailureLog = failuresToStderr()) {
 }
 
 /**
- * The one refusal nobody wrote a sentence for, so it is written here. LMS 410.
+ * The one refusal nobody wrote a sentence for, so it is written here.
  *
  * "It has been logged" told the reader nothing to do. This says whose fault it is and the two
  * acts that are theirs. It does not promise nothing was saved — a five hundred can be thrown

@@ -26,7 +26,7 @@ export interface Repositories {
   departments: DepartmentRepository;
   patterns: WorkPatternRepository;
   /**
-   * The three a balance movement needs. LMS 212, FR 26, §8.2., FR 32a, LMS 216, LMS 218, LMS 301, LMS 315, FR 39.
+   * The three a balance movement needs. FR 26, §8.2., FR 32a, FR 39.
    */
   balances: BalanceRepository;
   entries: LedgerRepository;
@@ -35,19 +35,19 @@ export interface Repositories {
   events: LeaveEventRepository;
   requests: LeaveRequestRepository;
   decisions: LeaveDecisionRepository;
-  /** FR 48b. The stages a request's routing skipped. LMS 320. */
+  /** FR 48b. The stages a request's routing skipped. */
   routing: LeaveRoutingRepository;
-  /** FR 07. The requests a moved reporting line carried. LMS 325. */
+  /** FR 07. The requests a moved reporting line carried. */
   reassignments: LeaveReassignmentRepository;
-  /** FR 47. The asks to take agreed leave off the books, and HR's answers. LMS 324. */
+  /** FR 47. The asks to take agreed leave off the books, and HR's answers. */
   withdrawals: WithdrawalRepository;
   /** The Chief Executive's reversals of settled requests. */
   reversals: ReversalRepository;
-  /** FR 32c. The days of agreed leave that became sick leave. LMS 507. */
+  /** FR 32c. The days of agreed leave that became sick leave. */
   reclassifications: ReclassificationRepository;
-  /** FR 25. The holidays credited back into agreed leave. LMS 508. */
+  /** FR 25. The holidays credited back into agreed leave. */
   recalculations: HolidayRecalculationRepository;
-  /** FR 13. The evidence a request has to arrive with, put on it here. LMS 311. */
+  /** FR 13. The evidence a request has to arrive with, put on it here. */
   attachments: AttachmentRepository;
 }
 

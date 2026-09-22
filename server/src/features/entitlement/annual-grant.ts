@@ -1,4 +1,4 @@
-/** The annual grant of entitlement. FR 30, LMS 214, §8.6, FR 29, FR 32h, FR 05, LMS 212, FR 32g. */
+/** The annual grant of entitlement. FR 30, §8.6, FR 29, FR 32h, FR 05, FR 32g. */
 
 import {
   coversTheWholeYear,

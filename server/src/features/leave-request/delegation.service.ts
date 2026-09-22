@@ -1,4 +1,4 @@
-/** Handing approvals to a colleague while an approver is away. FR 49, §8.6a, LMS 327. */
+/** Handing approvals to a colleague while an approver is away. FR 49, §8.6a. */
 
 import type { Actor } from '../../auth/actor.js';
 import { approvalDelegationPolicy } from './policy.js';

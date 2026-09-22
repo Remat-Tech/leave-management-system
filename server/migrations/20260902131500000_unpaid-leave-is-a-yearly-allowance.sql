@@ -1,7 +1,7 @@
 -- Up Migration
 
 -- Unpaid leave is ten working days a year, and the two unpaid figures HR was left to set.
--- FR 31, FR 32g, FR 32h. LMS 401.
+-- FR 31, FR 32g, FR 32h.
 --
 -- Three corrections to shipped configuration, none of them a schema change. They are here
 -- rather than typed into a database because a change that is not a migration does not

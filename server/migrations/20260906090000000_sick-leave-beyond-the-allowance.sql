@@ -1,8 +1,8 @@
 -- Up Migration
 
--- Certified sickness beyond the allowance. FR 32a, FR 32b, FR 33, §8.6b. LMS 312.
+-- Certified sickness beyond the allowance. FR 32a, FR 32b, FR 33, §8.6b.
 --
--- LMS 311 made the allowance answerable; this records which days stood on the certificate.
+-- The allowance is already answerable; this records which days stood on the certificate.
 -- FR 33 needs nothing here: `leave_type_never_deducts_from_annual` already holds it.
 
 -- ------------------------------------------- how many of a request's days were certified
@@ -55,7 +55,7 @@ $$;
 -- ----------------------------------------------------- and the same count on the movement
 
 /* The story's criterion: the ledger is the truth, so the tag goes where the days moved.
-   §5.7. INTEGER because a request is whole days — FR 24, LMS 209. */
+   §5.7. INTEGER because a request is whole days — FR 24. */
 
 ALTER TABLE leave_ledger_entry
     ADD COLUMN certified_days INTEGER NOT NULL DEFAULT 0;

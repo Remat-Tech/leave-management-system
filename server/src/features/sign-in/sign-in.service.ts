@@ -1,5 +1,5 @@
 /**
- * Signing in with a company email address, and the one time code that follows it. NFR SEC 01, LMS 109, LMS 110, LMS 112.
+ * Signing in with a company email address, and the one time code that follows it. NFR SEC 01.
  */
 
 import { type Actor, isSelf, signedInAs } from '../../auth/actor.js';
@@ -56,7 +56,7 @@ export interface SignInServiceOptions {
 export interface SignedIn {
   account: SignInAccount;
   employee: Employee;
-  /** What they may do. NFR SEC 02, LMS 112. */
+  /** What they may do. NFR SEC 02. */
   actor: Actor;
 }
 
@@ -79,7 +79,7 @@ export class SignInService {
     private readonly accounts: SignInAccountRepository,
     private readonly employees: EmployeeRepository,
     /**
-     * One question asked of it, in one place: does this account hold a role for which a code is mandatory. LMS 110.
+     * One question asked of it, in one place: does this account hold a role for which a code is mandatory.
      */
     private readonly roles: RoleRepository,
     private readonly mailer: Mailer,
@@ -91,7 +91,7 @@ export class SignInService {
     this.code = options.code ?? codeSettings();
   }
 
-  /** Signs somebody in, or refuses. LMS 110. */
+  /** Signs somebody in, or refuses. */
   async signIn(email: string, password: string): Promise<SignInOutcome> {
     const address = typeof email === 'string' ? email : '';
     const supplied = typeof password === 'string' ? password : '';
@@ -131,7 +131,7 @@ export class SignInService {
     };
   }
 
-  /** Answers the code, and opens the door. LMS 110. */
+  /** Answers the code, and opens the door. */
   async submitCode(email: string, code: string): Promise<SignedIn> {
     const address = typeof email === 'string' ? email : '';
     const answer = typeof code === 'string' ? code.trim() : '';
@@ -181,7 +181,7 @@ export class SignInService {
     return { status: 'CODE_SENT', companyEmail, expiresAt };
   }
 
-  /** The last thing every successful sign in does, whichever door it came through. LMS 112. */
+  /** The last thing every successful sign in does, whichever door it came through. */
   private async open(
     account: SignInAccount,
     employee: Employee,
@@ -201,7 +201,7 @@ export class SignInService {
     ]);
 
     /**
-     * Built before the write rather than after it, because the write is attributed to them. LMS 113.
+     * Built before the write rather than after it, because the write is attributed to them.
      */
     const actor = signedInAs(employee.id, { roles, isManager: reports > 0 });
 
@@ -214,7 +214,7 @@ export class SignInService {
     };
   }
 
-  /** Gives an employee a login. LMS 111. */
+  /** Gives an employee a login. */
   async provision(
     actor: Actor,
     employeeId: string,
@@ -493,7 +493,7 @@ export class SignInService {
    * lost laptop, an investigation — and for undoing that afterwards.
    *
    * Never a delete. lms_app holds no DELETE on app_user, user_role rows point at
-   * it, and LMS 113's audit entries will name it. An account that was removed
+   * it, and audit entries will name it. An account that was removed
    * rather than closed leaves a trail referring to somebody nobody can identify.
    */
   async close(actor: Actor, employeeId: string): Promise<SignInAccount> {
@@ -520,7 +520,7 @@ export class SignInService {
    *
    * Undefined rather than a throw, and unlike {@link signIn} it says whether the
    * address is known. That is safe because nothing anonymous calls it: this is
-   * for HR looking somebody up, and since LMS 112 the authorisation that sentence
+   * for HR looking somebody up, and the authorisation that sentence
    * was relying on is on the line below rather than in a story yet to be written.
    */
   async forEmail(actor: Actor, companyEmail: string): Promise<SignInAccount | undefined> {

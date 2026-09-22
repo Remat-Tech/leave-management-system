@@ -42,8 +42,7 @@ import { signedInAs, theSystem } from '../../src/auth/actor.js';
 import { Guard, NotAuthorised } from '../../src/auth/policy.js';
 
 /**
- * The employee record against a real database. FR 01 to FR 06, LMS 101 to
- * LMS 105.
+ * The employee record against a real database. FR 01 to FR 06.
  *
  * The unit suite covers the rules. What needs a database is everything the
  * database itself decides: that the two identifiers really are unique and really
@@ -618,7 +617,7 @@ describe('each employee has exactly one manager, FR 02 and FR 04', () => {
   });
 });
 
-describe('every employee is in one department, LMS 105', () => {
+describe('every employee is in one department', () => {
   /** A department with nobody in it, for the cases that need one. */
   async function emptyDepartment(name = 'Internal Audit'): Promise<Department> {
     return departments.create(system, { name });
@@ -756,7 +755,7 @@ describe('every employee is in one department, LMS 105', () => {
   });
 });
 
-describe('every employee works some week, FR 23 and LMS 106', () => {
+describe('every employee works some week, FR 23', () => {
   /** The patterns themselves are ../integration/work-pattern.test.ts. */
   async function partTimePattern(): Promise<string> {
     const { rows } = await admin.query<{ id: string }>(
@@ -1076,7 +1075,7 @@ describe('a reporting line never loops, FR 03', () => {
   });
 });
 
-describe('the reporting structure as a chart, FR 09 and LMS 107', () => {
+describe('the reporting structure as a chart, FR 09', () => {
   /**
    * The half of the story that needs the real organisation.
    *

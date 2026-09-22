@@ -1,4 +1,4 @@
-/** Draining the notices whose email did not send. FR 59, §7.1., LMS 331. */
+/** Draining the notices whose email did not send. FR 59, §7.1.. */
 
 import type { Actor } from '../../auth/actor.js';
 import type { DeliveryRun } from './delivery.js';

@@ -1,5 +1,5 @@
 /**
- * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 14, FR 15, FR 16, FR 26, §6, §8., LMS 301, LMS 303, LMS 304, LMS 305, LMS 306, LMS 313, LMS 314, FR 38, FR 38a, FR 40, LMS 315, FR 39, FR 52, FR 16a, §8.3, FR 25, §8.2, FR 48, FR 48b.
+ * Asking for leave, and knowing what it costs first. FR 10, FR 11, FR 14, FR 15, FR 16, FR 26, §6, §8., FR 38, FR 38a, FR 40, FR 39, FR 52, FR 16a, §8.3, FR 25, §8.2, FR 48, FR 48b.
  */
 
 import {
@@ -50,12 +50,12 @@ import {
   isCalendarDate,
 } from '../../shared/time.js';
 
-/** Where a request has got to. LMS 301, LMS 306, LMS 314, LMS 209, LMS 320, FR 38a, FR 48b. */
+/** Where a request has got to. FR 38a, FR 48b. */
 export const REQUEST_STATUSES = [
   'SUBMITTED',
   'APPROVED',
   /**
-   * Nobody can decide it. FR 48b, §8.6a, LMS 320.
+   * Nobody can decide it. FR 48b, §8.6a.
    *
    * Neither an ending nor an approval: the days are still held and the leave is still
    * wanted, and what is missing is somebody to ask. `route` puts it back once there is one.
@@ -68,13 +68,13 @@ export const REQUEST_STATUSES = [
 
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
-/** The three endings that give the days back. FR 26, §8.2., LMS 306, LMS 212, LMS 314. */
+/** The three endings that give the days back. FR 26, §8.2.. */
 export const RELEASING_STATUSES = ['WITHDRAWN', 'CANCELLED', 'REFUSED'] as const;
 
 export type ReleasingStatus = (typeof RELEASING_STATUSES)[number];
 
 /**
- * The statuses that hold a person's days. FR 15, §5.6., LMS 304, LMS 314, LMS 306, LMS 320.
+ * The statuses that hold a person's days. FR 15, §5.6..
  *
  * `UNROUTABLE` is one of them: its RESERVATION still stands, so the days are out of the
  * balance and the dates are still spoken for.
@@ -82,7 +82,7 @@ export type ReleasingStatus = (typeof RELEASING_STATUSES)[number];
 export const LIVE_STATUSES: readonly RequestStatus[] = ['SUBMITTED', 'APPROVED', 'UNROUTABLE'];
 
 /**
- * Live, and nobody has decided it yet. FR 46, §8.7, LMS 509.
+ * Live, and nobody has decided it yet. FR 46, §8.7.
  *
  * What an exit cancels. Derived from the two lists rather than written out, because
  * "pending" is exactly "holds days and is not approved" — a fourth live status added to
@@ -102,7 +102,7 @@ export function isSettled(status: RequestStatus): status is ReleasingStatus {
   return (RELEASING_STATUSES as readonly RequestStatus[]).includes(status);
 }
 
-/** A request being ended a second time. FR 26, §8.2., LMS 306. */
+/** A request being ended a second time. FR 26, §8.2.. */
 export class LeaveAlreadySettled extends Error {
   /** FR 26. */
   readonly code = 'ALREADY_SETTLED';
@@ -123,7 +123,7 @@ export class LeaveAlreadySettled extends Error {
 }
 
 /**
- * A move the table does not hold, on a request that has not ended. §6. LMS 314.
+ * A move the table does not hold, on a request that has not ended. §6.
  *
  * The refusal `APPROVED` made necessary, and it exists because the sentence
  * {@link LeaveAlreadySettled} says would be a lie about it. "This leave was already
@@ -135,7 +135,7 @@ export class LeaveAlreadySettled extends Error {
  * what state the request is in and what can still be done to it.
  *
  * **What can still be done is read off {@link transitionsFrom} rather than written out**,
- * and LMS 324 collected on that: the four rows out of `APPROVED` arrived and this sentence
+ * and withdrawing approved leave collected on that: the four rows out of `APPROVED` arrived and this sentence
  * started offering them by name. The fallback branch stays for the next state with none.
  */
 export class LeaveCannotBeMoved extends Error {
@@ -167,8 +167,7 @@ export class LeaveCannotBeMoved extends Error {
 }
 
 /**
- * A request waiting at a desk its type's chain no longer has. FR 31, FR 38a, FR 41. LMS 314,
- * LMS 316.
+ * A request waiting at a desk its type's chain no longer has. FR 31, FR 38a, FR 41.
  *
  * The one seam in reading the chain live rather than copying it onto the request, and it is
  * refused by name because letting the approval through is worse than saying so.
@@ -178,12 +177,13 @@ export class LeaveCannotBeMoved extends Error {
  * they may, without a developer and without a deployment. The manager now approves, at a
  * desk the policy no longer asks.
  *
- * **LMS 314 refused it because approving would have been the likely reading**, and said so:
+ * **The routing refused it because approving would have been the likely reading**, and said so:
  * `approverAfter` answered undefined for a desk outside the chain, "nobody left to ask" would
  * have approved the leave without HR — the only stage the new chain has — ever seeing it, and
  * "start again from the first stage" would have silently un-approved a stage somebody signed.
  *
- * **LMS 316 removed both of those and left the refusal standing**, which is worth reading as
+ * **Asking which stage has not signed removed both of those and left the refusal standing**,
+ * which is worth reading as
  * a change of grounds rather than as the same note. {@link nextUnapproved} does not answer
  * undefined here: a chain the desk has been dropped from still has stages nobody has signed,
  * so the walk would route the request to the first of them and nothing would be approved
@@ -225,7 +225,7 @@ export class ApprovalChainChanged extends Error {
 }
 
 /**
- * A request sent back into its chain that still has nowhere to go. FR 48b, §8.6a. LMS 320.
+ * A request sent back into its chain that still has nowhere to go. FR 48b, §8.6a.
  *
  * What `route` answers when the organisation has not changed since the alert went out. It
  * names the desk that is still empty and what would fill it, because the person reading it
@@ -252,7 +252,7 @@ export class StillNobodyToDecideIt extends Error {
 }
 
 /**
- * An override with no manager's decision under it to reverse. FR 44, §7.2. LMS 318.
+ * An override with no manager's decision under it to reverse. FR 44, §7.2.
  *
  * Told apart from {@link LeaveCannotBeMoved} because the request may be sitting in exactly
  * the right place and still have nothing to overturn — leave nobody has decided yet, or
@@ -283,7 +283,7 @@ export class NothingToOverturn extends Error {
 }
 
 /**
- * A plain decision that would silently contradict a manager. FR 44, §7.2. LMS 318.
+ * A plain decision that would silently contradict a manager. FR 44, §7.2.
  *
  * The refusal that makes "written justification mandatory" mean something. Approving leave
  * a manager turned down, or turning down leave a manager agreed to, is an override whether
@@ -314,7 +314,7 @@ export class OverrulingNeedsAnOverride extends Error {
 /* ------------------------------------------------------- the state machine, §6 */
 
 /**
- * What somebody may do to a request. §6, LMS 313, LMS 314.
+ * What somebody may do to a request. §6.
  *
  * Verbs rather than destinations, and the difference is the whole reason
  * {@link TRANSITIONS} is keyed by one of these instead of by a target status. "Withdraw"
@@ -323,7 +323,7 @@ export class OverrulingNeedsAnOverride extends Error {
  * afternoon two acts land in one state, at which point the table can no longer say which
  * happened and the audit log is the only thing that knows.
  *
- * **`APPROVE` is the verb that does not always move the status**, which is LMS 314's whole
+ * **`APPROVE` is the verb that does not always move the status**, which is the routing's whole
  * shape and is why keying by verbs mattered before there was a second kind of move. A
  * manager approving annual leave leaves the request `SUBMITTED` and sends it on to HR; the
  * HR officer approving it afterwards is the same verb and makes it `APPROVED`. Which of the
@@ -335,19 +335,19 @@ export const REQUEST_ACTIONS = [
   'REFUSE',
   'CANCEL',
   'APPROVE',
-  /** HR reversing a manager's rejection. FR 44, §7.2, LMS 318. */
+  /** HR reversing a manager's rejection. FR 44, §7.2. */
   'OVERTURN_REJECTION',
-  /** HR reversing a manager's approval. FR 44, §7.2, LMS 318. */
+  /** HR reversing a manager's approval. FR 44, §7.2. */
   'OVERTURN_APPROVAL',
   /**
-   * Sending a request nobody could decide back into its chain. FR 48b, §8.6a, LMS 320.
+   * Sending a request nobody could decide back into its chain. FR 48b, §8.6a.
    *
    * Not a decision — it says nothing about the leave and writes no ledger entry. It is the
    * act the alert asks HR for once the desk that came up empty has somebody at it.
    */
   'ROUTE',
   /**
-   * The four that take agreed leave off the books. FR 47, LMS 324.
+   * The four that take agreed leave off the books. FR 47.
    *
    * One conversation with four turns. `ASK_TO_WITHDRAW` moves nothing; which of the two
    * grants answers it is {@link grantingAction}. See ./withdrawal.ts.
@@ -357,14 +357,14 @@ export const REQUEST_ACTIONS = [
   'AMEND',
   'REFUSE_WITHDRAWAL',
   /**
-   * Moving days of agreed leave to sick leave. FR 32c, §8.6c, LMS 507.
+   * Moving days of agreed leave to sick leave. FR 32c, §8.6c.
    *
    * Decides nothing and ends nothing: the request keeps its status, its dates and its
    * price, and what moves is two balances.
    */
   'RECLASSIFY',
   /**
-   * Crediting back a public holiday declared inside agreed leave. FR 25, §8.8, LMS 508.
+   * Crediting back a public holiday declared inside agreed leave. FR 25, §8.8.
    *
    * Moves nothing about the request either. What changes is one balance, by the difference
    * between what the leave cost and what it costs now.
@@ -387,7 +387,7 @@ export function actionInWords(action: RequestAction): string {
     /** FR 48b. */
     case 'ROUTE':
       return 'send it to an approver';
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     case 'ASK_TO_WITHDRAW':
       return 'ask for it to be taken off the books';
     case 'WITHDRAW_APPROVED':
@@ -396,10 +396,10 @@ export function actionInWords(action: RequestAction): string {
       return 'amend it to the days actually taken';
     case 'REFUSE_WITHDRAWAL':
       return 'turn down the ask to take it off the books';
-    /** FR 32c, LMS 507. */
+    /** FR 32c. */
     case 'RECLASSIFY':
       return 'move days of it to sick leave';
-    /** FR 25, LMS 508. */
+    /** FR 25. */
     case 'RECALCULATE':
       return 'credit back a public holiday inside it';
     case 'REVERSE_APPROVAL':
@@ -412,13 +412,13 @@ export function actionInWords(action: RequestAction): string {
 }
 
 /**
- * The two that end a request outright and give its days back. FR 26, §8.2, FR 44. LMS 306, LMS 314, LMS 318.
+ * The two that end a request outright and give its days back. FR 26, §8.2, FR 44.
  *
  * The verbs `LeaveRequestService.settle` and `BalanceService.releaseForRequest` are typed
  * on. Neither is a decision at a desk: taking back your own leave and HR unwinding a row
  * that should not be on the books both end a request wherever it has got to.
  *
- * `REFUSE` left this list with LMS 318 — a refusal is a decision that may or may not end
+ * `REFUSE` left this list — a refusal is a decision that may or may not end
  * the request, so it goes through the decision door like an approval and releases days
  * only when it is the last word.
  *
@@ -430,7 +430,7 @@ export const RELEASING_ACTIONS = ['WITHDRAW', 'CANCEL'] as const;
 export type ReleasingAction = (typeof RELEASING_ACTIONS)[number];
 
 /**
- * Where somebody stands towards a request. §6, §10. LMS 313.
+ * Where somebody stands towards a request. §6, §10.
  *
  * **These are not roles, and the distinction is load bearing rather than pedantic.** Two
  * of the three transitions turn on a *relationship* — it is your leave, or you are the
@@ -447,7 +447,7 @@ export type ReleasingAction = (typeof RELEASING_ACTIONS)[number];
  *
  * ## `THE_DESK_IT_IS_WITH` is the standing that reads a column
  *
- * LMS 314, and it is the fourth because the first three were not enough to say who may
+ * It is the fourth because the first three were not enough to say who may
  * approve. The other three are answered from the actor and the employee record alone —
  * your leave, your report, your roles — and none of them can express "the desk FR 38a's
  * chain has this particular request sitting on this afternoon", which is a fact about the
@@ -484,7 +484,7 @@ export interface Transition {
 }
 
 /**
- * What one approval did: moved the request on, or decided it. FR 38a. LMS 314.
+ * What one approval did: moved the request on, or decided it. FR 38a.
  *
  * The move, described from all three sides — the desk that said yes, where that leaves the
  * request, and who is next. There is deliberately **no** `isFinal` flag beside them:
@@ -508,14 +508,14 @@ export interface ApprovalOutcome {
   to: RequestStatus;
   /** The desk it now waits on, or null once there is nobody left to ask. */
   awaiting: ApproverRole | null;
-  /** Stages the routing had to skip on the way, to be recorded. FR 48b, LMS 320. */
+  /** Stages the routing had to skip on the way, to be recorded. FR 48b. */
   skips: readonly SkippedStage[];
-  /** FR 48d. Whether one person answered the whole chain, to be stamped. LMS 322. */
+  /** FR 48d. Whether one person answered the whole chain, to be stamped. */
   singleApprover: boolean;
 }
 
 /**
- * Every move a request may make, and there are no others. §6. LMS 313, LMS 314.
+ * Every move a request may make, and there are no others. §6.
  *
  * The story's first criterion, and the reason it is a *table* rather than three methods
  * that each know their own rule. Before this, the same state machine was spread over
@@ -536,9 +536,9 @@ export interface ApprovalOutcome {
  * the same shape where no service can reach.
  *
  * **Four rows out of `APPROVED`, and none of them is one of the three verbs above.** LMS
- * 314 left this state empty and said the story filling it would have to bring a movement
- * against the `DEDUCTION`. LMS 324 is that story, and it brings four rows rather than one
- * because the person asks and HR answers. FR 47. `WITHDRAW`, `REFUSE` and `CANCEL` are
+ * The routing left this state empty and said whatever filled it would have to bring a
+ * movement against the `DEDUCTION`. Withdrawing approved leave does that, and it brings four
+ * rows rather than one because the person asks and HR answers. FR 47. `WITHDRAW`, `REFUSE` and `CANCEL` are
  * still absent and still meet {@link LeaveCannotBeMoved}.
  *
  * **One row whose `to` is live, and whose destination the table alone cannot give.**
@@ -558,13 +558,13 @@ export const TRANSITIONS: readonly Transition[] = [
     by: ['THE_REQUESTER', 'LEAVE_ADMINISTRATION'],
   },
 
-  /* Turning down a request at the desk it is sitting on. FR 44, §7.2. LMS 318.
+  /* Turning down a request at the desk it is sitting on. FR 44, §7.2.
 
      `to` is where the *last* desk's no leaves it. A stage before the last records the
      refusal and hands the request on, exactly as an approval does — both are decisions,
      and neither is the answer until every stage has given one.
 
-     Narrowed to `THE_DESK_IT_IS_WITH` by LMS 318, from the manager and HR alike.
+     Narrowed to `THE_DESK_IT_IS_WITH`, from the manager and HR alike.
      A refusal now advances the chain, so one made away from the desk would mark a stage
      decided by somebody who was never asked. Unwinding a request that should not be on
      the books is still HR's, and is `CANCEL`. */
@@ -574,7 +574,7 @@ export const TRANSITIONS: readonly Transition[] = [
      twice, days in the wrong year. Nobody's own leave and nobody's own report. */
   { from: 'SUBMITTED', action: 'CANCEL', to: 'CANCELLED', by: ['LEAVE_ADMINISTRATION'] },
 
-  /* Saying yes at the desk the chain has it sitting on. FR 38, FR 38a, FR 40. LMS 314.
+  /* Saying yes at the desk the chain has it sitting on. FR 38, FR 38a, FR 40.
 
      `to` is where the *last* desk leaves it; every desk before that leaves the status
      alone and moves the request on. `approvalTo` is what tells the two apart, and this row
@@ -586,14 +586,14 @@ export const TRANSITIONS: readonly Transition[] = [
      the manager, which is the whole of the third criterion. */
   { from: 'SUBMITTED', action: 'APPROVE', to: 'APPROVED', by: ['THE_DESK_IT_IS_WITH'] },
 
-  /* Working the routing out again under a request nobody has answered. FR 07, §8.4. LMS 325.
+  /* Working the routing out again under a request nobody has answered. FR 07, §8.4.
 
      `to` is where it lands when a desk can still be asked; where none can, it lands on
      `UNROUTABLE` — the same reading `approvalTo` makes of the `APPROVE` row above. Nothing
      is decided by it, which is why it leaves a request being decided still being decided. */
   { from: 'SUBMITTED', action: 'ROUTE', to: 'SUBMITTED', by: ['LEAVE_ADMINISTRATION'] },
 
-  /* The same two verbs said over a manager who decided otherwise. FR 44, §7.2. LMS 318.
+  /* The same two verbs said over a manager who decided otherwise. FR 44, §7.2.
 
      An override is an ordinary decision at the desk the request is sitting on, and the
      only thing that distinguishes it is that an earlier stage said the opposite. It is a
@@ -606,7 +606,7 @@ export const TRANSITIONS: readonly Transition[] = [
   { from: 'SUBMITTED', action: 'OVERTURN_REJECTION', to: 'APPROVED', by: ['THE_DESK_IT_IS_WITH'] },
   { from: 'SUBMITTED', action: 'OVERTURN_APPROVAL', to: 'REFUSED', by: ['THE_DESK_IT_IS_WITH'] },
 
-  /* A request nobody could be found to decide. FR 48b, §8.6a. LMS 320.
+  /* A request nobody could be found to decide. FR 48b, §8.6a.
 
      No decision among them, which is the whole of it: a request is unroutable because
      nobody can decide it. `ROUTE` is what the alert asks HR for once somebody can. */
@@ -619,7 +619,7 @@ export const TRANSITIONS: readonly Transition[] = [
   { from: 'UNROUTABLE', action: 'CANCEL', to: 'CANCELLED', by: ['LEAVE_ADMINISTRATION'] },
   { from: 'UNROUTABLE', action: 'ROUTE', to: 'SUBMITTED', by: ['LEAVE_ADMINISTRATION'] },
 
-  /* Taking agreed leave off the books. FR 47, §8.2. LMS 324.
+  /* Taking agreed leave off the books. FR 47, §8.2.
 
      One row the person may make and three that answer it. `ASK_TO_WITHDRAW` is
      `THE_REQUESTER` alone, where the `WITHDRAW` rows admit HR beside them: HR asking on
@@ -642,14 +642,14 @@ export const TRANSITIONS: readonly Transition[] = [
     by: ['LEAVE_ADMINISTRATION'],
   },
 
-  /* Sickness during agreed leave, moved to sick leave. FR 32c, §8.6c. LMS 507.
+  /* Sickness during agreed leave, moved to sick leave. FR 32c, §8.6c.
 
      Agreed leave only, and it stays agreed: the days were taken, which is the fact that
      makes them days there is something to move. `to` is `APPROVED` for the same reason
      `AMEND`'s is — the leave still happened, and its dates are not the system's to shift. */
   { from: 'APPROVED', action: 'RECLASSIFY', to: 'APPROVED', by: ['LEAVE_ADMINISTRATION'] },
 
-  /* A public holiday declared inside agreed leave. FR 25, §8.8. LMS 508.
+  /* A public holiday declared inside agreed leave. FR 25, §8.8.
 
      Agreed leave only: days that were held are priced again if they are ever approved, and
      days that were never spent have nothing to credit. `to` is `APPROVED` for the reason
@@ -680,7 +680,7 @@ export function transitionsFrom(from: RequestStatus): readonly Transition[] {
 }
 
 /**
- * Who may perform this action, wherever the table permits it at all. §6, §10. LMS 313.
+ * Who may perform this action, wherever the table permits it at all. §6, §10.
  *
  * The projection ../features/leave-request/policy.ts decides on, and it is deliberately
  * **not** keyed by the from-status even though {@link TRANSITIONS} is.
@@ -724,24 +724,23 @@ export function standingsFor(action: RequestAction): readonly Standing[] {
 
 /**
  * Where this settlement leaves the request, refusing a move the table does not hold.
- * §6, FR 26. LMS 313, LMS 314.
+ * §6, FR 26.
  *
  * **The destination is read off the table rather than passed in**, which is the half of
- * the story that makes the table load bearing instead of documentation. Before LMS 313
- * the service named the target status at each call site — `settle(actor, id, 'WITHDRAWN',
+ * change that makes the table load bearing instead of documentation. The service used to
+ * name the target status at each call site — `settle(actor, id, 'WITHDRAWN',
  * …)` — so the table could have said anything and the code would still have written
  * whatever the caller asked for. Now there is nowhere to say it.
  *
- * **It is not the guarantee**, and the arrangement is the one LMS 304, LMS 305 and LMS
- * 306 all made. Two tabs withdrawing the same request both read `SUBMITTED` here and both
+ * **It is not the guarantee**, and the arrangement is the one made throughout. Two tabs withdrawing the same request both read `SUBMITTED` here and both
  * pass. What closes that window is the balance lock in
  * `BalanceService.releaseForRequest` — both withdrawals move the same balance, so the
  * second waits and re-reads a request the first has already settled — and
  * `leave_request_moves_as_the_table_says` behind even that, for a writer that found
  * another way in. What this buys is the sentence.
  *
- * **It takes a {@link ReleasingAction} rather than any action**, which is LMS 314 drawing
- * in the type system the line it drew in the ledger. `APPROVE` reaches a state that still
+ * **It takes a {@link ReleasingAction} rather than any action**, which draws
+ * in the type system the line the ledger draws. `APPROVE` reaches a state that still
  * holds days, so a release door handed it would give back days approval had just
  * committed; {@link approvalTo} is that verb's lookup and `BalanceService.approveForRequest`
  * is its door. The narrowing is what makes the `isSettled` answer below unreachable rather
@@ -780,7 +779,7 @@ export function settlementTo(request: LeaveRequest, action: ReleasingAction): Re
 /* ------------------------------------------- taking agreed leave off the books, FR 47 */
 
 /**
- * Where an act on an approved request's withdrawal leaves it. FR 47, §6. LMS 324.
+ * Where an act on an approved request's withdrawal leaves it. FR 47, §6.
  *
  * The counterpart of {@link settlementTo}, reading its destination off {@link TRANSITIONS}
  * for the same reason. Three of the four verbs land back on `APPROVED`.
@@ -796,7 +795,7 @@ export function withdrawalTo(request: LeaveRequest, action: WithdrawalAction): R
 }
 
 /**
- * Where moving days of this leave to sick leave leaves it. FR 32c, §6. LMS 507.
+ * Where moving days of this leave to sick leave leaves it. FR 32c, §6.
  *
  * Asked for its refusal rather than its answer: agreed leave is the only state with a row
  * for this verb, and the answer is always the status it already has.
@@ -812,7 +811,7 @@ export function reclassificationTo(request: LeaveRequest): RequestStatus {
 }
 
 /**
- * Where crediting back a late public holiday leaves it. FR 25, §6. LMS 508.
+ * Where crediting back a late public holiday leaves it. FR 25, §6.
  *
  * Asked for its refusal, as {@link reclassificationTo} is, and the answer is the status it
  * already has.
@@ -828,7 +827,7 @@ export function recalculationTo(request: LeaveRequest): RequestStatus {
 }
 
 /**
- * Which of the two grants an ask gets: the whole of it back, or what is left. FR 47. LMS 324.
+ * Which of the two grants an ask gets: the whole of it back, or what is left. FR 47.
  *
  * The calendar's answer and not HR's, which is the difference between FR 47's second
  * criterion and its third. Compared on the first day, not the last: a request that started
@@ -855,7 +854,7 @@ export function whatIsLeftOf(request: LeaveRequest, today: CalendarDate): LeaveP
 }
 
 /**
- * Agreed leave with nothing left to give back. FR 47, NFR USA 03. LMS 324.
+ * Agreed leave with nothing left to give back. FR 47, NFR USA 03.
  *
  * Leave that is already over, or whose remaining days cost nothing. A refusal rather than a
  * movement of nought days, which {@link LeaveCountsNoDays} declines for the same reason.
@@ -879,7 +878,7 @@ export class NothingLeftToGiveBack extends Error {
 }
 
 /**
- * What the `RECALCULATION` says it is for. FR 27, FR 47. LMS 324.
+ * What the `RECALCULATION` says it is for. FR 27, FR 47.
  *
  * The fourth of the family {@link reasonForReservation} opened. It says which of the two
  * grants it was, because the dates are still on the record either way.
@@ -906,25 +905,25 @@ export interface DecisionAtADesk {
   chain: readonly ApproverRole[];
   /** FR 44, FR 48d. The desks that have decided and whose hand each was. */
   decidedAlready: readonly DeskDecision[];
-  /** FR 48d. Whose hand this one is, or null where nothing names them. LMS 322. */
+  /** FR 48d. Whose hand this one is, or null where nothing names them. */
   decider: string | null;
-  /** FR 48b. The stages already skipped, as recorded against this request. LMS 320. */
+  /** FR 48b. The stages already skipped, as recorded against this request. */
   skipped: readonly SkippedStage[];
-  /** FR 48b. Who can be asked at each desk, for this request. LMS 320. */
+  /** FR 48b. Who can be asked at each desk, for this request. */
   available: DesksAvailable;
-  /** FR 48d. Who is at each of them. LMS 322. */
+  /** FR 48d. Who is at each of them. */
   occupants: DeskOccupants;
 }
 
 /**
- * Where a decision leaves the request: on to the next desk, decided, or nowhere. FR 38, FR 38a, FR 40, FR 41, FR 42, FR 44, FR 48b, §6., §7.2, §8.6a, LMS 314, LMS 316, LMS 318, LMS 320.
+ * Where a decision leaves the request: on to the next desk, decided, or nowhere. FR 38, FR 38a, FR 40, FR 41, FR 42, FR 44, FR 48b, §6., §7.2, §8.6a.
  *
  * One walk for all four deciding verbs. What ends a request is the chain running out of
  * desks, not which way this desk went — so a manager's rejection carries the request on
  * to HR exactly as their approval would, and the last stage to decide is the one whose verb
  * the request lands on.
  *
- * Since LMS 320 there is a third destination. Where the next stage has neither its own desk
+ * There is a third destination. Where the next stage has neither its own desk
  * nor a stand-in the request lands on `UNROUTABLE` rather than on the verb — running out of
  * people to ask never approves and never refuses anything.
  */
@@ -954,7 +953,7 @@ export function decisionTo(input: DecisionAtADesk): ApprovalOutcome {
 
   const routed = routeFrom({
     chain,
-    /** FR 48d. This decision counts as made: the desk, and the hand behind it. LMS 322. */
+    /** FR 48d. This decision counts as made: the desk, and the hand behind it. */
     decided: [...decidedAlready, { desk, by: input.decider }],
     skipped,
     available,
@@ -984,7 +983,7 @@ export function decisionTo(input: DecisionAtADesk): ApprovalOutcome {
         to: transition.to,
         awaiting: null,
         skips: routed.skips,
-        /** FR 48d, LMS 322. */
+        /** FR 48d. */
         singleApprover: routed.singleApprover,
       };
   }
@@ -993,23 +992,23 @@ export function decisionTo(input: DecisionAtADesk): ApprovalOutcome {
 /**
  * Whether that decision was the last word, rather than a step towards one. FR 48b.
  *
- * Both halves are needed since LMS 320: a request that stopped because nobody could be asked
+ * Both halves are needed: a request that stopped because nobody could be asked
  * is also waiting on nobody, and it is emphatically not decided — no days move on it.
  */
 export function isTheLastWord(outcome: ApprovalOutcome): boolean {
   return outcome.awaiting === null && outcome.to !== 'UNROUTABLE';
 }
 
-/** Where a request goes when it is sent back into its chain. FR 48b, §8.6a. LMS 320, LMS 325. */
+/** Where a request goes when it is sent back into its chain. FR 48b, §8.6a. */
 export interface RoutedAgain {
   to: RequestStatus;
-  /** Null where the walk ran out of desks, which only a live request can do. LMS 325. */
+  /** Null where the walk ran out of desks, which only a live request can do. */
   awaiting: ApproverRole | null;
   skips: readonly SkippedStage[];
 }
 
 /**
- * Where sending a request back into its chain leaves it. FR 48b, FR 07, §8.6a, §8.4. LMS 320, LMS 325.
+ * Where sending a request back into its chain leaves it. FR 48b, FR 07, §8.6a, §8.4.
  *
  * The same walk a decision makes, with nothing decided by it: no desk answers, no ledger
  * entry is written, and the request goes to whichever desk can now be asked.
@@ -1024,7 +1023,7 @@ export function routingTo(input: {
   decidedAlready: readonly DeskDecision[];
   skipped: readonly SkippedStage[];
   available: DesksAvailable;
-  /** FR 48d. Who is at each desk. LMS 322. */
+  /** FR 48d. Who is at each desk. */
   occupants: DeskOccupants;
 }): RoutedAgain {
   const { request, chain, decidedAlready, skipped, available, occupants } = input;
@@ -1046,7 +1045,7 @@ export function routingTo(input: {
       );
     }
 
-    /** FR 07, LMS 325. The desk emptied under a request that was being decided. */
+    /** FR 07. The desk emptied under a request that was being decided. */
     return { to: 'UNROUTABLE', awaiting: null, skips: routed.skips };
   }
 
@@ -1060,25 +1059,25 @@ export function routingTo(input: {
   return { to: transition.to, awaiting: routed.desk, skips: routed.skips };
 }
 
-/** How far through its chain a request has got. FR 41, FR 42, FR 44, FR 48b, LMS 316, LMS 318, LMS 320. */
+/** How far through its chain a request has got. FR 41, FR 42, FR 44, FR 48b. */
 export interface ApprovalProgress {
   /** FR 41. */
   agreed: boolean;
-  /** FR 48b. Nobody can decide it, and HR has been told. LMS 320. */
+  /** FR 48b. Nobody can decide it, and HR has been told. */
   unroutable: boolean;
   /** The desks this request is asked at: the type's chain with its skips substituted in. */
   chain: readonly ApproverRole[];
-  /** FR 48b. The stages that went somewhere else, and why. LMS 320. */
+  /** FR 48b. The stages that went somewhere else, and why. */
   skipped: readonly SkippedStage[];
   /** The stages that have said yes, in chain order. */
   approvedBy: readonly ApproverRole[];
-  /** The stages that have said no, in chain order. FR 44, LMS 318. */
+  /** The stages that have said no, in chain order. FR 44. */
   refusedBy: readonly ApproverRole[];
   /** The stages still to be asked, in chain order. */
   stillToApprove: readonly ApproverRole[];
   /** The desk it is sitting on now, or null once it is sitting nowhere. */
   awaiting: ApproverRole | null;
-  /** FR 48d. One person answered the whole chain, because there was nobody else. LMS 322. */
+  /** FR 48d. One person answered the whole chain, because there was nobody else. */
   singleApprover: boolean;
   /** Stages of today's chain with no approval on this request, whatever its status. */
   stagesMissing: readonly ApproverRole[];
@@ -1093,9 +1092,9 @@ export function progressOf(input: {
   chain: readonly ApproverRole[];
   /** FR 41. */
   approvedBy: readonly ApproverRole[];
-  /** FR 44, LMS 318. */
+  /** FR 44. */
   refusedBy?: readonly ApproverRole[];
-  /** FR 48b, LMS 320. */
+  /** FR 48b. */
   skipped?: readonly SkippedStage[];
 }): ApprovalProgress {
   const { request, approvedBy } = input;
@@ -1124,7 +1123,7 @@ export function progressOf(input: {
     refusedBy: turnedDown,
     stillToApprove: beingDecided ? unasked : [],
     awaiting: request.awaitingApprovalFrom,
-    /** FR 48d, LMS 322. Off the row: it was stamped by the decision that settled it. */
+    /** FR 48d. Off the row: it was stamped by the decision that settled it. */
     singleApprover: request.decidedBySingleApprover,
     stagesMissing: missing,
     inWords: progressInWords(request, signed, turnedDown, unasked, agreed, unroutable),
@@ -1150,7 +1149,7 @@ function progressInWords(
     .filter((sentence): sentence is string => sentence !== null)
     .join(' ');
 
-  /** FR 48d, LMS 322. Said wherever the decisions are, so one hand is never read as two. */
+  /** FR 48d. Said wherever the decisions are, so one hand is never read as two. */
   const soFar = `${said === '' ? 'Nobody has decided it yet.' : said}${
     request.decidedBySingleApprover
       ? ' One approver decided every stage of it, because there was nobody else to ask.'
@@ -1161,7 +1160,7 @@ function progressInWords(
     return `This leave is agreed and is yours to take. ${soFar}`;
   }
 
-  /** FR 48b, LMS 320. */
+  /** FR 48b. */
   if (unroutable) {
     return (
       `This leave is not agreed, and it is waiting on nobody: there is no approver left ` +
@@ -1184,7 +1183,7 @@ function progressInWords(
 }
 
 /**
- * Which of the two refusals a move the table does not hold deserves. §6. LMS 314.
+ * Which of the two refusals a move the table does not hold deserves. §6.
  *
  * One place, because the two are told apart by one question and asking it twice is how
  * somebody eventually gets the wrong sentence. Until `APPROVED` existed there was nothing
@@ -1216,20 +1215,20 @@ export interface NewLeaveRequest {
    */
   reason?: string;
   /**
-   * FR 17. That the short notice warning was seen and answered. LMS 307.
+   * FR 17. That the short notice warning was seen and answered.
    *
    * Not stored: `submittedAt` against `from` already says how short the notice was.
    */
   acknowledgesShortNotice?: boolean;
   /**
-   * FR 18. Why this is going on the record past the type's backdating window. LMS 308.
+   * FR 18. Why this is going on the record past the type's backdating window.
    *
    * Ignored on a request inside the window, which needs no exception and so has none to
    * explain. Only HR may enter one at all — see {@link lateEntryFor}.
    */
   lateEntryReason?: string;
   /**
-   * FR 13, FR 32a. The files this leave is being asked for with. LMS 311.
+   * FR 13, FR 32a. The files this leave is being asked for with.
    *
    * Ids of evidence already uploaded and waiting under this person's name, which go onto the
    * request in the same transaction as the row itself — the story's "arrives with the request
@@ -1254,32 +1253,32 @@ export interface ValidatedLeaveRequest {
   to: CalendarDate;
   /** FR 10. Null where the type asks for none; never `''`. */
   reason: string | null;
-  /** FR 18. Null on everything inside the window, which is almost everything. LMS 308. */
+  /** FR 18. Null on everything inside the window, which is almost everything. */
   lateEntryReason: string | null;
   /**
-   * FR 13, FR 32a. Whether this had to arrive with documentation. LMS 311.
+   * FR 13, FR 32a. Whether this had to arrive with documentation.
    *
    * Copied onto the row for the reason `countingBasis` is: the balance FR 32a judged it
    * against has moved by the time anybody reads it, and HR may reword the type's rule
    * tomorrow. Not supplied by the caller — {@link documentationGroundsFor} decides it.
    */
   evidenceRequired: boolean;
-  /** FR 32a, §8.6b. How many days went past the allowance. {@link certifiedDaysIn}. LMS 312. */
+  /** FR 32a, §8.6b. How many days went past the allowance. {@link certifiedDaysIn}. */
   certifiedDays: number;
   countingBasis: CountingBasis;
   days: number;
   calendarDays: number;
-  /** `SUBMITTED`, or `UNROUTABLE` where nobody can be asked at all. FR 48b, LMS 320. */
+  /** `SUBMITTED`, or `UNROUTABLE` where nobody can be asked at all. FR 48b. */
   status: RequestStatus;
   /**
-   * FR 38a, FR 48b. The desk this starts at, or null where there is none. LMS 314, LMS 320.
+   * FR 38a, FR 48b. The desk this starts at, or null where there is none.
    *
    * Not a field the caller supplies: {@link validateNewLeaveRequest} reads it off the
    * routing, because a caller who could name the desk could name the last one and have a
    * fortnight approved by whoever answered first.
    */
   awaitingApprovalFrom: ApproverRole | null;
-  /** FR 48b. The stages skipped on the way to that desk, to be recorded. LMS 320. */
+  /** FR 48b. The stages skipped on the way to that desk, to be recorded. */
   skips: readonly SkippedStage[];
 }
 
@@ -1308,7 +1307,7 @@ export interface LeaveRequest {
   /** FR 10. Null where the type asks for none; never `''`. */
   reason: string | null;
   /**
-   * FR 18. HR's account of why this went on the record late, or null. LMS 308.
+   * FR 18. HR's account of why this went on the record late, or null.
    *
    * Present exactly on the requests that were past their type's backdating window when they
    * were made, which is what makes it worth showing an approver beside the `BACKDATED` flag:
@@ -1316,7 +1315,7 @@ export interface LeaveRequest {
    */
   lateEntryReason: string | null;
   /**
-   * FR 13, FR 32a. Whether policy asked this request for documentation. LMS 311.
+   * FR 13, FR 32a. Whether policy asked this request for documentation.
    *
    * True exactly where {@link documentationGroundsFor} found a ground when the days were
    * held, and the reason it is a column rather than a question asked afresh: FR 32a's
@@ -1329,7 +1328,7 @@ export interface LeaveRequest {
    */
   evidenceRequired: boolean;
   /**
-   * FR 32a, §8.6b. How many of its days went past the allowance on a certificate. LMS 312.
+   * FR 32a, §8.6b. How many of its days went past the allowance on a certificate.
    *
    * Frozen with the price for the reason `evidenceRequired` is: the balance FR 32a judged it
    * against is spent by the time anybody reads the row. Nought on everything but sick leave
@@ -1350,7 +1349,7 @@ export interface LeaveRequest {
   status: RequestStatus;
   /**
    * FR 38a, FR 40. The desk this request is sitting on, or null once it is not sitting
-   * anywhere. LMS 314.
+   * anywhere.
    *
    * Where a request has got to is two facts, and this is the second of them: `status` says
    * whether it is still being decided, and this says who is deciding it. Held apart rather
@@ -1366,7 +1365,7 @@ export interface LeaveRequest {
    */
   awaitingApprovalFrom: ApproverRole | null;
   /**
-   * FR 48d. One person answered a chain that asked for more than one. LMS 322.
+   * FR 48d. One person answered a chain that asked for more than one.
    *
    * Set where there was nobody else to ask, and held against the decisions themselves by
    * `leave_request_says_when_one_person_decided_it`.
@@ -1378,7 +1377,7 @@ export interface LeaveRequest {
 }
 
 /**
- * The version of a request a screen holds, and hands back when it decides. NFR DAT 02, §8.1, LMS 326.
+ * The version of a request a screen holds, and hands back when it decides. NFR DAT 02, §8.1.
  *
  * `updated_at`, which `leave_request_set_updated_at` stamps on every write from every
  * connection. It is a version because that trigger makes it one — a row nobody could have
@@ -1389,7 +1388,7 @@ export function versionOf(request: LeaveRequest): string {
 }
 
 /**
- * Whether the request still stands as the screen deciding on it saw it. NFR DAT 02, §8.1, LMS 326.
+ * Whether the request still stands as the screen deciding on it saw it. NFR DAT 02, §8.1.
  *
  * True where no version was sent: it is what a caller offers, not what the row demands.
  */
@@ -1398,7 +1397,7 @@ export function standsAsItWasSeen(request: LeaveRequest, versionSeen: string | n
 }
 
 /**
- * Refuses a decision the answer arrived ahead of. NFR DAT 02, §8.1, LMS 326.
+ * Refuses a decision the answer arrived ahead of. NFR DAT 02, §8.1.
  *
  * A desk that has already answered is a race lost whether or not a version was sent — one
  * decision stands at each desk. A version that has moved is the same news, and catches the
@@ -1482,7 +1481,7 @@ export class LeaveRequestNotFound extends Error {
  * mistake about the dates — they have chosen the wrong kind of leave, and a type counting
  * calendar days is the answer.
  *
- * It moved here from ./leave-calculator.ts in LMS 303 with its message unchanged; see the
+ * It moved here from ./leave-calculator.ts with its message unchanged; see the
  * module note for why a refusal about a request does not belong in the arithmetic.
  */
 export class LeaveCountsNoDays extends Error {
@@ -1648,7 +1647,7 @@ export class LeaveOverlapsAnother extends Error {
 }
 
 /**
- * Leave asked for that the balance does not hold. FR 14, FR 26, NFR USA 03. LMS 305.
+ * Leave asked for that the balance does not hold. FR 14, FR 26, NFR USA 03.
  *
  * The story is being told *at once* rather than waiting days for a rejection, and the
  * word doing the work is "told". A person who is refused has to be able to act on the
@@ -1779,7 +1778,7 @@ function occasionInWords(type: LeaveType, requested: number, limit: number): str
 }
 
 /**
- * Short notice submitted without the acknowledgement. FR 17, LMS 307.
+ * Short notice submitted without the acknowledgement. FR 17.
  *
  * Not about the leave: the same request goes through once it is acknowledged.
  */
@@ -1813,7 +1812,7 @@ export class ShortNoticeNotAcknowledged extends Error {
 /* ------------------------------------------------------- documentation, FR 13, FR 32a */
 
 /**
- * Why a request is asked for a document, where it is. FR 13, FR 32a, §8.6b. LMS 311.
+ * Why a request is asked for a document, where it is. FR 13, FR 32a, §8.6b.
  *
  * Two thresholds that are constantly mistaken for one, and naming them apart is the whole
  * reason this is a list rather than a boolean. `THE_LENGTH_OF_THE_REQUEST` is FR 13:
@@ -1830,7 +1829,7 @@ export const DOCUMENTATION_GROUNDS = ['THE_LENGTH_OF_THE_REQUEST', 'PAST_THE_ALL
 export type DocumentationGround = (typeof DOCUMENTATION_GROUNDS)[number];
 
 /**
- * What this request has to arrive with a document for, if anything. FR 13, FR 32a. LMS 311.
+ * What this request has to arrive with a document for, if anything. FR 13, FR 32a.
  *
  * Takes the count and the balance rather than fetching either, for the reason
  * {@link assertTheDaysAreThere} does: the quote's warning and the submission's refusal are
@@ -1858,7 +1857,7 @@ export function documentationGroundsFor(input: {
 }
 
 /**
- * How many of this request's days go past the allowance. FR 32a, §8.6b. LMS 312.
+ * How many of this request's days go past the allowance. FR 32a, §8.6b.
  *
  * The `PAST_THE_ALLOWANCE` ground said as a number, from the same reading, so what a person
  * was asked for a certificate for is what the ledger records them as having used it on.
@@ -1881,7 +1880,7 @@ export function certifiedDaysIn(input: {
 }
 
 /**
- * How many of them come back when days are given back. FR 32a, FR 47. LMS 312, LMS 324.
+ * How many of them come back when days are given back. FR 32a, FR 47.
  *
  * Certified days come back first, because the days that are kept are the ones the allowance
  * takes back first: five days with two certified, one given back, leaves four days of which
@@ -1892,7 +1891,7 @@ export function certifiedDaysGivenBack(certifiedDays: number, daysGivenBack: num
 }
 
 /**
- * Leave that policy asks for documentation on, submitted without any. FR 13, FR 32a. LMS 311.
+ * Leave that policy asks for documentation on, submitted without any. FR 13, FR 32a.
  *
  * The story's whole point: the evidence arrives with the request rather than being chased
  * afterwards. What counts is a file the scanner has called clean — NFR SEC 07 — so a request
@@ -1942,7 +1941,7 @@ export class DocumentationNotAttached extends Error {
 }
 
 /**
- * Refuses a request that policy asks for evidence on and has none. FR 13, FR 32a. LMS 311.
+ * Refuses a request that policy asks for evidence on and has none. FR 13, FR 32a.
  *
  * `usable` is a count of files the scanner has cleared, taken rather than recounted, so this
  * refuses on exactly what `attachmentSatisfiesADocumentationRule` admits.
@@ -1984,7 +1983,7 @@ function documentationAgainstWhatIsAsked(
 }
 
 /**
- * Leave entered past the backdating window with nothing said about why. FR 18, LMS 308.
+ * Leave entered past the backdating window with nothing said about why. FR 18.
  *
  * The other half of {@link TooLateToRecord}, and the one only HR can meet: that refusal says
  * "ask HR, they can record it with a reason", and this is HR having done the first part.
@@ -2073,7 +2072,7 @@ export function assertItCostsSomething(
 }
 
 /**
- * Refuses a request the balance does not hold. FR 14, FR 26. LMS 305.
+ * Refuses a request the balance does not hold. FR 14, FR 26.
  *
  * Takes the count and the figure rather than fetching either, which is what keeps the
  * number a person is refused on the same number they were quoted: `LeaveRequestService`
@@ -2084,7 +2083,7 @@ export function assertItCostsSomething(
  * allowance is the point at which a medical certificate is asked for and not a cap, so
  * going past it is a request for evidence — §8.6b, "sick balances go negative, and that
  * is correct". The quote still warns; see {@link quoteFor}, which says so in the other
- * of its two sentences. That helper has sat in ./leave-type.ts since LMS 201 saying the
+ * of its two sentences. That helper has sat in ./leave-type.ts saying the
  * check "belongs to the submission path, which is the only thing that knows what the
  * balance is". This is that path.
  *
@@ -2121,7 +2120,7 @@ export function assertTheDaysAreThere(
 }
 
 /**
- * Refuses short notice nobody has acknowledged. FR 17, LMS 307.
+ * Refuses short notice nobody has acknowledged. FR 17.
  *
  * The shortfall is {@link noticeShortfall}'s, so this refuses on exactly the condition the
  * quote warned about.
@@ -2276,7 +2275,6 @@ export const QUOTE_WARNINGS = [
    * FR 17. Less notice than the type asks for. Never a bar; the approver decides.
    *
    * The one warning submission asks something back about — {@link assertShortNoticeIsAcknowledged}.
-   * LMS 307.
    */
   'SHORT_NOTICE',
   /** FR 13. This length of this type needs something attached to it. */
@@ -2354,7 +2352,7 @@ export interface LeaveRequestQuote {
  * testable without a database.
  *
  * The warnings are read off the leave type by the helpers that have been sitting in
- * ./leave-type.ts unused since LMS 201 — {@link noticeShortfall} and
+ * ./leave-type.ts unused — {@link noticeShortfall} and
  * {@link documentationRequired} — which is what those were built for.
  */
 export function quoteFor(input: {
@@ -2384,7 +2382,7 @@ export function quoteFor(input: {
     });
   }
 
-  /** FR 13, FR 32a, LMS 311. The same grounds submission refuses on, said as a warning. */
+  /** FR 13, FR 32a. The same grounds submission refuses on, said as a warning. */
   const grounds = documentationGroundsFor({ type, days: count.days, availableNow });
 
   if (grounds.length > 0) {
@@ -2475,7 +2473,7 @@ export function reasonForReservation(typeName: string, period: LeavePeriod, days
 }
 
 /**
- * What the RELEASE says it is for. FR 27, LMS 306.
+ * What the RELEASE says it is for. FR 27.
  *
  * The other half of {@link reasonForReservation}, and the sentence somebody reads beside
  * five days arriving back in their balance. The pair read as a pair in a history — "held
@@ -2503,7 +2501,7 @@ export function reasonForRelease(
 }
 
 /**
- * What the DEDUCTION says it is for. FR 27, FR 38a. LMS 314.
+ * What the DEDUCTION says it is for. FR 27, FR 38a.
  *
  * The third of the trio, and the one whose figures do not move: a `DEDUCTION` takes the
  * days out of `pending` and puts the same days into `taken`, so available is exactly where
@@ -2539,13 +2537,13 @@ export function reasonForApproval(
  * {@link LeaveCannotBeMoved} — and the first two are precisely the pair a person meets in
  * sequence when they press the button twice.
  *
- * **Exported since LMS 402**, which is the fourth caller and the first outside this file.
+ * **Exported for the fourth caller**, the first outside this file.
  * `statusInWords` in ./request-history.ts puts the same word on the history screen, and the
  * alternative was a second mapping written for a `<span>` — at which point a request could
  * read "refused" in a balance's history and "declined" in its own, and neither screen would
  * be wrong about anything except the other one.
  *
- * `APPROVED` is in it since LMS 314 and `SUBMITTED` deliberately is not: every caller here is
+ * `APPROVED` is in it and `SUBMITTED` deliberately is not: every caller here is
  * describing something that has already happened to the request, and "this leave has been
  * submitted" is not a refusal anybody needs. It falls to the default, which says less
  * rather than something wrong. The history screen is the one caller that has to say
@@ -2563,7 +2561,7 @@ export function inWordsSettled(status: RequestStatus): string {
       return 'refused';
     case 'APPROVED':
       return 'approved';
-    /** FR 48b, LMS 320. */
+    /** FR 48b. */
     case 'UNROUTABLE':
       return 'left with no approver who could decide it';
     default:
@@ -2624,7 +2622,7 @@ export function validateNewLeaveRequest(input: {
    */
   lateEntryReason?: string | null;
   /**
-   * FR 13, FR 32a. Whether documentation was asked of this one. LMS 311.
+   * FR 13, FR 32a. Whether documentation was asked of this one.
    *
    * {@link documentationGroundsFor}'s answer brought here, as `reasonRequired` is the type's
    * and `lateEntryReason` is the policy's: `/domain` states the rule and the caller does the
@@ -2635,7 +2633,7 @@ export function validateNewLeaveRequest(input: {
    */
   evidenceRequired?: boolean;
   /**
-   * FR 32a, §8.6b. How many of the days went past the allowance. LMS 312.
+   * FR 32a, §8.6b. How many of the days went past the allowance.
    *
    * {@link certifiedDaysIn}'s answer brought here, as `evidenceRequired` is
    * {@link documentationGroundsFor}'s. Optional, and absent is nought.
@@ -2645,14 +2643,14 @@ export function validateNewLeaveRequest(input: {
   days: number;
   calendarDays: number;
   /**
-   * FR 38a. The type's chain, from which the first stage is taken. LMS 314.
+   * FR 38a. The type's chain, from which the first stage is taken.
    *
    * The chain rather than the desk, for the reason `countingBasis` is the basis rather
    * than the day count: what the caller hands over is what it read off the leave type, and
    * the reading of it happens once, here.
    */
   approvalChain: readonly ApproverRole[];
-  /** FR 48b. Who can be asked at each desk, for this requester. LMS 320. */
+  /** FR 48b. Who can be asked at each desk, for this requester. */
   available: DesksAvailable;
 }): ValidatedLeaveRequest {
   const routed = theFirstDesk(input.approvalChain, input.available);
@@ -2669,9 +2667,9 @@ export function validateNewLeaveRequest(input: {
     reason: readReason(input.reason, input.reasonRequired),
     /** FR 18. Already decided and already trimmed; see {@link lateEntryFor}. */
     lateEntryReason: input.lateEntryReason ?? null,
-    /** FR 13, FR 32a. Already decided; see {@link documentationGroundsFor}. LMS 311. */
+    /** FR 13, FR 32a. Already decided; see {@link documentationGroundsFor}. */
     evidenceRequired: input.evidenceRequired ?? false,
-    /** FR 32a. Already decided; see {@link certifiedDaysIn}. LMS 312. */
+    /** FR 32a. Already decided; see {@link certifiedDaysIn}. */
     certifiedDays: requireCertifiedDays(input.certifiedDays ?? 0, days),
     countingBasis: input.countingBasis,
     days,
@@ -2689,7 +2687,7 @@ export function validateNewLeaveRequest(input: {
 }
 
 /**
- * The desk a new request starts at. FR 38, FR 38a, FR 48b. LMS 314, LMS 320.
+ * The desk a new request starts at. FR 38, FR 38a, FR 48b.
  *
  * Read off the chain and nowhere else, which is the whole criterion: annual leave starts
  * with the manager because its chain starts with `MANAGER`, and unpaid leave starts
@@ -2711,7 +2709,7 @@ function theFirstDesk(chain: readonly ApproverRole[], available: DesksAvailable)
   }
 
   /* FR 48d. Who is at each desk decides nothing while nobody has decided, so the walk is
-     given no names rather than three lists this path would not use. LMS 322. */
+     given no names rather than three lists this path would not use. */
   const routed = routeFrom({
     chain,
     decided: [],
@@ -2786,7 +2784,7 @@ function readReason(value: unknown, required: boolean): string | null {
   const said = typeof value === 'string' ? value.trim() : '';
 
   if (said === '' && required) {
-    /* LMS 410. The third sentence is the act. An explanation is being asked for, not a value. */
+    /* The third sentence is the act. An explanation is being asked for, not a value. */
     throw new InvalidLeaveRequest(
       'reason',
       'This kind of leave says why. Whoever decides it is being asked to agree to ' +

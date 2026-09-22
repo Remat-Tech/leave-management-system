@@ -1,5 +1,5 @@
 /**
- * Where a request goes when the desk its chain names cannot decide it. FR 48, FR 48b, FR 48c, FR 48d, FR 04, §8.6a, LMS 320, LMS 321, LMS 322.
+ * Where a request goes when the desk its chain names cannot decide it. FR 48, FR 48b, FR 48c, FR 48d, FR 04, §8.6a.
  */
 
 import { type ApproverRole, APPROVER_ROLES, deskInWords } from '../leave-type/approval-chain.js';
@@ -10,7 +10,7 @@ export const DESK_STANDINGS = ['CAN_DECIDE', 'ONLY_THE_REQUESTER', 'NOBODY_STAFF
 export type DeskStanding = (typeof DESK_STANDINGS)[number];
 
 /**
- * The same, once who has already decided this request is known. FR 48d, LMS 322.
+ * The same, once who has already decided this request is known. FR 48d.
  *
  * Staffed, and by nobody but a hand already on this request. Outside {@link DESK_STANDINGS}
  * because {@link standingOf} cannot see it: it is a fact about a request.
@@ -20,17 +20,17 @@ export type DeskStandingNow = DeskStanding | 'ALREADY_DECIDED_IT';
 /** Who can be asked at each desk, for one request. FR 38a, FR 48b. */
 export type DesksAvailable = Readonly<Record<ApproverRole, DeskStanding>>;
 
-/** Who is at each desk who could decide this request: the requester excluded. FR 48d, LMS 322. */
+/** Who is at each desk who could decide this request: the requester excluded. FR 48d. */
 export type DeskOccupants = Readonly<Record<ApproverRole, readonly string[]>>;
 
-/** One desk that has decided, and who decided at it. FR 44, FR 48d, LMS 322. */
+/** One desk that has decided, and who decided at it. FR 44, FR 48d. */
 export interface DeskDecision {
   desk: ApproverRole;
   /** Null where nothing named them — a job, a migration, a seed. */
   by: string | null;
 }
 
-/** Nobody is at any desk, because nobody has decided yet. FR 48d, LMS 322. */
+/** Nobody is at any desk, because nobody has decided yet. FR 48d. */
 export const NO_OCCUPANTS_NAMED: DeskOccupants = { MANAGER: [], HR: [], CEO: [] };
 
 /**
@@ -68,7 +68,7 @@ export type Routed =
   | {
       kind: 'DECIDED';
       skips: readonly SkippedStage[];
-      /** FR 48d. One named person answered a chain that asked for more than one. LMS 322. */
+      /** FR 48d. One named person answered a chain that asked for more than one. */
       singleApprover: boolean;
     }
   /** Neither this stage's desk nor its stand-in can be asked. FR 48b. */
@@ -88,7 +88,7 @@ export interface RoutingQuestion {
   /** The stages already skipped, as recorded against the request. */
   skipped: readonly SkippedStage[];
   available: DesksAvailable;
-  /** FR 48d. Who could still be asked at each desk. LMS 322. */
+  /** FR 48d. Who could still be asked at each desk. */
   occupants: DeskOccupants;
 }
 
@@ -102,7 +102,7 @@ function hasDecided(decided: readonly DeskDecision[], desk: ApproverRole): boole
   return decided.some((one) => one.desk === desk);
 }
 
-/** Whether that person has already decided this request. FR 48d, LMS 322. */
+/** Whether that person has already decided this request. FR 48d. */
 export function decidedBy(decided: readonly DeskDecision[], who: string): boolean {
   return decided.some((one) => one.by === who);
 }
@@ -110,14 +110,14 @@ export function decidedBy(decided: readonly DeskDecision[], who: string): boolea
 /**
  * The desk this request goes to, skipping every stage nobody can answer. FR 38a, FR 48, FR 48b, FR 48d, FR 41, §8.6a.
  *
- * A recorded skip is never reconsidered — the same rule LMS 316 gives a decision — so a
+ * A recorded skip is never reconsidered — the same rule a decision is given — so a
  * stage passed on Monday is not re-asked because somebody was hired on Wednesday.
  *
  * It stops at the first stage nobody can answer rather than looking ahead, and `DECIDED` is
  * reached only by stages deciding. Running out of desks that can be filled never approves
  * anything.
  *
- * Since LMS 322 it knows who is at a desk as well as whether anybody is: a stage its own
+ * It knows who is at a desk as well as whether anybody is: a stage its own
  * people have already decided goes to a second officer where the company has one, and where
  * it has none the stage falls to the desk that hand signed at and the request is `DECIDED` by
  * a single approver. FR 48d.
@@ -183,7 +183,7 @@ function answeringFor(stage: ApproverRole, question: RoutingQuestion): ApproverR
     }
   }
 
-  /** FR 48d. Nobody new to ask, so the stage falls to the desk that hand signed at. LMS 322. */
+  /** FR 48d. Nobody new to ask, so the stage falls to the desk that hand signed at. */
   for (const desk of [stage, standIn]) {
     if (desk !== null && standingNow(desk, question) === 'ALREADY_DECIDED_IT') {
       return whereTheyDecided(desk, question);
@@ -204,20 +204,20 @@ function standingNow(desk: ApproverRole, question: RoutingQuestion): DeskStandin
   const there = question.occupants[desk];
 
   /* Empty is the caller having no person to name rather than an empty desk — `available`
-     has just said somebody is there — so it routes as LMS 320 always did. */
+     has just said somebody is there — so it routes as it always did. */
   return there.length > 0 && there.every((who) => decidedBy(question.decided, who))
     ? 'ALREADY_DECIDED_IT'
     : 'CAN_DECIDE';
 }
 
-/** The desk somebody at this one already decided at. FR 48d, LMS 322. */
+/** The desk somebody at this one already decided at. FR 48d. */
 function whereTheyDecided(desk: ApproverRole, question: RoutingQuestion): ApproverRole | undefined {
   return question.decided.find(
     (one) => one.by !== null && question.occupants[desk].includes(one.by),
   )?.desk;
 }
 
-/** Whether one named hand answered a chain that asked for more than one. FR 48d, LMS 322. */
+/** Whether one named hand answered a chain that asked for more than one. FR 48d. */
 function decidedBySingleApprover(
   chain: readonly ApproverRole[],
   decided: readonly DeskDecision[],
@@ -286,7 +286,7 @@ export function skipInWords(
 
 /** What is empty about a desk. FR 04, FR 48, FR 48b, FR 48c, FR 48d. */
 function deskCannotDecideReason(stage: ApproverRole, standing: DeskStandingNow): string {
-  /** FR 48, LMS 319. Staffed, and by the one person who may never answer at it. */
+  /** FR 48. Staffed, and by the one person who may never answer at it. */
   if (standing === 'ONLY_THE_REQUESTER') {
     return (
       'the only person at that desk is the one who asked for the leave, and nobody ' +
@@ -294,7 +294,7 @@ function deskCannotDecideReason(stage: ApproverRole, standing: DeskStandingNow):
     );
   }
 
-  /** FR 48d, LMS 322. Staffed, and by nobody but a hand already on this request. */
+  /** FR 48d. Staffed, and by nobody but a hand already on this request. */
   if (standing === 'ALREADY_DECIDED_IT') {
     return (
       'everybody at that desk has already decided this request at an earlier stage, and ' +
@@ -310,7 +310,7 @@ function deskCannotDecideReason(stage: ApproverRole, standing: DeskStandingNow):
       return 'nobody holds an HR role';
     default:
       /* FR 48c. Both halves, because a desk that nobody staffs cannot tell them apart and
-         the fix differs: name somebody, or name their successor. LMS 321. */
+         the fix differs: name somebody, or name their successor. */
       return (
         'the organisation names no Chief Executive in its settings, or the person it ' +
         'names has left'
@@ -344,7 +344,7 @@ function deskCannotDecideRemedy(desk: ApproverRole, standing: DeskStanding): str
     case 'HR':
       return 'granting somebody an HR role';
     default:
-      /** FR 48c, LMS 321. A setting an HR Administrator writes, never a job title. */
+      /** FR 48c. A setting an HR Administrator writes, never a job title. */
       return (
         'an HR Administrator naming a current employee as the Chief Executive in the ' +
         'organisation’s settings'
@@ -359,7 +359,7 @@ export function desksAvailable(standingAt: (desk: ApproverRole) => DeskStanding)
   ) as DesksAvailable;
 }
 
-/** Every desk answered, as {@link desksAvailable} is. FR 48d, LMS 322. */
+/** Every desk answered, as {@link desksAvailable} is. FR 48d. */
 export function deskOccupants(peopleAt: (desk: ApproverRole) => readonly string[]): DeskOccupants {
   return Object.fromEntries(APPROVER_ROLES.map((desk) => [desk, peopleAt(desk)])) as DeskOccupants;
 }

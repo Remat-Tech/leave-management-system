@@ -1,5 +1,5 @@
 /**
- * Entitlement that arrives with an event. FR 32g, FR 32e, §8.6, LMS 218, LMS 201, FR 36, FR 36a, FR 31.
+ * Entitlement that arrives with an event. FR 32g, FR 32e, §8.6, FR 36, FR 36a, FR 31.
  */
 
 import type { CalendarDate } from '../../shared/time.js';

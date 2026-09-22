@@ -1,4 +1,4 @@
-/** A table as CSV, the way Excel opens it. RFC 4180. FR 64, LMS 511. */
+/** A table as CSV, the way Excel opens it. RFC 4180. FR 64. */
 
 import type { Cell, Table } from './table.js';
 

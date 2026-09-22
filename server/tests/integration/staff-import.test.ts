@@ -24,7 +24,7 @@ import { theSystem } from '../../src/auth/actor.js';
 import { Guard } from '../../src/auth/policy.js';
 
 /**
- * Loading staff from a spreadsheet, against a real database. FR 08, LMS 107.
+ * Loading staff from a spreadsheet, against a real database. FR 08.
  *
  * The unit suite covers what a file says. What needs a database is everything
  * the import exists for: that a dry run over a real organisation writes
@@ -383,7 +383,7 @@ describe('cycle detection during the import', () => {
   });
 
   /**
-   * And the pending leave follows every line the file moved. FR 07, §8.4. LMS 325.
+   * And the pending leave follows every line the file moved. FR 07, §8.4.
    *
    * A re-org moves lines by the hundred, and each one is somebody with a request in a queue.
    * What is asserted here is the reporting: which lines moved, that a row the file left alone
@@ -418,7 +418,7 @@ describe('cycle detection during the import', () => {
 
           committedWhenTold = rows[0].manager === move.to;
         },
-        /** FR 46, LMS 509. Nothing here records anybody leaving. */
+        /** FR 46. Nothing here records anybody leaving. */
         cancelWhatIsPending: () => Promise.resolve([]),
       },
       { domains: DOMAINS },

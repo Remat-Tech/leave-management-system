@@ -21,7 +21,7 @@ import {
 } from '../../src/features/notification/notification.js';
 
 /**
- * What somebody is told, and the sentence they act on. FR 59, §7.1. LMS 329.
+ * What somebody is told, and the sentence they act on. FR 59, §7.1.
  *
  * The story's "so that" is an aeroplane ticket in the other tab, so the assertions here are
  * mostly about **one sentence in each message**: whether the leave is theirs to take. Every
@@ -36,7 +36,7 @@ import {
 
 const MARCH: { from: string; to: string } = { from: '2026-03-02', to: '2026-03-10' };
 
-/** Everything `noticeOf` composes: the reminder is ../unit/reminder.test.ts's. FR 50, LMS 330. */
+/** Everything `noticeOf` composes: the reminder is ../unit/reminder.test.ts's. FR 50. */
 const NEWS_OF_SOMETHING = NOTICE_EVENTS.filter((event) => !isAReminder(event));
 
 const WHY_NOT = 'Two of the team are already away that week and the desk cannot be empty';
@@ -50,7 +50,7 @@ function aRequest(overrides: Partial<LeaveRequest> = {}): LeaveRequest {
     from: MARCH.from,
     to: MARCH.to,
     reason: 'My sister is getting married',
-    /** FR 18, LMS 308. */
+    /** FR 18. */
     lateEntryReason: null,
     evidenceRequired: false,
     certifiedDays: 0,
@@ -83,7 +83,7 @@ function happened(overrides: Partial<WhatHappened> = {}): WhatHappened {
 /* ------------------------------------------------------- the six pieces of news */
 
 describe('the events somebody is told about', () => {
-  /* FR 59's list, and LMS 318 brought the two the notification migration said were coming.
+  /* FR 59's list, and the two the notification migration said were coming have arrived.
      See the CHECK in that migration, which says the same thing. */
   it('are the eighteen FR 59 names that this system can actually produce', () => {
     expect(NOTICE_EVENTS).toEqual([
@@ -95,27 +95,27 @@ describe('the events somebody is told about', () => {
       'WITHDRAWN',
       'CANCELLED',
       'DECISION_OVERTURNED',
-      /** FR 48b, LMS 320. The alert, told to the requester and to whoever can unstick it. */
+      /** FR 48b. The alert, told to the requester and to whoever can unstick it. */
       'UNROUTABLE',
-      /** FR 07, LMS 325. The manager who has just inherited a pending request. */
+      /** FR 07. The manager who has just inherited a pending request. */
       'REASSIGNED',
-      /** FR 47, LMS 324. The ask goes to HR; the three answers go back to the person. */
+      /** FR 47. The ask goes to HR; the three answers go back to the person. */
       'WITHDRAWAL_ASKED',
       'WITHDRAWAL_GRANTED',
       'LEAVE_AMENDED',
       'WITHDRAWAL_REFUSED',
-      /** FR 50, LMS 330. The daily chase, composed by ../../src/features/notification/reminder.ts. */
+      /** FR 50. The daily chase, composed by ../../src/features/notification/reminder.ts. */
       'STILL_WAITING',
-      /** FR 32c, §8.6c, LMS 507. Days of agreed leave that became sick leave. */
+      /** FR 32c, §8.6c. Days of agreed leave that became sick leave. */
       'LEAVE_RECLASSIFIED',
-      /** FR 25, §8.8, LMS 508. A public holiday declared inside agreed leave. */
+      /** FR 25, §8.8. A public holiday declared inside agreed leave. */
       'LEAVE_RECALCULATED',
       /** The Chief Executive reversed a settled request. */
       'DECISION_REVERSED',
     ]);
   });
 
-  /* FR 50, LMS 330. The one event that is not news of anything happening, so `noticeOf`
+  /* FR 50. The one event that is not news of anything happening, so `noticeOf`
      refuses it rather than falling through to the branch below the one it is missing. */
   it('and one of them is a reminder, which is composed elsewhere', () => {
     expect(NOTICE_EVENTS.filter(isAReminder)).toEqual(['STILL_WAITING']);
@@ -143,7 +143,7 @@ describe('the events somebody is told about', () => {
     );
   });
 
-  /* FR 47, LMS 324. `LEAVE_AMENDED` is the one where days came back and the leave still
+  /* FR 47. `LEAVE_AMENDED` is the one where days came back and the leave still
      went ahead, which is why the list is named for what the balance did. */
   it('and seven of them mean the days are back', () => {
     const back = NOTICE_EVENTS.filter(givesTheDaysBack);
@@ -154,9 +154,9 @@ describe('the events somebody is told about', () => {
       'CANCELLED',
       'WITHDRAWAL_GRANTED',
       'LEAVE_AMENDED',
-      /** FR 32c, LMS 507. Into one balance, and out of another. */
+      /** FR 32c. Into one balance, and out of another. */
       'LEAVE_RECLASSIFIED',
-      /** FR 25, LMS 508. Into the balance the day was charged to, out of nothing. */
+      /** FR 25. Into the balance the day was charged to, out of nothing. */
       'LEAVE_RECALCULATED',
     ]);
   });
@@ -200,7 +200,7 @@ describe('the events somebody is told about', () => {
       expect(notice.body).toContain('6 days of Annual Leave');
       expect(notice.body).toContain('2 March 2026 to 10 March 2026');
       expect(notice.body).toContain('Hello Adwoa,');
-      expect(notice.body).toContain('Remat Holdings Leave');
+      expect(notice.body).toContain('Rota');
     }
   });
 });
@@ -209,7 +209,7 @@ describe('the events somebody is told about', () => {
  * The state each event describes, so a message is composed from a row that could exist.
  *
  * `noticeOf` reads the status and the desk to say where the leave stands, so handing every
- * branch a submitted request would test sentences the system never sends. FR 44, LMS 318.
+ * branch a submitted request would test sentences the system never sends. FR 44.
  */
 function requestFor(event: NoticeEvent): Partial<LeaveRequest> {
   switch (event) {
@@ -218,7 +218,7 @@ function requestFor(event: NoticeEvent): Partial<LeaveRequest> {
       return { status: 'APPROVED', awaitingApprovalFrom: null };
     case 'REFUSED':
       return { status: 'REFUSED', awaitingApprovalFrom: null };
-    /** FR 47, LMS 324. The ask and the two answers that leave the leave standing. */
+    /** FR 47. The ask and the two answers that leave the leave standing. */
     case 'WITHDRAWAL_ASKED':
     case 'LEAVE_AMENDED':
     case 'WITHDRAWAL_REFUSED':
@@ -239,7 +239,7 @@ function saysWhy(event: NoticeEvent): boolean {
     'REFUSED',
     'STAGE_REFUSED',
     'DECISION_OVERTURNED',
-    /** FR 47, LMS 324. */
+    /** FR 47. */
     'WITHDRAWAL_ASKED',
     'LEAVE_AMENDED',
     'WITHDRAWAL_REFUSED',
@@ -249,7 +249,7 @@ function saysWhy(event: NoticeEvent): boolean {
 /* ------------------------------------------- the sentence the whole story is about */
 
 describe('whether the leave is theirs to take', () => {
-  /* The defect LMS 316 exists against, arriving by email. */
+  /* The defect the every-stage rule exists against, arriving by email. */
   it('a stage approval says not to book anything, next to the good news', () => {
     const notice = noticeOf(
       happened({
@@ -552,7 +552,7 @@ const MAY_NOTIFY = [
   'features/notification/notification.service.ts',
   'features/leave-request/leave-request.service.ts',
   /**
-   * FR 25, §8.8, LMS 508. The second thing occasioned by something happening to leave.
+   * FR 25, §8.8. The second thing occasioned by something happening to leave.
    *
    * It calls the door once per person and tells each of them after that person's
    * transaction has returned, exactly as the request service does — the loop is over
@@ -560,7 +560,7 @@ const MAY_NOTIFY = [
    */
   'features/holiday/recalculation.service.ts',
   /**
-   * FR 50, LMS 330. The daily chase, which is the second thing that occasions a notice and
+   * FR 50. The daily chase, which is the second thing that occasions a notice and
    * the first that is not occasioned by anything happening.
    *
    * It sends through the same service and opens no transaction of its own, so the rule this
@@ -568,14 +568,14 @@ const MAY_NOTIFY = [
    */
   'features/notification/reminder.job.ts',
   /**
-   * FR 59, LMS 331. The retry, which is the third thing that occasions a send.
+   * FR 59. The retry, which is the third thing that occasions a send.
    *
    * It occasions no new notice at all — it re-sends rows that are already written — and like
    * the chase it goes through the same service and opens no transaction of its own.
    */
   'features/notification/delivery.job.ts',
   /**
-   * The composition root, which constructs one and never calls it. LMS 403.
+   * The composition root, which constructs one and never calls it.
    *
    * A different permission from the four above and it is worth keeping the distinction: those
    * four compose or send a notice, and this one only decides which object the door is handed.

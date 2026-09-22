@@ -1,4 +1,4 @@
-/** The balance adjustment screen, over HTTP. FR 37, FR 27, LMS 506, NFR DAT 03. */
+/** The balance adjustment screen, over HTTP. FR 37, FR 27, NFR DAT 03. */
 
 import { type Request, type Response, Router } from 'express';
 import type {
@@ -169,7 +169,7 @@ function entryAsJson(entry: LedgerEntry): Record<string, unknown> {
   };
 }
 
-/** The same, named and with the figure it left behind it. LMS 211. */
+/** The same, named and with the figure it left behind it. */
 function movementAsJson(movement: Movement): unknown {
   return {
     ...entryAsJson(movement),

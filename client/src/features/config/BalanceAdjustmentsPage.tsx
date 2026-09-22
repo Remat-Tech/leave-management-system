@@ -15,7 +15,7 @@ import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
- * Correcting a balance by hand, with a reason that stays on it. FR 37, FR 27, LMS 506.
+ * Correcting a balance by hand, with a reason that stays on it. FR 37, FR 27.
  *
  * The screen exists because a balance that is wrong is wrong until somebody can say so. The
  * movement it writes can never be removed afterwards, only compensated, so the ledger is

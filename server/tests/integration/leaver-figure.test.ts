@@ -48,7 +48,7 @@ import { holidayRecalculationService } from '../support/holiday-recalculations.j
 import { delegationService } from '../support/delegations.js';
 
 /**
- * The leaver figure, end to end. FR 37a, §8.6d, §8.7. LMS 509.
+ * The leaver figure, end to end. FR 37a, §8.6d, §8.7.
  *
  * ../unit/leaver-statement.test.ts proves the arithmetic and the working, which are pure.
  * What is only checkable against a server:
@@ -241,7 +241,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  /* FR 18, LMS 308. The fixture days are months behind today, as every suite here widens for. */
+  /* FR 18. The fixture days are months behind today, as every suite here widens for. */
   await admin.query('UPDATE leave_type SET max_backdate_calendar_days = 3650');
 
   await clear();
@@ -414,7 +414,7 @@ describe('a leaver’s figure', () => {
     expect(settlement.exitDate).toBe(EXIT);
     expect(settlement.year.label).toBe('2026');
     expect(settlement.portion).toEqual({ from: '2026-01-01', to: EXIT });
-    /** LMS 013. The figure says which rule produced it, as the grant's reason does. */
+    /** The figure says which rule produced it, as the grant's reason does. */
     expect(settlement.proRataRule.name).toBe('calendar-days');
   });
 
@@ -594,7 +594,7 @@ async function askForLeave(employeeId: string, from: string, to: string): Promis
     from,
     to,
     reason: 'My sister is getting married',
-    /** FR 17, LMS 307. */
+    /** FR 17. */
     acknowledgesShortNotice: true,
   });
 

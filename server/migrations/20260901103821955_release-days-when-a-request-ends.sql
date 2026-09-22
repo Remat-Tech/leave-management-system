@@ -1,6 +1,6 @@
 -- Up Migration
 
--- Days held come back when a request ends. FR 26, FR 27, §8.2. LMS 306.
+-- Days held come back when a request ends. FR 26, FR 27, §8.2.
 --
 -- The story is one sentence — "the balance I see is what I can actually still book" —
 -- and its first two halves were built in create-and-submit-a-leave-request: submitting
@@ -12,7 +12,7 @@
 --
 -- ## The statuses, and why three rather than six
 --
--- `leave_request_status_known` has held one value since LMS 301, which said why: "a
+-- `leave_request_status_known` has held one value from the start, and the reason was: "a
 -- CHECK listing six states of which one is reachable is a promise the schema cannot
 -- keep, and the approval story extends the list in its own migration exactly as
 -- event-based-entitlement-grants extended `leave_ledger_entry_type_known` to admit
@@ -22,13 +22,13 @@
 -- statuses arrive and each is reachable the day this lands, by a method that exists:
 -- WITHDRAWN by the person who asked, CANCELLED by HR, REFUSED by a manager. They are
 -- one movement seen from three desks — days that were held stop being held — which is
--- what `ledgerPolicy.release` has said since LMS 212 and is why they arrive together.
+-- what `ledgerPolicy.release` has said and is why they arrive together.
 --
 -- **APPROVED is deliberately not here.** Approval commits days rather than releasing
 -- them: the hold becomes days taken and available does not move at all. It is a
 -- different movement with a different entry type behind it and a chain of approvers
 -- deciding who may make it — FR 38a — and it brings its own migration, extending this
--- CHECK exactly as this one extends LMS 301's.
+-- CHECK exactly as this one extends the submission's.
 --
 -- ## What holds the pair together, in both directions
 --
@@ -224,7 +224,7 @@ DROP FUNCTION IF EXISTS refuse_an_impossible_transition();
    CHECK below admits one value and cannot hold them.
 
    **Their RELEASE entries stay.** `leave_ledger_entry_is_never_deleted` refuses to
-   remove one on any connection, deliberately and since LMS 210 — the ledger is the
+   remove one on any connection, deliberately — the ledger is the
    record of what happened and a rollback of a schema is not a claim that it did not. So
    a rolled-back database has requests reading SUBMITTED whose days are already back in
    the balance. That is the honest outcome rather than a tidy one: the figures are right,

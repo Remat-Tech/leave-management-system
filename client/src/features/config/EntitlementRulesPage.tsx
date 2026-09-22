@@ -15,7 +15,7 @@ import { Icon, iconForLeaveType } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 
 /**
- * What each kind of leave is worth, and from when. FR 31, LMS 502.
+ * What each kind of leave is worth, and from when. FR 31.
  *
  * The screen exists to make one thing hard: rewriting last year. A figure is never edited
  * into a new figure — it is superseded by a rule from a later date, and both stay on the

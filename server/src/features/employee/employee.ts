@@ -1,5 +1,5 @@
 /**
- * The employee record. FR 01, FR 05, FR 06, LMS 102, FR 02, FR 04, LMS 103, FR 03, LMS 104, LMS 105, FR 23, LMS 106, LMS 112.
+ * The employee record. FR 01, FR 05, FR 06, FR 02, FR 04, FR 03, FR 23.
  */
 
 import type { Actor } from '../../auth/actor.js';
@@ -16,7 +16,7 @@ export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 export type Gender = (typeof GENDERS)[number];
 
-/** A calendar date, `YYYY-MM-DD`, with no time and no timezone. LMS 114, NFR DAT 03. */
+/** A calendar date, `YYYY-MM-DD`, with no time and no timezone. NFR DAT 03. */
 export type { CalendarDate } from '../../shared/time.js';
 
 /** What the caller supplies to create a record. */
@@ -26,9 +26,9 @@ export interface NewEmployee {
   lastName: string;
   workEmail: string;
   jobTitle?: string | null;
-  /** Which team they are in. LMS 105. */
+  /** Which team they are in. */
   departmentId: string;
-  /** Which week they work. FR 23, LMS 106. */
+  /** Which week they work. FR 23. */
   workPatternId?: string | null;
   /** Who this person reports to. FR 02, FR 04. */
   managerId: string | null;
@@ -44,7 +44,7 @@ export type EmployeeChanges = Partial<Omit<NewEmployee, 'workPatternId'>> & {
   workPatternId?: string | null;
 };
 
-/** What ending an employment needs to know. FR 06, LMS 112. */
+/** What ending an employment needs to know. FR 06. */
 export interface Termination {
   exitDate: CalendarDate;
 }
@@ -333,7 +333,7 @@ export function validateEmployeeChanges(
     /* The database says the same thing, in employee_not_own_manager. It is said
        here as well so the refusal names the box rather than the constraint, and
        because this is the one cycle short enough to see without a walk. The
-       longer ones — A -> B -> A — are FR 03 and LMS 104, and are not checked
+       longer ones — A -> B -> A — are FR 03, and are not checked
        anywhere yet. */
     if (managerId !== null && managerId === current.id) {
       throw new InvalidEmployee(
@@ -437,7 +437,7 @@ export function planTermination(
   return changes;
 }
 
-/** A reporting line that has just moved. FR 07, §8.4, LMS 325. */
+/** A reporting line that has just moved. FR 07, §8.4. */
 export interface ReportingLineMove {
   employeeId: string;
   /** Who managed them, and who does now. Either may be nobody. FR 04. */
@@ -445,25 +445,25 @@ export interface ReportingLineMove {
   to: string | null;
 }
 
-/** Somebody who has just been recorded as having left. FR 06, FR 46, LMS 509. */
+/** Somebody who has just been recorded as having left. FR 06, FR 46. */
 export interface Exit {
   employeeId: string;
   exitDate: CalendarDate;
 }
 
 /**
- * What happens to leave when a record changes. FR 07, §8.4, FR 46, LMS 325, LMS 509.
+ * What happens to leave when a record changes. FR 07, §8.4, FR 46.
  *
  * The port `LeaveRequestService` fills. Declared here rather than imported, so this
  * feature keeps its own dependency direction.
  */
 export interface LeaveThatFollows {
   followTheReportingLine(actor: Actor, move: ReportingLineMove): Promise<unknown>;
-  /** FR 46, §8.7. Requests nobody has decided, ended by the exit. LMS 509. */
+  /** FR 46, §8.7. Requests nobody has decided, ended by the exit. */
   cancelWhatIsPending(actor: Actor, exit: Exit): Promise<unknown>;
 }
 
-/** For a caller with no leave to carry: a seed, a test about departments. LMS 325. */
+/** For a caller with no leave to carry: a seed, a test about departments. */
 export function noLeaveFollows(): LeaveThatFollows {
   return {
     followTheReportingLine: () => Promise.resolve([]),
@@ -515,7 +515,7 @@ export function warnAboutReportingLines(lines: ReportingLines): ReportingLineWar
        NULL anywhere in it, every upward walk is infinite over a finite set, so
        it must revisit somebody: no root means a cycle. Naming that here saves
        the next person the twenty minutes of looking for the missing chief
-       executive. FR 03 and LMS 104 are what fix it. */
+       executive. FR 03 is what fixes it. */
     warnings.push({
       code: 'NO_ROOT',
       message:
@@ -615,7 +615,7 @@ function normaliseWorkEmail(value: string | undefined, domains: string[]): strin
 }
 
 /**
- * The team they are in. LMS 105.
+ * The team they are in.
  *
  * Simpler than the manager reference below, because there is no exception
  * to make room for. Nobody is outside the organisation chart the way the head of
@@ -638,7 +638,7 @@ function requireDepartmentReference(value: string | null | undefined): string {
 }
 
 /**
- * The week they work, on a record being created. FR 23, LMS 106.
+ * The week they work, on a record being created. FR 23.
  *
  * Silence is the ordinary case and means "the usual week": most people work the
  * standard one, and making every caller look up the id of a pattern they did not

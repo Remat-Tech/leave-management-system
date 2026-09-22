@@ -1,4 +1,4 @@
-/** The team screen, assembled. FR 55, FR 56, §7.4., LMS 405. */
+/** The team screen, assembled. FR 55, FR 56, §7.4.. */
 
 import type { Actor } from '../../auth/actor.js';
 import { type BalanceOwner, ledgerPolicy } from '../balance/policy.js';
@@ -38,7 +38,7 @@ export class TeamService {
   ) {}
 
   /**
-   * One manager's direct reports, for one leave year. FR 55, FR 56, LMS 405.
+   * One manager's direct reports, for one leave year. FR 55, FR 56.
    *
    * Two gates. `teamPolicy.read` says whether there is a team at all, and `ledgerPolicy.read`
    * bounds each row — the same rule that lets a manager open one report's balance

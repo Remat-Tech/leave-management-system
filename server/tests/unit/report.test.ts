@@ -24,7 +24,7 @@ import {
   requestsPastTurnaround,
 } from '../../src/features/report/report.js';
 
-/** HR reporting. FR 63, LMS 510. */
+/** HR reporting. FR 63. */
 
 const YEAR: LeaveYear = {
   id: 'y2026',
@@ -222,7 +222,7 @@ describe('carried over balances', () => {
   });
 });
 
-describe('narrowed by department, type and date. FR 58, LMS 511', () => {
+describe('narrowed by department, type and date. FR 58', () => {
   const balances = [
     balance(AMA, ANNUAL, { entitled: 20 }),
     balance(AMA, SICK, { entitled: 5 }),

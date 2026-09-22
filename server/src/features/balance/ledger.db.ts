@@ -1,4 +1,4 @@
-/** Database access for the balance ledger. FR 27, §5.7., LMS 210. */
+/** Database access for the balance ledger. FR 27, §5.7.. */
 
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type { Database } from '../../db/index.js';
@@ -25,9 +25,9 @@ const RESTRICT_VIOLATION = '23001';
 
 const SETTLED_YEARS = 'leave_ledger_entry_leaves_settled_years_alone';
 const SAME_BALANCE = 'leave_ledger_entry_corrects_the_same_balance';
-/** FR 32a, LMS 312. */
+/** FR 32a. */
 const EXCEEDABLE = 'leave_ledger_entry_certified_days_need_an_exceedable_allowance';
-/** FR 32c, LMS 507. Deferred, so this arrives at COMMIT rather than at the insert. */
+/** FR 32c. Deferred, so this arrives at COMMIT rather than at the insert. */
 const A_PAIR = 'leave_ledger_entry_correlates_a_pair';
 
 /** Which field a refused row is reported against. */
@@ -40,10 +40,10 @@ const CHECKED_FIELDS: Record<string, string> = {
   leave_ledger_entry_only_an_adjustment_corrects: 'entryType',
   leave_ledger_entry_corrects_another: 'correctsId',
   leave_ledger_entry_request_movements_name_a_request: 'leaveRequestId',
-  /** FR 32a, LMS 312. */
+  /** FR 32a. */
   leave_ledger_entry_certified_days_are_part_of_it: 'certifiedDays',
   leave_ledger_entry_only_a_request_certifies: 'certifiedDays',
-  /** FR 32c, LMS 507. */
+  /** FR 32c. */
   leave_ledger_entry_only_a_reclassification_correlates: 'correlationId',
 };
 

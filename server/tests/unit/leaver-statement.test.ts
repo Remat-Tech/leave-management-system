@@ -18,7 +18,7 @@ import { type LeaveType, validateNewLeaveType } from '../../src/features/leave-t
 import type { LeaveYear } from '../../src/features/leave-year/leave-year.js';
 
 /**
- * The leaver figure. FR 37a, §8.6d, §8.7. LMS 509.
+ * The leaver figure. FR 37a, §8.6d, §8.7.
  *
  * The whole of the figure is arithmetic on two dates and five stored columns, so nearly all
  * of the story is here. ../integration/leaver-figure.test.ts carries the two halves a pure
@@ -209,7 +209,7 @@ describe('the figure itself', () => {
   });
 
   /* A joiner who also left inside the year moves both ends, which is `employedPortionOf`
-     doing the same clipping at both — the property LMS 215 built it for. */
+     doing the same clipping at both — the property it was built for. */
   it('and settles somebody who joined and left in the same year from both ends', () => {
     const line = onlyLine(
       facts({
@@ -223,7 +223,7 @@ describe('the figure itself', () => {
   });
 
   /**
-   * LMS 013. The rule is behind a name, so swapping it moves the figure and nothing else.
+   * The rule is behind a name, so swapping it moves the figure and nothing else.
    *
    * The same test ../unit/pro-rata.test.ts makes about the grant, made about the settlement:
    * a candidate rule answering differently is what proves the seam is real rather than
@@ -366,7 +366,7 @@ describe('the settlement as a whole', () => {
     expect(settlement.exitDate).toBe('2026-07-31');
     expect(settlement.year.label).toBe('2026');
     expect(settlement.portion).toEqual({ from: '2026-01-01', to: '2026-07-31' });
-    /** LMS 013. The figure says which rule produced it, as the grant's reason does. */
+    /** The figure says which rule produced it, as the grant's reason does. */
     expect(settlement.proRataRule.name).toBe('calendar-days');
   });
 

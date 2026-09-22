@@ -1,4 +1,4 @@
-/** HR's reports on leave across the company. FR 63, LMS 510, FR 58, LMS 511. */
+/** HR's reports on leave across the company. FR 63, FR 58. */
 
 import { available, type LeaveBalance, owed } from '../balance/balance.js';
 import { type Department, DepartmentNotFound } from '../department/department.js';
@@ -67,7 +67,7 @@ export class InvalidTurnaroundDays extends Error {
 
 /* ------------------------------------------------------------------- the shapes */
 
-/** One department or leave type a report may be narrowed to. FR 58, LMS 511. */
+/** One department or leave type a report may be narrowed to. FR 58. */
 export interface ReportFilter {
   departmentId?: string;
   leaveTypeId?: string;
