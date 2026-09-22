@@ -232,11 +232,10 @@ export function App() {
     <div className="shell">
       {/* The company rail: the wordmark, the screens, and the company line. */}
       <header className="sidebar">
+        {/* The mark and the name are one image, so the name is in `alt` rather than in text
+            beside it — without it this link would have nothing to announce itself by. */}
         <a className="logo" href={`#/${DEFAULT_SCREEN}`}>
-          <img className="logo-mark" src="/rota-logo.png" alt="" aria-hidden="true" />
-          <span className="logo-word">
-            <b>Rota</b>
-          </span>
+          <img className="logo-lockup" src="/rota-wordmark.png" alt="Rota" />
         </a>
 
         {/* Anchors rather than buttons, which is the whole of what the router buys: a tab

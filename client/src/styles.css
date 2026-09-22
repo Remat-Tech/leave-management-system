@@ -256,33 +256,22 @@ h1 {
 .logo {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
   text-decoration: none;
-  color: inherit;
-  font-family: var(--face-display);
-  /* Set to stand as tall as the mark beside it. The capitals of this face run to about 0.7
-     of the size, so 2.5rem puts them a little under the mark's 2.25rem — near enough to read
-     as a pair, which is the point. `line-height: 1` is what makes that true: at the inherited
-     1.5 the text would carry half a line of air above and below and sit taller than the mark
-     while looking shorter. */
-  font-size: 2.5rem;
-  line-height: 1;
-  /* Positive for the reason `h1` is: the face is condensed already. */
-  letter-spacing: 0.01em;
+  /* No type here any more: the mark and the name are one image, so the spacing between them
+     is the artwork's rather than a `gap`, and nothing in this link inherits a face. */
+  line-height: 0;
 }
 
-/* Sized by height, with the width left to follow. The file is 264x213 rather than square, so
-   a square box fitted it to the width and letterboxed the rest — which is why it looked both
-   small and slightly adrift beside the wordmark. Nothing here crops or stretches it: the one
-   figure is the height, and the intrinsic ratio decides the rest. */
-.logo-mark {
+/* Sized by height, with the width left to follow: the file is 334x96 and tightly cropped, so
+   the one figure here is the height and its own ratio decides the rest. Nothing crops or
+   stretches it. At 2rem it comes out near 7rem wide, inside the rail's 13.5rem of room.
+
+   The name in it is white, which is why this belongs to the rail and not to a page: the rail
+   is the brand black in both themes, and the same image on a card would be invisible. */
+.logo-lockup {
   flex: none;
   width: auto;
-  height: 2.25rem;
-}
-
-.logo-word b {
-  font-weight: 700;
+  height: 2rem;
 }
 
 /* The company line, at the foot of the rail. `margin-top: auto` puts it there whatever the
