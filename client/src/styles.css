@@ -256,11 +256,17 @@ h1 {
 .logo {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.3rem;
   text-decoration: none;
   color: inherit;
   font-family: var(--face-display);
-  font-size: 1.1875rem;
+  /* Set to stand as tall as the mark beside it. The capitals of this face run to about 0.7
+     of the size, so 2.5rem puts them a little under the mark's 2.25rem — near enough to read
+     as a pair, which is the point. `line-height: 1` is what makes that true: at the inherited
+     1.5 the text would carry half a line of air above and below and sit taller than the mark
+     while looking shorter. */
+  font-size: 2.5rem;
+  line-height: 1;
   /* Positive for the reason `h1` is: the face is condensed already. */
   letter-spacing: 0.01em;
 }
