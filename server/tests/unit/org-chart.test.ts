@@ -313,12 +313,12 @@ describe('the text rendering', () => {
   it('draws the lines that make five levels readable', () => {
     expect(renderOrgChart(buildOrgChart(fiveLevels()))).toBe(
       [
-        'Kwame Asante — Chief Executive (RH-0001)',
-        '└── Nana Owusu — Operations Director (RH-0002)',
-        '    └── Akosua Darko — Operations Manager (RH-0003)',
-        '        └── Kofi Boateng — Team Lead (RH-0004)',
-        '            ├── Adwoa Frimpong — Operations Officer (RH-0005)',
-        '            └── Abena Sarpong — Analyst (RH-0006)',
+        'Kwame Asante, Chief Executive (RH-0001)',
+        '└── Nana Owusu, Operations Director (RH-0002)',
+        '    └── Akosua Darko, Operations Manager (RH-0003)',
+        '        └── Kofi Boateng, Team Lead (RH-0004)',
+        '            ├── Adwoa Frimpong, Operations Officer (RH-0005)',
+        '            └── Abena Sarpong, Analyst (RH-0006)',
       ].join('\n'),
     );
   });

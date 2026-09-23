@@ -136,7 +136,7 @@ function whyItCannotStand(
 
   return attachment.scanStatus === 'INFECTED'
     ? 'The scanner refused this file, so it cannot stand as a certificate. Send a clean ' +
-        'copy — a photograph of the certificate is usually enough. NFR SEC 07.'
+        'copy: a photograph of the certificate is usually enough. NFR SEC 07.'
     : 'This file is still being checked for viruses and cannot count until that is done. ' +
         'Nothing has cleared it, so nothing can be let through on it. NFR SEC 07.';
 }
@@ -250,8 +250,8 @@ export function daysMovedSoFar(already: readonly Reclassification[]): number {
 /** One move, in the words the person whose leave it is reads. NFR USA 03. */
 export function reclassificationInWords(moved: Reclassification, intoName: string): string {
   return (
-    `${moved.days} ${moved.days === 1 ? 'day' : 'days'} of this leave — ` +
-    `${formatDay(moved.from)} to ${formatDay(moved.to)} — became ${intoName} on a medical ` +
+    `${moved.days} ${moved.days === 1 ? 'day' : 'days'} of this leave (` +
+    `${formatDay(moved.from)} to ${formatDay(moved.to)}) became ${intoName} on a medical ` +
     `certificate. The days went back into the balance they came out of.`
   );
 }

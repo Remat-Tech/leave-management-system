@@ -832,7 +832,7 @@ export function describePlan(plan: ImportPlan): string {
       out.push(
         `      ${create.draft.department}, ` +
           (create.managerNumber === null
-            ? 'reporting to nobody — the head of the organisation'
+            ? 'reporting to nobody, as the head of the organisation'
             : `reporting to ${create.managerNumber}`) +
           `, ${create.draft.workPattern ?? 'the standard week'}`,
       );

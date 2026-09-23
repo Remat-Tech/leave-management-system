@@ -334,7 +334,7 @@ function drawReports(root: OrgChartNode, prefix: string, lines: string[], glyphs
  * are what makes a chart worth reading rather than a list with indentation.
  */
 function describe(employee: Employee): string {
-  const title = employee.jobTitle === null ? '' : ` — ${employee.jobTitle}`;
+  const title = employee.jobTitle === null ? '' : `, ${employee.jobTitle}`;
   const left =
     employee.employmentStatus === 'TERMINATED'
       ? `, left ${employee.exitDate ?? 'on a date that was not recorded'}`

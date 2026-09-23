@@ -285,7 +285,7 @@ export function workingFor(
         balance.carriedOver === 0
           ? 'Nothing was carried into this year. FR 36.'
           : `${inDays(balance.carriedOver)} came in from the year before and is owed in ` +
-            `full — it was accrued then, not now. FR 36.`,
+            `full, because it was accrued then, not now. FR 36.`,
     },
   ];
 
@@ -319,7 +319,7 @@ export function workingFor(
       says:
         `${inDays(balance.pending)} are still held for leave nobody has decided. Requests ` +
         `not yet decided are cancelled when the exit is recorded, so this should be ` +
-        `nothing — a figure here is a request that was made afterwards. FR 46.`,
+        `nothing: a figure here is a request that was made afterwards. FR 46.`,
     });
   }
 
@@ -345,7 +345,7 @@ export function owedInWords(owed: number, type: LeaveType): string {
   if (owed < 0) {
     return (
       `${inDays(-owed)} more ${type.name} were taken than were accrued to the exit date. ` +
-      `What happens to them — recovered, or written off — is payroll's, not this system's.`
+      `What happens to them (recovered, or written off) is payroll's, not this system's.`
     );
   }
 

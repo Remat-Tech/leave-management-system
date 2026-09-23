@@ -6,6 +6,7 @@ import {
   AUDITED_ENTITIES,
   AUDITED_ENTITY_LABELS,
   changedFields,
+  isPickableEntity,
   LONGEST_SEARCH,
   type NamedAuditEntry,
 } from './audit.js';
@@ -25,10 +26,26 @@ export function auditRoutes({ audit }: AuditRoutes): Router {
       .then(({ entries, moreThanShown }) => {
         response.json({
           entries: entries.map(entryAsJson),
-          entities: AUDITED_ENTITIES.map((name) => ({ name, label: AUDITED_ENTITY_LABELS[name] })),
+          entities: AUDITED_ENTITIES.map((name) => ({
+            name,
+            label: AUDITED_ENTITY_LABELS[name],
+            /* So the screen knows which kinds it can offer a list for, rather than holding a
+               second copy of that decision. */
+            pickable: isPickableEntity(name),
+          })),
           longestSearch: LONGEST_SEARCH,
           moreThanShown,
         });
+      })
+      .catch(next);
+  });
+
+  /** The records of one kind, to choose from instead of typing an id. */
+  routes.get('/audit/records', (request: Request, response: Response, next) => {
+    void audit
+      .recordsOf(actorOf(response), oneStringIn(request, 'entity'))
+      .then((records) => {
+        response.json({ records });
       })
       .catch(next);
   });

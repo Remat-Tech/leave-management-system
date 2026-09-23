@@ -129,12 +129,12 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
   },
 
   STAGE_APPROVED: {
-    subject: '{{DecidedBy}} approved your {{typeName}} — it still needs {{nowWith}}',
+    subject: '{{DecidedBy}} approved your {{typeName}}, and it still needs {{nowWith}}',
     body: body(
       '{{DecidedBy}} has approved your request for {{cost}}.',
       'It is not agreed yet, so do not book anything on it. It has gone on to {{nowWith}}.',
       '{{comment}}',
-      `Your balance has not moved — the {{days}} are still being held while it is decided. ${TO_BOOK}`,
+      `Your balance has not moved: the {{days}} are still being held while it is decided. ${TO_BOOK}`,
     ),
   },
 
@@ -142,7 +142,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     subject: 'Your {{typeName}} for {{period}} is approved',
     body: body(
       'Your request for {{cost}} is approved.',
-      'Every approver has said yes — {{decidedBy}} was the last — so this leave is agreed and is yours to take.',
+      'Every approver has said yes, {{decidedBy}} last of all, so this leave is agreed and is yours to take.',
       '{{comment}}',
       `The {{days}} have come off your balance. ${TO_BOOK}`,
     ),
@@ -150,12 +150,12 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
 
   /* FR 44. Turned down, and not over. */
   STAGE_REFUSED: {
-    subject: '{{DecidedBy}} turned down your {{typeName}} — it has gone to {{nowWith}}',
+    subject: '{{DecidedBy}} turned down your {{typeName}}, and it has gone to {{nowWith}}',
     body: body(
       '{{DecidedBy}} has turned down your request for {{cost}}.',
       'That is not the end of it. Every stage decides, and it has gone on to {{nowWith}}, who will make the final call.',
       '{{comment}}',
-      `Your balance has not moved — the {{days}} are still being held while it is decided. ${TO_BOOK}`,
+      `Your balance has not moved: the {{days}} are still being held while it is decided. ${TO_BOOK}`,
     ),
   },
 
@@ -165,7 +165,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
       'Your request for {{cost}} has been turned down at {{decidedByPossessive}} stage.',
       '{{comment}}',
       `The {{days}} are back in your balance. ${TO_BOOK}`,
-      'Nothing is blocking those dates now, so if you still need the time off you can ask for it again — for the same days or for different ones.',
+      'Nothing is blocking those dates now, so if you still need the time off you can ask for it again, for the same days or for different ones.',
     ),
   },
 
@@ -175,7 +175,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     body: body(
       'You {{theirDecision}} {{employeeNamePossessive}} request for {{cost}}, and {{decidedBy}} has decided otherwise. The leave is {{finalDecision}}.',
       '{{comment}}',
-      'This is a record of a decision, not a question. If you think it was made on the wrong facts, speak to HR — the reason above and your own are both on the request for good.',
+      'This is a record of a decision, not a question. If you think it was made on the wrong facts, speak to HR. The reason above and your own are both on the request for good.',
     ),
   },
 
@@ -195,7 +195,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     body: body(
       '{{employeeName}} asked for {{cost}}, and the approval chain for it has run out of people who could decide it. The request has not been approved and has not been turned down.',
       '{{comment}}',
-      'Their {{days}} are still held, so this is not costing them anything yet — but nothing will happen to it until somebody can be asked.',
+      'Their {{days}} are still held, so this is not costing them anything yet, but nothing will happen to it until somebody can be asked.',
       'Once there is, send the request back to its approvers. Nobody may decide their own leave, whatever roles they hold. FR 48b.',
     ),
   },
@@ -214,11 +214,11 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
   /* FR 47. HR's copy. */
   WITHDRAWAL_ASKED: {
     subject:
-      '{{employeeNamePossessive}} {{typeName}} for {{period}} — they have asked for it to be taken off the books',
+      '{{employeeNamePossessive}} {{typeName}} for {{period}}: they have asked for it to be taken off the books',
     body: body(
-      '{{employeeName}} has asked for their agreed leave — {{cost}} — to be taken off the books. It was approved, so the {{days}} are already out of their balance.',
+      '{{employeeName}} has asked for their agreed leave ({{cost}}) to be taken off the books. It was approved, so the {{days}} are already out of their balance.',
       '{{comment}}',
-      'If the leave has not started, agreeing puts all {{days}} back. If it has, what is left of it comes back and the days already taken stay taken — which needs a reason in writing, because they are being told some of their leave is spent.',
+      'If the leave has not started, agreeing puts all {{days}} back. If it has, what is left of it comes back and the days already taken stay taken, which needs a reason in writing, because they are being told some of their leave is spent.',
       'Nobody answers their own ask, whatever roles they hold.',
     ),
   },
@@ -229,17 +229,17 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
       'HR has agreed to take your request for {{cost}} off the books. It had not started, so all of it comes back.',
       '{{comment}}',
       `The {{days}} are back in your balance. ${TO_BOOK}`,
-      'Nothing is blocking those dates now, so you can ask for them again — or for different ones — if you change your mind.',
+      'Nothing is blocking those dates now, so you can ask for them again, or for different ones, if you change your mind.',
     ),
   },
 
   LEAVE_AMENDED: {
     subject: 'Your {{typeName}} for {{period}} has been amended',
     body: body(
-      'HR has agreed to take back what was left of your leave. It had already started, so it stays on the record as {{cost}} — the days you were away for are days you took.',
+      'HR has agreed to take back what was left of your leave. It had already started, so it stays on the record as {{cost}}: the days you were away for are days you took.',
       '{{comment}}',
       `Of that, {{daysBack}} had not been taken, and {{thoseDaysAre}} back in your balance. ${TO_BOOK}`,
-      'If you think the split is wrong, speak to HR — the dates and the reason above are both on the request for good.',
+      'If you think the split is wrong, speak to HR. The dates and the reason above are both on the request for good.',
     ),
   },
 
@@ -248,7 +248,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     body: body(
       'You asked for your request for {{cost}} to be taken off the books, and HR has not agreed.',
       '{{comment}}',
-      `Your balance has not moved — the {{days}} stay taken and this leave is still yours. ${TO_BOOK}`,
+      `Your balance has not moved: the {{days}} stay taken and this leave is still yours. ${TO_BOOK}`,
       'If circumstances change again, ask again: the ask above and this answer are both on the record.',
     ),
   },
@@ -266,7 +266,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     subject: 'Your {{typeName}} for {{period}} has been cancelled',
     body: body(
       'The request for {{cost}} has been cancelled by HR.',
-      'A cancellation is HR taking a record off the books — leave entered twice, or against the wrong person, or in the wrong year. It is not a decision about whether you may have the time off, and nobody has turned anything down.',
+      'A cancellation is HR taking a record off the books: leave entered twice, or against the wrong person, or in the wrong year. It is not a decision about whether you may have the time off, and nobody has turned anything down.',
       `The {{days}} are back in your balance. ${TO_BOOK}`,
       'If you were expecting this leave to happen, speak to HR.',
     ),
@@ -300,7 +300,7 @@ export const ORIGINAL_WORDING: Record<EmailName, Wording> = {
     subject: '{{daysBack}} of your {{typeName}} for {{period}} {{hasOrHave}} been credited back',
     body: body(
       '{{declaredHoliday}}',
-      'The country was not working that day, so you are not charged leave for it — even though the leave was already approved when the day was gazetted.',
+      'The country was not working that day, so you are not charged leave for it, even though the leave was already approved when the day was gazetted.',
       `The {{daysBack}} {{isOrAre}} back in your balance. ${TO_BOOK}`,
       'Your leave itself has not changed. The dates you booked are the dates you have, and nothing has been added to the end of it.',
     ),

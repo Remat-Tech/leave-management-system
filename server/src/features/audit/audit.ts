@@ -55,6 +55,44 @@ export const AUDITED_ENTITY_LABELS: Readonly<Record<AuditedEntity, string>> = {
   notification_template: 'Email wording',
 };
 
+/**
+ * The kinds whose records can be offered as a list rather than typed as an id.
+ *
+ * Only where the set is bounded by something that does not grow with use: headcount, the
+ * departments, the leave types. `leave_request` and `leave_entitlement_event` are deliberately
+ * absent — there is one per request and one per accrual, so a list of them is a list that is
+ * useless within a month, and those keep the typed id.
+ *
+ * The value is the table to draw the list from, which is not always the entity's own: a child
+ * table is filed under its parent, so `work_pattern_day` is picked from the patterns and
+ * `user_role` from the logins. See the audit-log migration's note on `entity_id`.
+ */
+export const PICKABLE_ENTITIES = {
+  employee: 'employee',
+  department: 'department',
+  work_pattern: 'work_pattern',
+  work_pattern_day: 'work_pattern',
+  app_user: 'app_user',
+  user_role: 'app_user',
+  leave_type: 'leave_type',
+  leave_year: 'leave_year',
+} as const satisfies Partial<Record<AuditedEntity, string>>;
+
+export type PickableEntity = keyof typeof PICKABLE_ENTITIES;
+
+/** Which table a kind's records are listed from. */
+export type RecordSource = (typeof PICKABLE_ENTITIES)[PickableEntity];
+
+export function isPickableEntity(value: string): value is PickableEntity {
+  return Object.hasOwn(PICKABLE_ENTITIES, value);
+}
+
+/** One record, as a picker names it. */
+export interface AuditRecordOption {
+  id: string;
+  label: string;
+}
+
 /** What the audit log says when nobody said who they were. */
 export const UNATTRIBUTED = 'not named by the writer';
 

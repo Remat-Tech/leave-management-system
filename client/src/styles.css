@@ -3935,6 +3935,14 @@ select[aria-invalid='true'] {
 
 /* NFR AUD 01. The audit log. */
 
+/* Four pickers and a button are wider than the room left beside the sentence, so the shared
+   `margin-left: auto` was stranding the whole set at the right of a row of its own. A full
+   basis takes that row deliberately and starts it where the sentence starts. */
+.pagehead .controls.audit-filters {
+  flex-basis: 100%;
+  margin-left: 0;
+}
+
 .audit-table td {
   vertical-align: top;
 }
@@ -3957,6 +3965,13 @@ select[aria-invalid='true'] {
 .audit-changes .was {
   color: var(--ink-faint);
   text-decoration: line-through;
+}
+
+/* A field that was emptied. Italic and faint so it reads as the absence of a value rather than
+   as a value that happens to be the word. */
+.audit-changes .empty {
+  color: var(--ink-faint);
+  font-style: italic;
 }
 
 /* ------------------------------------------------------------------ HR settings

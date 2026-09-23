@@ -259,7 +259,7 @@ describe('whether the leave is theirs to take', () => {
       }),
     );
 
-    expect(notice.subject).toBe('Your manager approved your Annual Leave — it still needs HR');
+    expect(notice.subject).toBe('Your manager approved your Annual Leave, and it still needs HR');
     expect(notice.body).toContain('do not book anything on it');
     expect(notice.body).toContain('It has gone on to HR.');
     expect(notice.body).not.toContain('yours to take');
@@ -292,7 +292,7 @@ describe('whether the leave is theirs to take', () => {
 
     expect(notice.subject).toBe('Your Annual Leave for 2 March 2026 to 10 March 2026 is approved');
     expect(notice.body).toContain('is agreed and is yours to take');
-    expect(notice.body).toContain('HR was the last');
+    expect(notice.body).toContain('HR last of all');
     expect(notice.body).toContain('The 6 days have come off your balance.');
     expect(notice.body).not.toContain('do not book');
   });

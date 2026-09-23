@@ -151,8 +151,8 @@ export function notCreditedInWords(because: NotCredited, typeName: string): stri
 /** One credit, in the words the person whose leave it is reads. NFR USA 03. */
 export function recalculationInWords(credited: Recalculation, holidayName: string): string {
   return (
-    `${credited.days} ${credited.days === 1 ? 'day' : 'days'} of this leave — ` +
-    `${formatDay(credited.holidayDate)}, ${holidayName} — is back in your balance. The ` +
+    `${credited.days} ${credited.days === 1 ? 'day' : 'days'} of this leave (` +
+    `${formatDay(credited.holidayDate)}, ${holidayName}) is back in your balance. The ` +
     'country was not working, so you are not charged leave for it.'
   );
 }

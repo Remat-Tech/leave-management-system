@@ -143,7 +143,7 @@ describe('the report', () => {
       run({ disagreements: [disagreement({ entitled: 15 }, { entitled: 20 })] }),
     );
 
-    expect(report).toContain('RH-0011 — Annual Leave, 2026');
+    expect(report).toContain('RH-0011: Annual Leave, 2026');
     expect(report).toContain('Entitled: the balance says 15, the ledger says 20');
     expect(report).toContain('Available is out by 5 days, against them');
     expect(report).toContain('Nothing has been changed');
@@ -189,7 +189,7 @@ describe('the report', () => {
     );
 
     expect(report).toContain('This report could not be sent to:');
-    expect(report).toContain('kojo@rematholdings.com — SMTP is not answering.');
+    expect(report).toContain('kojo@rematholdings.com: SMTP is not answering.');
   });
 });
 

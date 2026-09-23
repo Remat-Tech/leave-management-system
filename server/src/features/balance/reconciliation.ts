@@ -84,7 +84,7 @@ export function reportOf(run: Reconciliation): string {
       ? []
       : [
           'This report could not be sent to:',
-          ...run.couldNotTell.map((failure) => `  ${failure.to} — ${failure.because}`),
+          ...run.couldNotTell.map((failure) => `  ${failure.to}: ${failure.because}`),
           '',
         ]),
     'Rota',
@@ -96,7 +96,7 @@ function linesFor(disagreement: BalanceDisagreement): string[] {
   const stake = daysAtStake(disagreement);
 
   return [
-    `${disagreement.employeeNumber} — ${disagreement.leaveTypeName}, ${disagreement.leaveYearLabel}`,
+    `${disagreement.employeeNumber}: ${disagreement.leaveTypeName}, ${disagreement.leaveYearLabel}`,
     ...(disagreement.hasCachedRow
       ? []
       : ['  There is no cached balance at all. Every screen is showing nought days.']),

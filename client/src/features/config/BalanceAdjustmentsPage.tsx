@@ -270,7 +270,7 @@ function Figures({ lines }: { lines: BalanceLine[] }) {
               <td>{days(line.carriedOver)}</td>
               {/* FR 37. The column this screen writes to, and the only one free in its sign. */}
               <td className={line.adjustment === 0 ? undefined : 'is-adjusted'}>
-                {line.adjustment === 0 ? '—' : signed(line.adjustment)}
+                {signed(line.adjustment)}
               </td>
               <td>{days(line.taken)}</td>
               <td>{days(line.pending)}</td>

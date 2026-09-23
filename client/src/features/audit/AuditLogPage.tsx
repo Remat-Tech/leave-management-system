@@ -3,6 +3,8 @@ import {
   type AuditChange,
   type AuditLog,
   type AuditLogEntry,
+  type AuditRecordOption,
+  auditRecordsOf,
   type AuditSearch,
   isNotSignedIn,
   searchAuditLog,
@@ -28,6 +30,10 @@ export function AuditLogPage({ onSignedOut }: { onSignedOut: () => void }) {
   const [log, setLog] = useState<AuditLog | undefined>(undefined);
   const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  /** The chosen kind's records, where there is a list of them worth offering. */
+  const [records, setRecords] = useState<AuditRecordOption[] | undefined>(undefined);
+
+  const pickable = log?.entities.find((one) => one.name === entity)?.pickable === true;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -52,6 +58,40 @@ export function AuditLogPage({ onSignedOut }: { onSignedOut: () => void }) {
 
   useEffect(load, [load]);
 
+  /* The chosen kind's records, fetched when the kind changes. A kind with no list to offer
+     clears it, so the id box comes back rather than a stale set of somebody else's names. */
+  useEffect(() => {
+    if (!pickable) {
+      setRecords(undefined);
+      return;
+    }
+
+    let current = true;
+
+    auditRecordsOf(entity)
+      .then((found) => {
+        if (current) {
+          setRecords(found);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isNotSignedIn(error)) {
+          onSignedOut();
+          return;
+        }
+
+        /* Left to the id box rather than shown: the search itself still works, and a failed
+           picker is not a reason to put a refusal over a screenful of results. */
+        if (current) {
+          setRecords(undefined);
+        }
+      });
+
+    return () => {
+      current = false;
+    };
+  }, [entity, pickable, onSignedOut]);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setSearched({ entity, entityId: entity === '' ? '' : entityId, from, to });
@@ -64,13 +104,16 @@ export function AuditLogPage({ onSignedOut }: { onSignedOut: () => void }) {
           Every change to a record, newest first. Nothing here can be changed, by anybody.
         </p>
 
-        <form className="controls" onSubmit={submit}>
+        <form className="controls audit-filters" onSubmit={submit}>
           <label className="filter">
             <span className="muted">Record</span>
             <select
               value={entity}
               onChange={(event) => {
                 setEntity(event.target.value);
+                /* An id belongs to the kind it was chosen under, so changing the kind drops
+                   it rather than carrying a department's id onto the leave types. */
+                setEntityId('');
               }}
             >
               <option value="">Every kind</option>
@@ -82,18 +125,41 @@ export function AuditLogPage({ onSignedOut }: { onSignedOut: () => void }) {
             </select>
           </label>
 
+          {/* Nobody carries record ids in their head, so where the set of records is bounded
+              this offers them by name. The kinds with one row per request or per accrual have
+              no list worth offering and keep the typed id. */}
           <label className="filter">
-            <span className="muted">Record id</span>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={entityId}
-              disabled={entity === ''}
-              aria-invalid={problem?.field === 'entityId' ? true : undefined}
-              onChange={(event) => {
-                setEntityId(event.target.value);
-              }}
-            />
+            <span className="muted">Which one</span>
+            {records === undefined ? (
+              <input
+                type="text"
+                inputMode="numeric"
+                value={entityId}
+                disabled={entity === ''}
+                /* An id is only an id of something, so this stays shut until a kind is chosen,
+                   and says which of the two it is rather than sitting there empty and dead. */
+                placeholder={entity === '' ? 'Pick a record first' : 'Any id'}
+                aria-invalid={problem?.field === 'entityId' ? true : undefined}
+                onChange={(event) => {
+                  setEntityId(event.target.value);
+                }}
+              />
+            ) : (
+              <select
+                value={entityId}
+                aria-invalid={problem?.field === 'entityId' ? true : undefined}
+                onChange={(event) => {
+                  setEntityId(event.target.value);
+                }}
+              >
+                <option value="">Every one</option>
+                {records.map((one) => (
+                  <option key={one.id} value={one.id}>
+                    {one.label}
+                  </option>
+                ))}
+              </select>
+            )}
           </label>
 
           <label className="filter">
@@ -203,19 +269,30 @@ function Changes({ changes }: { changes: AuditChange[] }) {
     <ul className="audit-changes">
       {changes.map((change) => (
         <li key={change.field}>
-          <code>{change.field}</code> <span className="was">{shown(change.from)}</span> →{' '}
-          <span>{shown(change.to)}</span>
+          <code>{change.field}</code>{' '}
+          {/* A create has nothing on the left, and the arrow already says so. */}
+          {isNothing(change.from) ? null : (
+            <>
+              <span className="was">{shown(change.from)}</span>{' '}
+            </>
+          )}
+          →{' '}
+          {isNothing(change.to) ? (
+            <span className="empty">nothing</span>
+          ) : (
+            <span>{shown(change.to)}</span>
+          )}
         </li>
       ))}
     </ul>
   );
 }
 
-/** A stored value, as text. */
-function shown(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '—';
-  }
+function isNothing(value: unknown): boolean {
+  return value === null || value === undefined;
+}
 
+/** A stored value, as text. Absence is the caller's to render, as a word rather than a glyph. */
+function shown(value: unknown): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
 }

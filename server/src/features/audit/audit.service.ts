@@ -6,9 +6,13 @@ import type { Guard } from '../../auth/policy.js';
 import { displayTimezone } from '../../shared/time.js';
 import {
   type AuditEntry,
+  type AuditRecordOption,
   type AuditSearch,
+  InvalidAuditSearch,
+  isPickableEntity,
   LONGEST_SEARCH,
   type NamedAuditEntry,
+  PICKABLE_ENTITIES,
   readAuditSearch,
 } from './audit.js';
 import { EmployeeNotFound } from '../employee/employee.js';
@@ -123,6 +127,25 @@ export class AuditService {
       entries: found.slice(0, LONGEST_SEARCH),
       moreThanShown: found.length > LONGEST_SEARCH,
     };
+  }
+
+  /**
+   * The records of one kind, so the screen can offer them instead of asking for an id.
+   *
+   * Gated by the same rule as {@link search}, because it is the same screen and the labels are
+   * names: anybody who may not search the log may not read a staff list out of its filters.
+   */
+  async recordsOf(actor: Actor, entity: string | undefined): Promise<AuditRecordOption[]> {
+    this.guard.enforce(auditPolicy.search(actor));
+
+    if (entity === undefined || !isPickableEntity(entity)) {
+      throw new InvalidAuditSearch(
+        'entity',
+        'That kind of record is not one the log can list. Type the id instead.',
+      );
+    }
+
+    return this.entries.recordsFor(PICKABLE_ENTITIES[entity]);
   }
 
   /** How many times this record has changed. */

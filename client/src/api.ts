@@ -1802,13 +1802,35 @@ export interface AuditSearch {
 
 export interface AuditLog {
   entries: AuditLogEntry[];
-  entities: { name: string; label: string }[];
+  /** `pickable` is whether {@link auditRecordsOf} can list this kind's records. */
+  entities: { name: string; label: string; pickable: boolean }[];
   longestSearch: number;
   moreThanShown: boolean;
 }
 
 export async function searchAuditLog(asked: AuditSearch): Promise<AuditLog> {
   return request<AuditLog>('GET', `/api/audit${query({ ...asked })}`);
+}
+
+/** One record, as the picker on the audit screen names it. */
+export interface AuditRecordOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * The records of one kind, to choose from instead of typing an id.
+ *
+ * Only for a kind the log said was `pickable`: the others have one row per request or per
+ * accrual, so there is no list of them worth offering and they keep the typed id.
+ */
+export async function auditRecordsOf(entity: string): Promise<AuditRecordOption[]> {
+  const { records } = await request<{ records: AuditRecordOption[] }>(
+    'GET',
+    `/api/audit/records${query({ entity })}`,
+  );
+
+  return records;
 }
 
 /** A query string from the values that were given. */

@@ -7,8 +7,10 @@ import type {
   AuditAction,
   AuditedEntity,
   AuditEntry,
+  AuditRecordOption,
   AuditSearch,
   NamedAuditEntry,
+  RecordSource,
 } from './audit.js';
 
 type AuditRow = Selectable<AuditLogTable>;
@@ -133,6 +135,95 @@ export class AuditRepository {
           ? null
           : `${row.first_name} ${row.last_name}`,
     }));
+  }
+
+  /**
+   * The records of one kind, for the picker on the search screen.
+   *
+   * A leaver and a closed department are both listed. What happened to a record is exactly the
+   * question somebody asks after it stops being current, so filtering these to the active ones
+   * would hide the histories most worth reading.
+   */
+  async recordsFor(source: RecordSource): Promise<AuditRecordOption[]> {
+    switch (source) {
+      case 'employee': {
+        const rows = await this.db
+          .selectFrom('employee')
+          .select(['id', 'first_name', 'last_name', 'employee_number'])
+          .orderBy('last_name')
+          .orderBy('first_name')
+          .execute();
+
+        return rows.map((row) => ({
+          id: row.id,
+          label: `${row.first_name} ${row.last_name} · ${row.employee_number}`,
+        }));
+      }
+
+      case 'app_user': {
+        /* Labelled by the person, not by the address: the reader is looking for whose login
+           changed, and two of them can share neither name nor id here. */
+        const rows = await this.db
+          .selectFrom('app_user')
+          .innerJoin('employee', 'employee.id', 'app_user.employee_id')
+          .select([
+            'app_user.id as id',
+            'employee.first_name',
+            'employee.last_name',
+            'employee.employee_number',
+          ])
+          .orderBy('employee.last_name')
+          .orderBy('employee.first_name')
+          .execute();
+
+        return rows.map((row) => ({
+          id: row.id,
+          label: `${row.first_name} ${row.last_name} · ${row.employee_number}`,
+        }));
+      }
+
+      case 'department': {
+        const rows = await this.db
+          .selectFrom('department')
+          .select(['id', 'name'])
+          .orderBy('name')
+          .execute();
+
+        return rows.map((row) => ({ id: row.id, label: row.name }));
+      }
+
+      case 'work_pattern': {
+        const rows = await this.db
+          .selectFrom('work_pattern')
+          .select(['id', 'name'])
+          .orderBy('name')
+          .execute();
+
+        return rows.map((row) => ({ id: row.id, label: row.name }));
+      }
+
+      case 'leave_type': {
+        const rows = await this.db
+          .selectFrom('leave_type')
+          .select(['id', 'name'])
+          .orderBy('name')
+          .execute();
+
+        return rows.map((row) => ({ id: row.id, label: row.name }));
+      }
+
+      case 'leave_year': {
+        /* Newest first, unlike the rest: the year somebody is asking about is almost always
+           the current one, and it sorts to the bottom by label. */
+        const rows = await this.db
+          .selectFrom('leave_year')
+          .select(['id', 'label'])
+          .orderBy('start_date', 'desc')
+          .execute();
+
+        return rows.map((row) => ({ id: row.id, label: row.label }));
+      }
+    }
   }
 
   /** How many entries there are for a record. */

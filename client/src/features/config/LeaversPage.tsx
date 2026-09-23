@@ -171,7 +171,7 @@ function Settlement({ settlement }: { settlement: LeaverSettlement }) {
         <p className="rules">
           <Icon name="info" />
           Employed {period(settlement.startDate, settlement.exitDate)}, and settled against{' '}
-          {settlement.year.label} — the leave year the exit date falls in.{' '}
+          {settlement.year.label}, the leave year the exit date falls in.{' '}
           {period(settlement.portion.from, settlement.portion.to)} of it was worked.
         </p>
 
@@ -187,7 +187,7 @@ function Settlement({ settlement }: { settlement: LeaverSettlement }) {
       {settlement.lines.length === 0 ? (
         <p className="muted">
           No kind of leave accrues over the year for this person, so there is nothing to settle.
-          That is an entitlement figure nobody has set rather than a figure of nought — ask an HR
+          That is an entitlement figure nobody has set rather than a figure of nought, so ask an HR
           Administrator.
         </p>
       ) : (

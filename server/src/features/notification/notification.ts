@@ -310,8 +310,8 @@ function placeholderValuesOf(happened: WhatHappened): PlaceholderValues {
       into === null
         ? 'The same days have been taken off the balance they moved to.'
         : `They have come off your ${into.typeName} balance instead, which now stands ` +
-          `at ${inDays(into.availableAfter)}. That figure can be negative — sick leave ` +
-          `past its allowance is granted on a certificate rather than refused.`,
+          `at ${inDays(into.availableAfter)}. That figure can be negative, because sick ` +
+          `leave past its allowance is granted on a certificate rather than refused.`,
     declaredHoliday:
       day === null
         ? `A public holiday has been declared on a day inside your ${leave.cost}.`

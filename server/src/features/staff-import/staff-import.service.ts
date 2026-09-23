@@ -269,7 +269,7 @@ export class StaffImportService {
       throw new InvalidImportRow(
         'department',
         `There is no department called "${draft.department}". Departments are not ` +
-          'created by an import — the usual cause of a name nothing matches is a typo, ' +
+          'created by an import. The usual cause of a name nothing matches is a typo, ' +
           'and guessing produces two teams with almost the same name and a headcount ' +
           'report that splits in half. Create the department first, or correct the ' +
           `spelling. The departments that exist are ${namesOf(organisation.departmentById)}.`,
@@ -857,8 +857,8 @@ function rejectDuplicatesWithinFile(drafts: DraftRow[], reject: Reject): void {
     (draft) => draft.workEmail,
     (draft, others) =>
       `The work address ${draft.workEmail} is on more than one row of this file: ` +
-      `${describeLines(others)}. A work address belongs to one person — it is what ` +
-      'they sign in with — so none of these rows is imported. Correct the addresses ' +
+      `${describeLines(others)}. A work address belongs to one person (it is what ` +
+      'they sign in with), so none of these rows is imported. Correct the addresses ' +
       'that are wrong.',
   );
 }
@@ -1124,7 +1124,7 @@ function optionalKey(value: string | undefined): string | undefined {
 function namesOf(records: Map<string, { name: string }>): string {
   const names = [...records.values()].map((one) => one.name).sort();
 
-  return names.length === 0 ? 'none — there are none yet' : names.join(', ');
+  return names.length === 0 ? 'none yet' : names.join(', ');
 }
 
 function describeLines(lines: number[]): string {
