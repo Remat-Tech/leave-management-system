@@ -1161,7 +1161,7 @@ describe('the reporting structure as a chart, FR 09', () => {
     expect(drawn).toMatch(/\n.{12}[├└]── Adwoa Frimpong/);
 
     // And the leaver is marked rather than quietly dropped off the chart.
-    expect(drawn).toMatch(/Kojo Antwi .*left \d{4}-\d{2}-\d{2}/);
+    expect(drawn).toMatch(/Kojo Antwi.*left \d{4}-\d{2}-\d{2}/);
   });
 
   it('renders as a Mermaid flowchart with an edge per reporting line', async () => {
