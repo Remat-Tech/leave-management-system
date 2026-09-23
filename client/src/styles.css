@@ -262,12 +262,6 @@ h1 {
   line-height: 0;
 }
 
-/* Sized by height, with the width left to follow: the file is 334x96 and tightly cropped, so
-   the one figure here is the height and its own ratio decides the rest. Nothing crops or
-   stretches it. At 2rem it comes out near 7rem wide, inside the rail's 13.5rem of room.
-
-   The name in it is white, which is why this belongs to the rail and not to a page: the rail
-   is the brand black in both themes, and the same image on a card would be invisible. */
 .logo-lockup {
   flex: none;
   width: auto;
